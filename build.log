@@ -1,0 +1,106 @@
+
+> themoak-erp@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.3
+  - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/56) ...
+prisma:query SELECT "public"."FixedAsset"."id", "public"."FixedAsset"."name", "public"."FixedAsset"."purchaseDate", "public"."FixedAsset"."purchasePrice", "public"."FixedAsset"."salvageValue", "public"."FixedAsset"."usefulLife", "public"."FixedAsset"."depreciationMethod"::text, "public"."FixedAsset"."currentValue", "public"."FixedAsset"."createdAt", "public"."FixedAsset"."updatedAt" FROM "public"."FixedAsset" WHERE 1=1 ORDER BY "public"."FixedAsset"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."FixedAsset"."id", "public"."FixedAsset"."name", "public"."FixedAsset"."purchaseDate", "public"."FixedAsset"."purchasePrice", "public"."FixedAsset"."salvageValue", "public"."FixedAsset"."usefulLife", "public"."FixedAsset"."depreciationMethod"::text, "public"."FixedAsset"."currentValue", "public"."FixedAsset"."createdAt", "public"."FixedAsset"."updatedAt" FROM "public"."FixedAsset" WHERE 1=1 ORDER BY "public"."FixedAsset"."createdAt" DESC OFFSET $1
+   Generating static pages (14/56) 
+prisma:query SELECT "public"."Project"."id", "public"."Project"."name", "public"."Project"."status", "public"."Project"."createdAt", "public"."Project"."updatedAt" FROM "public"."Project" WHERE 1=1 ORDER BY "public"."Project"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Task"."id", "public"."Task"."title", "public"."Task"."status", "public"."Task"."projectId", "public"."Task"."assignedTo", "public"."Task"."createdAt", "public"."Task"."updatedAt" FROM "public"."Task" WHERE "public"."Task"."projectId" IN ($1,$2,$3) OFFSET $4
+prisma:query SELECT "public"."Transaction"."id", "public"."Transaction"."type"::text, "public"."Transaction"."amount", "public"."Transaction"."date", "public"."Transaction"."description", "public"."Transaction"."category", "public"."Transaction"."currency"::text, "public"."Transaction"."rateSnapshot", "public"."Transaction"."amountInToman", "public"."Transaction"."accountId", "public"."Transaction"."projectId", "public"."Transaction"."wooId", "public"."Transaction"."wooStatus", "public"."Transaction"."receiptUrl", "public"."Transaction"."createdAt", "public"."Transaction"."updatedAt" FROM "public"."Transaction" WHERE "public"."Transaction"."projectId" IN ($1,$2,$3) OFFSET $4
+prisma:query SELECT "public"."Project"."id", "public"."Project"."name", "public"."Project"."status", "public"."Project"."createdAt", "public"."Project"."updatedAt" FROM "public"."Project" WHERE 1=1 ORDER BY "public"."Project"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Task"."id", "public"."Task"."title", "public"."Task"."status", "public"."Task"."projectId", "public"."Task"."assignedTo", "public"."Task"."createdAt", "public"."Task"."updatedAt" FROM "public"."Task" WHERE "public"."Task"."projectId" IN ($1,$2,$3) OFFSET $4
+prisma:query SELECT "public"."Transaction"."id", "public"."Transaction"."type"::text, "public"."Transaction"."amount", "public"."Transaction"."date", "public"."Transaction"."description", "public"."Transaction"."category", "public"."Transaction"."currency"::text, "public"."Transaction"."rateSnapshot", "public"."Transaction"."amountInToman", "public"."Transaction"."accountId", "public"."Transaction"."projectId", "public"."Transaction"."wooId", "public"."Transaction"."wooStatus", "public"."Transaction"."receiptUrl", "public"."Transaction"."createdAt", "public"."Transaction"."updatedAt" FROM "public"."Transaction" WHERE "public"."Transaction"."projectId" IN ($1,$2,$3) OFFSET $4
+   Generating static pages (28/56) 
+prisma:query SELECT "public"."Project"."id", "public"."Project"."name", "public"."Project"."status", "public"."Project"."createdAt", "public"."Project"."updatedAt" FROM "public"."Project" WHERE 1=1 ORDER BY "public"."Project"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Task"."id", "public"."Task"."title", "public"."Task"."status", "public"."Task"."projectId", "public"."Task"."assignedTo", "public"."Task"."createdAt", "public"."Task"."updatedAt" FROM "public"."Task" WHERE "public"."Task"."projectId" IN ($1,$2,$3) OFFSET $4
+Error: Event handlers cannot be passed to Client Component props.
+  {className: ..., onClick: function onClick, children: ...}
+                            ^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at ek (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:140566)
+    at Object.toJSON (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135755)
+    at stringify (<anonymous>)
+    at eR (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142219)
+    at eE (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142698)
+    at Timeout._onTimeout (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135475)
+    at listOnTimeout (node:internal/timers:573:17)
+    at process.processTimers (node:internal/timers:514:7) {
+  digest: '1309175407'
+}
+Error: Event handlers cannot be passed to Client Component props.
+  {className: ..., onClick: function onClick, children: ...}
+                            ^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at ek (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:140566)
+    at Object.toJSON (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135755)
+    at stringify (<anonymous>)
+    at eR (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142219)
+    at eE (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142698)
+    at Timeout._onTimeout (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135475)
+    at listOnTimeout (node:internal/timers:573:17)
+    at process.processTimers (node:internal/timers:514:7) {
+  digest: '1309175407'
+}
+
+Error occurred prerendering page "/dashboard/inventory/warehouses". Read more: https://nextjs.org/docs/messages/prerender-error
+
+Error: Event handlers cannot be passed to Client Component props.
+  {className: ..., onClick: function onClick, children: ...}
+                            ^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at ek (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:140566)
+    at Object.toJSON (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135755)
+    at stringify (<anonymous>)
+    at eR (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142219)
+    at eE (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142698)
+    at Timeout._onTimeout (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135475)
+    at listOnTimeout (node:internal/timers:573:17)
+    at process.processTimers (node:internal/timers:514:7)
+prisma:query SELECT "public"."Transaction"."id", "public"."Transaction"."type"::text, "public"."Transaction"."amount", "public"."Transaction"."date", "public"."Transaction"."description", "public"."Transaction"."category", "public"."Transaction"."currency"::text, "public"."Transaction"."rateSnapshot", "public"."Transaction"."amountInToman", "public"."Transaction"."accountId", "public"."Transaction"."projectId", "public"."Transaction"."wooId", "public"."Transaction"."wooStatus", "public"."Transaction"."receiptUrl", "public"."Transaction"."createdAt", "public"."Transaction"."updatedAt" FROM "public"."Transaction" WHERE "public"."Transaction"."projectId" IN ($1,$2,$3) OFFSET $4
+prisma:query SELECT "public"."Project"."id", "public"."Project"."name", "public"."Project"."status", "public"."Project"."createdAt", "public"."Project"."updatedAt" FROM "public"."Project" WHERE 1=1 ORDER BY "public"."Project"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Task"."id", "public"."Task"."title", "public"."Task"."status", "public"."Task"."projectId", "public"."Task"."assignedTo", "public"."Task"."createdAt", "public"."Task"."updatedAt" FROM "public"."Task" WHERE "public"."Task"."projectId" IN ($1,$2,$3) OFFSET $4
+Error: Event handlers cannot be passed to Client Component props.
+  {className: ..., onClick: function onClick, children: ...}
+                            ^^^^^^^^^^^^^^^^
+If you need interactivity, consider converting part of this to a Client Component.
+    at ek (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:140566)
+    at Object.toJSON (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135755)
+    at stringify (<anonymous>)
+    at eR (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142219)
+    at eE (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:142698)
+    at Timeout._onTimeout (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:135475)
+    at listOnTimeout (node:internal/timers:573:17)
+    at process.processTimers (node:internal/timers:514:7) {
+  digest: '1309175407'
+}
+prisma:query SELECT "public"."Transaction"."id", "public"."Transaction"."type"::text, "public"."Transaction"."amount", "public"."Transaction"."date", "public"."Transaction"."description", "public"."Transaction"."category", "public"."Transaction"."currency"::text, "public"."Transaction"."rateSnapshot", "public"."Transaction"."amountInToman", "public"."Transaction"."accountId", "public"."Transaction"."projectId", "public"."Transaction"."wooId", "public"."Transaction"."wooStatus", "public"."Transaction"."receiptUrl", "public"."Transaction"."createdAt", "public"."Transaction"."updatedAt" FROM "public"."Transaction" WHERE "public"."Transaction"."projectId" IN ($1,$2,$3) OFFSET $4
+   Generating static pages (42/56) 
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt", COALESCE("aggr_selection_0_PurchaseOrder"."_aggr_count_orders", 0) AS "_aggr_count_orders" FROM "public"."Supplier" LEFT JOIN (SELECT "public"."PurchaseOrder"."supplierId", COUNT(*) AS "_aggr_count_orders" FROM "public"."PurchaseOrder" WHERE 1=1 GROUP BY "public"."PurchaseOrder"."supplierId") AS "aggr_selection_0_PurchaseOrder" ON ("public"."Supplier"."id" = "aggr_selection_0_PurchaseOrder"."supplierId") WHERE 1=1 ORDER BY "public"."Supplier"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt", COALESCE("aggr_selection_0_PurchaseOrder"."_aggr_count_orders", 0) AS "_aggr_count_orders" FROM "public"."Supplier" LEFT JOIN (SELECT "public"."PurchaseOrder"."supplierId", COUNT(*) AS "_aggr_count_orders" FROM "public"."PurchaseOrder" WHERE 1=1 GROUP BY "public"."PurchaseOrder"."supplierId") AS "aggr_selection_0_PurchaseOrder" ON ("public"."Supplier"."id" = "aggr_selection_0_PurchaseOrder"."supplierId") WHERE 1=1 ORDER BY "public"."Supplier"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."PurchaseOrder"."id", "public"."PurchaseOrder"."number", "public"."PurchaseOrder"."supplierId", "public"."PurchaseOrder"."totalAmount", "public"."PurchaseOrder"."status", "public"."PurchaseOrder"."createdAt", "public"."PurchaseOrder"."updatedAt" FROM "public"."PurchaseOrder" WHERE 1=1 ORDER BY "public"."PurchaseOrder"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt" FROM "public"."Supplier" WHERE "public"."Supplier"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."PurchaseOrderItem"."id", "public"."PurchaseOrderItem"."purchaseOrderId", "public"."PurchaseOrderItem"."productId", "public"."PurchaseOrderItem"."quantity", "public"."PurchaseOrderItem"."unitCost" FROM "public"."PurchaseOrderItem" WHERE "public"."PurchaseOrderItem"."purchaseOrderId" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."Product"."id", "public"."Product"."wooId", "public"."Product"."name", "public"."Product"."sku", "public"."Product"."costPrice", "public"."Product"."sellPrice", "public"."Product"."image", "public"."Product"."createdAt", "public"."Product"."updatedAt" FROM "public"."Product" WHERE "public"."Product"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."Warehouse"."id", "public"."Warehouse"."name", "public"."Warehouse"."isVirtual", "public"."Warehouse"."customerId", "public"."Warehouse"."createdAt", "public"."Warehouse"."updatedAt" FROM "public"."Warehouse" WHERE "public"."Warehouse"."isVirtual" = $1 OFFSET $2
+prisma:query SELECT "public"."PurchaseOrder"."id", "public"."PurchaseOrder"."number", "public"."PurchaseOrder"."supplierId", "public"."PurchaseOrder"."totalAmount", "public"."PurchaseOrder"."status", "public"."PurchaseOrder"."createdAt", "public"."PurchaseOrder"."updatedAt" FROM "public"."PurchaseOrder" WHERE 1=1 ORDER BY "public"."PurchaseOrder"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt" FROM "public"."Supplier" WHERE "public"."Supplier"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."PurchaseOrderItem"."id", "public"."PurchaseOrderItem"."purchaseOrderId", "public"."PurchaseOrderItem"."productId", "public"."PurchaseOrderItem"."quantity", "public"."PurchaseOrderItem"."unitCost" FROM "public"."PurchaseOrderItem" WHERE "public"."PurchaseOrderItem"."purchaseOrderId" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."Product"."id", "public"."Product"."wooId", "public"."Product"."name", "public"."Product"."sku", "public"."Product"."costPrice", "public"."Product"."sellPrice", "public"."Product"."image", "public"."Product"."createdAt", "public"."Product"."updatedAt" FROM "public"."Product" WHERE "public"."Product"."id" IN ($1,$2) OFFSET $3
+prisma:query SELECT "public"."Warehouse"."id", "public"."Warehouse"."name", "public"."Warehouse"."isVirtual", "public"."Warehouse"."customerId", "public"."Warehouse"."createdAt", "public"."Warehouse"."updatedAt" FROM "public"."Warehouse" WHERE "public"."Warehouse"."isVirtual" = $1 OFFSET $2
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt", COALESCE("aggr_selection_0_PurchaseOrder"."_aggr_count_orders", 0) AS "_aggr_count_orders" FROM "public"."Supplier" LEFT JOIN (SELECT "public"."PurchaseOrder"."supplierId", COUNT(*) AS "_aggr_count_orders" FROM "public"."PurchaseOrder" WHERE 1=1 GROUP BY "public"."PurchaseOrder"."supplierId") AS "aggr_selection_0_PurchaseOrder" ON ("public"."Supplier"."id" = "aggr_selection_0_PurchaseOrder"."supplierId") WHERE 1=1 ORDER BY "public"."Supplier"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Product"."id", "public"."Product"."wooId", "public"."Product"."name", "public"."Product"."sku", "public"."Product"."costPrice", "public"."Product"."sellPrice", "public"."Product"."image", "public"."Product"."createdAt", "public"."Product"."updatedAt" FROM "public"."Product" WHERE 1=1 OFFSET $1
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt", COALESCE("aggr_selection_0_PurchaseOrder"."_aggr_count_orders", 0) AS "_aggr_count_orders" FROM "public"."Supplier" LEFT JOIN (SELECT "public"."PurchaseOrder"."supplierId", COUNT(*) AS "_aggr_count_orders" FROM "public"."PurchaseOrder" WHERE 1=1 GROUP BY "public"."PurchaseOrder"."supplierId") AS "aggr_selection_0_PurchaseOrder" ON ("public"."Supplier"."id" = "aggr_selection_0_PurchaseOrder"."supplierId") WHERE 1=1 ORDER BY "public"."Supplier"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Product"."id", "public"."Product"."wooId", "public"."Product"."name", "public"."Product"."sku", "public"."Product"."costPrice", "public"."Product"."sellPrice", "public"."Product"."image", "public"."Product"."createdAt", "public"."Product"."updatedAt" FROM "public"."Product" WHERE 1=1 OFFSET $1
+ ✓ Generating static pages (56/56)
+
+> Export encountered errors on following paths:
+	/dashboard/inventory/warehouses/page: /dashboard/inventory/warehouses

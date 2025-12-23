@@ -1,0 +1,698 @@
+
+> themoak-erp@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.3
+  - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/30) ...
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/accounting". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/consignment". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/inventory". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/sales". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+   Generating static pages (7/30) 
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/inventory/products". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/inventory/products/new". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/accounting/expenses/new". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/accounting/accounts". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/accounting/reports". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+   Generating static pages (14/30) 
+
+Error occurred prerendering page "/dashboard/admin/users". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/suppliers/new". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/reporting". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/accounting/exchange-rates". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/inventory/warehouses". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+prisma:query SELECT "public"."PurchaseOrder"."id", "public"."PurchaseOrder"."number", "public"."PurchaseOrder"."supplierId", "public"."PurchaseOrder"."totalAmount", "public"."PurchaseOrder"."status", "public"."PurchaseOrder"."createdAt", "public"."PurchaseOrder"."updatedAt" FROM "public"."PurchaseOrder" WHERE 1=1 ORDER BY "public"."PurchaseOrder"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Warehouse"."id", "public"."Warehouse"."name", "public"."Warehouse"."isVirtual", "public"."Warehouse"."customerId", "public"."Warehouse"."createdAt", "public"."Warehouse"."updatedAt" FROM "public"."Warehouse" WHERE "public"."Warehouse"."isVirtual" = $1 OFFSET $2
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+
+Error occurred prerendering page "/dashboard/suppliers". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+   Generating static pages (22/30) 
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546) {
+  digest: '3695738614'
+}
+prisma:query SELECT "public"."PurchaseOrder"."id", "public"."PurchaseOrder"."number", "public"."PurchaseOrder"."supplierId", "public"."PurchaseOrder"."totalAmount", "public"."PurchaseOrder"."status", "public"."PurchaseOrder"."createdAt", "public"."PurchaseOrder"."updatedAt" FROM "public"."PurchaseOrder" WHERE 1=1 ORDER BY "public"."PurchaseOrder"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Warehouse"."id", "public"."Warehouse"."name", "public"."Warehouse"."isVirtual", "public"."Warehouse"."customerId", "public"."Warehouse"."createdAt", "public"."Warehouse"."updatedAt" FROM "public"."Warehouse" WHERE "public"."Warehouse"."isVirtual" = $1 OFFSET $2
+
+Error occurred prerendering page "/dashboard/suppliers/orders". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/consignment/transfer". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/sales/customers". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/consignment/partners". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/sales/pos". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/consignment/settlement". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt", COALESCE("aggr_selection_0_PurchaseOrder"."_aggr_count_orders", 0) AS "_aggr_count_orders" FROM "public"."Supplier" LEFT JOIN (SELECT "public"."PurchaseOrder"."supplierId", COUNT(*) AS "_aggr_count_orders" FROM "public"."PurchaseOrder" WHERE 1=1 GROUP BY "public"."PurchaseOrder"."supplierId") AS "aggr_selection_0_PurchaseOrder" ON ("public"."Supplier"."id" = "aggr_selection_0_PurchaseOrder"."supplierId") WHERE 1=1 ORDER BY "public"."Supplier"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Product"."id", "public"."Product"."wooId", "public"."Product"."name", "public"."Product"."sku", "public"."Product"."costPrice", "public"."Product"."sellPrice", "public"."Product"."image", "public"."Product"."createdAt", "public"."Product"."updatedAt" FROM "public"."Product" WHERE 1=1 OFFSET $1
+prisma:query SELECT "public"."Supplier"."id", "public"."Supplier"."name", "public"."Supplier"."phone", "public"."Supplier"."email", "public"."Supplier"."address", "public"."Supplier"."createdAt", "public"."Supplier"."updatedAt", COALESCE("aggr_selection_0_PurchaseOrder"."_aggr_count_orders", 0) AS "_aggr_count_orders" FROM "public"."Supplier" LEFT JOIN (SELECT "public"."PurchaseOrder"."supplierId", COUNT(*) AS "_aggr_count_orders" FROM "public"."PurchaseOrder" WHERE 1=1 GROUP BY "public"."PurchaseOrder"."supplierId") AS "aggr_selection_0_PurchaseOrder" ON ("public"."Supplier"."id" = "aggr_selection_0_PurchaseOrder"."supplierId") WHERE 1=1 ORDER BY "public"."Supplier"."createdAt" DESC OFFSET $1
+prisma:query SELECT "public"."Product"."id", "public"."Product"."wooId", "public"."Product"."name", "public"."Product"."sku", "public"."Product"."costPrice", "public"."Product"."sellPrice", "public"."Product"."image", "public"."Product"."createdAt", "public"."Product"."updatedAt" FROM "public"."Product" WHERE 1=1 OFFSET $1
+
+Error occurred prerendering page "/dashboard/suppliers/orders/new". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+
+Error occurred prerendering page "/dashboard/accounting/expenses". Read more: https://nextjs.org/docs/messages/prerender-error
+
+TypeError: Cannot destructure property 'data' of '(0 , p.kP)(...)' as it is undefined.
+    at v (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/.next/server/chunks/248.js:1:1874)
+    at nj (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46251)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47571)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nD (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:66680)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64853)
+    at nB (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:67538)
+    at nM (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:58560)
+    at nN (/Users/pooyanmokri/.gemini/antigravity/scratch/themoak-erp/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64546)
+ ✓ Generating static pages (30/30)
+
+> Export encountered errors on following paths:
+	/dashboard/accounting/accounts/page: /dashboard/accounting/accounts
+	/dashboard/accounting/exchange-rates/page: /dashboard/accounting/exchange-rates
+	/dashboard/accounting/expenses/new/page: /dashboard/accounting/expenses/new
+	/dashboard/accounting/expenses/page: /dashboard/accounting/expenses
+	/dashboard/accounting/page: /dashboard/accounting
+	/dashboard/accounting/reports/page: /dashboard/accounting/reports
+	/dashboard/admin/users/page: /dashboard/admin/users
+	/dashboard/consignment/page: /dashboard/consignment
+	/dashboard/consignment/partners/page: /dashboard/consignment/partners
+	/dashboard/consignment/settlement/page: /dashboard/consignment/settlement
+	/dashboard/consignment/transfer/page: /dashboard/consignment/transfer
+	/dashboard/inventory/page: /dashboard/inventory
+	/dashboard/inventory/products/new/page: /dashboard/inventory/products/new
+	/dashboard/inventory/products/page: /dashboard/inventory/products
+	/dashboard/inventory/warehouses/page: /dashboard/inventory/warehouses
+	/dashboard/page: /dashboard
+	/dashboard/reporting/page: /dashboard/reporting
+	/dashboard/sales/customers/page: /dashboard/sales/customers
+	/dashboard/sales/page: /dashboard/sales
+	/dashboard/sales/pos/page: /dashboard/sales/pos
+	/dashboard/suppliers/new/page: /dashboard/suppliers/new
+	/dashboard/suppliers/orders/new/page: /dashboard/suppliers/orders/new
+	/dashboard/suppliers/orders/page: /dashboard/suppliers/orders
+	/dashboard/suppliers/page: /dashboard/suppliers

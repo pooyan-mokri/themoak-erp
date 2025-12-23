@@ -1,0 +1,90 @@
+'use client';
+
+import { deleteWarehouse } from '@/actions/warehouse';
+import { WarehouseEditDialog } from './warehouse-edit-dialog';
+import { Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import Link from 'next/link';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+
+interface Warehouse {
+  id: string;
+  name: string;
+  isVirtual: boolean;
+}
+
+interface WarehouseListProps {
+  warehouses: Warehouse[];
+}
+
+export function WarehouseList({ warehouses }: WarehouseListProps) {
+  const handleDelete = async (id: string) => {
+    if (confirm('آیا از حذف این انبار اطمینان دارید؟')) {
+      const result = await deleteWarehouse(id);
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    }
+  };
+
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-right">نام انبار</TableHead>
+            <TableHead className="text-right">نوع</TableHead>
+            <TableHead className="text-right">شناسه</TableHead>
+            <TableHead className="text-left">عملیات</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {warehouses.map((warehouse) => (
+            <TableRow key={warehouse.id}>
+              <TableCell className="font-medium">
+                <Link 
+                  href={`/dashboard/inventory/warehouses/${warehouse.id}`}
+                  className="hover:underline text-primary"
+                >
+                  {warehouse.name}
+                </Link>
+              </TableCell>
+              <TableCell>
+                {warehouse.isVirtual ? (
+                  <Badge variant="secondary">مجازی</Badge>
+                ) : (
+                  <Badge variant="outline">فیزیکی</Badge>
+                )}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">{warehouse.id}</TableCell>
+              <TableCell className="text-left">
+                <div className="flex justify-end gap-2">
+                  <WarehouseEditDialog warehouse={warehouse} />
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => handleDelete(warehouse.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}

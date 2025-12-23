@@ -1,0 +1,327 @@
+'use server';
+
+import { prisma } from '@/lib/prisma';
+import { Currency, TransactionType } from '@/lib/types';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+
+// --- Schemas ---
+
+const PayrollSchema = z.object({
+  employeeId: z.string().min(1, 'کارمند الزامی است'),
+  amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
+  bonuses: z.coerce.number().min(0).optional(),
+  deductions: z.coerce.number().min(0).optional(),
+  periodMonth: z.coerce.number().min(1).max(12, 'ماه باید بین 1 تا 12 باشد'),
+  periodYear: z.coerce.number().min(1400, 'سال باید معتبر باشد'),
+  description: z.string().optional(),
+});
+
+const PayrollPaymentSchema = z.object({
+  payrollId: z.string().min(1, 'فیش حقوقی الزامی است'),
+  amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
+  accountId: z.string().min(1, 'حساب پرداخت الزامی است'),
+  description: z.string().optional(),
+  date: z.string().optional(),
+});
+
+// --- Actions ---
+
+export async function createPayroll(prevState: any, formData: FormData) {
+  const validatedFields = PayrollSchema.safeParse({
+    employeeId: formData.get('employeeId'),
+    amount: formData.get('amount'),
+    bonuses: formData.get('bonuses') || undefined,
+    deductions: formData.get('deductions') || undefined,
+    periodMonth: formData.get('periodMonth'),
+    periodYear: formData.get('periodYear'),
+    description: formData.get('description') || undefined,
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'لطفا فیلدهای الزامی را پر کنید.',
+      success: false,
+    };
+  }
+
+  const { employeeId, amount, bonuses = 0, deductions = 0, periodMonth, periodYear, description } = validatedFields.data;
+
+  try {
+    // Check if payroll for this period already exists
+    const existingPayroll = await prisma.payroll.findUnique({
+      where: {
+        employeeId_periodMonth_periodYear: {
+          employeeId,
+          periodMonth,
+          periodYear,
+        },
+      },
+    });
+
+    if (existingPayroll) {
+      return {
+        message: 'برای این دوره قبلاً فیش حقوقی ثبت شده است.',
+        success: false,
+      };
+    }
+
+    // Verify employee exists
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+    });
+
+    if (!employee) {
+      return {
+        message: 'کارمند یافت نشد.',
+        success: false,
+      };
+    }
+
+    const netAmount = amount + bonuses - deductions;
+
+    await prisma.payroll.create({
+      data: {
+        employeeId,
+        amount: new Prisma.Decimal(amount),
+        bonuses: new Prisma.Decimal(bonuses),
+        deductions: new Prisma.Decimal(deductions),
+        netAmount: new Prisma.Decimal(netAmount),
+        paidAmount: new Prisma.Decimal(0),
+        periodMonth,
+        periodYear,
+        description: description || null,
+        status: 'PENDING',
+      },
+    });
+
+    revalidatePath('/dashboard/accounting/payroll');
+    return { message: 'فیش حقوقی با موفقیت ثبت شد.', success: true };
+  } catch (error: any) {
+    console.error('Error creating payroll:', error);
+    return {
+      message: error.message || 'خطا در ثبت فیش حقوقی.',
+      success: false,
+    };
+  }
+}
+
+export async function recordPayrollPayment(prevState: any, formData: FormData) {
+  const validatedFields = PayrollPaymentSchema.safeParse({
+    payrollId: formData.get('payrollId'),
+    amount: formData.get('amount'),
+    accountId: formData.get('accountId'),
+    description: formData.get('description') || undefined,
+    date: formData.get('date') || undefined,
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'لطفا فیلدهای الزامی را پر کنید.',
+      success: false,
+    };
+  }
+
+  const { payrollId, amount, accountId, description, date } = validatedFields.data;
+
+  try {
+    const payroll = await prisma.payroll.findUnique({
+      where: { id: payrollId },
+      include: {
+        employee: true,
+      },
+    });
+
+    if (!payroll) {
+      return {
+        message: 'فیش حقوقی یافت نشد.',
+        success: false,
+      };
+    }
+
+    const netAmount = Number(payroll.netAmount);
+    const currentPaidAmount = Number(payroll.paidAmount);
+    const remainingAmount = netAmount - currentPaidAmount;
+
+    if (amount > remainingAmount) {
+      return {
+        errors: { amount: [`مبلغ باقیمانده: ${remainingAmount.toLocaleString('fa-IR')} تومان`] },
+        message: `مبلغ پرداختی بیشتر از باقیمانده است. (باقیمانده: ${remainingAmount.toLocaleString('fa-IR')} تومان)`,
+        success: false,
+      };
+    }
+
+    const account = await prisma.account.findUnique({
+      where: { id: accountId },
+    });
+
+    if (!account) {
+      return {
+        message: 'حساب یافت نشد.',
+        success: false,
+      };
+    }
+
+    // Get exchange rate if not TOMAN
+    let rate = 1;
+    let amountInToman = amount;
+
+    if (account.currency !== 'TOMAN') {
+      const latestRate = await prisma.exchangeRate.findFirst({
+        where: { currency: account.currency },
+        orderBy: { date: 'desc' },
+      });
+
+      if (!latestRate) {
+        return {
+          message: `نرخ ارز برای ${account.currency} یافت نشد.`,
+          success: false,
+        };
+      }
+
+      rate = Number(latestRate.rateToToman);
+      amountInToman = amount * rate;
+    }
+
+    const transactionDate = date ? new Date(date) : new Date();
+    const newPaidAmount = currentPaidAmount + amount;
+    const newStatus = newPaidAmount >= netAmount ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
+
+    // Create payment and update payroll
+    await prisma.$transaction(async (tx: any) => {
+      const transaction = await tx.transaction.create({
+        data: {
+          type: TransactionType.EXPENSE,
+          amount: new Prisma.Decimal(amount),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: new Prisma.Decimal(amountInToman),
+          accountId,
+          description: description || `پرداخت حقوق - ${payroll.employee.name} - ${payroll.periodYear}/${payroll.periodMonth}`,
+          category: 'Salary',
+          date: transactionDate,
+        },
+      });
+
+      await tx.payrollPayment.create({
+        data: {
+          payrollId,
+          amount: new Prisma.Decimal(amount),
+          accountId,
+          transactionId: transaction.id,
+          description: description || null,
+          date: transactionDate,
+        },
+      });
+
+      await tx.payroll.update({
+        where: { id: payrollId },
+        data: {
+          paidAmount: new Prisma.Decimal(newPaidAmount),
+          status: newStatus,
+        },
+      });
+
+      await tx.account.update({
+        where: { id: accountId },
+        data: {
+          balance: {
+            decrement: new Prisma.Decimal(amountInToman),
+          },
+        },
+      });
+    });
+
+    revalidatePath('/dashboard/accounting/payroll');
+    revalidatePath('/dashboard/accounting/transactions');
+    revalidatePath('/dashboard/accounting/accounts');
+    return {
+      message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت ثبت شد.`,
+      success: true,
+    };
+  } catch (error: any) {
+    console.error('Error recording payroll payment:', error);
+    return {
+      message: error.message || 'خطا در ثبت پرداخت.',
+      success: false,
+    };
+  }
+}
+
+export async function getPayrolls(employeeId?: string, status?: string) {
+  try {
+    const where: any = {};
+    if (employeeId) {
+      where.employeeId = employeeId;
+    }
+    if (status) {
+      where.status = status;
+    }
+
+    const payrolls = await prisma.payroll.findMany({
+      where,
+      include: {
+        employee: true,
+        payments: {
+          orderBy: { date: 'desc' },
+        },
+      },
+      orderBy: [
+        { periodYear: 'desc' },
+        { periodMonth: 'desc' },
+      ],
+    });
+
+    return payrolls.map((p) => ({
+      ...p,
+      amount: Number(p.amount),
+      bonuses: Number(p.bonuses) || 0,
+      deductions: Number(p.deductions) || 0,
+      netAmount: Number(p.netAmount),
+      paidAmount: Number(p.paidAmount),
+    }));
+  } catch (error) {
+    console.error('Error fetching payrolls:', error);
+    return [];
+  }
+}
+
+export async function getPayrollById(id: string) {
+  try {
+    const payroll = await prisma.payroll.findUnique({
+      where: { id },
+      include: {
+        employee: true,
+        payments: {
+          include: {
+            account: true,
+            transaction: true,
+          },
+          orderBy: { date: 'desc' },
+        },
+      },
+    });
+
+    if (!payroll) return null;
+
+    return {
+      ...payroll,
+      amount: Number(payroll.amount),
+      bonuses: Number(payroll.bonuses) || 0,
+      deductions: Number(payroll.deductions) || 0,
+      netAmount: Number(payroll.netAmount),
+      paidAmount: Number(payroll.paidAmount),
+      payments: payroll.payments.map((p) => ({
+        ...p,
+        amount: Number(p.amount),
+      })),
+    };
+  } catch (error) {
+    console.error('Error fetching payroll:', error);
+    return null;
+  }
+}
+
