@@ -258,7 +258,7 @@ export async function getCurrencyExchangeHistory() {
           t.accountId !== transaction.accountId
       );
 
-      if (pairedTransaction) {
+      if (pairedTransaction && transaction.account && pairedTransaction.account) {
         // Determine which is source and which is target based on transaction type
         const sourceTx =
           transaction.type === TransactionType.EXPENSE
@@ -269,21 +269,24 @@ export async function getCurrencyExchangeHistory() {
             ? transaction
             : pairedTransaction;
 
-        exchanges.push({
-          id: transaction.id,
-          date: transaction.date,
-          sourceAccount: sourceTx.account.name,
-          targetAccount: targetTx.account.name,
-          sourceAmount: Number(sourceTx.amount),
-          targetAmount: Number(targetTx.amount),
-          sourceCurrency: sourceTx.currency,
-          targetCurrency: targetTx.currency,
-          exchangeRate: Number(sourceTx.rateSnapshot),
-          description: sourceTx.description,
-        });
+        // Additional null check for safety
+        if (sourceTx.account && targetTx.account) {
+          exchanges.push({
+            id: transaction.id,
+            date: transaction.date,
+            sourceAccount: sourceTx.account.name,
+            targetAccount: targetTx.account.name,
+            sourceAmount: Number(sourceTx.amount),
+            targetAmount: Number(targetTx.amount),
+            sourceCurrency: sourceTx.currency,
+            targetCurrency: targetTx.currency,
+            exchangeRate: Number(sourceTx.rateSnapshot),
+            description: sourceTx.description,
+          });
 
-        processedIds.add(transaction.id);
-        processedIds.add(pairedTransaction.id);
+          processedIds.add(transaction.id);
+          processedIds.add(pairedTransaction.id);
+        }
       }
     }
 
