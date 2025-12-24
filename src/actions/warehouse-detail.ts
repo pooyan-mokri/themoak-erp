@@ -139,7 +139,7 @@ export async function getWarehouseDetail(warehouseId: string) {
     const recentAudits = await prisma.inventoryAudit.findMany({
       where: { warehouseId },
       include: {
-        createdBy: {
+        createdByUser: {
           select: {
             name: true,
           },
@@ -231,7 +231,7 @@ export async function getWarehouseDetail(warehouseId: string) {
           return {
             id: audit.id,
             status: audit.status,
-            createdBy: audit.createdBy?.name || 'نامشخص',
+            createdBy: audit.createdByUser?.name || 'نامشخص',
             createdAt: formatJalaliDateTime(audit.createdAt),
             createdAtRaw: audit.createdAt,
           };
