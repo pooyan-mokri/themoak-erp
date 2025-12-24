@@ -213,7 +213,7 @@ export async function getWarehouseDetail(warehouseId: string) {
             quantity: item.quantity,
             price: Number(item.unitCost),
             total: item.quantity * Number(item.unitCost),
-            orderNumber: item.purchaseOrder.orderNumber,
+            orderNumber: item.purchaseOrder.number,
             supplierName: item.purchaseOrder.supplier?.name || 'نامشخص',
             orderDate: formatJalaliDateTime(item.purchaseOrder.createdAt),
             orderDateRaw: item.purchaseOrder.createdAt,
