@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
+import { Prisma } from '@prisma/client';
 
 export async function getWarehouseDetail(warehouseId: string) {
   try {
@@ -41,7 +42,18 @@ export async function getWarehouseDetail(warehouseId: string) {
     const itemsOutOfStock = inventory.filter((item) => item.quantity === 0).length;
 
     // Get recent order items (sales)
-    let recentOrderItems = [];
+    type OrderItemWithRelations = Prisma.OrderItemGetPayload<{
+      include: {
+        product: true;
+        order: {
+          include: {
+            customer: true;
+          };
+        };
+      };
+    }>;
+    
+    let recentOrderItems: OrderItemWithRelations[] = [];
     try {
       recentOrderItems = await prisma.orderItem.findMany({
         where: {
@@ -78,7 +90,18 @@ export async function getWarehouseDetail(warehouseId: string) {
       .slice(0, 20);
 
     // Get recent purchase order items (purchases)
-    let recentPurchaseItems = [];
+    type PurchaseOrderItemWithRelations = Prisma.PurchaseOrderItemGetPayload<{
+      include: {
+        product: true;
+        purchaseOrder: {
+          include: {
+            supplier: true;
+          };
+        };
+      };
+    }>;
+    
+    let recentPurchaseItems: PurchaseOrderItemWithRelations[] = [];
     try {
       recentPurchaseItems = await prisma.purchaseOrderItem.findMany({
         where: {
