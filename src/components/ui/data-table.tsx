@@ -127,10 +127,12 @@ export function DataTable<T extends Record<string, any>>({
       if (bValue === null || bValue === undefined) return -1;
 
       // Handle Date objects - convert to timestamp for proper sorting
-      if (typeof aValue === 'object' && typeof bValue === 'object' && 
-          aValue instanceof Date && bValue instanceof Date) {
-        const aTime = aValue.getTime();
-        const bTime = bValue.getTime();
+      // Use type assertion for instanceof check since TypeScript can't narrow generic types
+      const aIsDate = typeof aValue === 'object' && aValue !== null && (aValue as any) instanceof Date;
+      const bIsDate = typeof bValue === 'object' && bValue !== null && (bValue as any) instanceof Date;
+      if (aIsDate && bIsDate) {
+        const aTime = (aValue as Date).getTime();
+        const bTime = (bValue as Date).getTime();
         return sortConfig.direction === 'asc' ? aTime - bTime : bTime - aTime;
       }
 
