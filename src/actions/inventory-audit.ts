@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
+import { ActionResult, ActionState } from '@/lib/types';
 
 // Generate unique audit number
 function generateAuditNumber(): string {
@@ -23,7 +24,10 @@ function generateTagBarcode(auditId: string, index: number, productBarcode?: str
 }
 
 // 1. Pre-Audit: Create Inventory Audit
-export async function createInventoryAudit(prevState: any, formData: FormData) {
+export async function createInventoryAudit(
+  prevState: ActionState<{ auditId: string }>,
+  formData: FormData
+): Promise<ActionResult<{ auditId: string }>> {
   try {
     console.log('=== createInventoryAudit START ===');
     const session = await auth();
@@ -87,17 +91,18 @@ export async function createInventoryAudit(prevState: any, formData: FormData) {
       message: 'انبارگردانی با موفقیت ایجاد شد.',
       auditId: audit.id,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('=== createInventoryAudit ERROR ===', error);
+    const message = error instanceof Error ? error.message : 'لطفاً دوباره تلاش کنید.';
     return {
       success: false,
-      message: `خطا در ایجاد انبارگردانی: ${error.message || 'لطفاً دوباره تلاش کنید.'}`,
+      message: `خطا در ایجاد انبارگردانی: ${message}`,
     };
   }
 }
 
 // 2. Pre-Audit: Freeze Inventory (Create Snapshot)
-export async function freezeInventory(auditId: string) {
+export async function freezeInventory(auditId: string): Promise<ActionResult<{ snapshotCount: number }>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -167,7 +172,7 @@ export async function freezeInventory(auditId: string) {
       message: 'موجودی با موفقیت فریز شد.',
       snapshotCount: snapshots.length,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error freezing inventory:', error);
     return {
       success: false,
@@ -177,7 +182,11 @@ export async function freezeInventory(auditId: string) {
 }
 
 // 3. Pre-Audit: Generate Audit Tags
-export async function generateAuditTags(auditId: string, tagType: string = 'SHELF', count?: number) {
+export async function generateAuditTags(
+  auditId: string,
+  tagType: string = 'SHELF',
+  count?: number
+): Promise<ActionResult<{ tagCount: number }>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -220,7 +229,7 @@ export async function generateAuditTags(auditId: string, tagType: string = 'SHEL
       message: `${tags.length} تگ با موفقیت ایجاد شد.`,
       tagCount: tags.length,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating audit tags:', error);
     return {
       success: false,
@@ -230,7 +239,11 @@ export async function generateAuditTags(auditId: string, tagType: string = 'SHEL
 }
 
 // 4. Pre-Audit: Add Team Member
-export async function addAuditTeamMember(auditId: string, userId: string, role: string = 'COUNTER') {
+export async function addAuditTeamMember(
+  auditId: string,
+  userId: string,
+  role: string = 'COUNTER'
+): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -275,7 +288,7 @@ export async function addAuditTeamMember(auditId: string, userId: string, role: 
       success: true,
       message: 'عضو تیم با موفقیت اضافه شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error adding team member:', error);
     return {
       success: false,
@@ -285,7 +298,7 @@ export async function addAuditTeamMember(auditId: string, userId: string, role: 
 }
 
 // 5. Pre-Audit: Remove Team Member
-export async function removeAuditTeamMember(auditId: string, userId: string) {
+export async function removeAuditTeamMember(auditId: string, userId: string): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -306,7 +319,7 @@ export async function removeAuditTeamMember(auditId: string, userId: string) {
       success: true,
       message: 'عضو تیم با موفقیت حذف شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error removing team member:', error);
     return {
       success: false,
@@ -349,7 +362,7 @@ export async function getInventoryAudit(auditId: string) {
     });
 
     return audit;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching inventory audit:', error);
     return null;
   }
@@ -380,7 +393,7 @@ export async function getInventoryAudits(warehouseId?: string) {
     });
 
     return audits;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching inventory audits:', error);
     return [];
   }
@@ -395,7 +408,7 @@ export async function recordCount(
   count: number,
   countRound: 1 | 2 | 3 = 1,
   notes?: string
-) {
+): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -433,7 +446,7 @@ export async function recordCount(
     }
 
     // Update or create audit item
-    const updateData: any = {
+    const updateData: Record<string, number | string | Date> = {
       [`countedQuantity${countRound}`]: count,
       [`countedBy${countRound}`]: session.user.id,
       [`countedAt${countRound}`]: new Date(),
@@ -464,7 +477,7 @@ export async function recordCount(
       success: true,
       message: 'شمارش با موفقیت ثبت شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording count:', error);
     return {
       success: false,
@@ -479,7 +492,7 @@ export async function recordCountByBarcode(
   barcode: string,
   count: number,
   countRound: 1 | 2 | 3 = 1
-) {
+): Promise<ActionResult> {
   try {
     // Find tag by barcode
     const tag = await prisma.inventoryAuditTag.findUnique({
@@ -500,7 +513,7 @@ export async function recordCountByBarcode(
     }
 
     return await recordCount(auditId, tag.productId, count, countRound);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording count by barcode:', error);
     return {
       success: false,
@@ -514,7 +527,7 @@ export async function setFinalQuantity(
   auditId: string,
   productId: string,
   finalQuantity: number
-) {
+): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -584,7 +597,7 @@ export async function setFinalQuantity(
       success: true,
       message: 'مقدار نهایی با موفقیت ثبت شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error setting final quantity:', error);
     return {
       success: false,
@@ -596,7 +609,7 @@ export async function setFinalQuantity(
 // ==================== POST-AUDIT TASKS ====================
 
 // 9. Post-Audit: Calculate Discrepancies
-export async function calculateDiscrepancies(auditId: string) {
+export async function calculateDiscrepancies(auditId: string): Promise<ActionResult> {
   try {
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
@@ -634,14 +647,14 @@ export async function calculateDiscrepancies(auditId: string) {
       });
     });
 
-    await Promise.all(updates.filter((u) => u !== null) as Promise<any>[]);
+    await Promise.all(updates.filter((u) => u !== null));
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
       success: true,
       message: 'مغایرت‌ها با موفقیت محاسبه شدند.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error calculating discrepancies:', error);
     return {
       success: false,
@@ -694,14 +707,14 @@ export async function getDiscrepancyReport(auditId: string) {
       excessCount,
       totalItems: audit.items.length,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching discrepancy report:', error);
     return null;
   }
 }
 
 // 11. Post-Audit: Issue Adjustment Documents
-export async function issueAdjustmentDocuments(auditId: string) {
+export async function issueAdjustmentDocuments(auditId: string): Promise<ActionResult<{ adjustedCount: number }>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -777,7 +790,7 @@ export async function issueAdjustmentDocuments(auditId: string) {
       message: `اسناد اصلاحی برای ${audit.items.length} آیتم صادر شد.`,
       adjustedCount: audit.items.length,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error issuing adjustment documents:', error);
     return {
       success: false,
@@ -843,7 +856,7 @@ export async function getPerformanceReport(auditId: string) {
       },
       countByUser: Object.values(countByUser),
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching performance report:', error);
     return null;
   }

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { TransactionType, Currency } from '@/lib/types';
+import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
 
 // --- Schemas ---
 
@@ -49,7 +49,7 @@ export async function getSuppliers() {
   }
 }
 
-export async function createSupplier(prevState: any, formData: FormData) {
+export async function createSupplier(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   try {
     const rawData = {
       name: formData.get('name'),
@@ -66,10 +66,10 @@ export async function createSupplier(prevState: any, formData: FormData) {
 
     revalidatePath('/dashboard/suppliers');
     return { success: true, message: 'تامین‌کننده با موفقیت ایجاد شد' };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error creating supplier:', error);
     if (error instanceof z.ZodError) {
-      return { success: false, error: (error as any).errors[0].message };
+      return { success: false, error: error.errors[0]?.message || 'خطا در اعتبارسنجی' };
     }
     return { success: false, error: 'خطا در ایجاد تامین‌کننده' };
   }
@@ -96,7 +96,7 @@ export async function getPurchaseOrders() {
   }
 }
 
-export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrderSchema>) {
+export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrderSchema>): Promise<ActionResult> {
   try {
     console.log('Received data:', JSON.stringify(data, null, 2));
     const validatedData = createPurchaseOrderSchema.parse(data);
@@ -112,7 +112,14 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
     // Filter out TOMAN as it doesn't need exchange rate
     const currenciesNeedingRates = allCurrencies.filter(c => c !== 'TOMAN');
     
-    let exchangeRates: any[] = [];
+    type ExchangeRate = {
+      id: string;
+      currency: string;
+      date: Date;
+      rateToToman: Prisma.Decimal;
+    };
+
+    let exchangeRates: ExchangeRate[] = [];
     if (currenciesNeedingRates.length > 0) {
       exchangeRates = await prisma.exchangeRate.findMany({
         where: {
@@ -124,7 +131,7 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
       });
 
       // Get latest rate for each currency
-      const latestRates: Record<string, any> = {};
+      const latestRates: Record<string, ExchangeRate> = {};
       exchangeRates.forEach(rate => {
         const currency = rate.currency;
         if (!latestRates[currency] || new Date(rate.date) > new Date(latestRates[currency].date)) {
@@ -210,13 +217,14 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 
     revalidatePath('/dashboard/suppliers/orders');
     return { success: true, message: 'سفارش خرید با موفقیت ثبت شد' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating purchase order:', error);
+    const errorObj = error as { message?: string; code?: string; meta?: unknown; stack?: string };
     console.error('Error details:', {
-      message: error?.message,
-      code: error?.code,
-      meta: error?.meta,
-      stack: error?.stack
+      message: errorObj?.message,
+      code: errorObj?.code,
+      meta: errorObj?.meta,
+      stack: errorObj?.stack
     });
     
     if (error instanceof z.ZodError) {
@@ -229,16 +237,16 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
     }
     
     // Handle Prisma errors
-    if (error?.code) {
-      if (error.code === 'P2002') {
+    if (errorObj?.code) {
+      if (errorObj.code === 'P2002') {
         return { success: false, error: 'این رکورد قبلاً وجود دارد' };
       }
-      if (error.code === 'P2003') {
+      if (errorObj.code === 'P2003') {
         return { success: false, error: 'رکورد مرتبط یافت نشد' };
       }
     }
-    
-    return { success: false, error: error?.message || 'خطا در ثبت سفارش خرید' };
+
+    return { success: false, error: errorObj?.message || 'خطا در ثبت سفارش خرید' };
   }
 }
 
@@ -264,11 +272,19 @@ export async function getPurchaseOrder(orderId: string) {
     }
 
     // Convert Decimal fields to numbers for client-side serialization
+    type OrderItem = typeof order.items[0] & {
+      unitCostInToman?: Prisma.Decimal | null;
+      exchangeRateSnapshot?: Prisma.Decimal | null;
+      totalCostInToman?: Prisma.Decimal | null;
+      additionalCost?: Prisma.Decimal | null;
+      additionalCostInToman?: Prisma.Decimal | null;
+    };
+
     const serializedOrder = {
       ...order,
       totalAmount: Number(order.totalAmount),
       totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : null,
-      items: order.items.map((item: any) => ({
+      items: order.items.map((item: OrderItem) => ({
         ...item,
         unitCost: Number(item.unitCost),
         unitCostInToman: item.unitCostInToman ? Number(item.unitCostInToman) : null,
@@ -277,13 +293,13 @@ export async function getPurchaseOrder(orderId: string) {
         additionalCost: item.additionalCost ? Number(item.additionalCost) : null,
         additionalCostInToman: item.additionalCostInToman ? Number(item.additionalCostInToman) : null,
       })),
-      additionalCosts: order.additionalCosts.map((cost: any) => ({
+      additionalCosts: order.additionalCosts.map(cost => ({
         ...cost,
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : null,
         exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : null,
       })),
-      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map((cost: any) => ({
+      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map(cost => ({
         ...cost,
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : null,
@@ -302,9 +318,9 @@ export async function receivePurchaseOrderItems(
   orderId: string,
   warehouseId: string,
   receivedItems: Array<{ itemId: string; receivedQuantity: number }>
-) {
+): Promise<ActionResult> {
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // 1. Get Order with products and all costs
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
@@ -329,7 +345,7 @@ export async function receivePurchaseOrderItems(
 
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
-        const rate = exchangeRates.find((r: any) => r.currency === currency);
+        const rate = exchangeRates.find(r => r.currency === currency);
         return rate ? Number(rate.rateToToman) : 1;
       };
 
@@ -338,20 +354,20 @@ export async function receivePurchaseOrderItems(
       
       // Add order additional costs
       if (order.additionalCosts && order.additionalCosts.length > 0) {
-        order.additionalCosts.forEach((cost: any) => {
+        order.additionalCosts.forEach(cost => {
           totalAdditionalCostsInToman += Number(cost.amountInToman || 0);
         });
       }
-      
+
       // Add arrival additional costs
       if (order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0) {
-        order.arrivalAdditionalCosts.forEach((cost: any) => {
+        order.arrivalAdditionalCosts.forEach(cost => {
           totalAdditionalCostsInToman += Number(cost.amountInToman || 0);
         });
       }
 
       // Calculate total quantity of all items in the order
-      const totalOrderQuantity = order.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+      const totalOrderQuantity = order.items.reduce((sum: number, item) => sum + item.quantity, 0);
       
       // Calculate additional cost per unit (distributed across all items)
       const additionalCostPerUnit = totalOrderQuantity > 0 ? totalAdditionalCostsInToman / totalOrderQuantity : 0;
@@ -360,7 +376,7 @@ export async function receivePurchaseOrderItems(
 
       // 2. Process each received item
       for (const receivedItem of receivedItems) {
-        const orderItem = order.items.find((item: any) => item.id === receivedItem.itemId);
+        const orderItem = order.items.find(item => item.id === receivedItem.itemId);
         if (!orderItem) continue;
 
         const newReceivedQuantity = (orderItem.receivedQuantity || 0) + receivedItem.receivedQuantity;
@@ -489,16 +505,17 @@ export async function receivePurchaseOrderItems(
       // Ignore revalidatePath error outside of Next.js context
     }
     return { success: true, message: 'کالاها با موفقیت دریافت و به موجودی اضافه شدند' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error receiving purchase order items:', error);
-    return { success: false, error: error.message || 'خطا در دریافت کالاها' };
+    const message = error instanceof Error ? error.message : 'خطا در دریافت کالاها';
+    return { success: false, error: message };
   }
 }
 
 // Keep the old function for backward compatibility, but mark as deprecated
-export async function receivePurchaseOrder(orderId: string, warehouseId: string) {
+export async function receivePurchaseOrder(orderId: string, warehouseId: string): Promise<ActionResult> {
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // 1. Get Order with products
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
@@ -618,8 +635,9 @@ export async function receivePurchaseOrder(orderId: string, warehouseId: string)
       // Ignore revalidatePath error outside of Next.js context
     }
     return { success: true, message: 'سفارش با موفقیت دریافت و به موجودی اضافه شد' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error receiving purchase order:', error);
-    return { success: false, error: error.message || 'خطا در دریافت سفارش' };
+    const message = error instanceof Error ? error.message : 'خطا در دریافت سفارش';
+    return { success: false, error: message };
   }
 }

@@ -1,7 +1,7 @@
 'use server';
 
 import { PrismaClient, Prisma } from '@prisma/client';
-import { TransactionType, Currency } from '@/lib/types';
+import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -34,7 +34,7 @@ const SettlementSchema = z.object({
 
 // --- Actions ---
 
-export async function createConsignmentPartner(prevState: any, formData: FormData) {
+export async function createConsignmentPartner(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PartnerSchema.safeParse({
     name: formData.get('name'),
     phone: formData.get('phone') || undefined,
@@ -52,7 +52,7 @@ export async function createConsignmentPartner(prevState: any, formData: FormDat
   const { name, phone, address, commissionRate } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // 1. Create Customer
       const customer = await tx.customer.create({
         data: {
@@ -80,7 +80,7 @@ export async function createConsignmentPartner(prevState: any, formData: FormDat
   return { message: 'همکار امانی با موفقیت ایجاد شد.' };
 }
 
-export async function updateConsignmentPartner(partnerId: string, prevState: any, formData: FormData) {
+export async function updateConsignmentPartner(partnerId: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PartnerSchema.safeParse({
     name: formData.get('name'),
     phone: formData.get('phone') || undefined,
@@ -98,7 +98,7 @@ export async function updateConsignmentPartner(partnerId: string, prevState: any
   const { name, phone, address, commissionRate } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // Find warehouse and customer
       const warehouse = await tx.warehouse.findUnique({
         where: { id: partnerId },
@@ -128,15 +128,16 @@ export async function updateConsignmentPartner(partnerId: string, prevState: any
         },
       });
     });
-  } catch (error: any) {
-    return { message: error.message || 'خطا در بروزرسانی همکار امانی.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در بروزرسانی همکار امانی.';
+    return { message };
   }
 
   revalidatePath('/dashboard/consignment/partners');
   return { message: 'همکار امانی با موفقیت بروزرسانی شد.', success: true };
 }
 
-export async function transferStock(prevState: any, formData: FormData) {
+export async function transferStock(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = TransferSchema.safeParse({
     sourceWarehouseId: formData.get('sourceWarehouseId'),
     targetWarehouseId: formData.get('targetWarehouseId'),
@@ -154,7 +155,7 @@ export async function transferStock(prevState: any, formData: FormData) {
   const { sourceWarehouseId, targetWarehouseId, productId, quantity } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // Check source stock
       const sourceStock = await tx.inventory.findUnique({
         where: {
@@ -203,8 +204,9 @@ export async function transferStock(prevState: any, formData: FormData) {
       // Record Transfer Transaction (Optional: usually no financial impact yet, but good to log)
       // For now, we just move stock.
     });
-  } catch (error: any) {
-    return { message: error.message || 'خطا در انتقال موجودی.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در انتقال موجودی.';
+    return { message };
   }
 
   revalidatePath('/dashboard/consignment/transfer');
@@ -212,7 +214,7 @@ export async function transferStock(prevState: any, formData: FormData) {
   return { message: 'انتقال موجودی با موفقیت انجام شد.' };
 }
 
-export async function settleSales(prevState: any, formData: FormData) {
+export async function settleSales(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = SettlementSchema.safeParse({
     partnerWarehouseId: formData.get('partnerWarehouseId'),
     productId: formData.get('productId'),
@@ -231,7 +233,7 @@ export async function settleSales(prevState: any, formData: FormData) {
   const totalAmount = quantity * unitPrice;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // 1. Deduct from Partner Warehouse
       const stock = await tx.inventory.findUnique({
         where: {
@@ -311,10 +313,11 @@ export async function settleSales(prevState: any, formData: FormData) {
           });
         }
       }
-      
+
     });
-  } catch (error: any) {
-    return { message: error.message || 'خطا در ثبت فروش امانی.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در ثبت فروش امانی.';
+    return { message };
   }
 
   revalidatePath('/dashboard/consignment/settlement');
@@ -397,7 +400,7 @@ const PaymentSchema = z.object({
   accountId: z.string().min(1, 'حساب مقصد الزامی است'),
 });
 
-export async function paySettlement(prevState: any, formData: FormData) {
+export async function paySettlement(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PaymentSchema.safeParse({
     orderId: formData.get('orderId'),
     accountId: formData.get('accountId'),
@@ -410,7 +413,7 @@ export async function paySettlement(prevState: any, formData: FormData) {
   const { orderId, accountId } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // 1. Get Order
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -452,8 +455,9 @@ export async function paySettlement(prevState: any, formData: FormData) {
         }
       });
     });
-  } catch (error: any) {
-    return { message: error.message || 'خطا در ثبت پرداخت.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت.';
+    return { message };
   }
 
   revalidatePath('/dashboard/consignment/settlement');
