@@ -89,7 +89,7 @@ export async function createInventoryAudit(
     return {
       success: true,
       message: 'انبارگردانی با موفقیت ایجاد شد.',
-      auditId: audit.id,
+      data: { auditId: audit.id },
     };
   } catch (error: unknown) {
     console.error('=== createInventoryAudit ERROR ===', error);
@@ -170,7 +170,7 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
     return {
       success: true,
       message: 'موجودی با موفقیت فریز شد.',
-      snapshotCount: snapshots.length,
+      data: { snapshotCount: snapshots.length },
     };
   } catch (error: unknown) {
     console.error('Error freezing inventory:', error);
@@ -227,7 +227,7 @@ export async function generateAuditTags(
     return {
       success: true,
       message: `${tags.length} تگ با موفقیت ایجاد شد.`,
-      tagCount: tags.length,
+      data: { tagCount: tags.length },
     };
   } catch (error: unknown) {
     console.error('Error generating audit tags:', error);
@@ -788,7 +788,7 @@ export async function issueAdjustmentDocuments(auditId: string): Promise<ActionR
     return {
       success: true,
       message: `اسناد اصلاحی برای ${audit.items.length} آیتم صادر شد.`,
-      adjustedCount: audit.items.length,
+      data: { adjustedCount: audit.items.length },
     };
   } catch (error: unknown) {
     console.error('Error issuing adjustment documents:', error);
