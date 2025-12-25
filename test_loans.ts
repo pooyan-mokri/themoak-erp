@@ -81,7 +81,8 @@ async function main() {
           throw new Error('وام در دیتابیس یافت نشد');
         }
       } else {
-        throw new Error('وام ایجاد نشد: ' + (result.error || result.message));
+        const errorMsg = result.message || (result.errors ? JSON.stringify(result.errors) : 'خطای نامشخص');
+        throw new Error('وام ایجاد نشد: ' + errorMsg);
       }
     } catch (error: any) {
       if (error?.message?.includes('static generation store missing')) {
@@ -471,4 +472,5 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
 
