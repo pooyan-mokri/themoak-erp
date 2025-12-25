@@ -434,7 +434,7 @@ async function main() {
     
     const loans = Array.isArray(loansResult) 
       ? loansResult 
-      : (loansResult?.data || []);
+      : [];
 
     console.log(`✓ تعداد وام‌ها: ${loans.length}`);
     
