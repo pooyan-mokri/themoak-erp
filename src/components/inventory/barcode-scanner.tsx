@@ -119,12 +119,12 @@ const BarcodeScannerComponent = forwardRef<BarcodeScannerHandle, BarcodeScannerP
               qrbox: { width: 250, height: 250 },
               aspectRatio: 1.0,
             },
-            (decodedText) => {
+            (decodedText: string) => {
               // Successfully scanned
               onScan(decodedText);
               stopScanning();
             },
-            (errorMessage) => {
+            (errorMessage: string) => {
               // Ignore scanning errors (they're normal while scanning)
             }
           );
