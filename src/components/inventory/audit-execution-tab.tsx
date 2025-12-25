@@ -28,8 +28,42 @@ import {
 } from '@/lib/offline-storage';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+}
+
+interface InventoryAuditItem {
+  id: string;
+  productId: string;
+  systemQuantity: number;
+  countedQuantity1: number | null;
+  countedQuantity2: number | null;
+  countedQuantity3: number | null;
+  finalQuantity: number | null;
+  notes?: string | null;
+  product: Product;
+}
+
+interface InventoryAudit {
+  id: string;
+  status: string;
+  items?: InventoryAuditItem[];
+}
+
+interface PendingCount {
+  id?: string;
+  auditId: string;
+  productId: string;
+  count: number;
+  countRound: 1 | 2 | 3;
+  notes?: string;
+  timestamp?: number;
+}
+
 interface ExecutionTabProps {
-  audit: any;
+  audit: InventoryAudit;
 }
 
 export function ExecutionTab({ audit }: ExecutionTabProps) {
@@ -41,7 +75,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [online, setOnline] = useState(true);
-  const [pendingCounts, setPendingCounts] = useState<any[]>([]);
+  const [pendingCounts, setPendingCounts] = useState<PendingCount[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [manualEntries, setManualEntries] = useState<Array<{ productId: string; count: string; notes: string }>>([]);
 
@@ -244,10 +278,10 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
             targetNotes || undefined
           );
           successCount++;
-        } catch (error: any) {
+        } catch (error) {
           errorCount++;
           console.error('Error saving offline:', error);
-          errors.push(error?.message || 'خطا در ذخیره آفلاین');
+          errors.push(error instanceof Error ? error.message : 'خطا در ذخیره آفلاین');
         }
       } else {
         try {
@@ -259,10 +293,10 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
             console.error('Record count error:', result.message);
             errors.push(result.message || 'خطا در ثبت شمارش');
           }
-        } catch (error: any) {
+        } catch (error) {
           errorCount++;
           console.error('Error recording count:', error);
-          errors.push(error?.message || 'خطا در ثبت شمارش');
+          errors.push(error instanceof Error ? error.message : 'خطا در ثبت شمارش');
         }
       }
     }
@@ -297,7 +331,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     }
   };
 
-  const filteredItems = audit.items?.filter((item: any) => {
+  const filteredItems = audit.items?.filter((item) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -306,7 +340,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     );
   }) || [];
 
-  const getCountStatus = (item: any) => {
+  const getCountStatus = (item: InventoryAuditItem) => {
     if (item.finalQuantity !== null) {
       return { status: 'final', label: 'نهایی شده', variant: 'default' as const };
     }
@@ -455,9 +489,9 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                     <SelectValue placeholder="انتخاب محصول" />
                   </SelectTrigger>
                   <SelectContent>
-                    {audit.items?.map((item: any) => (
-                      <SelectItem 
-                        key={item.productId} 
+                    {audit.items?.map((item) => (
+                      <SelectItem
+                        key={item.productId}
                         value={item.productId}
                         disabled={manualEntries.some(e => e.productId === item.productId)}
                       >
@@ -501,7 +535,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                   <Label>لیست آیتم‌های انتخابی ({manualEntries.length})</Label>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto">
                     {manualEntries.map((entry, index) => {
-                      const product = audit.items?.find((item: any) => item.productId === entry.productId)?.product;
+                      const product = audit.items?.find((item) => item.productId === entry.productId)?.product;
                       return (
                         <div
                           key={index}
@@ -578,7 +612,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                 </div>
               </div>
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredItems.map((item: any) => {
+                {filteredItems.map((item) => {
                   const countStatus = getCountStatus(item);
                   return (
                     <div
