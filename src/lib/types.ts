@@ -3,10 +3,10 @@ export type { FixedAsset, Transaction, Account } from '@prisma/client';
 
 // Common action result types
 export interface ActionResult<T = void> {
-  success: boolean;
+  success?: boolean;
   message?: string;
   error?: string;
-  errors?: string[];
+  errors?: string[] | Record<string, string[] | undefined>;
   data?: T;
 }
 
