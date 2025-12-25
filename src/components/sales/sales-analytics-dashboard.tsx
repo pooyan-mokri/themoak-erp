@@ -271,9 +271,10 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ type, percent }) => 
-                    `${getCategoryLabel(type)} (${(percent * 100).toFixed(0)}%)`
-                  }
+                  label={(entry: any) => {
+                    const dataEntry = entry as { type: string; percent: number };
+                    return `${getCategoryLabel(dataEntry.type)} (${(dataEntry.percent * 100).toFixed(0)}%)`;
+                  }}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="revenue"
@@ -376,4 +377,5 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
     </div>
   );
 }
+
 
