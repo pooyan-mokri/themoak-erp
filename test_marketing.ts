@@ -127,7 +127,8 @@ async function main() {
           throw new Error('کمپین در دیتابیس یافت نشد');
         }
       } else {
-        throw new Error('کمپین ایجاد نشد: ' + (result.error || result.message));
+        const errorMsg = result.message || (result.errors ? JSON.stringify(result.errors) : 'خطای نامشخص');
+        throw new Error('کمپین ایجاد نشد: ' + errorMsg);
       }
     } catch (error: any) {
       if (error?.message?.includes('static generation store missing')) {
@@ -203,7 +204,8 @@ async function main() {
         if (gifts.length > 0) {
           console.log('✓ هدیه بازاریابی با موفقیت ثبت شد (از دیتابیس)');
         } else {
-          throw new Error('هدیه ثبت نشد: ' + (result.error || result.message));
+          const errorMsg = result.message || (result.errors ? JSON.stringify(result.errors) : 'خطای نامشخص');
+          throw new Error('هدیه ثبت نشد: ' + errorMsg);
         }
       }
     } catch (error: any) {
