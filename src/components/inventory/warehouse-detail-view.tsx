@@ -43,7 +43,7 @@ interface PurchaseItem {
   quantity: number;
   price: number;
   total: number;
-  orderNumber: string;
+  orderNumber: number;
   supplierName: string;
   orderDate: string;
 }
@@ -320,4 +320,5 @@ export function WarehouseDetailView({
     </Tabs>
   );
 }
+
 
