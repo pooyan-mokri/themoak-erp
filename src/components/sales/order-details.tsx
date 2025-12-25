@@ -196,7 +196,15 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
             open={returnDialogOpen}
             onOpenChange={setReturnDialogOpen}
             orderId={order.id}
-            orderItem={selectedItem}
+            orderItem={{
+              id: selectedItem.id,
+              product: {
+                id: selectedItem.product.id,
+                name: selectedItem.product.name,
+              },
+              quantity: selectedItem.quantity,
+              price: Number(selectedItem.price),
+            }}
             accounts={accounts}
             onSuccess={() => {
               router.refresh();
@@ -206,7 +214,16 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
             open={exchangeDialogOpen}
             onOpenChange={setExchangeDialogOpen}
             orderId={order.id}
-            originalItem={selectedItem}
+            originalItem={{
+              id: selectedItem.id,
+              product: {
+                id: selectedItem.product.id,
+                name: selectedItem.product.name,
+                sku: selectedItem.product.sku || '',
+              },
+              quantity: selectedItem.quantity,
+              price: Number(selectedItem.price),
+            }}
             accounts={accounts}
             onSuccess={() => {
               router.refresh();
