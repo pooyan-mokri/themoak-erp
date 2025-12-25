@@ -270,7 +270,7 @@ async function main() {
     
     const payrolls = Array.isArray(payrollsResult) 
       ? payrollsResult 
-      : (payrollsResult?.data || []);
+      : [];
 
     console.log(`✓ تعداد فیش‌های حقوقی: ${payrolls.length}`);
     
