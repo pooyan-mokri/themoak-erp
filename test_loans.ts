@@ -155,7 +155,8 @@ async function main() {
         if (payments.length > 0) {
           console.log('✓ قسط اول با موفقیت پرداخت شد (از دیتابیس)');
         } else {
-          throw new Error('پرداخت ثبت نشد: ' + (result.error || result.message));
+          const errorMsg = result.message || (result.errors ? JSON.stringify(result.errors) : 'خطای نامشخص');
+          throw new Error('پرداخت ثبت نشد: ' + errorMsg);
         }
       }
     } catch (error: any) {
@@ -256,7 +257,8 @@ async function main() {
         if (payments.length > 0) {
           console.log('✓ قسط دوم با موفقیت پرداخت شد (از دیتابیس)');
         } else {
-          throw new Error('پرداخت ثبت نشد: ' + (result.error || result.message));
+          const errorMsg = result.message || (result.errors ? JSON.stringify(result.errors) : 'خطای نامشخص');
+          throw new Error('پرداخت ثبت نشد: ' + errorMsg);
         }
       }
     } catch (error: any) {
@@ -336,7 +338,8 @@ async function main() {
         if (payments.length > 0) {
           console.log('✓ پرداخت کامل با موفقیت انجام شد (از دیتابیس)');
         } else {
-          throw new Error('پرداخت ثبت نشد: ' + (result.error || result.message));
+          const errorMsg = result.message || (result.errors ? JSON.stringify(result.errors) : 'خطای نامشخص');
+          throw new Error('پرداخت ثبت نشد: ' + errorMsg);
         }
       }
     } catch (error: any) {
