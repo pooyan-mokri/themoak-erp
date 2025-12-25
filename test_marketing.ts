@@ -300,7 +300,7 @@ async function main() {
     
     const campaigns = Array.isArray(campaignsResult) 
       ? campaignsResult 
-      : (campaignsResult?.data || []);
+      : [];
 
     console.log(`✓ تعداد کمپین‌ها: ${campaigns.length}`);
     
