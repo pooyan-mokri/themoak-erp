@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -39,7 +39,7 @@ const ExchangeRateSchema = z.object({
 
 // --- Actions ---
 
-export async function createAccount(prevState: any, formData: FormData) {
+export async function createAccount(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = AccountSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -111,7 +111,7 @@ export async function getAccounts() {
   }
 }
 
-export async function updateAccount(id: string, prevState: any, formData: FormData) {
+export async function updateAccount(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   // Check if this is the Marketing Expenses account and prevent name change
   const existingAccount = await prisma.account.findUnique({
     where: { id },
@@ -163,7 +163,7 @@ export async function updateAccount(id: string, prevState: any, formData: FormDa
   return { message: 'حساب با موفقیت ویرایش شد.', success: true };
 }
 
-export async function deleteAccount(id: string) {
+export async function deleteAccount(id: string): Promise<ActionResult> {
   try {
     // Check if this is the Marketing Expenses account
     const account = await prisma.account.findUnique({
@@ -196,7 +196,7 @@ export async function deleteAccount(id: string) {
   }
 }
 
-export async function setExchangeRate(prevState: any, formData: FormData) {
+export async function setExchangeRate(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ExchangeRateSchema.safeParse({
     currency: formData.get('currency'),
     rateToToman: formData.get('rateToToman'),
@@ -242,7 +242,7 @@ export async function getLatestExchangeRates() {
     }
 }
 
-export async function recordExpense(prevState: any, formData: FormData) {
+export async function recordExpense(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const rawProjectId = formData.get('projectId');
   const projectIdValue = rawProjectId && rawProjectId !== 'none' ? rawProjectId : undefined;
   
@@ -291,7 +291,7 @@ export async function recordExpense(prevState: any, formData: FormData) {
     const amountInToman = amount * rate;
 
     // 2. Process expense based on payment source
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       if (employeeId) {
         // Expense paid by employee (Accounts Payable)
         // Verify employee exists
@@ -371,21 +371,22 @@ export async function recordExpense(prevState: any, formData: FormData) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording expense:', error);
+    const errorObj = error as { message?: string; code?: string; meta?: unknown; stack?: string };
     console.error('Error details:', {
-      message: error?.message,
-      code: error?.code,
-      meta: error?.meta,
-      stack: error?.stack
+      message: errorObj.message,
+      code: errorObj.code,
+      meta: errorObj.meta,
+      stack: errorObj.stack
     });
-    
+
     // Return more specific error message if available
-    if (error?.message) {
-      return { message: `خطا در ثبت هزینه: ${error.message}` };
+    if (errorObj.message) {
+      return { message: `خطا در ثبت هزینه: ${errorObj.message}`, success: false };
     }
-    
-    return { message: 'خطا در ثبت هزینه.' };
+
+    return { message: 'خطا در ثبت هزینه.', success: false };
   }
 
   try {
@@ -609,7 +610,7 @@ const PayDebtSchema = z.object({
   date: z.string().optional(),
 });
 
-export async function payEmployeeDebt(prevState: any, formData: FormData) {
+export async function payEmployeeDebt(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PayDebtSchema.safeParse({
     employeeId: formData.get('employeeId'),
     amount: formData.get('amount'),
@@ -629,7 +630,7 @@ export async function payEmployeeDebt(prevState: any, formData: FormData) {
   const { employeeId, amount, accountId, description, date } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // Verify employee exists
       const employee = await tx.employee.findUnique({
         where: { id: employeeId },
@@ -685,10 +686,11 @@ export async function payEmployeeDebt(prevState: any, formData: FormData) {
       message: 'بازپرداخت بدهی با موفقیت ثبت شد.',
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error paying employee debt:', error);
+    const message = error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت بدهی.';
     return {
-      message: error.message || 'خطا در ثبت بازپرداخت بدهی.',
+      message,
       success: false,
     };
   }

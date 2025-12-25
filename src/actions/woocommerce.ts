@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { getSetting, getWooSettings } from './settings';
 import { Prisma } from '@prisma/client';
-import { TransactionType } from '@/lib/types';
+import { TransactionType, ActionResult } from '@/lib/types';
 import { downloadAndSaveProductImage } from './upload';
 
 // Helper function to get WooCommerce warehouse ID from settings
@@ -21,83 +21,93 @@ async function getWooWarehouseId(): Promise<string | null> {
 }
 
 // Test WooCommerce connection
-export async function testWooCommerceConnection() {
+export async function testWooCommerceConnection(): Promise<ActionResult<{
+  productsCount?: number;
+  ordersCount?: number;
+  canReadProducts: boolean;
+  canReadOrders: boolean;
+}>> {
   try {
     const wooCommerce = await getWooCommerceClient();
-    
+
     // Test 1: Try to get products (get total count from headers)
     const productsResponse = await wooCommerce.get("products", { per_page: 1 });
-    
+
     // Test 2: Try to get orders (get total count from headers)
     const ordersResponse = await wooCommerce.get("orders", { per_page: 1 });
-    
+
     // Extract total count from response headers
-    const totalProducts = productsResponse.headers?.['x-wp-total'] 
-      ? parseInt(productsResponse.headers['x-wp-total'] as string) 
+    const totalProducts = productsResponse.headers?.['x-wp-total']
+      ? parseInt(productsResponse.headers['x-wp-total'] as string)
       : productsResponse.data?.length || 0;
-    
-    const totalOrders = ordersResponse.headers?.['x-wp-total'] 
-      ? parseInt(ordersResponse.headers['x-wp-total'] as string) 
+
+    const totalOrders = ordersResponse.headers?.['x-wp-total']
+      ? parseInt(ordersResponse.headers['x-wp-total'] as string)
       : ordersResponse.data?.length || 0;
-    
+
     return {
       success: true,
       message: 'اتصال به WooCommerce موفق بود!',
-      details: {
-        productsCount: totalProducts,
-        ordersCount: totalOrders,
-        canReadProducts: true,
-        canReadOrders: true,
-      }
+      productsCount: totalProducts,
+      ordersCount: totalOrders,
+      canReadProducts: true,
+      canReadOrders: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('WooCommerce connection error:', error);
-    
+
     // Provide helpful error messages
     let errorMessage = 'خطا در اتصال به WooCommerce';
-    if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+    const errorObj = error as { message?: string };
+    if (errorObj.message?.includes('401') || errorObj.message?.includes('Unauthorized')) {
       errorMessage = 'خطا: کلیدهای API (Consumer Key/Secret) نامعتبر هستند';
-    } else if (error.message?.includes('404') || error.message?.includes('Not Found')) {
+    } else if (errorObj.message?.includes('404') || errorObj.message?.includes('Not Found')) {
       errorMessage = 'خطا: URL WooCommerce یافت نشد. لطفا URL را بررسی کنید';
-    } else if (error.message?.includes('ECONNREFUSED') || error.message?.includes('ENOTFOUND')) {
+    } else if (errorObj.message?.includes('ECONNREFUSED') || errorObj.message?.includes('ENOTFOUND')) {
       errorMessage = 'خطا: نمی‌توان به سرور WooCommerce متصل شد. URL را بررسی کنید';
-    } else if (error.message) {
-      errorMessage = `خطا: ${error.message}`;
+    } else if (errorObj.message) {
+      errorMessage = `خطا: ${errorObj.message}`;
     }
-    
+
     return {
       success: false,
       message: errorMessage,
-      error: error.message || 'Unknown error',
-      details: {
-        canReadProducts: false,
-        canReadOrders: false,
-      }
+      canReadProducts: false,
+      canReadOrders: false,
     };
   }
 }
 
-export async function syncProducts() {
+interface WooProduct {
+  id: number | string;
+  name?: string;
+  price?: string | number;
+  stock_quantity?: number | null;
+  sku?: string;
+  images?: Array<{ src?: string }>;
+}
+
+export async function syncProducts(): Promise<ActionResult<{ created: number; updated: number }>> {
   try {
     const wooCommerce = await getWooCommerceClient();
-    
+
     // Fetch products from WooCommerce with pagination support
-    let allProducts: any[] = [];
+    let allProducts: WooProduct[] = [];
     let page = 1;
     const perPage = 100;
     let hasMore = true;
-    
+
     console.log('[SYNC] Starting to fetch products from WooCommerce...');
     while (hasMore) {
       try {
-        const response = await wooCommerce.get("products", { 
+        const response = await wooCommerce.get("products", {
           per_page: perPage,
-          page: page 
+          page: page
         });
-        
+
         const products = response.data || [];
         console.log(`[SYNC] Page ${page}: Received ${products.length} products`);
-        
+
         if (products.length > 0) {
           allProducts = allProducts.concat(products);
           hasMore = products.length === perPage; // If we got less than perPage, we're done
@@ -105,7 +115,7 @@ export async function syncProducts() {
         } else {
           hasMore = false;
         }
-      } catch (pageError: any) {
+      } catch (pageError: unknown) {
         console.error(`[SYNC] Error fetching page ${page}:`, pageError);
         // If it's the first page and it fails, throw the error
         if (page === 1) {
@@ -281,35 +291,64 @@ export async function syncProducts() {
     } catch (e) {
         // Ignore revalidate error in script context
     }
-    return { success: true, created: createdCount, updated: updatedCount };
-  } catch (error: any) {
+    return { success: true, message: 'سینک محصولات با موفقیت انجام شد.', created: createdCount, updated: updatedCount };
+  } catch (error: unknown) {
     console.error("Error syncing products:", error);
+    const errorObj = error as { message?: string; stack?: string; code?: string; response?: { data?: unknown } };
     console.error("Error details:", {
-      message: error?.message,
-      stack: error?.stack,
-      code: error?.code,
-      response: error?.response?.data,
+      message: errorObj.message,
+      stack: errorObj.stack,
+      code: errorObj.code,
+      response: errorObj.response?.data,
     });
-    
+
     // Provide more descriptive error messages
     let errorMessage = 'خطا در سینک محصولات';
-    if (error?.message?.includes('warehouse') || error?.message?.includes('انبار')) {
-      errorMessage = error.message;
-    } else if (error?.response?.data) {
-      errorMessage = `خطای WooCommerce API: ${JSON.stringify(error.response.data)}`;
-    } else if (error?.message) {
-      errorMessage = `خطا: ${error.message}`;
+    if (errorObj.message?.includes('warehouse') || errorObj.message?.includes('انبار')) {
+      errorMessage = errorObj.message;
+    } else if (errorObj.response?.data) {
+      errorMessage = `خطای WooCommerce API: ${JSON.stringify(errorObj.response.data)}`;
+    } else if (errorObj.message) {
+      errorMessage = `خطا: ${errorObj.message}`;
     }
-    
-    return { 
-      success: false, 
-      error: errorMessage,
-      details: error?.message || 'Unknown error'
+
+    return {
+      success: false,
+      message: errorMessage,
     };
   }
 }
 
-export async function processWooOrders(wooOrders: any[]) {
+interface WooOrder {
+  id: number;
+  number?: string;
+  total?: string | number;
+  discount_total?: string | number;
+  status?: string;
+  customer_id?: number;
+  date_created?: string;
+  billing?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    address_1?: string;
+    address_2?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+  };
+  line_items?: Array<{
+    product_id: number | string;
+    quantity?: number | string;
+    price?: number | string;
+    total?: number | string;
+    subtotal?: number | string;
+    sku?: string;
+  }>;
+}
+
+export async function processWooOrders(wooOrders: WooOrder[]) {
     let createdCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
@@ -438,10 +477,10 @@ export async function processWooOrders(wooOrders: any[]) {
                 
                 // Find product by wooId or SKU (same logic as debugProductMatching)
                 // Build OR conditions - only add sku if it exists
-                const orConditions: any[] = [
+                const orConditions: Array<{ wooId?: number; sku?: string }> = [
                     { wooId: productIdToSearch }
                 ];
-                
+
                 if (item.sku) {
                     orConditions.push({ sku: item.sku });
                 }
@@ -710,15 +749,17 @@ export async function processWooOrders(wooOrders: any[]) {
                     } catch (e) {
                         // Ignore revalidate error in script context
                     }
-                } catch (txError: any) {
+                } catch (txError: unknown) {
+                    const txErrorObj = txError as { message?: string };
                     console.error(`✗ خطا در ثبت سفارش WooCommerce #${order.number} (ID: ${order.id}):`, txError);
                     errorCount++;
-                    errors.push(`سفارش #${order.number}: ${txError.message || 'خطای نامشخص'}`);
+                    errors.push(`سفارش #${order.number}: ${txErrorObj.message || 'خطای نامشخص'}`);
                 }
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const errorObj = error as { message?: string };
             console.error(`خطا در پردازش سفارش WooCommerce (ID: ${order.id}):`, error);
             errorCount++;
-            errors.push(`سفارش ID ${order.id}: ${error.message || 'خطای نامشخص'}`);
+            errors.push(`سفارش ID ${order.id}: ${errorObj.message || 'خطای نامشخص'}`);
         }
     }
     
@@ -742,26 +783,42 @@ export async function processWooOrders(wooOrders: any[]) {
     };
 }
 
-export async function syncOrders() {
+export async function syncOrders(): Promise<ActionResult<{
+  created: number;
+  skipped: number;
+  totalOrders: number;
+  totalOrdersInWooCommerce?: number;
+  errorCount?: number;
+  errors?: string[];
+  stats?: {
+    processed: number;
+    existingOrders: number;
+    emptyLineItems: number;
+    noItems: number;
+    invalidTotal: number;
+    existingTransactions: number;
+  };
+  debugLogs?: string[];
+}>> {
     console.log('[SERVER] syncOrders شروع شد');
     try {
         console.log('[SERVER] دریافت WooCommerce client...');
         const wooCommerce = await getWooCommerceClient();
         console.log('[SERVER] WooCommerce client دریافت شد');
-        
+
         // Get total orders count first
         console.log('[SERVER] دریافت تعداد کل سفارشات...');
         const testResponse = await wooCommerce.get("orders", { per_page: 1 });
-        const totalOrders = testResponse.headers?.['x-wp-total'] 
-            ? parseInt(testResponse.headers['x-wp-total'] as string) 
+        const totalOrders = testResponse.headers?.['x-wp-total']
+            ? parseInt(testResponse.headers['x-wp-total'] as string)
             : 0;
-        
+
         console.log(`[SERVER] تعداد کل سفارشات در WooCommerce: ${totalOrders}`);
-        
+
         // Fetch orders in batches (WooCommerce default is 10 per page, max 100)
         const perPage = 100;
         const totalPages = Math.ceil(totalOrders / perPage);
-        let allOrders: any[] = [];
+        let allOrders: WooOrder[] = [];
         
         console.log(`[SERVER] در حال دریافت ${totalPages} صفحه سفارشات...`);
         for (let page = 1; page <= totalPages; page++) {
@@ -815,60 +872,107 @@ export async function syncOrders() {
         }
         
         // Return detailed result for debugging
-        const returnValue: any = {
-            success: true, 
+        const returnValue: ActionResult<{
+          created: number;
+          skipped: number;
+          totalOrders: number;
+          totalOrdersInWooCommerce?: number;
+          errorCount?: number;
+          errors?: string[];
+          stats?: {
+            processed: number;
+            existingOrders: number;
+            emptyLineItems: number;
+            noItems: number;
+            invalidTotal: number;
+            existingTransactions: number;
+          };
+          debugLogs?: string[];
+        }> = {
+            success: true,
+            message: message.trim(),
             created: result.createdCount,
             skipped: result.skippedCount,
             totalOrders: allOrders.length,
             totalOrdersInWooCommerce: totalOrders,
-            message: message.trim(),
-            stats: result.stats || {},
+            stats: result.stats || {
+              processed: 0,
+              existingOrders: 0,
+              emptyLineItems: 0,
+              noItems: 0,
+              invalidTotal: 0,
+              existingTransactions: 0
+            },
             debugLogs: result.debugLogs || []
         };
-        
+
         if (result.errorCount > 0) {
             returnValue.errors = result.errors;
             returnValue.errorCount = result.errorCount;
         }
-        
+
         console.log('[SERVER] نتیجه نهایی syncOrders:', returnValue);
         return returnValue;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
         console.error("Error syncing orders:", error);
-        return { 
-            success: false, 
-            error: error.message || "Failed to sync orders",
-            message: `خطا در سینک سفارش‌ها: ${error.message || 'خطای نامشخص'}`
+        return {
+            success: false,
+            message: `خطا در سینک سفارش‌ها: ${errorObj.message || 'خطای نامشخص'}`,
+            created: 0,
+            skipped: 0,
+            totalOrders: 0,
         };
     }
 }
 
 // Debug function to check product matching
-export async function debugProductMatching() {
+export async function debugProductMatching(): Promise<ActionResult<{
+  orderInfo?: {
+    orderNumber?: string;
+    orderId?: number;
+    itemProductId?: number | string;
+    itemProductIdType?: string;
+    itemSku?: string;
+    productIdToSearch?: number;
+  };
+  productsInDatabase?: Array<{
+    id: string;
+    wooId: number | null;
+    sku: string;
+    name: string;
+  }>;
+  foundProduct?: {
+    id: string;
+    wooId: number | null;
+    sku: string;
+    name: string;
+  } | null;
+}>> {
     try {
         const wooCommerce = await getWooCommerceClient();
-        
+
         // Get first order
         const ordersResponse = await wooCommerce.get("orders", { per_page: 1 });
         if (!ordersResponse.data || ordersResponse.data.length === 0) {
             return { success: false, message: 'هیچ سفارشی در WooCommerce یافت نشد.' };
         }
-        
+
         const firstOrder = ordersResponse.data[0];
         const firstItem = firstOrder.line_items?.[0];
-        
+
         if (!firstItem) {
             return { success: false, message: 'سفارش اول هیچ آیتمی ندارد.' };
         }
-        
+
         // Get products from database
         const productsWithWooId = await prisma.product.findMany({
             where: { wooId: { not: null } },
             take: 5,
             select: { id: true, wooId: true, sku: true, name: true }
         });
-        
+
         // Try to find product
         const productIdToSearch = typeof firstItem.product_id === 'string' ? parseInt(firstItem.product_id) : Number(firstItem.product_id);
         const foundProduct = await prisma.product.findFirst({
@@ -879,9 +983,10 @@ export async function debugProductMatching() {
                 ]
             }
         });
-        
+
         return {
             success: true,
+            message: foundProduct ? 'محصول یافت شد!' : 'محصول یافت نشد!',
             orderInfo: {
                 orderNumber: firstOrder.number,
                 orderId: firstOrder.id,
@@ -897,14 +1002,13 @@ export async function debugProductMatching() {
                 sku: foundProduct.sku,
                 name: foundProduct.name
             } : null,
-            message: foundProduct ? 'محصول یافت شد!' : 'محصول یافت نشد!'
         };
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
         console.error("Error in debugProductMatching:", error);
         return {
             success: false,
-            error: error.message || "Unknown error",
-            message: `خطا: ${error.message || 'خطای نامشخص'}`
+            message: `خطا: ${errorObj.message || 'خطای نامشخص'}`,
         };
     }
 }
