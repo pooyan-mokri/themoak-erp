@@ -48,10 +48,12 @@ export async function testWooCommerceConnection(): Promise<ActionResult<{
     return {
       success: true,
       message: 'اتصال به WooCommerce موفق بود!',
-      productsCount: totalProducts,
-      ordersCount: totalOrders,
-      canReadProducts: true,
-      canReadOrders: true,
+      data: {
+        productsCount: totalProducts,
+        ordersCount: totalOrders,
+        canReadProducts: true,
+        canReadOrders: true,
+      }
     };
   } catch (error: unknown) {
     console.error('WooCommerce connection error:', error);
@@ -72,8 +74,10 @@ export async function testWooCommerceConnection(): Promise<ActionResult<{
     return {
       success: false,
       message: errorMessage,
-      canReadProducts: false,
-      canReadOrders: false,
+      data: {
+        canReadProducts: false,
+        canReadOrders: false,
+      }
     };
   }
 }
@@ -291,7 +295,7 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
     } catch (e) {
         // Ignore revalidate error in script context
     }
-    return { success: true, message: 'سینک محصولات با موفقیت انجام شد.', created: createdCount, updated: updatedCount };
+    return { success: true, message: 'سینک محصولات با موفقیت انجام شد.', data: { created: createdCount, updated: updatedCount } };
   } catch (error: unknown) {
     console.error("Error syncing products:", error);
     const errorObj = error as { message?: string; stack?: string; code?: string; response?: { data?: unknown } };
@@ -838,10 +842,12 @@ export async function syncOrders(): Promise<ActionResult<{
             console.log('[SERVER] هشدار: هیچ سفارشی از WooCommerce دریافت نشد!');
             return {
                 success: true,
-                created: 0,
-                skipped: 0,
-                totalOrders: 0,
-                message: 'هیچ سفارشی از WooCommerce دریافت نشد. لطفا اتصال را بررسی کنید.'
+                message: 'هیچ سفارشی از WooCommerce دریافت نشد. لطفا اتصال را بررسی کنید.',
+                data: {
+                    created: 0,
+                    skipped: 0,
+                    totalOrders: 0,
+                }
             };
         }
         
@@ -891,24 +897,26 @@ export async function syncOrders(): Promise<ActionResult<{
         }> = {
             success: true,
             message: message.trim(),
-            created: result.createdCount,
-            skipped: result.skippedCount,
-            totalOrders: allOrders.length,
-            totalOrdersInWooCommerce: totalOrders,
-            stats: result.stats || {
-              processed: 0,
-              existingOrders: 0,
-              emptyLineItems: 0,
-              noItems: 0,
-              invalidTotal: 0,
-              existingTransactions: 0
-            },
-            debugLogs: result.debugLogs || []
+            data: {
+                created: result.createdCount,
+                skipped: result.skippedCount,
+                totalOrders: allOrders.length,
+                totalOrdersInWooCommerce: totalOrders,
+                stats: result.stats || {
+                  processed: 0,
+                  existingOrders: 0,
+                  emptyLineItems: 0,
+                  noItems: 0,
+                  invalidTotal: 0,
+                  existingTransactions: 0
+                },
+                debugLogs: result.debugLogs || []
+            }
         };
 
         if (result.errorCount > 0) {
-            returnValue.errors = result.errors;
-            returnValue.errorCount = result.errorCount;
+            returnValue.data!.errors = result.errors;
+            returnValue.data!.errorCount = result.errorCount;
         }
 
         console.log('[SERVER] نتیجه نهایی syncOrders:', returnValue);
@@ -920,9 +928,11 @@ export async function syncOrders(): Promise<ActionResult<{
         return {
             success: false,
             message: `خطا در سینک سفارش‌ها: ${errorObj.message || 'خطای نامشخص'}`,
-            created: 0,
-            skipped: 0,
-            totalOrders: 0,
+            data: {
+                created: 0,
+                skipped: 0,
+                totalOrders: 0,
+            }
         };
     }
 }
@@ -987,21 +997,23 @@ export async function debugProductMatching(): Promise<ActionResult<{
         return {
             success: true,
             message: foundProduct ? 'محصول یافت شد!' : 'محصول یافت نشد!',
-            orderInfo: {
-                orderNumber: firstOrder.number,
-                orderId: firstOrder.id,
-                itemProductId: firstItem.product_id,
-                itemProductIdType: typeof firstItem.product_id,
-                itemSku: firstItem.sku,
-                productIdToSearch: productIdToSearch
-            },
-            productsInDatabase: productsWithWooId,
-            foundProduct: foundProduct ? {
-                id: foundProduct.id,
-                wooId: foundProduct.wooId,
-                sku: foundProduct.sku,
-                name: foundProduct.name
-            } : null,
+            data: {
+                orderInfo: {
+                    orderNumber: firstOrder.number,
+                    orderId: firstOrder.id,
+                    itemProductId: firstItem.product_id,
+                    itemProductIdType: typeof firstItem.product_id,
+                    itemSku: firstItem.sku,
+                    productIdToSearch: productIdToSearch
+                },
+                productsInDatabase: productsWithWooId,
+                foundProduct: foundProduct ? {
+                    id: foundProduct.id,
+                    wooId: foundProduct.wooId,
+                    sku: foundProduct.sku,
+                    name: foundProduct.name
+                } : null,
+            }
         };
     } catch (error: unknown) {
         const errorObj = error as { message?: string };
