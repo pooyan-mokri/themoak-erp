@@ -186,7 +186,7 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
             name: p.name,
             costPrice: Number(p.costPrice) || 0,
             sellPrice: Number(p.sellPrice) || 0,
-            image: p.image,
+            image: typeof p.image === 'string' ? p.image : null,
             // Don't update barcode if it exists
           },
         });
@@ -202,7 +202,7 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
             barcode,
             costPrice: Number(p.costPrice) || 0,
             sellPrice: Number(p.sellPrice) || 0,
-            image: p.image,
+            image: typeof p.image === 'string' ? p.image : null,
           },
         });
       }
