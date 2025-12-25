@@ -31,21 +31,36 @@ interface Account {
   currency: string;
 }
 
+interface ShareholderProfit {
+  id: string;
+  shareholder: Shareholder;
+  amount: number;
+  withdrawn: number;
+  available: number;
+}
+
 interface ShareholderWithdrawalFormProps {
-  shareholders: Shareholder[];
+  shareholders?: Shareholder[];
   accounts: Account[];
+  profit?: ShareholderProfit;
+  onSuccess?: () => void;
 }
 
 export function ShareholderWithdrawalForm({
   shareholders,
   accounts,
+  profit,
+  onSuccess,
 }: ShareholderWithdrawalFormProps) {
   const [state, dispatch] = useFormState(withdrawShareholderFunds, initialState);
-  const [shareholderId, setShareholderId] = useState<string>('');
+  const [shareholderId, setShareholderId] = useState<string>(profit?.shareholder.id || '');
   const [accountId, setAccountId] = useState<string>('');
   const [currency, setCurrency] = useState<string>('TOMAN');
   const [date, setDate] = useState<string>('');
   const lastMessageRef = useRef('');
+
+  // Get shareholders list - either from prop or from profit
+  const shareholdersList = shareholders || (profit ? [profit.shareholder] : []);
 
   useEffect(() => {
     if (state.message && state.message !== lastMessageRef.current) {
@@ -54,15 +69,21 @@ export function ShareholderWithdrawalForm({
       if (state.success) {
         toast.success(state.message);
         // Reset form
-        setShareholderId('');
+        if (!profit) {
+          setShareholderId('');
+        }
         setAccountId('');
         setCurrency('TOMAN');
         setDate('');
+        // Call onSuccess callback if provided
+        if (onSuccess) {
+          onSuccess();
+        }
       } else {
         toast.error(state.message);
       }
     }
-  }, [state.message, state.success]);
+  }, [state.message, state.success, profit, onSuccess]);
 
   // Update currency when account changes
   useEffect(() => {
@@ -91,12 +112,13 @@ export function ShareholderWithdrawalForm({
               required
               value={shareholderId}
               onValueChange={setShareholderId}
+              disabled={!!profit}
             >
               <SelectTrigger id="shareholderId">
                 <SelectValue placeholder="انتخاب صاحب سهام" />
               </SelectTrigger>
               <SelectContent>
-                {shareholders.map((shareholder) => (
+                {shareholdersList.map((shareholder) => (
                   <SelectItem key={shareholder.id} value={shareholder.id}>
                     {shareholder.name} ({shareholder.percentage.toFixed(2)}%)
                   </SelectItem>
@@ -104,6 +126,9 @@ export function ShareholderWithdrawalForm({
               </SelectContent>
             </Select>
             <input type="hidden" name="shareholderId" value={shareholderId} />
+            {profit && (
+              <input type="hidden" name="profitId" value={profit.id} />
+            )}
             {state.errors?.shareholderId && (
               <p className="text-red-500 text-sm">{state.errors.shareholderId[0]}</p>
             )}
