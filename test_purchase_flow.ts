@@ -84,13 +84,24 @@ async function main() {
         }
       }
 
-      if (!result.success || !result.data?.id) {
-        throw new Error('سفارش خرید ایجاد نشد: ' + (result.error || result.message));
+      if (!result.success) {
+        const errorMsg = result.error || result.message || 'خطای نامشخص';
+        throw new Error('سفارش خرید ایجاد نشد: ' + errorMsg);
       }
 
-      purchaseOrderId = result.data.id;
-      console.log(`✓ سفارش خرید ایجاد شد: ${purchaseOrderId}`);
-      console.log(`✓ مبلغ کل: ${result.data.totalAmountInToman?.toFixed(0)} تومان`);
+      // Query database to get the created order
+      const orders = await prisma.purchaseOrder.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      });
+      
+      if (orders.length > 0) {
+        purchaseOrderId = orders[0].id;
+        console.log(`✓ سفارش خرید ایجاد شد: ${purchaseOrderId}`);
+        console.log(`✓ مبلغ کل: ${orders[0].totalAmountInToman?.toFixed(0)} تومان`);
+      } else {
+        throw new Error('سفارش خرید ایجاد شد اما در دیتابیس یافت نشد');
+      }
     } catch (error: any) {
       if (error?.message?.includes('static generation store missing')) {
         // The order was likely created, just check the database
@@ -141,7 +152,8 @@ async function main() {
           throw new Error('وضعیت سفارش تغییر نکرد');
         }
       } else if (!result.success) {
-        throw new Error('دریافت کالا انجام نشد: ' + (result.error || result.message));
+        const errorMsg = result.error || result.message || 'خطای نامشخص';
+        throw new Error('دریافت کالا انجام نشد: ' + errorMsg);
       } else {
         console.log(`✓ کالا به انبار ${warehouse.name} اضافه شد`);
       }
@@ -235,11 +247,21 @@ async function main() {
         } else {
           throw new Error('سفارش در دیتابیس یافت نشد');
         }
-      } else if (result.success && result.data?.id) {
-        orderId = result.data.id;
-        console.log(`✓ سفارش فروش ایجاد شد: ${orderId}`);
-        console.log(`✓ مبلغ کل: ${result.data.totalAmount} تومان`);
-        console.log(`✓ مبلغ پرداخت شده: ${result.data.paidAmount} تومان`);
+      } else if (result.success) {
+        // Query database to get the created order
+        const orders = await prisma.order.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        });
+        
+        if (orders.length > 0) {
+          orderId = orders[0].id;
+          console.log(`✓ سفارش فروش ایجاد شد: ${orderId}`);
+          console.log(`✓ مبلغ کل: ${Number(orders[0].totalAmount).toLocaleString('fa-IR')} تومان`);
+          console.log(`✓ مبلغ پرداخت شده: ${Number(orders[0].paidAmount).toLocaleString('fa-IR')} تومان`);
+        } else {
+          throw new Error('سفارش فروش ایجاد شد اما در دیتابیس یافت نشد');
+        }
       } else if (result.success) {
         // Order was created but we need to fetch it from database
         const orders = await prisma.order.findMany({
