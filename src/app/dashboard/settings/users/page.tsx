@@ -9,7 +9,7 @@ export default async function UsersPage() {
   
   // Check if user is admin - handle both string and enum comparison
   const userRole = session?.user?.role;
-  const isAdmin = userRole === Role.ADMIN || userRole === 'ADMIN' || String(userRole) === 'ADMIN';
+  const isAdmin = userRole === 'ADMIN' || String(userRole) === 'ADMIN';
   
   if (!isAdmin) {
     redirect("/dashboard/settings/profile");
