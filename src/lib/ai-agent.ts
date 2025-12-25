@@ -1,6 +1,7 @@
 // AI Agent with system access capabilities
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export interface AgentTool {
   name: string;
@@ -149,8 +150,8 @@ export const agentTools: AgentTool[] = [
       try {
         const where = params.query ? {
           OR: [
-            { name: { contains: params.query, mode: 'insensitive' } },
-            { sku: { contains: params.query, mode: 'insensitive' } },
+            { name: { contains: params.query, mode: Prisma.QueryMode.insensitive } },
+            { sku: { contains: params.query, mode: Prisma.QueryMode.insensitive } },
           ],
         } : {};
         
