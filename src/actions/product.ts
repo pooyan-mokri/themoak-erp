@@ -183,7 +183,7 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
         await prisma.product.update({
           where: { sku: String(p.sku) },
           data: {
-            name: p.name,
+            name: String(p.name),
             costPrice: Number(p.costPrice) || 0,
             sellPrice: Number(p.sellPrice) || 0,
             image: typeof p.image === 'string' ? p.image : null,
@@ -197,7 +197,7 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
         
         await prisma.product.create({
           data: {
-            name: p.name,
+            name: String(p.name),
             sku: String(p.sku),
             barcode,
             costPrice: Number(p.costPrice) || 0,
