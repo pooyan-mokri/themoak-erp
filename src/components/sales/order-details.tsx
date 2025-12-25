@@ -18,7 +18,7 @@ import { ExchangeItemDialog } from './exchange-item-dialog';
 type OrderWithDetails = Order & {
   customer: Customer | null;
   items: (OrderItem & { product: Product; status?: string | null })[];
-  transaction: (Transaction & { account: Account }) | null;
+  transaction: (Transaction & { account: Account | null }) | null;
   invoice: any | null; // Using any for now to avoid type issues with outdated client
 };
 
