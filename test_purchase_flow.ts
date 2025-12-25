@@ -278,7 +278,8 @@ async function main() {
           throw new Error('سفارش فروش ایجاد نشد: سفارش در دیتابیس یافت نشد');
         }
       } else {
-        throw new Error('سفارش فروش ایجاد نشد: ' + (result.error || result.message || 'خطای نامشخص'));
+        const errorMsg = result.error || result.message || 'خطای نامشخص';
+        throw new Error('سفارش فروش ایجاد نشد: ' + errorMsg);
       }
     } catch (error: any) {
       if (error?.message?.includes('static generation store missing')) {
