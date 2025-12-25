@@ -12,10 +12,10 @@ import { formatJalaliDate } from '@/lib/date-utils';
 interface Expense {
   id: string;
   date: Date;
-  description: string;
+  description: string | null;
   amount: any;
   currency: string;
-  category: string;
+  category: string | null;
   account?: { name: string } | null;
   employee?: { name: string } | null;
 }
