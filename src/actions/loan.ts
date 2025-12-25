@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -28,7 +28,7 @@ const LoanPaymentSchema = z.object({
 
 // --- Actions ---
 
-export async function createLoan(prevState: any, formData: FormData) {
+export async function createLoan(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = LoanSchema.safeParse({
     borrowerId: formData.get('borrowerId'),
     amount: formData.get('amount'),
@@ -74,16 +74,16 @@ export async function createLoan(prevState: any, formData: FormData) {
 
     revalidatePath('/dashboard/accounting/loans');
     return { message: 'قرض با موفقیت ثبت شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating loan:', error);
     return {
-      message: error.message || 'خطا در ثبت قرض.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت قرض.',
       success: false,
     };
   }
 }
 
-export async function recordLoanPayment(prevState: any, formData: FormData) {
+export async function recordLoanPayment(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = LoanPaymentSchema.safeParse({
     loanId: formData.get('loanId'),
     amount: formData.get('amount'),
@@ -169,7 +169,7 @@ export async function recordLoanPayment(prevState: any, formData: FormData) {
     const newRemaining = remainingAmount - principalAmount;
 
     // Create payment and update loan
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.INCOME,
@@ -222,10 +222,10 @@ export async function recordLoanPayment(prevState: any, formData: FormData) {
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت ثبت شد.`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording loan payment:', error);
     return {
-      message: error.message || 'خطا در ثبت بازپرداخت.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت.',
       success: false,
     };
   }

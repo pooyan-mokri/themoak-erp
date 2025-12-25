@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { ActionState, ActionResult } from '@/lib/types';
 
 // --- Schemas ---
 
@@ -20,7 +21,7 @@ const EmployeeSchema = z.object({
 
 // --- Actions ---
 
-export async function createEmployee(prevState: any, formData: FormData) {
+export async function createEmployee(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
     nationalId: formData.get('nationalId') || undefined,
@@ -88,16 +89,16 @@ export async function createEmployee(prevState: any, formData: FormData) {
 
     revalidatePath('/dashboard/accounting/employees');
     return { message: 'کارمند با موفقیت ثبت شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating employee:', error);
     return {
-      message: error.message || 'خطا در ثبت کارمند.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت کارمند.',
       success: false,
     };
   }
 }
 
-export async function updateEmployee(id: string, prevState: any, formData: FormData) {
+export async function updateEmployee(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
     nationalId: formData.get('nationalId') || undefined,
@@ -169,10 +170,10 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
 
     revalidatePath('/dashboard/accounting/employees');
     return { message: 'کارمند با موفقیت به‌روزرسانی شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating employee:', error);
     return {
-      message: error.message || 'خطا در به‌روزرسانی کارمند.',
+      message: error instanceof Error ? error.message : 'خطا در به‌روزرسانی کارمند.',
       success: false,
     };
   }
@@ -198,11 +199,11 @@ export async function deleteEmployee(id: string) {
 
     revalidatePath('/dashboard/accounting/employees');
     return { success: true, message: 'کارمند با موفقیت حذف شد.' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting employee:', error);
     return {
       success: false,
-      message: error.message || 'خطا در حذف کارمند.',
+      message: error instanceof Error ? error.message : 'خطا در حذف کارمند.',
     };
   }
 }

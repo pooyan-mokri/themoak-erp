@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { ActionState, ActionResult } from '@/lib/types';
 
 const ProjectSchema = z.object({
   name: z.string().min(1, 'نام پروژه الزامی است'),
@@ -24,7 +25,7 @@ const TaskSchema = z.object({
   assignedTo: z.string().optional(),
 });
 
-export async function createProject(prevState: any, formData: FormData) {
+export async function createProject(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ProjectSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
@@ -170,7 +171,7 @@ export async function getProjectsForCalendar() {
   }
 }
 
-export async function createTask(prevState: any, formData: FormData) {
+export async function createTask(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = TaskSchema.safeParse({
     title: formData.get('title'),
     description: formData.get('description'),
@@ -256,7 +257,7 @@ export async function deleteTask(taskId: string, projectId: string) {
   }
 }
 
-export async function updateProject(id: string, prevState: any, formData: FormData) {
+export async function updateProject(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ProjectSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
@@ -300,7 +301,7 @@ export async function updateProject(id: string, prevState: any, formData: FormDa
   return { message: 'پروژه با موفقیت بروزرسانی شد.', success: true, errors: undefined };
 }
 
-export async function updateTask(taskId: string, prevState: any, formData: FormData) {
+export async function updateTask(taskId: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
     console.log('=== updateTask START ===');
     console.log('taskId:', taskId);
     
@@ -363,7 +364,7 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
 
     try {
         // Prepare data for update
-        const updateData: any = {
+        const updateData: Record<string, unknown> = {
             title,
             description: description || null,
             status,
@@ -425,20 +426,20 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         console.log('Update data prepared:', JSON.stringify(updateData, null, 2));
         console.log('Update data keys:', Object.keys(updateData));
         console.log('Updating task with ID:', taskId);
-        
+
         // Validate updateData before sending to Prisma
-        const finalUpdateData: any = {};
+        const finalUpdateData: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(updateData)) {
             if (value !== undefined) {
                 finalUpdateData[key] = value;
             }
         }
-        
+
         console.log('Final update data:', JSON.stringify(finalUpdateData, null, 2));
         console.log('Final update data keys:', Object.keys(finalUpdateData));
-        
+
         // Build update payload directly - similar to createTask pattern
-        const updatePayload: any = {
+        const updatePayload: Record<string, unknown> = {
             title: finalUpdateData.title,
             description: finalUpdateData.description,
             status: finalUpdateData.status,
@@ -494,40 +495,39 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         
         console.log('=== updateTask SUCCESS ===');
         return { success: true, message: 'وظیفه با موفقیت بروزرسانی شد.', errors: undefined };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('=== updateTask ERROR ===');
         console.error('Error type:', typeof error);
         console.error('Error:', error);
-        
+
         let errorMessage = 'خطا در بروزرسانی وظیفه';
-        
+
         if (error) {
             if (typeof error === 'string') {
                 errorMessage = error;
-            } else if (error.message) {
+            } else if (error instanceof Error) {
                 errorMessage = error.message;
-            } else if (error.toString) {
-                errorMessage = error.toString();
-            }
-            
-            if (error.name) {
                 console.error('Error name:', error.name);
-            }
-            if (error.message) {
                 console.error('Error message:', error.message);
-            }
-            if (error.code) {
-                console.error('Error code:', error.code);
-            }
-            if (error && typeof error === 'object' && 'stack' in error && error.stack) {
                 console.error('Error stack:', error.stack);
+            } else if (error && typeof error === 'object') {
+                if ('message' in error && typeof error.message === 'string') {
+                    errorMessage = error.message;
+                    console.error('Error message:', error.message);
+                }
+                if ('name' in error) {
+                    console.error('Error name:', error.name);
+                }
+                if ('code' in error) {
+                    console.error('Error code:', error.code);
+                }
             }
         }
-        
-        return { 
-            success: false, 
-            message: `خطا در بروزرسانی وظیفه: ${errorMessage}`, 
-            errors: undefined 
+
+        return {
+            success: false,
+            message: `خطا در بروزرسانی وظیفه: ${errorMessage}`,
+            errors: undefined
         };
     }
 }

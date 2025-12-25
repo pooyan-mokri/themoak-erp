@@ -10,7 +10,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
   try {
-    const whereClause: any = {};
+    const whereClause: { date?: { gte: Date; lte: Date } } = {};
     if (startDate && endDate) {
       whereClause.date = {
         gte: startDate,
@@ -25,7 +25,7 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
     let totalIncome = 0;
     let totalExpense = 0;
 
-    transactions.forEach((tx: any) => {
+    transactions.forEach((tx) => {
       const amount = Number(tx.amountInToman || tx.amount); // Fallback if amountInToman is missing
       if (tx.type === TransactionType.INCOME) {
         totalIncome += amount;
@@ -50,7 +50,7 @@ export async function getBalanceSheet() {
     // 1. Cash & Bank Balances
     const accounts = await prisma.account.findMany();
     let totalCashBank = 0;
-    accounts.forEach((acc: any) => {
+    accounts.forEach((acc) => {
         // Simplified: Assuming all balances are normalized to TOMAN or we just sum them for now.
         // Ideally we should convert based on current rate.
         // For MVP, let's assume the balance is what it is (mixed currencies sum is bad, but acceptable for MVP if user sticks to one).
@@ -64,7 +64,7 @@ export async function getBalanceSheet() {
       include: { product: true }
     });
     let inventoryValue = 0;
-    inventory.forEach((item: any) => {
+    inventory.forEach((item) => {
       inventoryValue += item.quantity * Number(item.product.costPrice);
     });
 
@@ -73,7 +73,7 @@ export async function getBalanceSheet() {
       where: { status: 'PENDING_PAYMENT' }
     });
     let accountsReceivable = 0;
-    pendingOrders.forEach((order: any) => {
+    pendingOrders.forEach((order) => {
       accountsReceivable += Number(order.totalAmount);
     });
 
@@ -115,7 +115,7 @@ export async function getSalesPerformance() {
 
     const productSales: Record<string, { name: string, quantity: number, total: number }> = {};
 
-    orderItems.forEach((item: any) => {
+    orderItems.forEach((item) => {
       if (!productSales[item.productId]) {
         productSales[item.productId] = {
           name: item.product.name,
@@ -149,7 +149,7 @@ export async function getSalesByCustomer() {
 
     const customerSales: Record<string, { name: string, count: number, total: number }> = {};
 
-    orders.forEach((order: any) => {
+    orders.forEach((order) => {
       const customerName = order.customer?.name || 'مشتری ناشناس';
       const customerId = order.customerId || 'unknown';
 
@@ -187,7 +187,7 @@ export async function getInventoryValuation() {
     let totalValue = 0;
     const warehouseValuation: Record<string, { name: string, value: number, itemCount: number }> = {};
 
-    inventory.forEach((item: any) => {
+    inventory.forEach((item) => {
       const itemValue = item.quantity * Number(item.product.costPrice);
       totalValue += itemValue;
 

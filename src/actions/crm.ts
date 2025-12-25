@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { ActionState, ActionResult } from '@/lib/types';
 
 // const prisma = new PrismaClient();
 
@@ -20,7 +21,7 @@ const LeadSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function createLead(prevState: any, formData: FormData) {
+export async function createLead(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = LeadSchema.safeParse({
     name: formData.get('name'),
     company: formData.get('company'),
@@ -158,7 +159,7 @@ const DealSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function createDeal(prevState: any, formData: FormData) {
+export async function createDeal(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = DealSchema.safeParse({
     title: formData.get('title'),
     customerId: formData.get('customerId'),
@@ -233,7 +234,7 @@ export async function getDealById(id: string) {
 
 export async function updateDealStage(id: string, stage: string) {
   try {
-    const updateData: any = { stage };
+    const updateData: { stage: string; actualClose?: Date; probability?: number } = { stage };
 
     // If won or lost, set actual close date
     if (stage === 'WON' || stage === 'LOST') {
@@ -272,7 +273,7 @@ const TicketSchema = z.object({
   priority: z.string().optional(),
 });
 
-export async function createTicket(prevState: any, formData: FormData) {
+export async function createTicket(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = TicketSchema.safeParse({
     customerId: formData.get('customerId'),
     subject: formData.get('subject'),

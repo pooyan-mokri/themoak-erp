@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -24,7 +24,7 @@ const ShareholderWithdrawalSchema = z.object({
 
 // --- Actions ---
 
-export async function calculateShareholderProfits(prevState: any, formData: FormData) {
+export async function calculateShareholderProfits(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = CalculateProfitSchema.safeParse({
     periodStart: formData.get('periodStart'),
     periodEnd: formData.get('periodEnd'),
@@ -79,7 +79,7 @@ export async function calculateShareholderProfits(prevState: any, formData: Form
     let totalIncome = 0;
     let totalExpense = 0;
 
-    transactions.forEach((tx: any) => {
+    transactions.forEach((tx) => {
       const amount = Number(tx.amountInToman || tx.amount);
       if (tx.type === 'INCOME') {
         totalIncome += amount;
@@ -121,7 +121,7 @@ export async function calculateShareholderProfits(prevState: any, formData: Form
     }
 
     // Create profit records for each shareholder
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       for (const shareholder of shareholders) {
         const percentage = Number(shareholder.percentage);
         const shareholderProfit = (netProfit * percentage) / totalPercentage;
@@ -144,16 +144,16 @@ export async function calculateShareholderProfits(prevState: any, formData: Form
       message: `سود دوره با موفقیت محاسبه و ثبت شد. (سود کل: ${netProfit.toLocaleString('fa-IR')} تومان)`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error calculating shareholder profits:', error);
     return {
-      message: error.message || 'خطا در محاسبه سود.',
+      message: error instanceof Error ? error.message : 'خطا در محاسبه سود.',
       success: false,
     };
   }
 }
 
-export async function withdrawShareholderProfit(prevState: any, formData: FormData) {
+export async function withdrawShareholderProfit(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ShareholderWithdrawalSchema.safeParse({
     profitId: formData.get('profitId'),
     amount: formData.get('amount'),
@@ -234,7 +234,7 @@ export async function withdrawShareholderProfit(prevState: any, formData: FormDa
     const transactionDate = date ? new Date(date) : new Date();
 
     // Create withdrawal and update profit
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -289,10 +289,10 @@ export async function withdrawShareholderProfit(prevState: any, formData: FormDa
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت برداشت شد.`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error withdrawing profit:', error);
     return {
-      message: error.message || 'خطا در برداشت سود.',
+      message: error instanceof Error ? error.message : 'خطا در برداشت سود.',
       success: false,
     };
   }

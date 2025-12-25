@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { generateProductBarcode, ensureUniqueBarcode } from '@/lib/barcode-utils';
+import { ActionState, ActionResult } from '@/lib/types';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -17,7 +18,7 @@ const ProductSchema = z.object({
   wooId: z.coerce.number().optional(),
 });
 
-export async function createProduct(prevState: any, formData: FormData) {
+export async function createProduct(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const imageValue = formData.get('image');
   const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : null;
 
@@ -50,7 +51,7 @@ export async function createProduct(prevState: any, formData: FormData) {
         name,
         sku,
         barcode,
-        productType: productType as any,
+        productType,
         costPrice,
         sellPrice,
         image: validatedImage || null,
@@ -155,13 +156,13 @@ export async function giftProduct(productId: string, quantity: number, recipient
       // Ignore revalidatePath error outside of Next.js context
     }
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error gifting product:', error);
-    return { success: false, error: error.message || 'Failed to gift product' };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to gift product' };
   }
 }
 
-export async function importProducts(products: any[]) {
+export async function importProducts(products: Array<Record<string, unknown>>) {
   let successCount = 0;
   let errorCount = 0;
 
@@ -216,7 +217,7 @@ export async function importProducts(products: any[]) {
   return { success: true, successCount, errorCount };
 }
 
-export async function updateProduct(id: string, prevState: any, formData: FormData) {
+export async function updateProduct(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const imageValue = formData.get('image');
   const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : null;
 
@@ -245,7 +246,7 @@ export async function updateProduct(id: string, prevState: any, formData: FormDa
       data: {
         name,
         sku,
-        productType: productType as any,
+        productType,
         costPrice,
         sellPrice,
         image: validatedImage || null,
@@ -292,7 +293,7 @@ export async function generateProductBarcodeAction(productId: string) {
       message: 'بارکد با موفقیت تولید شد.',
       barcode,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating barcode:', error);
     return {
       success: false,

@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { TransactionType } from '@/lib/types';
+import { TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -54,7 +54,7 @@ const MarketingCampaignSchema = z.object({
 
 // --- Actions ---
 
-export async function createMarketingGift(prevState: any, formData: FormData) {
+export async function createMarketingGift(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const campaignIdValue = formData.get('campaignId');
   
   const validatedFields = MarketingGiftSchema.safeParse({
@@ -85,7 +85,7 @@ export async function createMarketingGift(prevState: any, formData: FormData) {
   } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       // 1. Validate all products and calculate total cost
       let totalCost = 0;
       const validatedItems = [];
@@ -224,10 +224,10 @@ export async function createMarketingGift(prevState: any, formData: FormData) {
         });
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating marketing gift:', error);
     return {
-      message: error.message || 'خطا در ثبت هدیه بازاریابی.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت هدیه بازاریابی.',
       errors: {},
     };
   }
@@ -263,7 +263,7 @@ export async function getMarketingGifts() {
   }
 }
 
-export async function createMarketingCampaign(prevState: any, formData: FormData) {
+export async function createMarketingCampaign(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = MarketingCampaignSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description') || undefined,
@@ -296,9 +296,9 @@ export async function createMarketingCampaign(prevState: any, formData: FormData
         status: status || 'PLANNED',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
-      message: error.message || 'خطا در ایجاد کمپین بازاریابی.',
+      message: error instanceof Error ? error.message : 'خطا در ایجاد کمپین بازاریابی.',
       errors: {},
     };
   }

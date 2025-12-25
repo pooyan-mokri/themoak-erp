@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -28,7 +28,7 @@ const PayrollPaymentSchema = z.object({
 
 // --- Actions ---
 
-export async function createPayroll(prevState: any, formData: FormData) {
+export async function createPayroll(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PayrollSchema.safeParse({
     employeeId: formData.get('employeeId'),
     amount: formData.get('amount'),
@@ -99,16 +99,16 @@ export async function createPayroll(prevState: any, formData: FormData) {
 
     revalidatePath('/dashboard/accounting/payroll');
     return { message: 'فیش حقوقی با موفقیت ثبت شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating payroll:', error);
     return {
-      message: error.message || 'خطا در ثبت فیش حقوقی.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت فیش حقوقی.',
       success: false,
     };
   }
 }
 
-export async function recordPayrollPayment(prevState: any, formData: FormData) {
+export async function recordPayrollPayment(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PayrollPaymentSchema.safeParse({
     payrollId: formData.get('payrollId'),
     amount: formData.get('amount'),
@@ -191,7 +191,7 @@ export async function recordPayrollPayment(prevState: any, formData: FormData) {
     const newStatus = newPaidAmount >= netAmount ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
 
     // Create payment and update payroll
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -242,10 +242,10 @@ export async function recordPayrollPayment(prevState: any, formData: FormData) {
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت ثبت شد.`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording payroll payment:', error);
     return {
-      message: error.message || 'خطا در ثبت پرداخت.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت پرداخت.',
       success: false,
     };
   }
@@ -253,7 +253,7 @@ export async function recordPayrollPayment(prevState: any, formData: FormData) {
 
 export async function getPayrolls(employeeId?: string, status?: string) {
   try {
-    const where: any = {};
+    const where: { employeeId?: string; status?: string } = {};
     if (employeeId) {
       where.employeeId = employeeId;
     }
