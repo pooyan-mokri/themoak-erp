@@ -127,7 +127,8 @@ export function DataTable<T extends Record<string, any>>({
       if (bValue === null || bValue === undefined) return -1;
 
       // Handle Date objects - convert to timestamp for proper sorting
-      if (aValue instanceof Date && bValue instanceof Date) {
+      if (typeof aValue === 'object' && typeof bValue === 'object' && 
+          aValue instanceof Date && bValue instanceof Date) {
         const aTime = aValue.getTime();
         const bTime = bValue.getTime();
         return sortConfig.direction === 'asc' ? aTime - bTime : bTime - aTime;
