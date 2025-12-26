@@ -122,9 +122,14 @@ export async function deleteCustomer(id: string) {
 
 export async function getCustomers() {
   try {
-    return await prisma.customer.findMany({
+    const customers = await prisma.customer.findMany({
       orderBy: { createdAt: 'desc' },
     });
+    return customers.map(customer => ({
+      ...customer,
+      creditLimit: customer.creditLimit ? Number(customer.creditLimit) : undefined,
+      commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
+    }));
   } catch (error) {
     throw new Error('Failed to fetch customers');
   }
@@ -132,18 +137,39 @@ export async function getCustomers() {
 
 export async function getCustomer(id: string) {
   try {
-    return await prisma.customer.findUnique({
+    const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
         orders: {
             orderBy: { createdAt: 'desc' },
-            include: { 
+            include: {
               customer: true,
-              items: { include: { product: true } } 
+              items: { include: { product: true } }
             }
         }
       }
     });
+    if (!customer) return null;
+    return {
+      ...customer,
+      creditLimit: customer.creditLimit ? Number(customer.creditLimit) : undefined,
+      commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
+      orders: customer.orders.map(order => ({
+        ...order,
+        totalAmount: Number(order.totalAmount),
+        discount: order.discount ? Number(order.discount) : undefined,
+        paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+        customer: order.customer ? {
+          ...order.customer,
+          creditLimit: order.customer.creditLimit ? Number(order.customer.creditLimit) : undefined,
+          commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
+        } : null,
+        items: order.items.map(item => ({
+          ...item,
+          price: Number(item.price),
+        })),
+      })),
+    };
   } catch (error) {
     return null;
   }

@@ -131,7 +131,7 @@ export async function createInvoiceFromOrder(orderId: string) {
 
 export async function getInvoices() {
   try {
-    return await prisma.invoice.findMany({
+    const invoices = await prisma.invoice.findMany({
       include: {
         customer: {
           select: {
@@ -149,6 +149,14 @@ export async function getInvoices() {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return invoices.map(invoice => ({
+      ...invoice,
+      subtotal: Number(invoice.subtotal),
+      discount: invoice.discount ? Number(invoice.discount) : undefined,
+      tax: invoice.tax ? Number(invoice.tax) : undefined,
+      total: Number(invoice.total),
+      paidAmount: invoice.paidAmount ? Number(invoice.paidAmount) : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching invoices:', error);
     return [];
@@ -157,7 +165,7 @@ export async function getInvoices() {
 
 export async function getInvoiceById(id: string) {
   try {
-    return await prisma.invoice.findUnique({
+    const invoice = await prisma.invoice.findUnique({
       where: { id },
       include: {
         customer: true,
@@ -173,6 +181,35 @@ export async function getInvoiceById(id: string) {
         }
       }
     });
+    if (!invoice) return null;
+    return {
+      ...invoice,
+      subtotal: Number(invoice.subtotal),
+      discount: invoice.discount ? Number(invoice.discount) : undefined,
+      tax: invoice.tax ? Number(invoice.tax) : undefined,
+      total: Number(invoice.total),
+      paidAmount: invoice.paidAmount ? Number(invoice.paidAmount) : undefined,
+      order: invoice.order ? {
+        ...invoice.order,
+        totalAmount: Number(invoice.order.totalAmount),
+        discount: invoice.order.discount ? Number(invoice.order.discount) : undefined,
+        paidAmount: invoice.order.paidAmount ? Number(invoice.order.paidAmount) : undefined,
+        items: invoice.order.items.map(item => ({
+          ...item,
+          price: Number(item.price),
+        })),
+        transaction: invoice.order.transaction ? {
+          ...invoice.order.transaction,
+          amount: Number(invoice.order.transaction.amount),
+          amountInToman: Number(invoice.order.transaction.amountInToman),
+          rateSnapshot: Number(invoice.order.transaction.rateSnapshot),
+          account: invoice.order.transaction.account ? {
+            ...invoice.order.transaction.account,
+            balance: Number(invoice.order.transaction.account.balance),
+          } : null,
+        } : null,
+      } : null,
+    };
   } catch (error) {
     console.error('Error fetching invoice:', error);
     return null;

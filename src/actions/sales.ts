@@ -175,7 +175,16 @@ export async function getOrders() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return orders;
+    return orders.map(order => ({
+      ...order,
+      totalAmount: Number(order.totalAmount),
+      discount: order.discount ? Number(order.discount) : undefined,
+      paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+      items: order.items.map(item => ({
+        ...item,
+        price: Number(item.price),
+      })),
+    }));
   } catch (error) {
     console.error('Error fetching orders:', error);
     return [];
@@ -201,7 +210,27 @@ export async function getOrder(id: string) {
         invoice: true,
       },
     });
-    return order;
+    if (!order) return null;
+    return {
+      ...order,
+      totalAmount: Number(order.totalAmount),
+      discount: order.discount ? Number(order.discount) : undefined,
+      paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+      items: order.items.map(item => ({
+        ...item,
+        price: Number(item.price),
+      })),
+      transaction: order.transaction ? {
+        ...order.transaction,
+        amount: Number(order.transaction.amount),
+        amountInToman: Number(order.transaction.amountInToman),
+        rateSnapshot: Number(order.transaction.rateSnapshot),
+        account: order.transaction.account ? {
+          ...order.transaction.account,
+          balance: Number(order.transaction.account.balance),
+        } : null,
+      } : null,
+    };
   } catch (error) {
     console.error('Error fetching order:', error);
     return null;

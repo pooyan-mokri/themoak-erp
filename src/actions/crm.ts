@@ -64,7 +64,7 @@ export async function createLead(prevState: ActionState, formData: FormData): Pr
 
 export async function getLeads() {
   try {
-    return await prisma.lead.findMany({
+    const leads = await prisma.lead.findMany({
       include: {
         customer: {
           select: {
@@ -75,6 +75,10 @@ export async function getLeads() {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return leads.map(lead => ({
+      ...lead,
+      expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching leads:', error);
     return [];
@@ -83,12 +87,17 @@ export async function getLeads() {
 
 export async function getLeadById(id: string) {
   try {
-    return await prisma.lead.findUnique({
+    const lead = await prisma.lead.findUnique({
       where: { id },
       include: {
         customer: true,
       }
     });
+    if (!lead) return null;
+    return {
+      ...lead,
+      expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+    };
   } catch (error) {
     console.error('Error fetching lead:', error);
     return null;
@@ -200,7 +209,7 @@ export async function createDeal(prevState: ActionState, formData: FormData): Pr
 
 export async function getDeals() {
   try {
-    return await prisma.deal.findMany({
+    const deals = await prisma.deal.findMany({
       include: {
         customer: {
           select: {
@@ -212,6 +221,10 @@ export async function getDeals() {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return deals.map(deal => ({
+      ...deal,
+      value: Number(deal.value),
+    }));
   } catch (error) {
     console.error('Error fetching deals:', error);
     return [];
@@ -220,12 +233,17 @@ export async function getDeals() {
 
 export async function getDealById(id: string) {
   try {
-    return await prisma.deal.findUnique({
+    const deal = await prisma.deal.findUnique({
       where: { id },
       include: {
         customer: true,
       }
     });
+    if (!deal) return null;
+    return {
+      ...deal,
+      value: Number(deal.value),
+    };
   } catch (error) {
     console.error('Error fetching deal:', error);
     return null;

@@ -367,7 +367,7 @@ export async function getConsignmentPartnerById(warehouseId: string) {
 
 export async function getPendingSettlements() {
   try {
-    return await prisma.order.findMany({
+    const orders = await prisma.order.findMany({
       where: {
         status: 'PENDING_PAYMENT',
         customer: {
@@ -390,6 +390,16 @@ export async function getPendingSettlements() {
         createdAt: 'desc'
       }
     });
+    return orders.map(order => ({
+      ...order,
+      totalAmount: Number(order.totalAmount),
+      discount: order.discount ? Number(order.discount) : undefined,
+      paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+      items: order.items.map(item => ({
+        ...item,
+        price: Number(item.price),
+      })),
+    }));
   } catch (error) {
     return [];
   }
