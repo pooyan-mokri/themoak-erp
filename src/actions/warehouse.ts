@@ -64,7 +64,7 @@ export async function getWarehouseById(id: string) {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id },
     });
-    if (!warehouse) return null;
+    if (!warehouse) return undefined;
     return {
       ...warehouse,
       customerId: warehouse.customerId ?? undefined,

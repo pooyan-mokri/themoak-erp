@@ -181,7 +181,7 @@ export async function getInvoiceById(id: string) {
         }
       }
     });
-    if (!invoice) return null;
+    if (!invoice) return undefined;
     return {
       ...invoice,
       subtotal: Number(invoice.subtotal),
@@ -206,13 +206,13 @@ export async function getInvoiceById(id: string) {
           account: invoice.order.transaction.account ? {
             ...invoice.order.transaction.account,
             balance: Number(invoice.order.transaction.account.balance),
-          } : null,
-        } : null,
-      } : null,
+          } : undefined,
+        } : undefined,
+      } : undefined,
     };
   } catch (error) {
     console.error('Error fetching invoice:', error);
-    return null;
+    return undefined;
   }
 }
 

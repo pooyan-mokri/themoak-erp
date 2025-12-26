@@ -99,7 +99,7 @@ export async function getLeadById(id: string) {
         customer: true,
       }
     });
-    if (!lead) return null;
+    if (!lead) return undefined;
     return {
       ...lead,
       expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
@@ -112,7 +112,7 @@ export async function getLeadById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching lead:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -251,14 +251,14 @@ export async function getDealById(id: string) {
         customer: true,
       }
     });
-    if (!deal) return null;
+    if (!deal) return undefined;
     return {
       ...deal,
       value: Number(deal.value),
     };
   } catch (error) {
     console.error('Error fetching deal:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -377,7 +377,7 @@ export async function getTicketById(id: string) {
       }
     });
 
-    if (!ticket) return null;
+    if (!ticket) return undefined;
 
     return {
       ...ticket,
@@ -398,7 +398,7 @@ export async function getTicketById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching ticket:', error);
-    return null;
+    return undefined;
   }
 }
 
