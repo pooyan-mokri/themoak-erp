@@ -322,7 +322,7 @@ export async function getPayrollById(id: string) {
       },
     });
 
-    if (!payroll) return null;
+    if (!payroll) return undefined;
 
     return {
       ...payroll,
@@ -370,7 +370,7 @@ export async function getPayrollById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching payroll:', error);
-    return null;
+    return undefined;
   }
 }
 

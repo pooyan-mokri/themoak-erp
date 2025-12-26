@@ -221,7 +221,7 @@ export async function getShareholderById(id: string) {
       },
     });
 
-    if (!shareholder) return null;
+    if (!shareholder) return undefined;
 
     return {
       ...shareholder,
@@ -233,7 +233,7 @@ export async function getShareholderById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching shareholder:', error);
-    return null;
+    return undefined;
   }
 }
 

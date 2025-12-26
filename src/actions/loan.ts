@@ -294,7 +294,7 @@ export async function getLoanById(id: string) {
       },
     });
 
-    if (!loan) return null;
+    if (!loan) return undefined;
 
     return {
       ...loan,
@@ -343,7 +343,7 @@ export async function getLoanById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching loan:', error);
-    return null;
+    return undefined;
   }
 }
 

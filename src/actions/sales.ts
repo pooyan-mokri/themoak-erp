@@ -234,7 +234,7 @@ export async function getOrder(id: string) {
         invoice: true,
       },
     });
-    if (!order) return null;
+    if (!order) return undefined;
     return {
       ...order,
       customerId: order.customerId ?? undefined,
@@ -299,6 +299,6 @@ export async function getOrder(id: string) {
     };
   } catch (error) {
     console.error('Error fetching order:', error);
-    return null;
+    return undefined;
   }
 }
