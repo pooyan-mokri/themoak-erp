@@ -27,11 +27,11 @@ interface Product {
   id: string;
   name: string;
   sku: string;
-  barcode?: string | null;
+  barcode?: string;
   productType?: string;
   costPrice: any; // Decimal
   sellPrice: any; // Decimal
-  wooId?: number | null;
+  wooId?: number;
 }
 
 interface ProductTableProps {

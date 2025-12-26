@@ -26,8 +26,8 @@ interface Loan {
   amount: number;
   remaining: number;
   interestRate: number;
-  description: string | null;
-  dueDate: Date | null;
+  description?: string;
+  dueDate?: Date;
   status: string;
   payments: any[];
 }

@@ -9,7 +9,7 @@ import { formatJalaliDateTime } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
 type OrderWithDetails = Order & {
-  customer: Customer | null;
+  customer?: Customer;
   items: (OrderItem & { product: Product })[];
 };
 

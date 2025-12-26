@@ -33,7 +33,7 @@ interface Deal {
   stage: string;
   value: any;
   probability: number;
-  expectedClose: Date | null;
+  expectedClose?: Date;
 }
 
 interface DealKanbanProps {

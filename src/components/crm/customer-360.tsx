@@ -9,11 +9,11 @@ interface Customer360Props {
   customer: {
     id: string;
     name: string;
-    email?: string | null;
-    phone?: string | null;
-    address?: string | null;
+    email?: string;
+    phone?: string;
+    address?: string;
     customerType: string;
-    segment?: string | null;
+    segment?: string;
     loyaltyPoints: number;
     createdAt: Date;
   };

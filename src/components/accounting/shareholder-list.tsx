@@ -27,10 +27,10 @@ interface Shareholder {
   id: string;
   name: string;
   percentage: number;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  notes: string | null;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
   _count: {
     transactions: number;
   };

@@ -16,10 +16,10 @@ import { Progress } from '@/components/ui/progress';
 interface Campaign {
   id: string;
   name: string;
-  description: string | null;
+  description?: string;
   type: string;
   startDate: Date;
-  endDate: Date | null;
+  endDate?: Date;
   budget?: number;
   spentAmount: number;
   status: string;
