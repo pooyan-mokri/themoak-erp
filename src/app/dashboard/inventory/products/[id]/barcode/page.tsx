@@ -14,6 +14,9 @@ export default async function ProductBarcodePrintPage({
     notFound();
   }
 
+  // TypeScript doesn't recognize that notFound() never returns, so we assert here
+  const productData = product;
+
   // Calculate UPC-A check digit
   function calculateUPCACheckDigit(barcode: string): number {
     let sumOdd = 0;
@@ -43,7 +46,7 @@ export default async function ProductBarcodePrintPage({
   }
 
   // Generate UPC/EAN compatible barcode with valid check digit
-  const barcodeValue = product.barcode.replace(/[^0-9]/g, ''); // Remove non-numeric characters
+  const barcodeValue = productData.barcode!.replace(/[^0-9]/g, ''); // Remove non-numeric characters
   let formattedBarcode = barcodeValue;
   let barcodeFormat = 'CODE128'; // Default to CODE128 which is more flexible
   
@@ -103,8 +106,8 @@ export default async function ProductBarcodePrintPage({
         <div className="flex flex-col items-center justify-center min-h-[400px] print:min-h-0">
           <div className="border-4 border-black p-8 bg-white">
             <div className="text-center mb-4">
-              <h2 className="text-xl font-bold mb-2">{product.name}</h2>
-              <p className="text-sm text-gray-600">SKU: {product.sku}</p>
+              <h2 className="text-xl font-bold mb-2">{productData.name}</h2>
+              <p className="text-sm text-gray-600">SKU: {productData.sku}</p>
             </div>
             <BarcodeDisplay barcode={formattedBarcode} format={barcodeFormat as 'UPC' | 'EAN13' | 'CODE128'} />
             <div className="text-center">

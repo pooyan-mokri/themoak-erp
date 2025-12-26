@@ -105,7 +105,7 @@ export function AssetList({ assets }: AssetListProps) {
       label: 'تعداد',
       sortable: true,
       render: (asset) =>
-        asset.assetType === 'CONSUMABLE' && asset.quantity !== null
+        asset.assetType === 'CONSUMABLE' && asset.quantity !== null && asset.quantity !== undefined
           ? asset.quantity.toLocaleString('fa-IR')
           : '-',
     },

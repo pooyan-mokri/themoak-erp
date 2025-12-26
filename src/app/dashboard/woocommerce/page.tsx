@@ -71,7 +71,7 @@ export default function WooCommercePage() {
         } else {
           toast.success(`Orders synced: ${result.created} new transactions created`);
         }
-        if (result.errors && result.errors.length > 0) {
+        if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
           console.warn('[CLIENT] خطاها در حین سینک:', result.errors);
           // Show errors in console for debugging
           result.errors.forEach((err: string) => {
