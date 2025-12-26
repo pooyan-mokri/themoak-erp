@@ -45,7 +45,7 @@ async function getExpenses() {
       account: expense.account ? {
         ...expense.account,
         balance: Number(expense.account.balance),
-      } : null,
+      } : undefined,
       employee: expense.employee ? {
         ...expense.employee,
         salary: Number(expense.employee.salary),
@@ -56,7 +56,7 @@ async function getExpenses() {
         address: expense.employee.address ?? undefined,
         position: expense.employee.position ?? undefined,
         hireDate: expense.employee.hireDate ?? undefined,
-      } : null,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching expenses:', error);

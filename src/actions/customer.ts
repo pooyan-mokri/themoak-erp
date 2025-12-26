@@ -163,7 +163,7 @@ export async function getCustomer(id: string) {
           ...order.customer,
           creditLimit: order.customer.creditLimit ? Number(order.customer.creditLimit) : undefined,
           commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
-        } : null,
+        } : undefined,
         items: order.items.map(item => ({
           ...item,
           price: Number(item.price),
@@ -310,7 +310,7 @@ export async function getCustomerById(id: string) {
             image: item.product.image ?? undefined,
             wooId: item.product.wooId ?? undefined,
             barcode: item.product.barcode ?? undefined,
-          } : null,
+          } : undefined,
         })),
         transaction: order.transaction ? {
           ...order.transaction,
@@ -329,8 +329,8 @@ export async function getCustomerById(id: string) {
           account: order.transaction.account ? {
             ...order.transaction.account,
             balance: Number(order.transaction.account.balance),
-          } : null,
-        } : null,
+          } : undefined,
+        } : undefined,
         invoice: order.invoice ? {
           ...order.invoice,
           subtotal: Number(order.invoice.subtotal),
@@ -339,7 +339,7 @@ export async function getCustomerById(id: string) {
           total: Number(order.invoice.total),
           paidAmount: Number(order.invoice.paidAmount),
           notes: order.invoice.notes ?? undefined,
-        } : null,
+        } : undefined,
       })),
       leads: customer.leads.map(lead => ({
         ...lead,

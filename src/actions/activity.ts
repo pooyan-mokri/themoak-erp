@@ -42,7 +42,7 @@ export async function getRecentActivities() {
       user: activity.user ? {
         ...activity.user,
         phone: activity.user.phone ?? undefined,
-      } : null,
+      } : undefined,
     }));
   } catch (error) {
     return [];

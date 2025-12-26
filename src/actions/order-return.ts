@@ -212,12 +212,12 @@ export async function getOrderReturns(orderId: string) {
           image: ret.orderItem.product.image ?? undefined,
           wooId: ret.orderItem.product.wooId ?? undefined,
           barcode: ret.orderItem.product.barcode ?? undefined,
-        } : null,
-      } : null,
+        } : undefined,
+      } : undefined,
       account: ret.account ? {
         ...ret.account,
         balance: Number(ret.account.balance),
-      } : null,
+      } : undefined,
       transaction: ret.transaction ? {
         ...ret.transaction,
         amount: Number(ret.transaction.amount),
@@ -232,7 +232,7 @@ export async function getOrderReturns(orderId: string) {
         receiptUrl: ret.transaction.receiptUrl ?? undefined,
         shareholderId: ret.transaction.shareholderId ?? undefined,
         employeeId: ret.transaction.employeeId ?? undefined,
-      } : null,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching order returns:', error);

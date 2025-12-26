@@ -195,7 +195,7 @@ export async function getOrders() {
         segment: order.customer.segment ?? undefined,
         taxId: order.customer.taxId ?? undefined,
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
-      } : null,
+      } : undefined,
       items: order.items.map(item => ({
         ...item,
         price: Number(item.price),
@@ -206,7 +206,7 @@ export async function getOrders() {
           image: item.product.image ?? undefined,
           wooId: item.product.wooId ?? undefined,
           barcode: item.product.barcode ?? undefined,
-        } : null,
+        } : undefined,
       })),
     }));
   } catch (error) {
@@ -255,7 +255,7 @@ export async function getOrder(id: string) {
         segment: order.customer.segment ?? undefined,
         taxId: order.customer.taxId ?? undefined,
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
-      } : null,
+      } : undefined,
       items: order.items.map(item => ({
         ...item,
         price: Number(item.price),
@@ -266,7 +266,7 @@ export async function getOrder(id: string) {
           image: item.product.image ?? undefined,
           wooId: item.product.wooId ?? undefined,
           barcode: item.product.barcode ?? undefined,
-        } : null,
+        } : undefined,
       })),
       transaction: order.transaction ? {
         ...order.transaction,
@@ -285,8 +285,8 @@ export async function getOrder(id: string) {
         account: order.transaction.account ? {
           ...order.transaction.account,
           balance: Number(order.transaction.account.balance),
-        } : null,
-      } : null,
+        } : undefined,
+      } : undefined,
       invoice: order.invoice ? {
         ...order.invoice,
         subtotal: Number(order.invoice.subtotal),
@@ -295,7 +295,7 @@ export async function getOrder(id: string) {
         total: Number(order.invoice.total),
         paidAmount: Number(order.invoice.paidAmount),
         notes: order.invoice.notes ?? undefined,
-      } : null,
+      } : undefined,
     };
   } catch (error) {
     console.error('Error fetching order:', error);

@@ -348,7 +348,7 @@ export async function getTickets() {
       customer: ticket.customer ? {
         ...ticket.customer,
         phone: ticket.customer.phone ?? undefined,
-      } : null,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching tickets:', error);
@@ -382,7 +382,7 @@ export async function getTicketById(id: string) {
         segment: ticket.customer.segment ?? undefined,
         taxId: ticket.customer.taxId ?? undefined,
         commissionRate: ticket.customer.commissionRate ? Number(ticket.customer.commissionRate) : undefined,
-      } : null,
+      } : undefined,
     };
   } catch (error) {
     console.error('Error fetching ticket:', error);
