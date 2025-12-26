@@ -88,6 +88,7 @@ export async function getAssets() {
         purchasePrice: Number(asset.purchasePrice),
         salvageValue: Number(asset.salvageValue),
         currentValue,
+        quantity: asset.quantity ?? undefined,
       };
     });
   } catch (error) {

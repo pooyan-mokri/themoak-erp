@@ -346,7 +346,7 @@ export async function getCustomerStats(customerId: string) {
       totalDebt,
       averageOrderValue,
       orderFrequency,
-      lastOrderDate: orders[0]?.createdAt || null,
+      lastOrderDate: orders[0]?.createdAt,
     };
   } catch (error) {
     console.error('Error getting customer stats:', error);

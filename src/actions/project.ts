@@ -116,7 +116,7 @@ export async function getProjectById(id: string) {
       ...project,
       tasks: project.tasks.map((task) => ({
         ...task,
-        assignedToUser: task.assignedTo ? userMap.get(task.assignedTo) || null : null,
+        assignedToUser: task.assignedTo ? userMap.get(task.assignedTo) : undefined,
       })),
     };
   } catch (error) {
@@ -158,7 +158,7 @@ export async function getProjectsForCalendar() {
       ...project,
       tasks: project.tasks.map((task) => ({
         ...task,
-        assignedTo: task.assignedTo ? userMap.get(task.assignedTo) || null : null,
+        assignedTo: task.assignedTo ? userMap.get(task.assignedTo) : undefined,
         project: {
           id: project.id,
           name: project.name,
