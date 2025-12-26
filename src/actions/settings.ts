@@ -14,7 +14,7 @@ export async function getSetting(key: string) {
     return setting?.value ? JSON.parse(setting.value) : null;
   } catch (error) {
     console.error(`Error fetching setting ${key}:`, error);
-    return null;
+    return undefined;
   }
 }
 

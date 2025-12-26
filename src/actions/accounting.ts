@@ -541,7 +541,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     });
 
     if (!employee) {
-      return null;
+      return undefined;
     }
 
     // Get all expense transactions (debts)
@@ -606,7 +606,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     };
   } catch (error) {
     console.error('Error fetching employee debt details:', error);
-    return null;
+    return undefined;
   }
 }
 

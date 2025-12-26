@@ -80,7 +80,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
       }
     });
 
-    if (!product) return null;
+    if (!product) return undefined;
 
     // Calculate sales metrics
     let totalUnitsSold = 0;
@@ -165,7 +165,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
     };
   } catch (error) {
     console.error('Error fetching product analytics:', error);
-    return null;
+    return undefined;
   }
 }
 

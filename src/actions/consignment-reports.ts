@@ -46,7 +46,7 @@ export async function getConsignmentReport() {
     // Calculate statistics for each partner
     const partnerStats = partners.map((partner) => {
       const customerId = partner.customerId;
-      if (!customerId) return null;
+      if (!customerId) return undefined;
 
       // Get orders for this partner
       const partnerOrders = consignmentOrders.filter(

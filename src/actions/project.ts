@@ -100,7 +100,7 @@ export async function getProjectById(id: string) {
       },
     });
     
-    if (!project) return null;
+    if (!project) return undefined;
     
     // Get all user IDs from tasks
     const userIds = project.tasks

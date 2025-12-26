@@ -109,13 +109,13 @@ export async function getBackupSettings() {
   try {
     const session = await auth();
     if (!session?.user || session.user.role !== Role.ADMIN) {
-      return null;
+      return undefined;
     }
 
     return await getSetting('backup_settings');
   } catch (error) {
     console.error('Error fetching backup settings:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -148,7 +148,7 @@ export async function getLastBackup() {
   try {
     return await getSetting('last_backup');
   } catch (error) {
-    return null;
+    return undefined;
   }
 }
 

@@ -141,14 +141,14 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
     // Validate URL
     if (!imageUrl || typeof imageUrl !== 'string') {
       console.error('[Image Download] Invalid URL:', imageUrl);
-      return null;
+      return undefined;
     }
 
     // Normalize URL - handle both http and https
     const normalizedUrl = imageUrl.trim();
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       console.error('[Image Download] URL does not start with http/https:', normalizedUrl);
-      return null;
+      return undefined;
     }
 
     console.log(`[Image Download] Fetching image from: ${normalizedUrl}`);
@@ -168,7 +168,7 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
       
       if (!response.ok) {
         console.error(`[Image Download] HTTP error: ${response.status} ${response.statusText}`);
-        return null;
+        return undefined;
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -180,7 +180,7 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
         const urlExt = normalizedUrl.split('.').pop()?.split('?')[0]?.toLowerCase();
         if (!urlExt || !['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(urlExt)) {
           console.error(`[Image Download] Invalid content type: ${contentType}`);
-          return null;
+          return undefined;
         }
       }
 
@@ -209,12 +209,12 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
       // Validate file size (10MB)
       if (buffer.length > 10 * 1024 * 1024) {
         console.error(`[Image Download] Image file too large: ${buffer.length} bytes`);
-        return null;
+        return undefined;
       }
 
       if (buffer.length === 0) {
         console.error('[Image Download] Empty file downloaded');
-        return null;
+        return undefined;
       }
 
       // Create uploads directory if it doesn't exist
@@ -241,10 +241,10 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
       } else {
         console.error('[Image Download] Fetch error:', fetchError.message);
       }
-      return null;
+      return undefined;
     }
   } catch (error: any) {
     console.error('[Image Download] Error downloading and saving product image:', error.message || error);
-    return null;
+    return undefined;
   }
 }

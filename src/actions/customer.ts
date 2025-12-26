@@ -289,7 +289,7 @@ export async function getCustomerById(id: string) {
       }
     });
 
-    if (!customer) return null;
+    if (!customer) return undefined;
 
     // Calculate debt
     const totalDebt = customer.orders.reduce((sum, order) => {
@@ -328,7 +328,7 @@ export async function getCustomerById(id: string) {
         items: order.items.map(item => ({
           ...item,
           price: Number(item.price),
-          product: order.items[0].product ? {
+          product: item.product ? {
             ...item.product,
             costPrice: Number(item.product.costPrice),
             sellPrice: Number(item.product.sellPrice),
@@ -400,7 +400,7 @@ export async function getCustomerById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching customer by ID:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -468,7 +468,7 @@ export async function getCustomerStats(customerId: string) {
     };
   } catch (error) {
     console.error('Error getting customer stats:', error);
-    return null;
+    return undefined;
   }
 }
 

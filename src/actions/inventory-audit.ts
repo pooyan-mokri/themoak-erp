@@ -364,7 +364,7 @@ export async function getInventoryAudit(auditId: string) {
     return audit;
   } catch (error: unknown) {
     console.error('Error fetching inventory audit:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -627,7 +627,7 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
     // Calculate discrepancies for all items
     const updates = audit.items.map((item) => {
       if (item.finalQuantity === null) {
-        return null;
+        return undefined;
       }
 
       const discrepancy = item.finalQuantity - item.systemQuantity;
@@ -689,7 +689,7 @@ export async function getDiscrepancyReport(auditId: string) {
     });
 
     if (!audit) {
-      return null;
+      return undefined;
     }
 
     const totalDiscrepancyValue = audit.items.reduce(
@@ -709,7 +709,7 @@ export async function getDiscrepancyReport(auditId: string) {
     };
   } catch (error: unknown) {
     console.error('Error fetching discrepancy report:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -823,7 +823,7 @@ export async function getPerformanceReport(auditId: string) {
     });
 
     if (!audit) {
-      return null;
+      return undefined;
     }
 
     // Calculate statistics
@@ -858,7 +858,7 @@ export async function getPerformanceReport(auditId: string) {
     };
   } catch (error: unknown) {
     console.error('Error fetching performance report:', error);
-    return null;
+    return undefined;
   }
 }
 

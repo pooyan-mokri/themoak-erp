@@ -346,7 +346,7 @@ export async function getShareholderProfitById(id: string) {
       },
     });
 
-    if (!profit) return null;
+    if (!profit) return undefined;
 
     return {
       ...profit,
@@ -360,7 +360,7 @@ export async function getShareholderProfitById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching shareholder profit:', error);
-    return null;
+    return undefined;
   }
 }
 

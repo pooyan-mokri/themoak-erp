@@ -17,7 +17,7 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     if (!warehouse) {
       console.log('Warehouse not found for ID:', warehouseId);
-      return null;
+      return undefined;
     }
     
     console.log('Warehouse found:', warehouse.name);
@@ -158,7 +158,7 @@ export async function getWarehouseDetail(warehouseId: string) {
         try {
           if (!item.product) {
             console.warn('Inventory item missing product:', item.productId);
-            return null;
+            return undefined;
           }
           return {
             id: item.productId,
@@ -172,7 +172,7 @@ export async function getWarehouseDetail(warehouseId: string) {
           };
         } catch (err) {
           console.error('Error formatting inventory item:', err, item);
-          return null;
+          return undefined;
         }
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -181,7 +181,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       .map((item) => {
         try {
           if (!item.product || !item.order) {
-            return null;
+            return undefined;
           }
           return {
             id: item.id,
@@ -196,7 +196,7 @@ export async function getWarehouseDetail(warehouseId: string) {
           };
         } catch (err) {
           console.error('Error formatting order item:', err, item);
-          return null;
+          return undefined;
         }
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -205,7 +205,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       .map((item) => {
         try {
           if (!item.product || !item.purchaseOrder) {
-            return null;
+            return undefined;
           }
           return {
             id: item.id,
@@ -220,7 +220,7 @@ export async function getWarehouseDetail(warehouseId: string) {
           };
         } catch (err) {
           console.error('Error formatting purchase item:', err, item);
-          return null;
+          return undefined;
         }
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -237,7 +237,7 @@ export async function getWarehouseDetail(warehouseId: string) {
           };
         } catch (err) {
           console.error('Error formatting audit:', err, audit);
-          return null;
+          return undefined;
         }
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -263,7 +263,7 @@ export async function getWarehouseDetail(warehouseId: string) {
               id: warehouse.customer.id,
               name: warehouse.customer.name,
             }
-          : null,
+          : undefined,
         createdAt: formatJalaliDate(warehouse.createdAt),
       },
       statistics: {
@@ -285,7 +285,7 @@ export async function getWarehouseDetail(warehouseId: string) {
     console.error('Error fetching warehouse detail:', error);
     console.error('Error stack:', error?.stack);
     console.error('Error message:', error?.message);
-    return null;
+    return undefined;
   }
 }
 

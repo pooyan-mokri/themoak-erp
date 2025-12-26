@@ -127,7 +127,7 @@ export async function getPromotionById(id: string) {
       where: { id },
     });
 
-    if (!promotion) return null;
+    if (!promotion) return undefined;
 
     return {
       ...promotion,
@@ -138,7 +138,7 @@ export async function getPromotionById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching promotion:', error);
-    return null;
+    return undefined;
   }
 }
 

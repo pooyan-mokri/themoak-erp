@@ -34,7 +34,7 @@ export async function getProductDetail(productId: string) {
     });
 
     if (!product) {
-      return null;
+      return undefined;
     }
 
     // Calculate totals
@@ -60,7 +60,7 @@ export async function getProductDetail(productId: string) {
     };
   } catch (error) {
     console.error('Error fetching product detail:', error);
-    return null;
+    return undefined;
   }
 }
 

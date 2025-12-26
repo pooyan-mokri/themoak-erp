@@ -1012,7 +1012,7 @@ export async function debugProductMatching(): Promise<ActionResult<{
                     wooId: foundProduct.wooId,
                     sku: foundProduct.sku,
                     name: foundProduct.name
-                } : null,
+                } : undefined,
             }
         };
     } catch (error: unknown) {
