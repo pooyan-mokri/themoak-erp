@@ -562,7 +562,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                         
                         // Try to find by exact match
                         const exactMatch = await prisma.product.findFirst({
-                            where: { wooId: item.product_id }
+                            where: { wooId: productIdToSearch }
                         });
                         const exactMatchBySku = item.sku ? await prisma.product.findFirst({
                             where: { sku: item.sku }
