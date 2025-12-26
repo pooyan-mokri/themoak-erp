@@ -386,14 +386,16 @@ export async function receivePurchaseOrderItems(
         }
 
         // Calculate unit cost in Toman
-        const unitCostInToman = orderItem.unitCostInToman || (Number(orderItem.unitCost) * getExchangeRate(orderItem.currency));
-        
+        const unitCostInToman = orderItem.unitCostInToman
+          ? Number(orderItem.unitCostInToman)
+          : (Number(orderItem.unitCost) * getExchangeRate(orderItem.currency));
+
         // Calculate landed cost per unit: unit cost + additional cost per unit
         const landedCostPerUnit = unitCostInToman + additionalCostPerUnit;
         
         // Calculate total cost for this item (for all received quantities)
         const previousReceivedQty = orderItem.receivedQuantity || 0;
-        const previousTotalCost = (orderItem.totalCostInToman || 0);
+        const previousTotalCost = orderItem.totalCostInToman ? Number(orderItem.totalCostInToman) : 0;
         const newQuantityCost = receivedItem.receivedQuantity * landedCostPerUnit;
         const newTotalCostInToman = previousTotalCost + newQuantityCost;
 
