@@ -89,7 +89,36 @@ export async function getPurchaseOrders() {
         paymentTransaction: true
       }
     });
-    return { success: true, data: orders };
+
+    // Serialize Decimal fields
+    const serializedOrders = orders.map(order => ({
+      ...order,
+      totalAmount: Number(order.totalAmount),
+      totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : undefined,
+      items: order.items.map(item => ({
+        ...item,
+        unitCost: Number(item.unitCost),
+        unitCostInToman: item.unitCostInToman ? Number(item.unitCostInToman) : undefined,
+        exchangeRateSnapshot: item.exchangeRateSnapshot ? Number(item.exchangeRateSnapshot) : undefined,
+        totalCostInToman: item.totalCostInToman ? Number(item.totalCostInToman) : undefined,
+        additionalCost: item.additionalCost ? Number(item.additionalCost) : undefined,
+        additionalCostInToman: item.additionalCostInToman ? Number(item.additionalCostInToman) : undefined,
+      })),
+      additionalCosts: order.additionalCosts.map(cost => ({
+        ...cost,
+        amount: Number(cost.amount),
+        amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
+        exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
+      })),
+      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map(cost => ({
+        ...cost,
+        amount: Number(cost.amount),
+        amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
+        exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
+      })),
+    }));
+
+    return { success: true, data: serializedOrders };
   } catch (error) {
     console.error('Error fetching purchase orders:', error);
     return { success: false, error: 'خطا در دریافت سفارشات خرید' };

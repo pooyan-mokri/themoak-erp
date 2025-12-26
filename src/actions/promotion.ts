@@ -70,9 +70,18 @@ export async function createPromotion(prevState: any, formData: FormData) {
 
 export async function getPromotions() {
   try {
-    return await prisma.promotion.findMany({
+    const promotions = await prisma.promotion.findMany({
       orderBy: { createdAt: 'desc' },
     });
+
+    // Serialize Decimal fields to numbers
+    return promotions.map(promotion => ({
+      ...promotion,
+      discountPercent: promotion.discountPercent ? Number(promotion.discountPercent) : undefined,
+      discountAmount: promotion.discountAmount ? Number(promotion.discountAmount) : undefined,
+      minPurchase: promotion.minPurchase ? Number(promotion.minPurchase) : undefined,
+      maxUses: promotion.maxUses ? Number(promotion.maxUses) : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching promotions:', error);
     return [];
@@ -82,7 +91,7 @@ export async function getPromotions() {
 export async function getActivePromotions() {
   try {
     const now = new Date();
-    return await prisma.promotion.findMany({
+    const promotions = await prisma.promotion.findMany({
       where: {
         isActive: true,
         startDate: { lte: now },
@@ -98,6 +107,14 @@ export async function getActivePromotions() {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return promotions.map(promotion => ({
+      ...promotion,
+      discountPercent: promotion.discountPercent ? Number(promotion.discountPercent) : undefined,
+      discountAmount: promotion.discountAmount ? Number(promotion.discountAmount) : undefined,
+      minPurchase: promotion.minPurchase ? Number(promotion.minPurchase) : undefined,
+      maxUses: promotion.maxUses ? Number(promotion.maxUses) : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching active promotions:', error);
     return [];
@@ -106,9 +123,19 @@ export async function getActivePromotions() {
 
 export async function getPromotionById(id: string) {
   try {
-    return await prisma.promotion.findUnique({
+    const promotion = await prisma.promotion.findUnique({
       where: { id },
     });
+
+    if (!promotion) return null;
+
+    return {
+      ...promotion,
+      discountPercent: promotion.discountPercent ? Number(promotion.discountPercent) : undefined,
+      discountAmount: promotion.discountAmount ? Number(promotion.discountAmount) : undefined,
+      minPurchase: promotion.minPurchase ? Number(promotion.minPurchase) : undefined,
+      maxUses: promotion.maxUses ? Number(promotion.maxUses) : undefined,
+    };
   } catch (error) {
     console.error('Error fetching promotion:', error);
     return null;

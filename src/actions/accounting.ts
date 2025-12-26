@@ -101,10 +101,16 @@ export async function getAccounts() {
   try {
     // Ensure Marketing Expenses account exists
     await ensureMarketingExpensesAccount();
-    
-    return await prisma.account.findMany({
+
+    const accounts = await prisma.account.findMany({
       orderBy: { createdAt: 'desc' },
     });
+
+    // Serialize Decimal fields
+    return accounts.map(account => ({
+      ...account,
+      balance: Number(account.balance),
+    }));
   } catch (error) {
     console.error('Error fetching accounts:', error);
     throw new Error(`Failed to fetch accounts: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -236,7 +242,12 @@ export async function getLatestExchangeRates() {
             orderBy: { date: 'desc' },
             take: 100, // Limit to recent
         });
-        return rates;
+
+        // Serialize Decimal fields
+        return rates.map(rate => ({
+            ...rate,
+            rateToToman: Number(rate.rateToToman),
+        }));
     } catch (error) {
         return [];
     }
