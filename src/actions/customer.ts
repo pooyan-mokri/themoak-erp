@@ -156,7 +156,7 @@ export async function getCustomer(id: string) {
         }
       }
     });
-    if (!customer) return null;
+    if (!customer) return undefined;
     return {
       ...customer,
       creditLimit: customer.creditLimit ? Number(customer.creditLimit) : undefined,
@@ -196,7 +196,7 @@ export async function getCustomer(id: string) {
       })),
     };
   } catch (error) {
-    return null;
+    return undefined;
   }
 }
 

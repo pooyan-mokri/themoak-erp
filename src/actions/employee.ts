@@ -237,7 +237,7 @@ export async function getEmployeeById(id: string) {
       where: { id },
     });
 
-    if (!employee) return null;
+    if (!employee) return undefined;
 
     return {
       ...employee,
@@ -252,7 +252,7 @@ export async function getEmployeeById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching employee:', error);
-    return null;
+    return undefined;
   }
 }
 
