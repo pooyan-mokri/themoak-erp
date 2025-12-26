@@ -69,7 +69,7 @@ export async function createSupplier(prevState: ActionState, formData: FormData)
   } catch (error: unknown) {
     console.error('Error creating supplier:', error);
     if (error instanceof z.ZodError) {
-      return { success: false, error: error.errors[0]?.message || 'خطا در اعتبارسنجی' };
+      return { success: false, error: error.issues[0]?.message || 'خطا در اعتبارسنجی' };
     }
     return { success: false, error: 'خطا در ایجاد تامین‌کننده' };
   }
