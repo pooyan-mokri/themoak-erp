@@ -50,7 +50,10 @@ export async function getWarehouses() {
     const warehouses = await prisma.warehouse.findMany({
       orderBy: { createdAt: 'asc' },
     });
-    return warehouses;
+    return warehouses.map(w => ({
+      ...w,
+      customerId: w.customerId ?? undefined,
+    }));
   } catch (error) {
     throw new Error('Failed to fetch warehouses');
   }
@@ -61,7 +64,11 @@ export async function getWarehouseById(id: string) {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id },
     });
-    return warehouse;
+    if (!warehouse) return null;
+    return {
+      ...warehouse,
+      customerId: warehouse.customerId ?? undefined,
+    };
   } catch (error) {
     throw new Error('Failed to fetch warehouse');
   }

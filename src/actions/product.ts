@@ -79,12 +79,12 @@ export async function getProducts() {
       id: product.id,
       name: product.name,
       sku: product.sku,
-      barcode: product.barcode,
+      barcode: product.barcode ?? undefined,
       productType: product.productType,
       costPrice: Number(product.costPrice),
       sellPrice: Number(product.sellPrice),
-      image: product.image,
-      wooId: product.wooId,
+      image: product.image ?? undefined,
+      wooId: product.wooId ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching products:', error);

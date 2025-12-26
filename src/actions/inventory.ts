@@ -13,7 +13,13 @@ export async function getInventoryByProduct(productId: string) {
       where: { productId },
       include: { warehouse: true },
     });
-    return inventory;
+    return inventory.map(inv => ({
+      ...inv,
+      warehouse: {
+        ...inv.warehouse,
+        customerId: inv.warehouse.customerId ?? undefined,
+      },
+    }));
   } catch (error) {
     throw new Error('Failed to fetch inventory');
   }
@@ -26,7 +32,17 @@ export async function getInventoryByWarehouse(warehouseId: string) {
       include: { product: true },
       orderBy: { product: { name: 'asc' } }
     });
-    return inventory;
+    return inventory.map(inv => ({
+      ...inv,
+      product: {
+        ...inv.product,
+        costPrice: Number(inv.product.costPrice),
+        sellPrice: Number(inv.product.sellPrice),
+        image: inv.product.image ?? undefined,
+        wooId: inv.product.wooId ?? undefined,
+        barcode: inv.product.barcode ?? undefined,
+      },
+    }));
   } catch (error) {
     throw new Error('Failed to fetch warehouse inventory');
   }
