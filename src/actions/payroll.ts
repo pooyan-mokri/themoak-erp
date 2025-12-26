@@ -351,7 +351,7 @@ export async function getPayrollById(id: string) {
           ...p.account,
           balance: Number(p.account.balance),
         },
-        transaction: {
+        transaction: p.transaction ? {
           ...p.transaction,
           amount: Number(p.transaction.amount),
           amountInToman: Number(p.transaction.amountInToman),
@@ -365,7 +365,7 @@ export async function getPayrollById(id: string) {
           receiptUrl: p.transaction.receiptUrl ?? undefined,
           wooId: p.transaction.wooId ?? undefined,
           wooStatus: p.transaction.wooStatus ?? undefined,
-        },
+        } : undefined,
       })),
     };
   } catch (error) {
