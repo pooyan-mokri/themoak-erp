@@ -56,7 +56,7 @@ export async function createAsset(prevState: any, formData: FormData) {
         purchasePrice,
         salvageValue,
         usefulLife,
-        quantity: assetType === 'CONSUMABLE' ? quantity : null,
+        quantity: assetType === 'CONSUMABLE' ? quantity : undefined,
         depreciationMethod: DepreciationMethod.STRAIGHT_LINE,
         currentValue: purchasePrice, // Initially equal to purchase price
       },

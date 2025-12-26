@@ -283,27 +283,27 @@ export async function getPurchaseOrder(orderId: string) {
     const serializedOrder = {
       ...order,
       totalAmount: Number(order.totalAmount),
-      totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : null,
+      totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : undefined,
       items: order.items.map((item: OrderItem) => ({
         ...item,
         unitCost: Number(item.unitCost),
-        unitCostInToman: item.unitCostInToman ? Number(item.unitCostInToman) : null,
-        exchangeRateSnapshot: item.exchangeRateSnapshot ? Number(item.exchangeRateSnapshot) : null,
-        totalCostInToman: item.totalCostInToman ? Number(item.totalCostInToman) : null,
-        additionalCost: item.additionalCost ? Number(item.additionalCost) : null,
-        additionalCostInToman: item.additionalCostInToman ? Number(item.additionalCostInToman) : null,
+        unitCostInToman: item.unitCostInToman ? Number(item.unitCostInToman) : undefined,
+        exchangeRateSnapshot: item.exchangeRateSnapshot ? Number(item.exchangeRateSnapshot) : undefined,
+        totalCostInToman: item.totalCostInToman ? Number(item.totalCostInToman) : undefined,
+        additionalCost: item.additionalCost ? Number(item.additionalCost) : undefined,
+        additionalCostInToman: item.additionalCostInToman ? Number(item.additionalCostInToman) : undefined,
       })),
       additionalCosts: order.additionalCosts.map(cost => ({
         ...cost,
         amount: Number(cost.amount),
-        amountInToman: cost.amountInToman ? Number(cost.amountInToman) : null,
-        exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : null,
+        amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
+        exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
       })),
       arrivalAdditionalCosts: order.arrivalAdditionalCosts.map(cost => ({
         ...cost,
         amount: Number(cost.amount),
-        amountInToman: cost.amountInToman ? Number(cost.amountInToman) : null,
-        exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : null,
+        amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
+        exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
       })),
     };
 

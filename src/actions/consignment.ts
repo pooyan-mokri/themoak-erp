@@ -338,7 +338,7 @@ export async function getConsignmentPartners() {
             ...partner,
             customer: partner.customer ? {
                 ...partner.customer,
-                commissionRate: partner.customer.commissionRate ? Number(partner.customer.commissionRate) : null,
+                commissionRate: partner.customer.commissionRate ? Number(partner.customer.commissionRate) : undefined,
             } : null,
         }));
     } catch (error) {
@@ -357,7 +357,7 @@ export async function getConsignmentPartnerById(warehouseId: string) {
             ...warehouse,
             customer: {
                 ...warehouse.customer,
-                commissionRate: warehouse.customer.commissionRate ? Number(warehouse.customer.commissionRate) : null,
+                commissionRate: warehouse.customer.commissionRate ? Number(warehouse.customer.commissionRate) : undefined,
             },
         };
     } catch (error) {

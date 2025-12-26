@@ -323,7 +323,7 @@ export async function getMarketingCampaigns() {
 
     return campaigns.map((campaign) => ({
       ...campaign,
-      budget: campaign.budget ? Number(campaign.budget) : null,
+      budget: campaign.budget ? Number(campaign.budget) : undefined,
       spentAmount: Number(campaign.spentAmount),
     }));
   } catch (error) {

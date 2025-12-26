@@ -112,7 +112,7 @@ export async function getConsignmentReport() {
         customerId,
         commissionRate: partner.customer?.commissionRate
           ? Number(partner.customer.commissionRate)
-          : null,
+          : undefined,
         totalSales,
         totalPaid,
         totalDebt,
