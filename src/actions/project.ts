@@ -105,7 +105,7 @@ export async function getProjectById(id: string) {
     const users = userIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         })
       : [];
     
@@ -147,7 +147,7 @@ export async function getProjectsForCalendar() {
     const users = userIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         })
       : [];
 
