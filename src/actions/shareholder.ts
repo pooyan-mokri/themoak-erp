@@ -199,6 +199,10 @@ export async function getShareholders() {
     return shareholders.map((s) => ({
       ...s,
       percentage: Number(s.percentage),
+      phone: s.phone ?? undefined,
+      email: s.email ?? undefined,
+      address: s.address ?? undefined,
+      notes: s.notes ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching shareholders:', error);
@@ -222,6 +226,10 @@ export async function getShareholderById(id: string) {
     return {
       ...shareholder,
       percentage: Number(shareholder.percentage),
+      phone: shareholder.phone ?? undefined,
+      email: shareholder.email ?? undefined,
+      address: shareholder.address ?? undefined,
+      notes: shareholder.notes ?? undefined,
     };
   } catch (error) {
     console.error('Error fetching shareholder:', error);
@@ -543,6 +551,10 @@ export async function getShareholdersWithBalance() {
         return {
           ...shareholder,
           percentage: Number(shareholder.percentage),
+          phone: shareholder.phone ?? undefined,
+          email: shareholder.email ?? undefined,
+          address: shareholder.address ?? undefined,
+          notes: shareholder.notes ?? undefined,
           balance, // Positive = company owes, Negative = shareholder owes
         };
       })
