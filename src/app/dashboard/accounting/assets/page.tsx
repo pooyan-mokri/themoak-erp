@@ -4,10 +4,11 @@ import { FixedAsset } from '@/lib/types';
 import { PostDepreciationButton } from '@/components/accounting/post-depreciation-button';
 
 import { formatJalaliDate } from '@/lib/date-utils';
-type AssetWithCurrentValue = Omit<FixedAsset, 'currentValue' | 'purchasePrice' | 'salvageValue'> & { 
+type AssetWithCurrentValue = Omit<FixedAsset, 'currentValue' | 'purchasePrice' | 'salvageValue' | 'quantity'> & {
   currentValue: number;
   purchasePrice: number;
   salvageValue: number;
+  quantity?: number;
 };
 
 export default async function AssetsPage() {
