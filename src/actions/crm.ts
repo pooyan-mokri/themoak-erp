@@ -78,6 +78,12 @@ export async function getLeads() {
     return leads.map(lead => ({
       ...lead,
       expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+      customerId: lead.customerId ?? undefined,
+      company: lead.company ?? undefined,
+      phone: lead.phone ?? undefined,
+      email: lead.email ?? undefined,
+      source: lead.source ?? undefined,
+      notes: lead.notes ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching leads:', error);
@@ -97,6 +103,12 @@ export async function getLeadById(id: string) {
     return {
       ...lead,
       expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+      customerId: lead.customerId ?? undefined,
+      company: lead.company ?? undefined,
+      phone: lead.phone ?? undefined,
+      email: lead.email ?? undefined,
+      source: lead.source ?? undefined,
+      notes: lead.notes ?? undefined,
     };
   } catch (error) {
     console.error('Error fetching lead:', error);

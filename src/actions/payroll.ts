@@ -282,6 +282,23 @@ export async function getPayrolls(employeeId?: string, status?: string) {
       deductions: Number(p.deductions) || 0,
       netAmount: Number(p.netAmount),
       paidAmount: Number(p.paidAmount),
+      description: p.description ?? undefined,
+      employee: {
+        ...p.employee,
+        salary: Number(p.employee.salary),
+        userId: p.employee.userId ?? undefined,
+        nationalId: p.employee.nationalId ?? undefined,
+        phone: p.employee.phone ?? undefined,
+        email: p.employee.email ?? undefined,
+        address: p.employee.address ?? undefined,
+        position: p.employee.position ?? undefined,
+        hireDate: p.employee.hireDate ?? undefined,
+      },
+      payments: p.payments.map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount),
+        description: payment.description ?? undefined,
+      })),
     }));
   } catch (error) {
     console.error('Error fetching payrolls:', error);
@@ -314,9 +331,41 @@ export async function getPayrollById(id: string) {
       deductions: Number(payroll.deductions) || 0,
       netAmount: Number(payroll.netAmount),
       paidAmount: Number(payroll.paidAmount),
+      description: payroll.description ?? undefined,
+      employee: {
+        ...payroll.employee,
+        salary: Number(payroll.employee.salary),
+        userId: payroll.employee.userId ?? undefined,
+        nationalId: payroll.employee.nationalId ?? undefined,
+        phone: payroll.employee.phone ?? undefined,
+        email: payroll.employee.email ?? undefined,
+        address: payroll.employee.address ?? undefined,
+        position: payroll.employee.position ?? undefined,
+        hireDate: payroll.employee.hireDate ?? undefined,
+      },
       payments: payroll.payments.map((p) => ({
         ...p,
         amount: Number(p.amount),
+        description: p.description ?? undefined,
+        account: {
+          ...p.account,
+          balance: Number(p.account.balance),
+        },
+        transaction: {
+          ...p.transaction,
+          amount: Number(p.transaction.amount),
+          amountInToman: Number(p.transaction.amountInToman),
+          rateSnapshot: Number(p.transaction.rateSnapshot),
+          description: p.transaction.description ?? undefined,
+          category: p.transaction.category ?? undefined,
+          accountId: p.transaction.accountId ?? undefined,
+          projectId: p.transaction.projectId ?? undefined,
+          employeeId: p.transaction.employeeId ?? undefined,
+          shareholderId: p.transaction.shareholderId ?? undefined,
+          receiptUrl: p.transaction.receiptUrl ?? undefined,
+          wooId: p.transaction.wooId ?? undefined,
+          wooStatus: p.transaction.wooStatus ?? undefined,
+        },
       })),
     };
   } catch (error) {

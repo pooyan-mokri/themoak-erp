@@ -744,16 +744,43 @@ export async function getTransactions() {
       // Check if description contains a customer ID pattern (cuid format)
       const customerIdPattern = /سفارش فروش - مشتری: ([a-z0-9]{20,})/;
       const match = transaction.description?.match(customerIdPattern);
-      
+
+      let description = transaction.description;
       if (match && transactionIdToCustomerName.has(transaction.id)) {
         const customerName = transactionIdToCustomerName.get(transaction.id)!;
-        return {
-          ...transaction,
-          description: transaction.description?.replace(customerIdPattern, `سفارش فروش - مشتری: ${customerName}`) || transaction.description,
-        };
+        description = transaction.description?.replace(customerIdPattern, `سفارش فروش - مشتری: ${customerName}`) || transaction.description;
       }
-      
-      return transaction;
+
+      return {
+        ...transaction,
+        amount: Number(transaction.amount),
+        amountInToman: Number(transaction.amountInToman),
+        rateSnapshot: Number(transaction.rateSnapshot),
+        description: description ?? undefined,
+        category: transaction.category ?? undefined,
+        accountId: transaction.accountId ?? undefined,
+        projectId: transaction.projectId ?? undefined,
+        employeeId: transaction.employeeId ?? undefined,
+        shareholderId: transaction.shareholderId ?? undefined,
+        receiptUrl: transaction.receiptUrl ?? undefined,
+        wooId: transaction.wooId ?? undefined,
+        wooStatus: transaction.wooStatus ?? undefined,
+        account: transaction.account ? {
+          ...transaction.account,
+          balance: Number(transaction.account.balance),
+        } : undefined,
+        employee: transaction.employee ? {
+          ...transaction.employee,
+          salary: Number(transaction.employee.salary),
+          userId: transaction.employee.userId ?? undefined,
+          nationalId: transaction.employee.nationalId ?? undefined,
+          phone: transaction.employee.phone ?? undefined,
+          email: transaction.employee.email ?? undefined,
+          address: transaction.employee.address ?? undefined,
+          position: transaction.employee.position ?? undefined,
+          hireDate: transaction.employee.hireDate ?? undefined,
+        } : undefined,
+      };
     });
   } catch (error) {
     console.error('Error fetching transactions:', error);

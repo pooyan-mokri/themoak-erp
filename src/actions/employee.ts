@@ -217,6 +217,13 @@ export async function getEmployees() {
     return employees.map((e) => ({
       ...e,
       salary: Number(e.salary),
+      userId: e.userId ?? undefined,
+      nationalId: e.nationalId ?? undefined,
+      phone: e.phone ?? undefined,
+      email: e.email ?? undefined,
+      address: e.address ?? undefined,
+      position: e.position ?? undefined,
+      hireDate: e.hireDate ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching employees:', error);
@@ -235,6 +242,13 @@ export async function getEmployeeById(id: string) {
     return {
       ...employee,
       salary: Number(employee.salary),
+      userId: employee.userId ?? undefined,
+      nationalId: employee.nationalId ?? undefined,
+      phone: employee.phone ?? undefined,
+      email: employee.email ?? undefined,
+      address: employee.address ?? undefined,
+      position: employee.position ?? undefined,
+      hireDate: employee.hireDate ?? undefined,
     };
   } catch (error) {
     console.error('Error fetching employee:', error);
