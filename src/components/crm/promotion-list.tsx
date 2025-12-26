@@ -22,13 +22,13 @@ interface Promotion {
   name: string;
   description: string | null;
   type: string;
-  discountPercent: any | null;
-  discountAmount: any | null;
+  discountPercent?: number;
+  discountAmount?: number;
   startDate: Date;
   endDate: Date;
   isActive: boolean;
   usedCount: number;
-  maxUses: number | null;
+  maxUses?: number;
 }
 
 

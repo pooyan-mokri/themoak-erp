@@ -20,7 +20,7 @@ interface Campaign {
   type: string;
   startDate: Date;
   endDate: Date | null;
-  budget: number | null;
+  budget?: number;
   spentAmount: number;
   status: string;
   _count: {

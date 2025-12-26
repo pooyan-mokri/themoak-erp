@@ -28,7 +28,7 @@ interface PartnerEditFormProps {
       name: string;
       phone: string | null;
       address: string | null;
-      commissionRate: number | null;
+      commissionRate?: number;
     } | null;
   };
 }

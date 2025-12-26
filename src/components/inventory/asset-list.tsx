@@ -19,7 +19,7 @@ interface Asset {
   purchasePrice: number;
   salvageValue: number;
   usefulLife: number;
-  quantity: number | null;
+  quantity?: number;
   depreciationMethod: string;
   currentValue: number;
   createdAt: Date;

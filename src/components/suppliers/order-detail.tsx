@@ -38,6 +38,10 @@ interface PurchaseOrderItem {
   unitCost: number;
   currency: Currency;
   unitCostInToman?: number;
+  exchangeRateSnapshot?: number;
+  totalCostInToman?: number;
+  additionalCost?: number;
+  additionalCostInToman?: number;
   receivedQuantity: number;
   product: Product;
 }
@@ -48,6 +52,7 @@ interface PurchaseOrderAdditionalCost {
   amount: number;
   currency: Currency;
   amountInToman?: number;
+  exchangeRateSnapshot?: number;
 }
 
 interface PurchaseOrderArrivalCost {
@@ -56,6 +61,7 @@ interface PurchaseOrderArrivalCost {
   amount: number;
   currency: Currency;
   amountInToman?: number;
+  exchangeRateSnapshot?: number;
 }
 
 interface PurchaseOrder {
