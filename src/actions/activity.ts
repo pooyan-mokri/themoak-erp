@@ -30,11 +30,20 @@ export async function logActivity(userId: string | undefined, action: string, de
 
 export async function getRecentActivities() {
   try {
-    return await prisma.activityLog.findMany({
+    const activities = await prisma.activityLog.findMany({
       take: 20,
       orderBy: { createdAt: 'desc' },
       include: { user: true },
     });
+
+    return activities.map(activity => ({
+      ...activity,
+      userId: activity.userId ?? undefined,
+      user: activity.user ? {
+        ...activity.user,
+        phone: activity.user.phone ?? undefined,
+      } : null,
+    }));
   } catch (error) {
     return [];
   }

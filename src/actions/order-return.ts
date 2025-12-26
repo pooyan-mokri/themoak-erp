@@ -199,7 +199,40 @@ export async function getOrderReturns(orderId: string) {
 
     return returns.map((ret) => ({
       ...ret,
+      reason: ret.reason ?? undefined,
+      transactionId: ret.transactionId ?? undefined,
       refundAmount: Number(ret.refundAmount),
+      orderItem: ret.orderItem ? {
+        ...ret.orderItem,
+        price: Number(ret.orderItem.price),
+        product: ret.orderItem.product ? {
+          ...ret.orderItem.product,
+          costPrice: Number(ret.orderItem.product.costPrice),
+          sellPrice: Number(ret.orderItem.product.sellPrice),
+          image: ret.orderItem.product.image ?? undefined,
+          wooId: ret.orderItem.product.wooId ?? undefined,
+          barcode: ret.orderItem.product.barcode ?? undefined,
+        } : null,
+      } : null,
+      account: ret.account ? {
+        ...ret.account,
+        balance: Number(ret.account.balance),
+      } : null,
+      transaction: ret.transaction ? {
+        ...ret.transaction,
+        amount: Number(ret.transaction.amount),
+        amountInToman: Number(ret.transaction.amountInToman),
+        rateSnapshot: Number(ret.transaction.rateSnapshot),
+        accountId: ret.transaction.accountId ?? undefined,
+        projectId: ret.transaction.projectId ?? undefined,
+        description: ret.transaction.description ?? undefined,
+        category: ret.transaction.category ?? undefined,
+        wooId: ret.transaction.wooId ?? undefined,
+        wooStatus: ret.transaction.wooStatus ?? undefined,
+        receiptUrl: ret.transaction.receiptUrl ?? undefined,
+        shareholderId: ret.transaction.shareholderId ?? undefined,
+        employeeId: ret.transaction.employeeId ?? undefined,
+      } : null,
     }));
   } catch (error) {
     console.error('Error fetching order returns:', error);

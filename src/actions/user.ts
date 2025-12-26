@@ -21,7 +21,7 @@ const UserSchema = z.object({
 
 export async function getUsers() {
   try {
-    return await prisma.user.findMany({
+    const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -34,6 +34,11 @@ export async function getUsers() {
         // Exclude password
       }
     });
+
+    return users.map(user => ({
+      ...user,
+      phone: user.phone ?? undefined,
+    }));
   } catch (error) {
     return [];
   }

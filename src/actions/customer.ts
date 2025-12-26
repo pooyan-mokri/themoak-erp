@@ -223,6 +223,15 @@ export async function getCustomersWithDebt() {
 
       return {
         ...customer,
+        phone: customer.phone ?? undefined,
+        email: customer.email ?? undefined,
+        address: customer.address ?? undefined,
+        wooId: customer.wooId ?? undefined,
+        notes: customer.notes ?? undefined,
+        creditLimit: Number(customer.creditLimit),
+        segment: customer.segment ?? undefined,
+        taxId: customer.taxId ?? undefined,
+        commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
         totalDebt,
       };
     });
@@ -266,13 +275,97 @@ export async function getCustomerById(id: string) {
 
     // Calculate stats
     const totalOrders = customer.orders.length;
-    const totalSpent = customer.orders.reduce((sum, order) => 
+    const totalSpent = customer.orders.reduce((sum, order) =>
       sum + Number(order.paidAmount), 0
     );
     const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
 
     return {
       ...customer,
+      phone: customer.phone ?? undefined,
+      email: customer.email ?? undefined,
+      address: customer.address ?? undefined,
+      wooId: customer.wooId ?? undefined,
+      notes: customer.notes ?? undefined,
+      creditLimit: Number(customer.creditLimit),
+      segment: customer.segment ?? undefined,
+      taxId: customer.taxId ?? undefined,
+      commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
+      orders: customer.orders.map(order => ({
+        ...order,
+        customerId: order.customerId ?? undefined,
+        transactionId: order.transactionId ?? undefined,
+        wooId: order.wooId ?? undefined,
+        invoiceId: order.invoiceId ?? undefined,
+        totalAmount: Number(order.totalAmount),
+        discount: Number(order.discount),
+        paidAmount: Number(order.paidAmount),
+        items: order.items.map(item => ({
+          ...item,
+          price: Number(item.price),
+          product: order.items[0].product ? {
+            ...item.product,
+            costPrice: Number(item.product.costPrice),
+            sellPrice: Number(item.product.sellPrice),
+            image: item.product.image ?? undefined,
+            wooId: item.product.wooId ?? undefined,
+            barcode: item.product.barcode ?? undefined,
+          } : null,
+        })),
+        transaction: order.transaction ? {
+          ...order.transaction,
+          amount: Number(order.transaction.amount),
+          amountInToman: Number(order.transaction.amountInToman),
+          rateSnapshot: Number(order.transaction.rateSnapshot),
+          accountId: order.transaction.accountId ?? undefined,
+          projectId: order.transaction.projectId ?? undefined,
+          description: order.transaction.description ?? undefined,
+          category: order.transaction.category ?? undefined,
+          wooId: order.transaction.wooId ?? undefined,
+          wooStatus: order.transaction.wooStatus ?? undefined,
+          receiptUrl: order.transaction.receiptUrl ?? undefined,
+          shareholderId: order.transaction.shareholderId ?? undefined,
+          employeeId: order.transaction.employeeId ?? undefined,
+          account: order.transaction.account ? {
+            ...order.transaction.account,
+            balance: Number(order.transaction.account.balance),
+          } : null,
+        } : null,
+        invoice: order.invoice ? {
+          ...order.invoice,
+          subtotal: Number(order.invoice.subtotal),
+          discount: Number(order.invoice.discount),
+          tax: Number(order.invoice.tax),
+          total: Number(order.invoice.total),
+          paidAmount: Number(order.invoice.paidAmount),
+          notes: order.invoice.notes ?? undefined,
+        } : null,
+      })),
+      leads: customer.leads.map(lead => ({
+        ...lead,
+        company: lead.company ?? undefined,
+        phone: lead.phone ?? undefined,
+        email: lead.email ?? undefined,
+        source: lead.source ?? undefined,
+        customerId: lead.customerId ?? undefined,
+        assignedTo: lead.assignedTo ?? undefined,
+        expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+        notes: lead.notes ?? undefined,
+      })),
+      deals: customer.deals.map(deal => ({
+        ...deal,
+        value: Number(deal.value),
+        expectedClose: deal.expectedClose ?? undefined,
+        actualClose: deal.actualClose ?? undefined,
+        lostReason: deal.lostReason ?? undefined,
+        assignedTo: deal.assignedTo ?? undefined,
+        notes: deal.notes ?? undefined,
+      })),
+      tickets: customer.tickets.map(ticket => ({
+        ...ticket,
+        assignedTo: ticket.assignedTo ?? undefined,
+        resolution: ticket.resolution ?? undefined,
+      })),
       stats: {
         totalDebt,
         totalOrders,

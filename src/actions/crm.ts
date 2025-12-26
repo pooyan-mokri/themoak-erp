@@ -328,7 +328,7 @@ export async function createTicket(prevState: ActionState, formData: FormData): 
 
 export async function getTickets() {
   try {
-    return await prisma.supportTicket.findMany({
+    const tickets = await prisma.supportTicket.findMany({
       include: {
         customer: {
           select: {
@@ -340,6 +340,16 @@ export async function getTickets() {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return tickets.map(ticket => ({
+      ...ticket,
+      assignedTo: ticket.assignedTo ?? undefined,
+      resolution: ticket.resolution ?? undefined,
+      customer: ticket.customer ? {
+        ...ticket.customer,
+        phone: ticket.customer.phone ?? undefined,
+      } : null,
+    }));
   } catch (error) {
     console.error('Error fetching tickets:', error);
     return [];
@@ -348,12 +358,32 @@ export async function getTickets() {
 
 export async function getTicketById(id: string) {
   try {
-    return await prisma.supportTicket.findUnique({
+    const ticket = await prisma.supportTicket.findUnique({
       where: { id },
       include: {
         customer: true,
       }
     });
+
+    if (!ticket) return null;
+
+    return {
+      ...ticket,
+      assignedTo: ticket.assignedTo ?? undefined,
+      resolution: ticket.resolution ?? undefined,
+      customer: ticket.customer ? {
+        ...ticket.customer,
+        phone: ticket.customer.phone ?? undefined,
+        email: ticket.customer.email ?? undefined,
+        address: ticket.customer.address ?? undefined,
+        wooId: ticket.customer.wooId ?? undefined,
+        notes: ticket.customer.notes ?? undefined,
+        creditLimit: Number(ticket.customer.creditLimit),
+        segment: ticket.customer.segment ?? undefined,
+        taxId: ticket.customer.taxId ?? undefined,
+        commissionRate: ticket.customer.commissionRate ? Number(ticket.customer.commissionRate) : undefined,
+      } : null,
+    };
   } catch (error) {
     console.error('Error fetching ticket:', error);
     return null;

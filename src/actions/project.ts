@@ -77,7 +77,13 @@ export async function getProjects() {
         },
       },
     });
-    return projects;
+    return projects.map(project => ({
+      ...project,
+      budget: project.budget ? Number(project.budget) : undefined,
+      description: project.description ?? undefined,
+      endDate: project.endDate ?? undefined,
+      startDate: project.startDate ?? undefined,
+    }));
   } catch (error) {
     throw new Error('Failed to fetch projects');
   }
@@ -156,8 +162,16 @@ export async function getProjectsForCalendar() {
     // Map projects with user information
     return projects.map((project) => ({
       ...project,
+      budget: project.budget ? Number(project.budget) : undefined,
+      description: project.description ?? undefined,
+      endDate: project.endDate ?? undefined,
+      startDate: project.startDate ?? undefined,
       tasks: project.tasks.map((task) => ({
         ...task,
+        description: task.description ?? undefined,
+        dueDate: task.dueDate ?? undefined,
+        endDate: task.endDate ?? undefined,
+        startDate: task.startDate ?? undefined,
         assignedTo: task.assignedTo ? userMap.get(task.assignedTo) : undefined,
         project: {
           id: project.id,
