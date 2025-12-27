@@ -8,12 +8,12 @@ import { getEmployees } from '@/actions/employee';
 interface Employee {
   id: string;
   name: string;
-  nationalId: string | null;
-  phone: string | null;
-  email: string | null;
-  position: string | null;
+  nationalId?: string;
+  phone?: string;
+  email?: string;
+  position?: string;
   salary: number;
-  hireDate: Date | null;
+  hireDate?: Date;
 }
 
 interface EmployeesWrapperProps {
