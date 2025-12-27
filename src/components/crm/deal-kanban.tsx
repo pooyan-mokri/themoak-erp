@@ -27,7 +27,7 @@ import Link from 'next/link';
 interface Deal {
   id: string;
   title: string;
-  customer: {
+  customer?: {
     name: string;
   };
   stage: string;
@@ -211,7 +211,7 @@ function DealCard({ deal, isOverlay }: { deal: Deal; isOverlay?: boolean }) {
     <Card className={isOverlay ? 'rotate-3 opacity-80' : 'cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow'}>
       <CardContent className="p-3">
         <div className="font-medium text-sm mb-1">{deal.title}</div>
-        <div className="text-xs text-muted-foreground mb-2">{deal.customer.name}</div>
+        <div className="text-xs text-muted-foreground mb-2">{deal.customer?.name}</div>
         <div className="flex justify-between items-center">
           <span className="text-sm font-medium text-green-600">
             {new Intl.NumberFormat('fa-IR').format(Number(deal.value))} ت
