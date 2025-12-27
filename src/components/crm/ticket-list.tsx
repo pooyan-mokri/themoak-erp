@@ -18,7 +18,7 @@ interface Ticket {
   id: string;
   ticketNumber: number;
   subject: string;
-  customer: {
+  customer?: {
     name: string;
   };
   priority: string;
@@ -87,7 +87,7 @@ export function TicketList({ tickets }: TicketListProps) {
               <TableRow key={ticket.id}>
                 <TableCell className="font-medium">#{ticket.ticketNumber}</TableCell>
                 <TableCell>{ticket.subject}</TableCell>
-                <TableCell>{ticket.customer.name}</TableCell>
+                <TableCell>{ticket.customer?.name || '-'}</TableCell>
                 <TableCell>
                   <Badge variant={getPriorityColor(ticket.priority)}>
                     {getPriorityLabel(ticket.priority)}
