@@ -29,7 +29,7 @@ interface Account {
 }
 
 export function EmployeeDebtList({ debts, accounts }: { debts: Debt[], accounts: Account[] }) {
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>(undefined);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handlePayDebt = (employee: Employee) => {

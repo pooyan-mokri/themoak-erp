@@ -81,8 +81,8 @@ interface PostAuditTabProps {
 
 export function PostAuditTab({ audit }: PostAuditTabProps) {
   const router = useRouter();
-  const [discrepancyReport, setDiscrepancyReport] = useState<DiscrepancyReport | null>(null);
-  const [performanceReport, setPerformanceReport] = useState<PerformanceReport | null>(null);
+  const [discrepancyReport, setDiscrepancyReport] = useState<DiscrepancyReport | undefined>(undefined);
+  const [performanceReport, setPerformanceReport] = useState<PerformanceReport | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

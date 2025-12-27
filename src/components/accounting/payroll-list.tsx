@@ -41,7 +41,7 @@ interface PayrollListProps {
 export function PayrollList({ payrolls: initialPayrolls, accounts }: PayrollListProps) {
   const [payrolls, setPayrolls] = useState(initialPayrolls);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null);
+  const [selectedPayroll, setSelectedPayroll] = useState<Payroll | undefined>(undefined);
 
   // Update payrolls when initialPayrolls prop changes
   useEffect(() => {

@@ -40,7 +40,7 @@ interface LoanListProps {
 export function LoanList({ loans: initialLoans, accounts }: LoanListProps) {
   const [loans] = useState(initialLoans);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
+  const [selectedLoan, setSelectedLoan] = useState<Loan | undefined>(undefined);
 
   const handlePayment = (loan: Loan) => {
     setSelectedLoan(loan);

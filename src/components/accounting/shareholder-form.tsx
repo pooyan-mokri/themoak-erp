@@ -24,7 +24,7 @@ interface ShareholderFormProps {
 export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps) {
   const updateShareholderWithId = initialData
     ? updateShareholder.bind(null, initialData.id)
-    : null;
+    : undefined;
   const action = initialData ? updateShareholderWithId : createShareholder;
 
   // @ts-ignore

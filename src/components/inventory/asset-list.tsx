@@ -31,7 +31,7 @@ interface AssetListProps {
 
 export function AssetList({ assets }: AssetListProps) {
   const router = useRouter();
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | undefined>(undefined);
 
   const handleDelete = async (assetId: string) => {
     if (confirm('آیا از حذف این دارایی اطمینان دارید؟')) {

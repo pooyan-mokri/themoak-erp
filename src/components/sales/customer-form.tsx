@@ -22,7 +22,7 @@ interface CustomerFormProps {
 }
 
 export function CustomerForm({ initialData, onSuccess }: CustomerFormProps) {
-  const updateCustomerWithId = initialData ? updateCustomer.bind(null, initialData.id) : null;
+  const updateCustomerWithId = initialData ? updateCustomer.bind(null, initialData.id) : undefined;
   const action = initialData ? updateCustomerWithId : createCustomer;
   
   // @ts-ignore

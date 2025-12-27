@@ -12,8 +12,8 @@ interface DashboardBreadcrumbProps {
 export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
   const pathname = usePathname();
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
-  const [productName, setProductName] = useState<string | null>(null);
-  const [warehouseName, setWarehouseName] = useState<string | null>(null);
+  const [productName, setProductName] = useState<string | undefined>(undefined);
+  const [warehouseName, setWarehouseName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     // Check if we're on a product detail page (with or without /barcode)
@@ -27,7 +27,7 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
       // Extract product ID from pathname
       const segments = pathname.split('/').filter(Boolean);
       const productIdIndex = segments.indexOf('products');
-      const productId = productIdIndex !== -1 && segments[productIdIndex + 1] ? segments[productIdIndex + 1] : null;
+      const productId = productIdIndex !== -1 && segments[productIdIndex + 1] ? segments[productIdIndex + 1] : undefined;
       
       if (productId) {
         // Fetch product name from API
@@ -43,14 +43,14 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
           });
       }
     } else {
-      setProductName(null);
+      setProductName(undefined);
     }
 
     if (isWarehouseDetailPage && !customLabel) {
       // Extract warehouse ID from pathname
       const segments = pathname.split('/').filter(Boolean);
       const warehouseIdIndex = segments.indexOf('warehouses');
-      const warehouseId = warehouseIdIndex !== -1 && segments[warehouseIdIndex + 1] ? segments[warehouseIdIndex + 1] : null;
+      const warehouseId = warehouseIdIndex !== -1 && segments[warehouseIdIndex + 1] ? segments[warehouseIdIndex + 1] : undefined;
       
       if (warehouseId) {
         // Fetch warehouse name from API
@@ -66,7 +66,7 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
           });
       }
     } else {
-      setWarehouseName(null);
+      setWarehouseName(undefined);
     }
   }, [pathname, customLabel]);
 
@@ -104,7 +104,7 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
       // Handle product detail page or barcode page with fetched productName
       const segments = pathname.split('/').filter(Boolean);
       const productIdIndex = segments.indexOf('products');
-      const productId = productIdIndex !== -1 && segments[productIdIndex + 1] ? segments[productIdIndex + 1] : null;
+      const productId = productIdIndex !== -1 && segments[productIdIndex + 1] ? segments[productIdIndex + 1] : undefined;
       
       if (productId) {
         // Get parent breadcrumbs (up to products)
@@ -138,7 +138,7 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
       // Handle warehouse detail page with fetched warehouseName
       const segments = pathname.split('/').filter(Boolean);
       const warehouseIdIndex = segments.indexOf('warehouses');
-      const warehouseId = warehouseIdIndex !== -1 && segments[warehouseIdIndex + 1] ? segments[warehouseIdIndex + 1] : null;
+      const warehouseId = warehouseIdIndex !== -1 && segments[warehouseIdIndex + 1] ? segments[warehouseIdIndex + 1] : undefined;
       
       if (warehouseId) {
         // Get parent breadcrumbs (up to warehouses)

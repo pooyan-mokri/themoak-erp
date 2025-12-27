@@ -1,7 +1,7 @@
 /**
  * Helper function to safely serialize dates for client components
  */
-export function serializeDate(date: Date | string | null | undefined): string | undefined {
+export function serializeDate(date: Date | string | undefined): string | undefined {
   if (!date) return undefined;
   try {
     if (date instanceof Date) {

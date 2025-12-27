@@ -43,8 +43,8 @@ interface ShareholderListProps {
 export function ShareholderList({ shareholders: initialShareholders }: ShareholderListProps) {
   const [shareholders, setShareholders] = useState(initialShareholders);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [shareholderToDelete, setShareholderToDelete] = useState<string | null>(null);
-  const [editShareholder, setEditShareholder] = useState<Shareholder | null>(null);
+  const [shareholderToDelete, setShareholderToDelete] = useState<string | undefined>(undefined);
+  const [editShareholder, setEditShareholder] = useState<Shareholder | undefined>(undefined);
 
   const handleDelete = async (id: string) => {
     setShareholderToDelete(id);

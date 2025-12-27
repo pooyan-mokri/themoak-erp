@@ -19,8 +19,8 @@ export default function WooCommercePage() {
     success: boolean;
     message: string;
     details?: any;
-  } | null>(null);
-  const [debugResult, setDebugResult] = useState<any>(null);
+  } | undefined>(undefined);
+  const [debugResult, setDebugResult] = useState<any>(undefined);
 
   const handleSyncProducts = async () => {
     setIsSyncingProducts(true);

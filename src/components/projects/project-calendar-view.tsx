@@ -153,8 +153,8 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
     const adjustedFirstDay = firstDayWeekday === 6 ? 0 : firstDayWeekday + 1;
 
     // Convert project dates to Date objects
-    const startDate = projectStartDate ? (typeof projectStartDate === 'string' ? new Date(projectStartDate) : projectStartDate) : null;
-    const endDate = projectEndDate ? (typeof projectEndDate === 'string' ? new Date(projectEndDate) : projectEndDate) : null;
+    const startDate = projectStartDate ? (typeof projectStartDate === 'string' ? new Date(projectStartDate) : projectStartDate) : undefined;
+    const endDate = projectEndDate ? (typeof projectEndDate === 'string' ? new Date(projectEndDate) : projectEndDate) : undefined;
 
     const days: Array<{
       date: moment.Moment;

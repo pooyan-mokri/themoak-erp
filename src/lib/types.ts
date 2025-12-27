@@ -10,7 +10,7 @@ export interface ActionResult<T = void> {
   data?: T;
 }
 
-export type ActionState<T = void> = ActionResult<T> | null;
+export type ActionState<T = void> = ActionResult<T> | undefined;
 
 // Error handling types
 export interface ValidationError {

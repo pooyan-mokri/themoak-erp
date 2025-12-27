@@ -69,7 +69,7 @@ export function DataTable<T extends Record<string, any>>({
 }: DataTableProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortConfig, setSortConfig] = useState<SortConfig<T> | null>(defaultSort || null);
+  const [sortConfig, setSortConfig] = useState<SortConfig<T> | undefined>(defaultSort || undefined);
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
 
   // Filter data

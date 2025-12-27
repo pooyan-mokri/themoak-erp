@@ -24,7 +24,7 @@ export interface BarcodeScannerHandle {
 const BarcodeScannerComponent = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
   ({ onScan, onClose }, ref) => {
     const [isScanning, setIsScanning] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | undefined>(undefined);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
     const scannerRef = useRef<any | null>(null);
     const isScannerStartedRef = useRef<boolean>(false);

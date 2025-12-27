@@ -47,7 +47,7 @@ interface EmployeeListProps {
 export function EmployeeList({ employees: initialEmployees }: EmployeeListProps) {
   const [employees, setEmployees] = useState(initialEmployees);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>(undefined);
 
   // Update employees when initialEmployees prop changes
   useEffect(() => {

@@ -11,7 +11,7 @@ export async function getSetting(key: string) {
     const setting = await prisma.systemSetting.findUnique({
       where: { key },
     });
-    return setting?.value ? JSON.parse(setting.value) : null;
+    return setting?.value ? JSON.parse(setting.value) : undefined;
   } catch (error) {
     console.error(`Error fetching setting ${key}:`, error);
     return undefined;

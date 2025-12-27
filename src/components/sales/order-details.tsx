@@ -109,7 +109,7 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
   const router = useRouter();
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<OrderDetailsProps['order']['items'][0] | null>(null);
+  const [selectedItem, setSelectedItem] = useState<OrderDetailsProps['order']['items'][0] | undefined>(undefined);
 
   const handleReturnClick = (item: OrderDetailsProps['order']['items'][0]) => {
     setSelectedItem(item);

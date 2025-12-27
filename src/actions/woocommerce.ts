@@ -566,7 +566,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                         });
                         const exactMatchBySku = item.sku ? await prisma.product.findFirst({
                             where: { sku: item.sku }
-                        }) : null;
+                        }) : undefined;
                         
                         console.log(`[PROCESS] جستجوی دقیق: wooId=${item.product_id} -> ${exactMatch ? 'یافت شد' : 'یافت نشد'}, sku=${item.sku || 'null'} -> ${exactMatchBySku ? 'یافت شد' : 'یافت نشد'}`);
                         

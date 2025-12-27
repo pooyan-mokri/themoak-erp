@@ -133,8 +133,8 @@ export function JalaliDatePicker({
   className,
   placeholder = 'انتخاب تاریخ...'
 }: JalaliDatePickerProps) {
-  const [selectedDate, setSelectedDate] = useState<Date | null>(
-    defaultValue ? (typeof defaultValue === 'string' ? new Date(defaultValue) : defaultValue) : null
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+    defaultValue ? (typeof defaultValue === 'string' ? new Date(defaultValue) : defaultValue) : undefined
   );
   const [open, setOpen] = useState(false);
 

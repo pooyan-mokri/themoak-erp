@@ -23,7 +23,7 @@ interface AccountFormProps {
 }
 
 export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
-  const updateAccountWithId = initialData ? updateAccount.bind(null, initialData.id) : null;
+  const updateAccountWithId = initialData ? updateAccount.bind(null, initialData.id) : undefined;
   const action = initialData ? updateAccountWithId : createAccount;
   
   // @ts-ignore

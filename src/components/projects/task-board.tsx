@@ -85,7 +85,7 @@ function TaskColumn({ id, title, tasks, projectId, users }: TaskColumnProps) {
 }
 
 export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [activeTask, setActiveTask] = useState<Task | undefined>(undefined);
   const [optimisticTasks, setOptimisticTasks] = useState(tasks);
 
   // Debug: Log tasks

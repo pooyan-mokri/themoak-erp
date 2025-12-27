@@ -20,7 +20,7 @@ const ProductSchema = z.object({
 
 export async function createProduct(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const imageValue = formData.get('image');
-  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : null;
+  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : undefined;
 
   const validatedFields = ProductSchema.safeParse({
     name: formData.get('name'),
@@ -219,7 +219,7 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
 
 export async function updateProduct(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const imageValue = formData.get('image');
-  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : null;
+  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : undefined;
 
   const validatedFields = ProductSchema.safeParse({
     name: formData.get('name'),

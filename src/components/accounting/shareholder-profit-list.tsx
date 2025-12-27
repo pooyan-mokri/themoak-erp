@@ -41,7 +41,7 @@ interface ShareholderProfitListProps {
 export function ShareholderProfitList({ profits: initialProfits, accounts }: ShareholderProfitListProps) {
   const [profits] = useState(initialProfits);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
-  const [selectedProfit, setSelectedProfit] = useState<ShareholderProfit | null>(null);
+  const [selectedProfit, setSelectedProfit] = useState<ShareholderProfit | undefined>(undefined);
 
   const handleWithdraw = (profit: ShareholderProfit) => {
     setSelectedProfit(profit);

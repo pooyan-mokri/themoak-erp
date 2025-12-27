@@ -50,7 +50,7 @@ const STAGES = [
 
 export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
   const [deals, setDeals] = useState(initialDeals);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | undefined>(undefined);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -106,7 +106,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
   const getDealsByStage = (stage: string) =>
     deals.filter(deal => deal.stage === stage);
 
-  const activeDeal = activeId ? deals.find(d => d.id === activeId) : null;
+  const activeDeal = activeId ? deals.find(d => d.id === activeId) : undefined;
 
   return (
     <DndContext

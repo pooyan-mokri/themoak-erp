@@ -29,13 +29,13 @@ interface ProductFormProps {
 }
 
 export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
-  const updateProductWithId = initialData ? updateProduct.bind(null, initialData.id) : null;
+  const updateProductWithId = initialData ? updateProduct.bind(null, initialData.id) : undefined;
   const action = initialData ? updateProductWithId : createProduct;
   
   const [productType, setProductType] = useState<string>(
     initialData?.productType || 'SALEABLE'
   );
-  const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image || null);
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initialData?.image || undefined);
   
   // @ts-ignore
   const [state, dispatch] = useFormState(action, initialState);
@@ -46,7 +46,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
       setProductType(initialData.productType);
     }
     if (initialData?.image !== undefined) {
-      setImageUrl(initialData.image || null);
+      setImageUrl(initialData.image || undefined);
     }
   }, [initialData]);
 

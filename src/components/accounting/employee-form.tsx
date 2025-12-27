@@ -27,7 +27,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
   const router = useRouter();
   const updateEmployeeWithId = initialData
     ? updateEmployee.bind(null, initialData.id)
-    : null;
+    : undefined;
   const action = initialData ? updateEmployeeWithId : createEmployee;
 
   // @ts-ignore

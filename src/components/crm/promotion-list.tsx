@@ -37,7 +37,7 @@ interface PromotionListProps {
 }
 
 export function PromotionList({ promotions }: PromotionListProps) {
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | undefined>(undefined);
 
   const handleDelete = async (id: string) => {
     if (!confirm('آیا از حذف این کد تخفیف اطمینان دارید؟')) return;
