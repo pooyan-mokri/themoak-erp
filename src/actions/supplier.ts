@@ -47,7 +47,6 @@ export async function getSuppliers() {
       phone: supplier.phone ?? undefined,
       email: supplier.email ?? undefined,
       address: supplier.address ?? undefined,
-      notes: supplier.notes ?? undefined,
     }));
     return { success: true, data: serializedSuppliers };
   } catch (error) {
