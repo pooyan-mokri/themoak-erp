@@ -255,7 +255,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
           amount: new Prisma.Decimal(amount),
           accountId,
           transactionId: transaction.id,
-          description: description || null,
+          description: description || undefined,
           date: transactionDate,
         },
       });

@@ -238,7 +238,7 @@ export async function createTask(prevState: ActionState, formData: FormData): Pr
         startDate: startDate && startDate.trim() ? new Date(startDate) : undefined,
         dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : undefined,
         projectId,
-        assignedTo: assignedTo || null,
+        assignedTo: assignedTo || undefined,
       },
     });
   } catch (error) {
@@ -382,14 +382,14 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         priority,
         startDate: startDate && startDate.trim() ? new Date(startDate) : null,
         dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : null,
-        assignedTo: assignedTo || null,
+        assignedTo: assignedTo || undefined,
     });
 
     try {
         // Prepare data for update
         const updateData: Record<string, unknown> = {
             title,
-            description: description || null,
+            description: description || undefined,
             status,
             priority,
         };
@@ -497,7 +497,7 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         
         // Add assignedTo if it's provided
         if (finalUpdateData.assignedTo !== undefined) {
-            updatePayload.assignedTo = finalUpdateData.assignedTo || null;
+            updatePayload.assignedTo = finalUpdateData.assignedTo || undefined;
         }
         
         console.log('Final update payload:', JSON.stringify(updatePayload, null, 2));

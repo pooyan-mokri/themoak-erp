@@ -68,10 +68,10 @@ export async function createShareholder(prevState: ActionState, formData: FormDa
       data: {
         name,
         percentage: new Prisma.Decimal(percentage),
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        notes: notes || null,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        notes: notes || undefined,
       },
     });
 
@@ -136,10 +136,10 @@ export async function updateShareholder(id: string, prevState: ActionState, form
       data: {
         name,
         percentage: new Prisma.Decimal(percentage),
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        notes: notes || null,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        notes: notes || undefined,
       },
     });
 

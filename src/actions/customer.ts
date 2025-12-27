@@ -37,7 +37,7 @@ export async function createCustomer(prevState: any, formData: FormData) {
       data: {
         name,
         phone,
-        email: email || null,
+        email: email || undefined,
         address,
       },
     });
@@ -80,7 +80,7 @@ export async function updateCustomer(id: string, prevState: any, formData: FormD
       data: {
         name,
         phone,
-        email: email || null,
+        email: email || undefined,
         address,
       },
     });
@@ -490,7 +490,7 @@ export async function updateCustomerCredit(id: string, creditLimit: number, paym
   }
 }
 
-export async function updateCustomerSegment(id: string, segment: string | null) {
+export async function updateCustomerSegment(id: string, segment?: string) {
   try {
     await prisma.customer.update({
       where: { id },

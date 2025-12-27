@@ -328,8 +328,8 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
             category: category,
             description: description ? `${category} - ${description} (پرداخت شده توسط: ${employee.name})` : `${category} - پرداخت شده توسط: ${employee.name}`,
             date: date ? new Date(date) : new Date(),
-            projectId: projectId || null,
-            receiptUrl: receiptUrl || null,
+            projectId: projectId || undefined,
+            receiptUrl: receiptUrl || undefined,
           }
         });
         // No account balance update needed - this creates a payable (liability)
@@ -362,8 +362,8 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
             category: category,
             description: description ? `${category} - ${description}` : category,
             date: date ? new Date(date) : new Date(),
-            projectId: projectId || null,
-            receiptUrl: receiptUrl || null,
+            projectId: projectId || undefined,
+            receiptUrl: receiptUrl || undefined,
           }
         });
 

@@ -66,7 +66,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
         amount: new Prisma.Decimal(amount),
         remaining: new Prisma.Decimal(amount),
         interestRate: interestRate ? new Prisma.Decimal(interestRate) : new Prisma.Decimal(0),
-        description: description || null,
+        description: description || undefined,
         dueDate: dueDate ? new Date(dueDate) : null,
         status: 'ACTIVE',
       },
@@ -192,7 +192,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
           interest: new Prisma.Decimal(interestAmount),
           accountId,
           transactionId: transaction.id,
-          description: description || null,
+          description: description || undefined,
           date: transactionDate,
         },
       });

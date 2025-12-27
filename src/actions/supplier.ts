@@ -311,11 +311,11 @@ export async function getPurchaseOrder(orderId: string) {
 
     // Convert Decimal fields to numbers for client-side serialization
     type OrderItem = typeof order.items[0] & {
-      unitCostInToman?: Prisma.Decimal | null;
-      exchangeRateSnapshot?: Prisma.Decimal | null;
-      totalCostInToman?: Prisma.Decimal | null;
-      additionalCost?: Prisma.Decimal | null;
-      additionalCostInToman?: Prisma.Decimal | null;
+      unitCostInToman?: Prisma.Decimal;
+      exchangeRateSnapshot?: Prisma.Decimal;
+      totalCostInToman?: Prisma.Decimal;
+      additionalCost?: Prisma.Decimal;
+      additionalCostInToman?: Prisma.Decimal;
     };
 
     const serializedOrder = {

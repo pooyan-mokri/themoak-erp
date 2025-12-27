@@ -54,7 +54,7 @@ export async function createProduct(prevState: ActionState, formData: FormData):
         productType,
         costPrice,
         sellPrice,
-        image: validatedImage || null,
+        image: validatedImage || undefined,
         wooId,
       },
     });
@@ -249,7 +249,7 @@ export async function updateProduct(id: string, prevState: ActionState, formData
         productType,
         costPrice,
         sellPrice,
-        image: validatedImage || null,
+        image: validatedImage || undefined,
         wooId,
       },
     });

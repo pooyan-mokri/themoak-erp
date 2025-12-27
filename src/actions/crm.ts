@@ -47,7 +47,7 @@ export async function createLead(prevState: ActionState, formData: FormData): Pr
         name,
         company,
         phone,
-        email: email || null,
+        email: email || undefined,
         source,
         expectedValue,
         notes,

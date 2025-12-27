@@ -92,7 +92,7 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
         paidAmount: new Prisma.Decimal(0),
         periodMonth,
         periodYear,
-        description: description || null,
+        description: description || undefined,
         status: 'PENDING',
       },
     });
@@ -212,7 +212,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
           amount: new Prisma.Decimal(amount),
           accountId,
           transactionId: transaction.id,
-          description: description || null,
+          description: description || undefined,
           date: transactionDate,
         },
       });

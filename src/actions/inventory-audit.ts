@@ -15,7 +15,7 @@ function generateAuditNumber(): string {
 }
 
 // Generate unique barcode for tags (if product doesn't have barcode, generate one)
-function generateTagBarcode(auditId: string, index: number, productBarcode?: string | null): string {
+function generateTagBarcode(auditId: string, index: number, productBarcode?: string): string {
   // Use product barcode if available, otherwise generate tag barcode
   if (productBarcode) {
     return productBarcode;
@@ -78,7 +78,7 @@ export async function createInventoryAudit(
       data: {
         auditNumber,
         warehouseId,
-        description: description || null,
+        description: description || undefined,
         status: 'PLANNED',
         createdBy: session.user.id,
       },
@@ -214,7 +214,7 @@ export async function generateAuditTags(
         auditId,
         barcode,
         tagType,
-        productId: item?.productId || null,
+        productId: item?.productId || undefined,
         createdAt: new Date(),
       });
     }

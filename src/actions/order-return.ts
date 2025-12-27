@@ -101,7 +101,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           orderId,
           orderItemId,
           quantity,
-          reason: reason || null,
+          reason: reason || undefined,
           refundAmount: new Prisma.Decimal(refundAmount),
           accountId,
           transactionId: transaction.id,

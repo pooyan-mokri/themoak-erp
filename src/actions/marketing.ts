@@ -189,11 +189,11 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
             recipientName: recipientName,
             accountId,
             transactionId: i === 0 ? transaction.id : null, // Only first item gets transactionId
-            campaignId: campaignId || null,
+            campaignId: campaignId || undefined,
             costPrice: new Prisma.Decimal(item.costPrice),
             totalCost: new Prisma.Decimal(item.itemCost),
-            reason: reason || null,
-            notes: notes || null,
+            reason: reason || undefined,
+            notes: notes || undefined,
             date: transactionDate,
           },
         });
@@ -304,7 +304,7 @@ export async function createMarketingCampaign(prevState: ActionState, formData: 
     await prisma.marketingCampaign.create({
       data: {
         name,
-        description: description || null,
+        description: description || undefined,
         type,
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,

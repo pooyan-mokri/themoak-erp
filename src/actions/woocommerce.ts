@@ -86,7 +86,7 @@ interface WooProduct {
   id: number | string;
   name?: string;
   price?: string | number;
-  stock_quantity?: number | null;
+  stock_quantity?: number;
   sku?: string;
   images?: Array<{ src?: string }>;
 }
@@ -394,7 +394,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             
             console.log(`[PROCESS] پردازش سفارش جدید WooCommerce #${order.number} (ID: ${order.id})... (${processedCount}/${wooOrders.length})`);
             // 1. Find or Create Customer
-            let customerId: string | null = null;
+            let customerId: string | undefined = undefined;
             if (order.billing?.email) {
                 const existingCustomer = await prisma.customer.findFirst({
                     where: { 
@@ -949,16 +949,16 @@ export async function debugProductMatching(): Promise<ActionResult<{
   };
   productsInDatabase?: Array<{
     id: string;
-    wooId: number | null;
+    wooId?: number;
     sku: string;
     name: string;
   }>;
   foundProduct?: {
     id: string;
-    wooId: number | null;
+    wooId?: number;
     sku: string;
     name: string;
-  } | null;
+  };
 }>> {
     try {
         const wooCommerce = await getWooCommerceClient();
