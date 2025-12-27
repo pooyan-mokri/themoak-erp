@@ -106,7 +106,7 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
               required 
             />
             {state?.errors?.name && (
-              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.name[0]}</p>
+              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
             )}
           </div>
 

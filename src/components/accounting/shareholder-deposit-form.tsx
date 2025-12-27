@@ -99,7 +99,7 @@ export function ShareholderDepositForm({
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.shareholderId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.shareholderId[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.shareholderId?.[0]}</p>
             )}
           </div>
 
@@ -123,7 +123,7 @@ export function ShareholderDepositForm({
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
             )}
           </div>
 
@@ -140,7 +140,7 @@ export function ShareholderDepositForm({
                 required
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
               )}
             </div>
 
@@ -158,7 +158,7 @@ export function ShareholderDepositForm({
                 </SelectContent>
               </Select>
               {(state.errors as Record<string, string[] | undefined> | undefined)?.currency && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.currency[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.currency?.[0]}</p>
               )}
             </div>
           </div>
@@ -174,7 +174,7 @@ export function ShareholderDepositForm({
             />
             <input type="hidden" name="date" value={date} />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.date && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.date[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.date?.[0]}</p>
             )}
           </div>
 
@@ -187,7 +187,7 @@ export function ShareholderDepositForm({
               rows={3}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 

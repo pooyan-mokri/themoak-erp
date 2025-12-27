@@ -97,7 +97,7 @@ export function LoanPaymentForm({
           </SelectContent>
         </Select>
         {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId[0]}</p>
+          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
         )}
       </div>
 
@@ -116,7 +116,7 @@ export function LoanPaymentForm({
           onChange={(e) => setAmount(e.target.value)}
         />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount[0]}</p>
+          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
         )}
         <p className="text-xs text-muted-foreground">
           حداکثر: {formatCurrency(loan.remaining)} تومان
@@ -134,7 +134,7 @@ export function LoanPaymentForm({
         />
         <input type="hidden" name="date" value={date} />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.date && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.date[0]}</p>
+          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.date?.[0]}</p>
         )}
       </div>
 
@@ -147,7 +147,7 @@ export function LoanPaymentForm({
           rows={3}
         />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description[0]}</p>
+          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
         )}
       </div>
 

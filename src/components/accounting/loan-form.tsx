@@ -63,7 +63,7 @@ export function LoanForm({ employees }: LoanFormProps) {
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId?.[0]}</p>
             )}
           </div>
 
@@ -79,7 +79,7 @@ export function LoanForm({ employees }: LoanFormProps) {
               required
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
             )}
           </div>
 
@@ -95,7 +95,7 @@ export function LoanForm({ employees }: LoanFormProps) {
               placeholder="0"
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.interestRate && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.interestRate[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.interestRate?.[0]}</p>
             )}
           </div>
 
@@ -110,7 +110,7 @@ export function LoanForm({ employees }: LoanFormProps) {
             />
             <input type="hidden" name="dueDate" value={dueDate} />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.dueDate && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.dueDate[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.dueDate?.[0]}</p>
             )}
           </div>
 
@@ -123,7 +123,7 @@ export function LoanForm({ employees }: LoanFormProps) {
               rows={3}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 

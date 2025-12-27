@@ -78,7 +78,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               defaultValue={initialData?.name}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.name && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
             )}
           </div>
 
@@ -92,7 +92,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
                 defaultValue={initialData?.nationalId || ''}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.nationalId && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.nationalId[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.nationalId?.[0]}</p>
               )}
             </div>
 
@@ -105,7 +105,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
                 defaultValue={initialData?.phone || ''}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.phone && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone?.[0]}</p>
               )}
             </div>
           </div>
@@ -120,7 +120,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               defaultValue={initialData?.email || ''}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.email && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.email[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.email?.[0]}</p>
             )}
           </div>
 
@@ -133,7 +133,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               defaultValue={initialData?.position || ''}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.position && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.position[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.position?.[0]}</p>
             )}
           </div>
 
@@ -151,7 +151,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
                 defaultValue={initialData?.salary?.toString() || ''}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.salary && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.salary[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.salary?.[0]}</p>
               )}
             </div>
 
@@ -166,7 +166,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               />
               <input type="hidden" name="hireDate" value={hireDate} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.hireDate && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.hireDate[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.hireDate?.[0]}</p>
               )}
             </div>
           </div>
@@ -181,7 +181,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               defaultValue={initialData?.address || ''}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.address && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.address[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.address?.[0]}</p>
             )}
           </div>
 

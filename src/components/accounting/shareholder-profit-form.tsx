@@ -55,7 +55,7 @@ export function ShareholderProfitForm() {
               />
               <input type="hidden" name="periodStart" value={periodStart} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.periodStart && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodStart[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodStart?.[0]}</p>
               )}
             </div>
 
@@ -70,7 +70,7 @@ export function ShareholderProfitForm() {
               />
               <input type="hidden" name="periodEnd" value={periodEnd} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.periodEnd && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodEnd[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodEnd?.[0]}</p>
               )}
             </div>
           </div>
@@ -84,7 +84,7 @@ export function ShareholderProfitForm() {
               rows={3}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 

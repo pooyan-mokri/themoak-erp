@@ -280,7 +280,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
           )}
 
           {state.errors && 'items' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0] && (
-            <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.items[0]}</p>
+            <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0]}</p>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-4">
@@ -295,7 +295,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                 className="h-12 md:h-10 text-base md:text-sm"
               />
               {state.errors && 'recipientName' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.recipientName[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0]}</p>
               )}
             </div>
 
@@ -319,7 +319,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                 </SelectContent>
               </Select>
               {state.errors && 'accountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}
             </div>
 

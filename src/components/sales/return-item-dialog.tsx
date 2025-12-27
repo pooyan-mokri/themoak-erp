@@ -121,7 +121,7 @@ export function ReturnItemDialog({
                 required
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.quantity && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
               )}
             </div>
 
@@ -140,7 +140,7 @@ export function ReturnItemDialog({
                 </SelectContent>
               </Select>
               {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}
             </div>
 

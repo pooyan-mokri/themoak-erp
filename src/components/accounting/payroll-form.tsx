@@ -113,7 +113,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId?.[0]}</p>
             )}
           </div>
 
@@ -133,7 +133,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 </SelectContent>
               </Select>
               {(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth?.[0]}</p>
               )}
             </div>
 
@@ -149,7 +149,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 defaultValue={currentYear ? currentYear.toString() : '1403'}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear?.[0]}</p>
               )}
             </div>
           </div>
@@ -168,7 +168,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
               onChange={(e) => setAmount(e.target.value)}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
             )}
             {selectedEmployee && (
               <p className="text-xs text-muted-foreground">
@@ -191,7 +191,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 onChange={(e) => setBonuses(e.target.value)}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses?.[0]}</p>
               )}
             </div>
 
@@ -208,7 +208,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 onChange={(e) => setDeductions(e.target.value)}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.deductions && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.deductions[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.deductions?.[0]}</p>
               )}
             </div>
           </div>
@@ -233,7 +233,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
               rows={3}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description[0]}</p>
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 

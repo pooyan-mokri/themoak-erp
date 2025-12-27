@@ -101,7 +101,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 </SelectContent>
               </Select>
               {state.errors && 'sourceAccountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.sourceAccountId?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sourceAccountId[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sourceAccountId?.[0]}</p>
               )}
               {sourceAccount && (
                 <p className="text-xs text-muted-foreground">
@@ -132,7 +132,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 </SelectContent>
               </Select>
               {state.errors && 'targetAccountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.targetAccountId?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.targetAccountId[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.targetAccountId?.[0]}</p>
               )}
               {targetAccount && (
                 <p className="text-xs text-muted-foreground">
@@ -158,7 +158,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 required
               />
               {state.errors && 'sourceAmount' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.sourceAmount?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sourceAmount[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sourceAmount?.[0]}</p>
               )}
               {sourceAccount && sourceAmount && (
                 <p className="text-xs text-muted-foreground">
@@ -185,7 +185,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 required
               />
               {state.errors && 'targetAmount' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.targetAmount?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.targetAmount[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.targetAmount?.[0]}</p>
               )}
             </div>
 
@@ -204,7 +204,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 required
               />
               {state.errors && 'exchangeRate' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.exchangeRate?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeRate[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeRate?.[0]}</p>
               )}
               {sourceAccount && targetAccount && exchangeRate && (
                 <p className="text-xs text-muted-foreground">

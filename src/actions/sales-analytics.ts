@@ -67,7 +67,7 @@ export async function getSalesAnalytics(range?: DateRange) {
       return acc;
     }, {} as Record<string, { date: string; revenue: number; orders: number }>);
 
-    const salesOverTime = Object.values(salesByDay).map(day => ({
+    const salesOverTime = Object.values(salesByDay).map((day: any) => ({
       date: day.date,
       dateFormatted: formatJalaliDate(new Date(day.date)),
       revenue: day.revenue,
@@ -91,7 +91,7 @@ export async function getSalesAnalytics(range?: DateRange) {
     }, {} as Record<string, { id: string; name: string; quantity: number; revenue: number }>);
 
     const topProducts = Object.values(productSales)
-      .sort((a, b) => b.revenue - a.revenue)
+      .sort((a: any, b: any) => b.revenue - a.revenue)
       .slice(0, 10);
 
     // Top customers
@@ -112,7 +112,7 @@ export async function getSalesAnalytics(range?: DateRange) {
     }, {} as Record<string, { id: string; name: string; orders: number; revenue: number }>);
 
     const topCustomers = Object.values(customerSales)
-      .sort((a, b) => b.revenue - a.revenue)
+      .sort((a: any, b: any) => b.revenue - a.revenue)
       .slice(0, 10);
 
     // Sales by product type
