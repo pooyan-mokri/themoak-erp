@@ -317,12 +317,17 @@ export async function getShareholderProfits(shareholderId?: string) {
 
     return profits.map((p) => ({
       ...p,
+      description: p.description ?? undefined,
       amount: Number(p.amount),
       withdrawn: Number(p.withdrawn),
       available: Number(p.amount) - Number(p.withdrawn),
       shareholder: {
         ...p.shareholder,
         percentage: Number(p.shareholder.percentage),
+        phone: p.shareholder.phone ?? undefined,
+        email: p.shareholder.email ?? undefined,
+        address: p.shareholder.address ?? undefined,
+        notes: p.shareholder.notes ?? undefined,
       },
     }));
   } catch (error) {
@@ -350,12 +355,17 @@ export async function getShareholderProfitById(id: string) {
 
     return {
       ...profit,
+      description: profit.description ?? undefined,
       amount: Number(profit.amount),
       withdrawn: Number(profit.withdrawn),
       available: Number(profit.amount) - Number(profit.withdrawn),
       shareholder: {
         ...profit.shareholder,
         percentage: Number(profit.shareholder.percentage),
+        phone: profit.shareholder.phone ?? undefined,
+        email: profit.shareholder.email ?? undefined,
+        address: profit.shareholder.address ?? undefined,
+        notes: profit.shareholder.notes ?? undefined,
       },
     };
   } catch (error) {
