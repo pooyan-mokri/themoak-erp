@@ -246,7 +246,7 @@ export async function getLoans(status?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return loans.map((l) => ({
+    return loans.map((l: any) => ({
       ...l,
       amount: Number(l.amount),
       remaining: Number(l.remaining),
@@ -264,7 +264,7 @@ export async function getLoans(status?: string) {
         position: l.employee.position ?? undefined,
         hireDate: l.employee.hireDate ?? undefined,
       },
-      payments: l.payments.map((p) => ({
+      payments: l.payments.map((p: any) => ({
         ...p,
         amount: Number(p.amount),
         principal: Number(p.principal),
@@ -314,7 +314,7 @@ export async function getLoanById(id: string) {
         position: loan.employee.position ?? undefined,
         hireDate: loan.employee.hireDate ?? undefined,
       },
-      payments: loan.payments.map((p) => ({
+      payments: loan.payments.map((p: any) => ({
         ...p,
         amount: Number(p.amount),
         principal: Number(p.principal),

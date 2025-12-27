@@ -119,7 +119,7 @@ export async function getBalanceSheet(date: Date) {
     });
 
     const inventoryValue = inventory.reduce(
-      (sum, item) => sum + item.quantity * Number(item.product.costPrice),
+  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
       0
     );
 
@@ -135,7 +135,7 @@ export async function getBalanceSheet(date: Date) {
     });
 
     const accountsReceivable = unpaidInvoices.reduce(
-      (sum, inv) => sum + (Number(inv.total) - Number(inv.paidAmount)),
+  (sum: any, inv: any) => sum + (Number(inv.total) - Number(inv.paidAmount)),
       0
     );
 

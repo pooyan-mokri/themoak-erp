@@ -361,7 +361,7 @@ export async function getMarketingStats() {
     const totalGifts = gifts.length;
     const totalQuantity = gifts.reduce((sum: any, gift: any) => sum + gift.quantity, 0);
     const totalCost = gifts.reduce(
-      (sum, gift) => sum + Number(gift.totalCost),
+  (sum: any, gift: any) => sum + Number(gift.totalCost),
       0
     );
 
@@ -378,11 +378,11 @@ export async function getMarketingStats() {
     const campaigns = await prisma.marketingCampaign.findMany();
     const activeCampaigns = campaigns.filter((c: any) => c.status === 'ACTIVE').length;
     const totalBudget = campaigns.reduce(
-      (sum, c) => sum + (c.budget ? Number(c.budget) : 0),
+  (sum: any, c: any) => sum + (c.budget ? Number(c.budget) : 0),
       0
     );
     const totalSpent = campaigns.reduce(
-      (sum, c) => sum + Number(c.spentAmount),
+  (sum: any, c: any) => sum + Number(c.spentAmount),
       0
     );
 

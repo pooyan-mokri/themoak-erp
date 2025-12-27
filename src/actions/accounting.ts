@@ -500,11 +500,11 @@ export async function getEmployeeDebts() {
 
         // Calculate total debt (expenses - payments)
         const totalExpenses = expenseTransactions.reduce(
-          (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
           0
         );
         const totalPayments = incomeTransactions.reduce(
-          (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
           0
         );
         const totalDebt = totalExpenses - totalPayments;
@@ -569,11 +569,11 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     });
 
     const totalExpenses = expenseTransactions.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
     const totalPayments = incomeTransactions.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
     const totalDebt = totalExpenses - totalPayments;

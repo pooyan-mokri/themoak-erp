@@ -52,7 +52,7 @@ export async function createShareholder(prevState: ActionState, formData: FormDa
     // Check total percentage
     const existingShareholders = await prisma.shareholder.findMany();
     const totalPercentage = existingShareholders.reduce(
-      (sum, s) => sum + Number(s.percentage),
+  (sum: any, s: any) => sum + Number(s.percentage),
       0
     );
 
@@ -119,7 +119,7 @@ export async function updateShareholder(id: string, prevState: ActionState, form
     });
 
     const totalPercentage = existingShareholders.reduce(
-      (sum, s) => sum + Number(s.percentage),
+  (sum: any, s: any) => sum + Number(s.percentage),
       0
     );
 
@@ -519,11 +519,11 @@ export async function getShareholderBalance(shareholderId: string): Promise<numb
     });
 
     const totalDeposits = deposits.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
     const totalWithdrawals = withdrawals.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
 

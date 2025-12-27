@@ -94,7 +94,7 @@ export async function createOrder(data: OrderData) {
           status: 'COMPLETED',
           transactionId: transactionId,
           items: {
-            create: items.map((item) => ({
+            create: items.map((item: any) => ({
               productId: item.productId,
               quantity: item.quantity,
               price: item.price,

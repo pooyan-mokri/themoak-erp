@@ -275,7 +275,7 @@ export async function getPayrolls(employeeId?: string, status?: string) {
       ],
     });
 
-    return payrolls.map((p) => ({
+    return payrolls.map((p: any) => ({
       ...p,
       amount: Number(p.amount),
       bonuses: Number(p.bonuses) || 0,
@@ -294,7 +294,7 @@ export async function getPayrolls(employeeId?: string, status?: string) {
         position: p.employee.position ?? undefined,
         hireDate: p.employee.hireDate ?? undefined,
       },
-      payments: p.payments.map((payment) => ({
+      payments: p.payments.map((payment: any) => ({
         ...payment,
         amount: Number(payment.amount),
         description: payment.description ?? undefined,
@@ -343,7 +343,7 @@ export async function getPayrollById(id: string) {
         position: payroll.employee.position ?? undefined,
         hireDate: payroll.employee.hireDate ?? undefined,
       },
-      payments: payroll.payments.map((p) => ({
+      payments: payroll.payments.map((p: any) => ({
         ...p,
         amount: Number(p.amount),
         description: p.description ?? undefined,

@@ -266,7 +266,7 @@ export async function getOrderExchanges(orderId: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return exchanges.map((ex) => ({
+    return exchanges.map((ex: any) => ({
       ...ex,
       priceDifference: Number(ex.priceDifference),
       transactionId: ex.transactionId ?? undefined,

@@ -750,7 +750,7 @@ export async function getDiscrepancyReport(auditId: string) {
     }
 
     const totalDiscrepancyValue = audit.items.reduce(
-      (sum, item) => sum + Number(item.discrepancyValue || 0),
+  (sum: any, item: any) => sum + Number(item.discrepancyValue || 0),
       0
     );
 
@@ -887,7 +887,7 @@ export async function getPerformanceReport(auditId: string) {
     const totalItems = audit.items.length;
     const countedItems = audit.items.filter((item: any) => item.finalQuantity !== null).length;
     const itemsWithDiscrepancy = audit.items.filter(
-      (item) => item.discrepancy !== null && item.discrepancy !== 0
+  (item: any) => item.discrepancy !== null && item.discrepancy !== 0
     ).length;
 
     // Count by user

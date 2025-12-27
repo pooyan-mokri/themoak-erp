@@ -29,7 +29,7 @@ export const agentTools: AgentTool[] = [
 
         const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
         const totalValue = inventory.reduce(
-          (sum, item) => sum + item.quantity * Number(item.product.costPrice),
+  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
           0
         );
         const lowStockItems = inventory.filter(item => item.quantity < 10 && item.quantity > 0);

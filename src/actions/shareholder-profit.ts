@@ -79,7 +79,7 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
     let totalIncome = 0;
     let totalExpense = 0;
 
-    transactions.forEach((tx) => {
+    transactions.forEach((tx: any) => {
       const amount = Number(tx.amountInToman || tx.amount);
       if (tx.type === 'INCOME') {
         totalIncome += amount;
@@ -109,7 +109,7 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
 
     // Calculate total percentage
     const totalPercentage = shareholders.reduce(
-      (sum, s) => sum + Number(s.percentage),
+  (sum: any, s: any) => sum + Number(s.percentage),
       0
     );
 
@@ -315,7 +315,7 @@ export async function getShareholderProfits(shareholderId?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return profits.map((p) => ({
+    return profits.map((p: any) => ({
       ...p,
       description: p.description ?? undefined,
       amount: Number(p.amount),

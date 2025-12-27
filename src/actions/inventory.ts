@@ -174,7 +174,7 @@ export async function getWarehouseDashboardStats() {
       })
     ]);
 
-    const totalValue = totalInventoryValue.reduce((sum, item) => {
+    const totalValue = totalInventoryValue.reduce((sum: any, item: any) => {
       return sum + (item.quantity * Number(item.product.costPrice || 0));
     }, 0);
 

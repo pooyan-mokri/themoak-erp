@@ -35,7 +35,7 @@ export async function getConsignmentCommissionsReport() {
       commissions: any[];
     }> = {};
 
-    unpaidCommissions.forEach((commission) => {
+    unpaidCommissions.forEach((commission: any) => {
       const customerId = commission.customerId;
       if (!customerTotals[customerId]) {
         customerTotals[customerId] = {
@@ -62,7 +62,7 @@ export async function getConsignmentCommissionsReport() {
 
     // Convert to array and sort by total commission (descending)
     const report = Object.values(customerTotals)
-      .map((item) => ({
+      .map((item: any) => ({
         ...item,
         customer: item.customer ? {
           ...item.customer,
@@ -74,7 +74,7 @@ export async function getConsignmentCommissionsReport() {
           taxId: item.customer.taxId ?? undefined,
           segment: item.customer.segment ?? undefined,
         } : undefined,
-        commissions: item.commissions.map((comm) => ({
+        commissions: item.commissions.map((comm: any) => ({
           ...comm,
           order: comm.order ? {
             ...comm.order,
@@ -92,7 +92,7 @@ export async function getConsignmentCommissionsReport() {
       .sort((a, b) => b.totalCommission - a.totalCommission);
 
     // Calculate grand total
-    const grandTotal = report.reduce((sum, item) => sum + item.totalCommission, 0);
+    const grandTotal = report.reduce((sum: any, item: any) => sum + item.totalCommission, 0);
 
     return {
       report,

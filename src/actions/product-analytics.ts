@@ -186,7 +186,7 @@ export async function getProductSalesByWarehouse(productId: string) {
 
     const warehouseSales: Record<string, { units: number; revenue: number }> = {};
 
-    product.orderItems.forEach((item) => {
+    product.orderItems.forEach((item: any) => {
       const warehouseId = 'default'; // Would need to track warehouse per order
       const units = item.quantity;
       const revenue = Number(item.price) * units;
@@ -217,7 +217,7 @@ export async function getProductStockByWarehouse(productId: string) {
       include: { warehouse: true },
     });
 
-    return inventory.map((inv) => ({
+    return inventory.map((inv: any) => ({
       warehouseId: inv.warehouseId,
       warehouseName: inv.warehouse.name,
       quantity: inv.quantity,

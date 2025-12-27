@@ -197,7 +197,7 @@ export async function getOrderReturns(orderId: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return returns.map((ret) => ({
+    return returns.map((ret: any) => ({
       ...ret,
       reason: ret.reason ?? undefined,
       transactionId: ret.transactionId ?? undefined,
