@@ -48,7 +48,7 @@ export function ShareholderProfitForm() {
               <Label htmlFor="periodStart">تاریخ شروع دوره *</Label>
               <JalaliDatePicker
                 name="periodStart"
-                defaultValue={periodStart ? new Date(periodStart) : null}
+                defaultValue={periodStart ? new Date(periodStart) : undefined}
                 onChange={(selectedDate) => {
                   setPeriodStart(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}
@@ -63,7 +63,7 @@ export function ShareholderProfitForm() {
               <Label htmlFor="periodEnd">تاریخ پایان دوره *</Label>
               <JalaliDatePicker
                 name="periodEnd"
-                defaultValue={periodEnd ? new Date(periodEnd) : null}
+                defaultValue={periodEnd ? new Date(periodEnd) : undefined}
                 onChange={(selectedDate) => {
                   setPeriodEnd(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}

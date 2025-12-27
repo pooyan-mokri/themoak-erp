@@ -347,7 +347,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
               <Label htmlFor="date">تاریخ</Label>
               <JalaliDatePicker
                 name="date"
-                defaultValue={date ? new Date(date) : null}
+                defaultValue={date ? new Date(date) : undefined}
                 onChange={(selectedDate) => {
                   setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}

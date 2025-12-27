@@ -159,7 +159,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               <Label htmlFor="hireDate">تاریخ استخدام</Label>
               <JalaliDatePicker
                 name="hireDate"
-                defaultValue={initialData?.hireDate ? new Date(initialData.hireDate) : null}
+                defaultValue={initialData?.hireDate ? new Date(initialData.hireDate) : undefined}
                 onChange={(selectedDate) => {
                   setHireDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}

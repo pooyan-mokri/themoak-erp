@@ -1,8 +1,8 @@
 /**
  * Helper function to safely serialize dates for client components
  */
-export function serializeDate(date: Date | string | null | undefined): string | null {
-  if (!date) return null;
+export function serializeDate(date: Date | string | null | undefined): string | undefined {
+  if (!date) return undefined;
   try {
     if (date instanceof Date) {
       return date.toISOString();
@@ -14,9 +14,9 @@ export function serializeDate(date: Date | string | null | undefined): string | 
         return parsed.toISOString();
       }
     }
-    return null;
+    return undefined;
   } catch {
-    return null;
+    return undefined;
   }
 }
 

@@ -691,12 +691,14 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                             variant="outline"
                             onClick={() => {
                               // Auto-set to last count
-                              const suggestedQty = item.countedQuantity3 !== null 
-                                ? item.countedQuantity3 
-                                : item.countedQuantity2 !== null 
-                                ? item.countedQuantity2 
+                              const suggestedQty = item.countedQuantity3 !== null
+                                ? item.countedQuantity3
+                                : item.countedQuantity2 !== null
+                                ? item.countedQuantity2
                                 : item.countedQuantity1;
-                              handleSetFinal(item.productId, suggestedQty);
+                              if (suggestedQty !== null) {
+                                handleSetFinal(item.productId, suggestedQty);
+                              }
                             }}
                             title="استفاده از آخرین شمارش"
                           >

@@ -92,7 +92,7 @@ export function CampaignForm() {
               <Label htmlFor="startDate">تاریخ شروع *</Label>
               <JalaliDatePicker
                 name="startDate"
-                defaultValue={startDate ? new Date(startDate) : null}
+                defaultValue={startDate ? new Date(startDate) : undefined}
                 onChange={(selectedDate) => {
                   setStartDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}
@@ -108,7 +108,7 @@ export function CampaignForm() {
               <Label htmlFor="endDate">تاریخ پایان (اختیاری)</Label>
               <JalaliDatePicker
                 name="endDate"
-                defaultValue={endDate ? new Date(endDate) : null}
+                defaultValue={endDate ? new Date(endDate) : undefined}
                 onChange={(selectedDate) => {
                   setEndDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}

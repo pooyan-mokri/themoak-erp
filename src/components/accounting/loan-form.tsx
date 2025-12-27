@@ -103,7 +103,7 @@ export function LoanForm({ employees }: LoanFormProps) {
             <Label htmlFor="dueDate">تاریخ سررسید</Label>
             <JalaliDatePicker
               name="dueDate"
-              defaultValue={dueDate ? new Date(dueDate) : null}
+              defaultValue={dueDate ? new Date(dueDate) : undefined}
               onChange={(selectedDate) => {
                 setDueDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
               }}
