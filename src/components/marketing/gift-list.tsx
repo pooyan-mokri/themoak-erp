@@ -16,9 +16,9 @@ interface Gift {
   account: {
     name: string;
   };
-  campaign: {
+  campaign?: {
     name: string;
-  } | null;
+  };
   costPrice: number;
   totalCost: number;
   reason?: string;

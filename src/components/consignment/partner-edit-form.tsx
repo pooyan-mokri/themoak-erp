@@ -23,13 +23,13 @@ interface PartnerEditFormProps {
   partner: {
     id: string;
     name: string;
-    customer: {
+    customer?: {
       id: string;
       name: string;
       phone?: string;
       address?: string;
       commissionRate?: number;
-    } | null;
+    };
   };
 }
 

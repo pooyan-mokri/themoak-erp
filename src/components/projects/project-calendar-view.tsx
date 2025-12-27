@@ -20,10 +20,10 @@ interface Task {
   priority: string;
   startDate?: string;
   dueDate?: string;
-  assignedTo: {
+  assignedTo?: {
     id: string;
     name: string;
-  } | null;
+  };
 }
 
 interface ProjectCalendarViewProps {
