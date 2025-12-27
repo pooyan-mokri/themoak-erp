@@ -17,8 +17,8 @@ import { formatJalaliDate, parseJalaliDate } from '@/lib/date-utils';
 interface JalaliDatePickerProps {
   name: string;
   label?: string;
-  defaultValue?: Date | string | null;
-  onChange?: (date: Date | null) => void;
+  defaultValue?: Date | string;
+  onChange?: (date?: Date) => void;
   required?: boolean;
   disabled?: boolean;
   className?: string;
@@ -26,11 +26,11 @@ interface JalaliDatePickerProps {
 }
 
 // Simple Jalali calendar grid component
-function JalaliCalendar({ 
-  selectedDate, 
-  onSelect 
-}: { 
-  selectedDate: Date | null;
+function JalaliCalendar({
+  selectedDate,
+  onSelect
+}: {
+  selectedDate?: Date;
   onSelect: (date: Date) => void;
 }) {
   const [currentMonth, setCurrentMonth] = useState(

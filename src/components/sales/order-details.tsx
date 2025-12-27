@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { OrderItem, Product, Transaction, Account } from '@prisma/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +32,50 @@ type Customer = {
   paymentTerms: number;
 };
 
+type Product = {
+  id: string;
+  name: string;
+  sku: string;
+  costPrice: number;
+  sellPrice: number;
+  image?: string;
+  wooId?: number;
+  barcode?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  productType: string;
+};
+
+type OrderItem = {
+  id: string;
+  orderId: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  status: string;
+  product: Product;
+};
+
+type Account = {
+  id: string;
+  name: string;
+  type: string;
+  currency: string;
+  balance: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type Transaction = {
+  id: string;
+  amount: number;
+  description?: string;
+  date: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  account?: Account;
+};
+
 type OrderWithDetails = {
   id: string;
   number: number;
@@ -48,8 +91,8 @@ type OrderWithDetails = {
   paymentStatus: string;
   invoiceId?: string;
   customer?: Customer;
-  items: (OrderItem & { product: Product; status?: string })[];
-  transaction?: Transaction & { account?: Account };
+  items: OrderItem[];
+  transaction?: Transaction;
   invoice?: any;
 };
 

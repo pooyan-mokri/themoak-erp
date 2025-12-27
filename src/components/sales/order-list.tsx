@@ -1,6 +1,5 @@
 'use client';
 
-import { OrderItem, Product } from '@prisma/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye } from 'lucide-react';
@@ -26,6 +25,30 @@ type Customer = {
   paymentTerms: number;
 };
 
+type Product = {
+  id: string;
+  name: string;
+  sku: string;
+  costPrice: number;
+  sellPrice: number;
+  image?: string;
+  wooId?: number;
+  barcode?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  productType: string;
+};
+
+type OrderItem = {
+  id: string;
+  orderId: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  status: string;
+  product: Product;
+};
+
 type OrderWithDetails = {
   id: string;
   number: number;
@@ -41,7 +64,7 @@ type OrderWithDetails = {
   paymentStatus: string;
   invoiceId?: string;
   customer?: Customer;
-  items: (OrderItem & { product: Product })[];
+  items: OrderItem[];
 };
 
 interface OrderListProps {
