@@ -77,6 +77,8 @@ export async function getPromotions() {
     // Serialize Decimal fields to numbers
     return promotions.map(promotion => ({
       ...promotion,
+      description: promotion.description ?? undefined,
+      productId: promotion.productId ?? undefined,
       discountPercent: promotion.discountPercent ? Number(promotion.discountPercent) : undefined,
       discountAmount: promotion.discountAmount ? Number(promotion.discountAmount) : undefined,
       minPurchase: promotion.minPurchase ? Number(promotion.minPurchase) : undefined,
@@ -110,6 +112,8 @@ export async function getActivePromotions() {
 
     return promotions.map(promotion => ({
       ...promotion,
+      description: promotion.description ?? undefined,
+      productId: promotion.productId ?? undefined,
       discountPercent: promotion.discountPercent ? Number(promotion.discountPercent) : undefined,
       discountAmount: promotion.discountAmount ? Number(promotion.discountAmount) : undefined,
       minPurchase: promotion.minPurchase ? Number(promotion.minPurchase) : undefined,
@@ -131,6 +135,8 @@ export async function getPromotionById(id: string) {
 
     return {
       ...promotion,
+      description: promotion.description ?? undefined,
+      productId: promotion.productId ?? undefined,
       discountPercent: promotion.discountPercent ? Number(promotion.discountPercent) : undefined,
       discountAmount: promotion.discountAmount ? Number(promotion.discountAmount) : undefined,
       minPurchase: promotion.minPurchase ? Number(promotion.minPurchase) : undefined,
