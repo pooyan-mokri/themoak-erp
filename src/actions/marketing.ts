@@ -256,6 +256,20 @@ export async function getMarketingGifts() {
       ...gift,
       costPrice: Number(gift.costPrice),
       totalCost: Number(gift.totalCost || 0),
+      reason: gift.reason ?? undefined,
+      notes: gift.notes ?? undefined,
+      product: gift.product ? {
+        ...gift.product,
+        image: gift.product.image ?? undefined,
+        wooId: gift.product.wooId ?? undefined,
+        barcode: gift.product.barcode ?? undefined,
+      } : undefined,
+      campaign: gift.campaign ? {
+        ...gift.campaign,
+        description: gift.campaign.description ?? undefined,
+        endDate: gift.campaign.endDate ?? undefined,
+        budget: gift.campaign.budget ? Number(gift.campaign.budget) : undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching marketing gifts:', error);

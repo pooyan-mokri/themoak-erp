@@ -123,7 +123,31 @@ export async function getConsignmentReport() {
         inventoryQuantity,
         productCount,
         orderCount: partnerOrders.length,
-        orders: partnerOrders.slice(0, 10), // Last 10 orders
+        orders: partnerOrders.slice(0, 10).map(order => ({
+          ...order,
+          discount: order.discount ? Number(order.discount) : undefined,
+          paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+          customerId: order.customerId ?? undefined,
+          customer: order.customer ? {
+            ...order.customer,
+            phone: order.customer.phone ?? undefined,
+            email: order.customer.email ?? undefined,
+            address: order.customer.address ?? undefined,
+            notes: order.customer.notes ?? undefined,
+            wooId: order.customer.wooId ?? undefined,
+            taxId: order.customer.taxId ?? undefined,
+            segment: order.customer.segment ?? undefined,
+          } : undefined,
+          items: order.items.map(item => ({
+            ...item,
+            product: item.product ? {
+              ...item.product,
+              image: item.product.image ?? undefined,
+              wooId: item.product.wooId ?? undefined,
+              barcode: item.product.barcode ?? undefined,
+            } : undefined,
+          })),
+        })), // Last 10 orders
       };
     }).filter((p): p is NonNullable<typeof p> => p !== null);
 

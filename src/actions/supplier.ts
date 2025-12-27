@@ -42,7 +42,14 @@ export async function getSuppliers() {
         }
       }
     });
-    return { success: true, data: suppliers };
+    const serializedSuppliers = suppliers.map(supplier => ({
+      ...supplier,
+      phone: supplier.phone ?? undefined,
+      email: supplier.email ?? undefined,
+      address: supplier.address ?? undefined,
+      notes: supplier.notes ?? undefined,
+    }));
+    return { success: true, data: serializedSuppliers };
   } catch (error) {
     console.error('Error fetching suppliers:', error);
     return { success: false, error: 'خطا در دریافت لیست تامین‌کنندگان' };

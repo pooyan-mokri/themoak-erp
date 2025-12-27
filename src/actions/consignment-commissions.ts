@@ -64,7 +64,25 @@ export async function getConsignmentCommissionsReport() {
     const report = Object.values(customerTotals)
       .map((item) => ({
         ...item,
-        commissions: item.commissions.sort((a, b) => 
+        customer: item.customer ? {
+          ...item.customer,
+          phone: item.customer.phone ?? undefined,
+          email: item.customer.email ?? undefined,
+          address: item.customer.address ?? undefined,
+          notes: item.customer.notes ?? undefined,
+          wooId: item.customer.wooId ?? undefined,
+          taxId: item.customer.taxId ?? undefined,
+          segment: item.customer.segment ?? undefined,
+        } : undefined,
+        commissions: item.commissions.map((comm) => ({
+          ...comm,
+          order: comm.order ? {
+            ...comm.order,
+            discount: comm.order.discount ? Number(comm.order.discount) : undefined,
+            paidAmount: comm.order.paidAmount ? Number(comm.order.paidAmount) : undefined,
+            customerId: comm.order.customerId ?? undefined,
+          } : undefined,
+        })).sort((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         ),
       }))

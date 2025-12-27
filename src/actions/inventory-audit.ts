@@ -361,7 +361,39 @@ export async function getInventoryAudit(auditId: string) {
       },
     });
 
-    return audit;
+    if (!audit) return undefined;
+
+    return {
+      ...audit,
+      description: audit.description ?? undefined,
+      items: audit.items.map(item => ({
+        ...item,
+        product: item.product ? {
+          ...item.product,
+          image: item.product.image ?? undefined,
+          wooId: item.product.wooId ?? undefined,
+          barcode: item.product.barcode ?? undefined,
+        } : undefined,
+      })),
+      tags: audit.tags.map(tag => ({
+        ...tag,
+        product: tag.product ? {
+          ...tag.product,
+          image: tag.product.image ?? undefined,
+          wooId: tag.product.wooId ?? undefined,
+          barcode: tag.product.barcode ?? undefined,
+        } : undefined,
+      })),
+      snapshots: audit.snapshots.map(snapshot => ({
+        ...snapshot,
+        product: snapshot.product ? {
+          ...snapshot.product,
+          image: snapshot.product.image ?? undefined,
+          wooId: snapshot.product.wooId ?? undefined,
+          barcode: snapshot.product.barcode ?? undefined,
+        } : undefined,
+      })),
+    };
   } catch (error: unknown) {
     console.error('Error fetching inventory audit:', error);
     return undefined;
@@ -392,7 +424,10 @@ export async function getInventoryAudits(warehouseId?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return audits;
+    return audits.map(audit => ({
+      ...audit,
+      description: audit.description ?? undefined,
+    }));
   } catch (error: unknown) {
     console.error('Error fetching inventory audits:', error);
     return [];

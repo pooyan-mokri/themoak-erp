@@ -146,7 +146,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
       productId: product.id,
       productName: product.name,
       sku: product.sku,
-      image: product.image,
+      image: product.image ?? undefined,
       totalUnitsSold,
       totalRevenue,
       averageSellingPrice,

@@ -236,6 +236,10 @@ export async function getDeals() {
     return deals.map(deal => ({
       ...deal,
       value: Number(deal.value),
+      customer: deal.customer ? {
+        ...deal.customer,
+        phone: deal.customer.phone ?? undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching deals:', error);
@@ -255,6 +259,16 @@ export async function getDealById(id: string) {
     return {
       ...deal,
       value: Number(deal.value),
+      customer: deal.customer ? {
+        ...deal.customer,
+        phone: deal.customer.phone ?? undefined,
+        email: deal.customer.email ?? undefined,
+        address: deal.customer.address ?? undefined,
+        notes: deal.customer.notes ?? undefined,
+        wooId: deal.customer.wooId ?? undefined,
+        taxId: deal.customer.taxId ?? undefined,
+        segment: deal.customer.segment ?? undefined,
+      } : undefined,
     };
   } catch (error) {
     console.error('Error fetching deal:', error);

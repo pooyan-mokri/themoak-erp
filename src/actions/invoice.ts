@@ -156,6 +156,10 @@ export async function getInvoices() {
       tax: invoice.tax ? Number(invoice.tax) : undefined,
       total: Number(invoice.total),
       paidAmount: invoice.paidAmount ? Number(invoice.paidAmount) : undefined,
+      customer: invoice.customer ? {
+        ...invoice.customer,
+        phone: invoice.customer.phone ?? undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching invoices:', error);

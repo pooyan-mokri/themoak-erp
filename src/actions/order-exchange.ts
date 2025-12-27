@@ -269,6 +269,37 @@ export async function getOrderExchanges(orderId: string) {
     return exchanges.map((ex) => ({
       ...ex,
       priceDifference: Number(ex.priceDifference),
+      transactionId: ex.transactionId ?? undefined,
+      originalItem: ex.originalItem ? {
+        ...ex.originalItem,
+        product: ex.originalItem.product ? {
+          ...ex.originalItem.product,
+          image: ex.originalItem.product.image ?? undefined,
+          wooId: ex.originalItem.product.wooId ?? undefined,
+          barcode: ex.originalItem.product.barcode ?? undefined,
+        } : undefined,
+      } : undefined,
+      exchangeItem: ex.exchangeItem ? {
+        ...ex.exchangeItem,
+        product: ex.exchangeItem.product ? {
+          ...ex.exchangeItem.product,
+          image: ex.exchangeItem.product.image ?? undefined,
+          wooId: ex.exchangeItem.product.wooId ?? undefined,
+          barcode: ex.exchangeItem.product.barcode ?? undefined,
+        } : undefined,
+      } : undefined,
+      transaction: ex.transaction ? {
+        ...ex.transaction,
+        description: ex.transaction.description ?? undefined,
+        category: ex.transaction.category ?? undefined,
+        accountId: ex.transaction.accountId ?? undefined,
+        projectId: ex.transaction.projectId ?? undefined,
+        employeeId: ex.transaction.employeeId ?? undefined,
+        shareholderId: ex.transaction.shareholderId ?? undefined,
+        receiptUrl: ex.transaction.receiptUrl ?? undefined,
+        wooId: ex.transaction.wooId ?? undefined,
+        wooStatus: ex.transaction.wooStatus ?? undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching order exchanges:', error);
