@@ -10,7 +10,7 @@ interface ProductAnalytics {
   productId: string;
   productName: string;
   sku: string;
-  image: string | null;
+  image?: string;
   
   // Sales metrics
   totalUnitsSold: number;
