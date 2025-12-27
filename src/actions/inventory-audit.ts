@@ -129,7 +129,7 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
     });
 
     // Create snapshots
-    const snapshots = inventoryItems.map((item) => ({
+    const snapshots = inventoryItems.map((item: any) => ({
       auditId,
       productId: item.productId,
       warehouseId: item.warehouseId,
@@ -144,7 +144,7 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
       });
 
       // Create audit items for each product
-      const auditItems = inventoryItems.map((item) => ({
+      const auditItems = inventoryItems.map((item: any) => ({
         auditId,
         productId: item.productId,
         systemQuantity: item.quantity,
@@ -682,7 +682,7 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
     }
 
     // Calculate discrepancies for all items
-    const updates = audit.items.map((item) => {
+    const updates = audit.items.map((item: any) => {
       if (item.finalQuantity === null) {
         return undefined;
       }
@@ -704,7 +704,7 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
       });
     });
 
-    await Promise.all(updates.filter((u) => u !== null));
+    await Promise.all(updates.filter((u: any) => u !== null));
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
@@ -754,8 +754,8 @@ export async function getDiscrepancyReport(auditId: string) {
       0
     );
 
-    const shortageCount = audit.items.filter((item) => (item.discrepancy || 0) < 0).length;
-    const excessCount = audit.items.filter((item) => (item.discrepancy || 0) > 0).length;
+    const shortageCount = audit.items.filter((item: any) => (item.discrepancy || 0) < 0).length;
+    const excessCount = audit.items.filter((item: any) => (item.discrepancy || 0) > 0).length;
 
     return {
       audit,
@@ -885,15 +885,15 @@ export async function getPerformanceReport(auditId: string) {
 
     // Calculate statistics
     const totalItems = audit.items.length;
-    const countedItems = audit.items.filter((item) => item.finalQuantity !== null).length;
+    const countedItems = audit.items.filter((item: any) => item.finalQuantity !== null).length;
     const itemsWithDiscrepancy = audit.items.filter(
       (item) => item.discrepancy !== null && item.discrepancy !== 0
     ).length;
 
     // Count by user
     const countByUser: Record<string, { name: string; count: number }> = {};
-    audit.items.forEach((item) => {
-      [item.countedBy1User, item.countedBy2User, item.countedBy3User].forEach((user) => {
+    audit.items.forEach((item: any) => {
+      [item.countedBy1User, item.countedBy2User, item.countedBy3User].forEach((user: any) => {
         if (user) {
           if (!countByUser[user.id]) {
             countByUser[user.id] = { name: user.name, count: 0 };

@@ -32,14 +32,14 @@ export async function getWarehouseDetail(warehouseId: string) {
     });
 
     // Calculate statistics
-    const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
+    const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
     const totalValue = inventory.reduce(
       (sum, item) => sum + item.quantity * Number(item.product.costPrice),
       0
     );
     const uniqueProducts = inventory.length;
-    const itemsWithStock = inventory.filter((item) => item.quantity > 0).length;
-    const itemsOutOfStock = inventory.filter((item) => item.quantity === 0).length;
+    const itemsWithStock = inventory.filter((item: any) => item.quantity > 0).length;
+    const itemsOutOfStock = inventory.filter((item: any) => item.quantity === 0).length;
 
     // Get recent order items (sales)
     type OrderItemWithRelations = Prisma.OrderItemGetPayload<{
@@ -83,9 +83,9 @@ export async function getWarehouseDetail(warehouseId: string) {
     // Filter order items that might be from this warehouse
     // (We can't directly link order items to warehouses, but we can show recent sales)
     const relevantOrderItems = recentOrderItems
-      .filter((item) => {
+      .filter((item: any) => {
         // Check if product exists in this warehouse inventory
-        return inventory.some((inv) => inv.productId === item.productId);
+        return inventory.some((inv: any) => inv.productId === item.productId);
       })
       .slice(0, 20);
 
@@ -130,8 +130,8 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Filter purchase items that might be to this warehouse
     const relevantPurchaseItems = recentPurchaseItems
-      .filter((item) => {
-        return inventory.some((inv) => inv.productId === item.productId);
+      .filter((item: any) => {
+        return inventory.some((inv: any) => inv.productId === item.productId);
       })
       .slice(0, 20);
 
@@ -154,7 +154,7 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Format data
     const formattedInventory = inventory
-      .map((item) => {
+      .map((item: any) => {
         try {
           if (!item.product) {
             console.warn('Inventory item missing product:', item.productId);
@@ -178,7 +178,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
     const formattedOrderItems = relevantOrderItems
-      .map((item) => {
+      .map((item: any) => {
         try {
           if (!item.product || !item.order) {
             return undefined;
@@ -202,7 +202,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
     const formattedPurchaseItems = relevantPurchaseItems
-      .map((item) => {
+      .map((item: any) => {
         try {
           if (!item.product || !item.purchaseOrder) {
             return undefined;
@@ -226,7 +226,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
     const formattedAudits = recentAudits
-      .map((audit) => {
+      .map((audit: any) => {
         try {
           return {
             id: audit.id,
@@ -243,7 +243,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
     // Get low stock items
-    const lowStockItems = formattedInventory.filter((item) => {
+    const lowStockItems = formattedInventory.filter((item: any) => {
       // Items with quantity less than 10 or items that have been in stock for a while
       return item.quantity < 10 && item.quantity > 0;
     });

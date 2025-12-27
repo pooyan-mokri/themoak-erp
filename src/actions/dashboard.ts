@@ -21,7 +21,7 @@ export async function getDashboardFinancials() {
       }
     });
     
-    const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.balance), 0);
+    const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
     // Total Receivables (simplified - sum all non-cancelled orders)
     // Note: In production, this should track actual unpaid amounts
@@ -37,7 +37,7 @@ export async function getDashboardFinancials() {
     });
     
     // Estimate 30% of total orders are receivables
-    const totalReceivables = allOrders.reduce((sum, order) => {
+    const totalReceivables = allOrders.reduce((sum: any, order: any) => {
       return sum + Number(order.totalAmount);
     }, 0) * 0.3;
 
@@ -48,7 +48,7 @@ export async function getDashboardFinancials() {
       }
     });
     
-    const totalPayables = purchaseOrders.reduce((sum, po) => sum + Number(po.totalAmount), 0);
+    const totalPayables = purchaseOrders.reduce((sum: any, po: any) => sum + Number(po.totalAmount), 0);
 
     return {
       totalBalance,
@@ -95,7 +95,7 @@ export async function getDashboardSales() {
     });
 
     const salesToday = {
-      total: ordersToday.reduce((sum, order) => sum + Number(order.totalAmount), 0),
+      total: ordersToday.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0),
       count: ordersToday.length
     };
 
@@ -116,7 +116,7 @@ export async function getDashboardSales() {
     });
 
     const salesYesterday = {
-      total: ordersYesterday.reduce((sum, order) => sum + Number(order.totalAmount), 0)
+      total: ordersYesterday.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0)
     };
 
     // Last 30 days daily sales for chart
@@ -208,7 +208,7 @@ export async function getLowStockItems(threshold: number = 10) {
 
     const itemsBelowThreshold = lowStockProducts
       .map(product => {
-        const totalStock = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+        const totalStock = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
         return {
           id: product.id,
           name: product.name,

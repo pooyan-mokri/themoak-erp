@@ -38,10 +38,10 @@ export async function getProductDetail(productId: string) {
     }
 
     // Calculate totals
-    const totalStock = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+    const totalStock = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
     const availableStock = product.inventory
       .filter(inv => !inv.warehouse.isVirtual)
-      .reduce((sum, inv) => sum + inv.quantity, 0);
+      .reduce((sum: any, inv: any) => sum + inv.quantity, 0);
     const stockValue = totalStock * Number(product.costPrice);
 
     return {
@@ -115,8 +115,8 @@ export async function getProductSalesAnalytics(productId: string) {
     });
 
     // Calculate metrics
-    const totalUnitsSold = orderItems.reduce((sum, item) => sum + item.quantity, 0);
-    const totalRevenue = orderItems.reduce((sum, item) => sum + (item.quantity * Number(item.price)), 0);
+    const totalUnitsSold = orderItems.reduce((sum: any, item: any) => sum + item.quantity, 0);
+    const totalRevenue = orderItems.reduce((sum: any, item: any) => sum + (item.quantity * Number(item.price)), 0);
     const avgSellingPrice = totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : 0;
 
     // Calculate velocity (items per time period)

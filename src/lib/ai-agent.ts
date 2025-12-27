@@ -27,7 +27,7 @@ export const agentTools: AgentTool[] = [
           include: { product: true, warehouse: true },
         });
 
-        const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
+        const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
         const totalValue = inventory.reduce(
           (sum, item) => sum + item.quantity * Number(item.product.costPrice),
           0
@@ -77,7 +77,7 @@ export const agentTools: AgentTool[] = [
         },
       });
 
-      const totalRevenue = orders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+      const totalRevenue = orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
       const totalOrders = orders.length;
       const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -87,7 +87,7 @@ export const agentTools: AgentTool[] = [
         totalOrders,
         averageOrderValue,
         topCustomers: orders
-          .reduce((acc, order) => {
+          .reduce((acc: any, order: any) => {
             const customerId = order.customerId || 'walk-in';
             const customerName = order.customer?.name || 'مشتری عمومی';
             if (!acc[customerId]) {
@@ -122,7 +122,7 @@ export const agentTools: AgentTool[] = [
       }
 
       const totalOrders = customer.orders.length;
-      const totalSpent = customer.orders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+      const totalSpent = customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
 
       return {
         name: customer.name,
@@ -214,11 +214,11 @@ export const agentTools: AgentTool[] = [
 
       const totalIncome = transactions
         .filter(t => t.type === 'INCOME')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
+        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
 
       const totalExpense = transactions
         .filter(t => t.type === 'EXPENSE')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
+        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
 
       return {
         period: `${days} روز گذشته`,

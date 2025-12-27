@@ -76,7 +76,7 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
 
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
-        const rate = exchangeRates.find((r) => r.currency === currency);
+        const rate = exchangeRates.find((r: any) => r.currency === currency);
         return rate ? Number(rate.rateToToman) : 1;
       };
 
@@ -84,12 +84,12 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
       let totalInToman = Number(order.totalAmountInToman) || 0;
       if (!totalInToman || totalInToman === 0) {
         // Recalculate if not set
-        order.items.forEach((item) => {
+        order.items.forEach((item: any) => {
           const rate = getExchangeRate(item.currency);
           totalInToman += Number(item.quantity) * Number(item.unitCost) * rate;
         });
         if (order.additionalCosts && order.additionalCosts.length > 0) {
-          order.additionalCosts.forEach((cost) => {
+          order.additionalCosts.forEach((cost: any) => {
             const rate = getExchangeRate(cost.currency);
             totalInToman += Number(cost.amount) * rate;
           });
@@ -185,7 +185,7 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
 
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
-        const rate = exchangeRates.find((r) => r.currency === currency);
+        const rate = exchangeRates.find((r: any) => r.currency === currency);
         return rate ? Number(rate.rateToToman) : 1;
       };
 

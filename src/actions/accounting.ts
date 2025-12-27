@@ -524,7 +524,7 @@ export async function getEmployeeDebts() {
     );
 
     // Filter out employees with zero debt
-    return debtsWithDetails.filter((debt) => debt.totalDebt > 0);
+    return debtsWithDetails.filter((debt: any) => debt.totalDebt > 0);
   } catch (error) {
     console.error('Error fetching employee debts:', error);
     return [];
@@ -588,7 +588,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
       totalDebt,
       totalExpenses,
       totalPayments,
-      expenseTransactions: expenseTransactions.map((tx) => ({
+      expenseTransactions: expenseTransactions.map((tx: any) => ({
         id: tx.id,
         amount: Number(tx.amountInToman),
         description: tx.description,
@@ -596,7 +596,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
         category: tx.category,
         project: tx.project?.name,
       })),
-      paymentTransactions: incomeTransactions.map((tx) => ({
+      paymentTransactions: incomeTransactions.map((tx: any) => ({
         id: tx.id,
         amount: Number(tx.amountInToman),
         description: tx.description,

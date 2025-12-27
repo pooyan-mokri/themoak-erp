@@ -240,7 +240,7 @@ export async function getCustomersWithDebt() {
 
     // Calculate debt for each customer
     return customers.map(customer => {
-      const totalDebt = customer.orders.reduce((sum, order) => {
+      const totalDebt = customer.orders.reduce((sum: any, order: any) => {
         const orderTotal = Number(order.totalAmount) - Number(order.discount);
         const debt = orderTotal - Number(order.paidAmount);
         return sum + debt;
@@ -292,7 +292,7 @@ export async function getCustomerById(id: string) {
     if (!customer) return undefined;
 
     // Calculate debt
-    const totalDebt = customer.orders.reduce((sum, order) => {
+    const totalDebt = customer.orders.reduce((sum: any, order: any) => {
       const orderTotal = Number(order.totalAmount) - Number(order.discount);
       const debt = orderTotal - Number(order.paidAmount);
       return sum + debt;
@@ -300,7 +300,7 @@ export async function getCustomerById(id: string) {
 
     // Calculate stats
     const totalOrders = customer.orders.length;
-    const totalSpent = customer.orders.reduce((sum, order) =>
+    const totalSpent = customer.orders.reduce((sum: any, order: any) =>
       sum + Number(order.paidAmount), 0
     );
     const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
@@ -418,7 +418,7 @@ export async function calculateCustomerDebt(customerId: string): Promise<number>
       }
     });
 
-    return orders.reduce((sum, order) => {
+    return orders.reduce((sum: any, order: any) => {
       const orderTotal = Number(order.totalAmount) - Number(order.discount);
       const debt = orderTotal - Number(order.paidAmount);
       return sum + debt;
@@ -443,8 +443,8 @@ export async function getCustomerStats(customerId: string) {
     });
 
     const totalOrders = orders.length;
-    const totalSpent = orders.reduce((sum, order) => sum + Number(order.paidAmount), 0);
-    const totalDebt = orders.reduce((sum, order) => {
+    const totalSpent = orders.reduce((sum: any, order: any) => sum + Number(order.paidAmount), 0);
+    const totalDebt = orders.reduce((sum: any, order: any) => {
       if (order.paymentStatus === 'PAID') return sum;
       const orderTotal = Number(order.totalAmount) - Number(order.discount);
       return sum + (orderTotal - Number(order.paidAmount));

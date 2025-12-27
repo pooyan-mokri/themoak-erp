@@ -214,7 +214,7 @@ export async function getEmployees() {
       orderBy: { createdAt: 'desc' },
     });
 
-    return employees.map((e) => ({
+    return employees.map((e: any) => ({
       ...e,
       salary: Number(e.salary),
       userId: e.userId ?? undefined,

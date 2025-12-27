@@ -538,7 +538,7 @@ export async function getCRMDashboardStats() {
     const customersWithRevenue = topCustomers
       .map(customer => ({
         ...customer,
-        totalRevenue: customer.orders.reduce((sum, order) => sum + Number(order.totalAmount), 0)
+        totalRevenue: customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0)
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);

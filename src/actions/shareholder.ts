@@ -196,7 +196,7 @@ export async function getShareholders() {
       },
     });
 
-    return shareholders.map((s) => ({
+    return shareholders.map((s: any) => ({
       ...s,
       percentage: Number(s.percentage),
       phone: s.phone ?? undefined,

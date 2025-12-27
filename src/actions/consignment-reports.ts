@@ -44,7 +44,7 @@ export async function getConsignmentReport() {
     });
 
     // Calculate statistics for each partner
-    const partnerStats = partners.map((partner) => {
+    const partnerStats = partners.map((partner: any) => {
       const customerId = partner.customerId;
       if (!customerId) return undefined;
 
@@ -67,7 +67,7 @@ export async function getConsignmentReport() {
       const totalDebt = totalSales - totalPaid;
 
       // Calculate total commissions
-      const totalCommissions = partnerOrders.reduce((sum, order) => {
+      const totalCommissions = partnerOrders.reduce((sum: any, order: any) => {
         const orderCommissions = order.commissions || [];
         return (
           sum +
@@ -79,13 +79,13 @@ export async function getConsignmentReport() {
       }, 0);
 
       // Calculate paid commissions
-      const paidCommissions = partnerOrders.reduce((sum, order) => {
+      const paidCommissions = partnerOrders.reduce((sum: any, order: any) => {
         const orderCommissions = order.commissions || [];
         return (
           sum +
           orderCommissions
-            .filter((c) => c.isPaid)
-            .reduce((s, c) => s + Number(c.commissionAmount), 0)
+            .filter((c: any) => c.isPaid)
+            .reduce((s: any, c: any) => s + Number(c.commissionAmount), 0)
         );
       }, 0);
 
@@ -93,7 +93,7 @@ export async function getConsignmentReport() {
       const unpaidCommissions = totalCommissions - paidCommissions;
 
       // Calculate inventory value
-      const inventoryValue = partner.inventory.reduce((sum, inv) => {
+      const inventoryValue = partner.inventory.reduce((sum: any, inv: any) => {
         const costPrice = Number(inv.product.costPrice || 0);
         return sum + inv.quantity * costPrice;
       }, 0);
@@ -157,9 +157,9 @@ export async function getConsignmentReport() {
     // Calculate grand totals
     const grandTotals = {
       totalPartners: partnerStats.length,
-      totalSales: partnerStats.reduce((sum, p) => sum + (p?.totalSales || 0), 0),
-      totalPaid: partnerStats.reduce((sum, p) => sum + (p?.totalPaid || 0), 0),
-      totalDebt: partnerStats.reduce((sum, p) => sum + (p?.totalDebt || 0), 0),
+      totalSales: partnerStats.reduce((sum: any, p: any) => sum + (p?.totalSales || 0), 0),
+      totalPaid: partnerStats.reduce((sum: any, p: any) => sum + (p?.totalPaid || 0), 0),
+      totalDebt: partnerStats.reduce((sum: any, p: any) => sum + (p?.totalDebt || 0), 0),
       totalCommissions: partnerStats.reduce(
         (sum, p) => sum + (p?.totalCommissions || 0),
         0
@@ -180,7 +180,7 @@ export async function getConsignmentReport() {
         (sum, p) => sum + (p?.inventoryQuantity || 0),
         0
       ),
-      totalOrders: partnerStats.reduce((sum, p) => sum + (p?.orderCount || 0), 0),
+      totalOrders: partnerStats.reduce((sum: any, p: any) => sum + (p?.orderCount || 0), 0),
     };
 
     return {

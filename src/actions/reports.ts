@@ -28,11 +28,11 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
 
     const income = transactions
       .filter(t => t.type === 'INCOME')
-      .reduce((sum, t) => sum + Number(t.amountInToman), 0);
+      .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
     const expenses = transactions
       .filter(t => t.type === 'EXPENSE')
-      .reduce((sum, t) => sum + Number(t.amountInToman), 0);
+      .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
     const netProfit = income - expenses;
 
@@ -105,7 +105,7 @@ export async function getBalanceSheet(date: Date) {
       },
     });
 
-    const totalCash = cashAccounts.reduce((sum, acc) => sum + Number(acc.balance), 0);
+    const totalCash = cashAccounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
     // Inventory Value (cost price * quantity)
     const inventory = await prisma.inventory.findMany({
@@ -432,7 +432,7 @@ export async function getInventoryAgingReport() {
         (now.getTime() - product.createdAt.getTime()) / (1000 * 60 * 60 * 24)
       );
 
-      const totalQuantity = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+      const totalQuantity = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
       const value = totalQuantity * Number(product.costPrice);
 
       return {

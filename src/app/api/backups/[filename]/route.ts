@@ -8,7 +8,7 @@ const BACKUP_DIR = join(process.cwd(), 'backups');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { filename: string } }
+  { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
     // Check authentication
@@ -17,8 +17,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Await params in Next.js 16
+    const { filename: filenameParam } = await params;
+
     // Sanitize filename to prevent directory traversal
-    const filename = params.filename.replace(/[^a-zA-Z0-9._-]/g, '');
+    const filename = filenameParam.replace(/[^a-zA-Z0-9._-]/g, '');
     if (!filename.endsWith('.sql')) {
       return NextResponse.json({ error: 'Invalid file type' }, { status: 400 });
     }

@@ -252,7 +252,7 @@ export async function getMarketingGifts() {
       },
     });
 
-    return gifts.map((gift) => ({
+    return gifts.map((gift: any) => ({
       ...gift,
       costPrice: Number(gift.costPrice),
       totalCost: Number(gift.totalCost || 0),
@@ -337,7 +337,7 @@ export async function getMarketingCampaigns() {
       },
     });
 
-    return campaigns.map((campaign) => ({
+    return campaigns.map((campaign: any) => ({
       ...campaign,
       description: campaign.description ?? undefined,
       endDate: campaign.endDate ?? undefined,
@@ -359,13 +359,13 @@ export async function getMarketingStats() {
     });
 
     const totalGifts = gifts.length;
-    const totalQuantity = gifts.reduce((sum, gift) => sum + gift.quantity, 0);
+    const totalQuantity = gifts.reduce((sum: any, gift: any) => sum + gift.quantity, 0);
     const totalCost = gifts.reduce(
       (sum, gift) => sum + Number(gift.totalCost),
       0
     );
 
-    const giftsByProduct = gifts.reduce((acc, gift) => {
+    const giftsByProduct = gifts.reduce((acc: any, gift: any) => {
       const productName = gift.product.name;
       if (!acc[productName]) {
         acc[productName] = { quantity: 0, cost: 0 };
@@ -376,7 +376,7 @@ export async function getMarketingStats() {
     }, {} as Record<string, { quantity: number; cost: number }>);
 
     const campaigns = await prisma.marketingCampaign.findMany();
-    const activeCampaigns = campaigns.filter((c) => c.status === 'ACTIVE').length;
+    const activeCampaigns = campaigns.filter((c: any) => c.status === 'ACTIVE').length;
     const totalBudget = campaigns.reduce(
       (sum, c) => sum + (c.budget ? Number(c.budget) : 0),
       0

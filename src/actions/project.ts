@@ -104,7 +104,7 @@ export async function getProjectById(id: string) {
     
     // Get all user IDs from tasks
     const userIds = project.tasks
-      .map((t) => t.assignedTo)
+      .map((t: any) => t.assignedTo)
       .filter((id): id is string => id !== null);
     
     // Fetch users
@@ -115,7 +115,7 @@ export async function getProjectById(id: string) {
         })
       : [];
     
-    const userMap = new Map(users.map((u) => [u.id, u]));
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
     
     // Map tasks with user information
     return {
@@ -124,7 +124,7 @@ export async function getProjectById(id: string) {
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
-      tasks: project.tasks.map((task) => ({
+      tasks: project.tasks.map((task: any) => ({
         ...task,
         description: task.description ?? undefined,
         dueDate: task.dueDate ?? undefined,
@@ -155,7 +155,7 @@ export async function getProjectsForCalendar() {
     // Get all user IDs from tasks
     const userIds = projects
       .flatMap((p) => p.tasks)
-      .map((t) => t.assignedTo)
+      .map((t: any) => t.assignedTo)
       .filter((id): id is string => id !== null);
 
     // Fetch users
@@ -166,16 +166,16 @@ export async function getProjectsForCalendar() {
         })
       : [];
 
-    const userMap = new Map(users.map((u) => [u.id, u]));
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
 
     // Map projects with user information
-    return projects.map((project) => ({
+    return projects.map((project: any) => ({
       ...project,
       budget: project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
-      tasks: project.tasks.map((task) => ({
+      tasks: project.tasks.map((task: any) => ({
         ...task,
         description: task.description ?? undefined,
         dueDate: task.dueDate ?? undefined,
