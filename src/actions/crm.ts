@@ -236,6 +236,11 @@ export async function getDeals() {
     return deals.map(deal => ({
       ...deal,
       value: Number(deal.value),
+      expectedClose: deal.expectedClose ?? undefined,
+      actualClose: deal.actualClose ?? undefined,
+      notes: deal.notes ?? undefined,
+      assignedTo: deal.assignedTo ?? undefined,
+      lostReason: deal.lostReason ?? undefined,
       customer: deal.customer ? {
         ...deal.customer,
         phone: deal.customer.phone ?? undefined,
@@ -259,6 +264,11 @@ export async function getDealById(id: string) {
     return {
       ...deal,
       value: Number(deal.value),
+      expectedClose: deal.expectedClose ?? undefined,
+      actualClose: deal.actualClose ?? undefined,
+      notes: deal.notes ?? undefined,
+      assignedTo: deal.assignedTo ?? undefined,
+      lostReason: deal.lostReason ?? undefined,
       customer: deal.customer ? {
         ...deal.customer,
         phone: deal.customer.phone ?? undefined,
