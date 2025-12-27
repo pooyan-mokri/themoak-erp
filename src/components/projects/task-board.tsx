@@ -29,9 +29,9 @@ interface Task {
   status: string;
   description?: string;
   priority?: string;
-  dueDate?: Date | string | null;
+  dueDate?: Date | string;
   assignedTo?: string;
-  assignedToUser?: User | null;
+  assignedToUser?: User;
 }
 
 interface TaskBoardProps {
