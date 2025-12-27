@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Customer, OrderItem, Product, Transaction, Account } from '@prisma/client';
+import { OrderItem, Product, Transaction, Account } from '@prisma/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,24 @@ import { formatJalaliDateTime } from '@/lib/date-utils';
 import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
 import { ExchangeItemDialog } from './exchange-item-dialog';
+
+type Customer = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  wooId?: number;
+  taxId?: string;
+  segment?: string;
+  creditLimit?: number;
+  commissionRate?: number;
+  createdAt: Date;
+  updatedAt: Date;
+  type: string;
+  paymentTerms: number;
+};
 
 type OrderWithDetails = {
   id: string;

@@ -1,12 +1,30 @@
 'use client';
 
-import { Customer, OrderItem, Product } from '@prisma/client';
+import { OrderItem, Product } from '@prisma/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye } from 'lucide-react';
 import Link from 'next/link';
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
+
+type Customer = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  wooId?: number;
+  taxId?: string;
+  segment?: string;
+  creditLimit?: number;
+  commissionRate?: number;
+  createdAt: Date;
+  updatedAt: Date;
+  type: string;
+  paymentTerms: number;
+};
 
 type OrderWithDetails = {
   id: string;
