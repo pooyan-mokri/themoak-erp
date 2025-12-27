@@ -258,6 +258,7 @@ export async function getMarketingGifts() {
       totalCost: Number(gift.totalCost || 0),
       reason: gift.reason ?? undefined,
       notes: gift.notes ?? undefined,
+      campaignId: gift.campaignId ?? undefined,
       product: gift.product ? {
         ...gift.product,
         image: gift.product.image ?? undefined,
