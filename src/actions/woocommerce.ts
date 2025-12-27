@@ -224,7 +224,7 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
 
         if (!existingSku) {
              // Download and save product image if available
-             let imageUrl: string | null = null;
+             let imageUrl: string | undefined = undefined;
              console.log(`[Sync] Creating new product ${wooProduct.name} (ID: ${wooProductId}) - Checking for image...`);
              if (wooProduct.images && Array.isArray(wooProduct.images) && wooProduct.images.length > 0) {
                const imageData = wooProduct.images[0];
