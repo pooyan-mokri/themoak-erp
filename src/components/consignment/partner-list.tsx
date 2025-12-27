@@ -7,13 +7,13 @@ import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 interface Partner {
   id: string;
   name: string;
-  customer: {
+  customer?: {
     id: string;
     name: string;
     phone?: string;
     address?: string;
     commissionRate?: number;
-  } | null;
+  };
 }
 
 interface PartnerListProps {
