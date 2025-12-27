@@ -38,10 +38,10 @@ interface InventoryAuditItem {
   id: string;
   productId: string;
   systemQuantity: number;
-  countedQuantity1: number | null;
-  countedQuantity2: number | null;
-  countedQuantity3: number | null;
-  finalQuantity: number | null;
+  countedQuantity1?: number;
+  countedQuantity2?: number;
+  countedQuantity3?: number;
+  finalQuantity?: number;
   notes?: string;
   product: Product;
 }
@@ -341,16 +341,16 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
   }) || [];
 
   const getCountStatus = (item: InventoryAuditItem) => {
-    if (item.finalQuantity !== null) {
+    if (item.finalQuantity !== undefined) {
       return { status: 'final', label: 'نهایی شده', variant: 'default' as const };
     }
-    if (item.countedQuantity3 !== null) {
+    if (item.countedQuantity3 !== undefined) {
       return { status: 'third', label: 'شمارش سوم', variant: 'secondary' as const };
     }
-    if (item.countedQuantity2 !== null) {
+    if (item.countedQuantity2 !== undefined) {
       return { status: 'second', label: 'شمارش دوم', variant: 'outline' as const };
     }
-    if (item.countedQuantity1 !== null) {
+    if (item.countedQuantity1 !== undefined) {
       return { status: 'first', label: 'شمارش اول', variant: 'outline' as const };
     }
     return { status: 'none', label: 'شمارش نشده', variant: 'outline' as const };
@@ -631,25 +631,25 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                           <span className="text-muted-foreground">موجودی سیستم:</span>
                           <span className="font-medium mr-2">{item.systemQuantity}</span>
                         </div>
-                        {item.countedQuantity1 !== null && (
+                        {item.countedQuantity1 !== undefined && (
                           <div>
                             <span className="text-muted-foreground">شمارش اول:</span>
                             <span className="font-medium mr-2">{item.countedQuantity1}</span>
                           </div>
                         )}
-                        {item.countedQuantity2 !== null && (
+                        {item.countedQuantity2 !== undefined && (
                           <div>
                             <span className="text-muted-foreground">شمارش دوم:</span>
                             <span className="font-medium mr-2">{item.countedQuantity2}</span>
                           </div>
                         )}
-                        {item.countedQuantity3 !== null && (
+                        {item.countedQuantity3 !== undefined && (
                           <div>
                             <span className="text-muted-foreground">شمارش سوم:</span>
                             <span className="font-medium mr-2">{item.countedQuantity3}</span>
                           </div>
                         )}
-                        {item.finalQuantity !== null && (
+                        {item.finalQuantity !== undefined && (
                           <div>
                             <span className="text-muted-foreground">مقدار نهایی:</span>
                             <span className="font-medium mr-2 text-green-600">
@@ -663,7 +663,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                           <span className="font-medium">توضیحات:</span> {item.notes}
                         </div>
                       )}
-                      {item.countedQuantity1 !== null && item.finalQuantity === null && (
+                      {item.countedQuantity1 !== undefined && item.finalQuantity === undefined && (
                         <div className="flex gap-2 items-center">
                           <Input
                             type="number"
@@ -671,10 +671,10 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                             className="w-32"
                             defaultValue={
                               // Auto-suggest: use last count or average if multiple counts exist
-                              item.countedQuantity3 !== null 
-                                ? item.countedQuantity3 
-                                : item.countedQuantity2 !== null 
-                                ? item.countedQuantity2 
+                              item.countedQuantity3 !== undefined
+                                ? item.countedQuantity3
+                                : item.countedQuantity2 !== undefined
+                                ? item.countedQuantity2
                                 : item.countedQuantity1
                             }
                             onKeyDown={(e) => {
@@ -691,12 +691,12 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                             variant="outline"
                             onClick={() => {
                               // Auto-set to last count
-                              const suggestedQty = item.countedQuantity3 !== null
+                              const suggestedQty = item.countedQuantity3 !== undefined
                                 ? item.countedQuantity3
-                                : item.countedQuantity2 !== null
+                                : item.countedQuantity2 !== undefined
                                 ? item.countedQuantity2
                                 : item.countedQuantity1;
-                              if (suggestedQty !== null) {
+                              if (suggestedQty !== undefined) {
                                 handleSetFinal(item.productId, suggestedQty);
                               }
                             }}

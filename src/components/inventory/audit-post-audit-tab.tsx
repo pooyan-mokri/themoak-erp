@@ -41,16 +41,16 @@ interface InventoryAuditItem {
   id: string;
   productId: string;
   systemQuantity: number;
-  finalQuantity: number | null;
-  discrepancy: number | null;
-  discrepancyValue?: number | null;
+  finalQuantity?: number;
+  discrepancy?: number;
+  discrepancyValue?: number;
   product: Product;
 }
 
 interface InventoryAudit {
   id: string;
   status: string;
-  completedDate?: Date | string | null;
+  completedDate?: Date | string;
   items?: InventoryAuditItem[];
 }
 
