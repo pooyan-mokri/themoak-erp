@@ -1,12 +1,25 @@
 'use client';
 
-import { Task } from '@prisma/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TaskForm } from './task-form';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { deleteTask } from '@/actions/project';
+
+type Task = {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  projectId: string;
+  assignedTo?: string;
+  dueDate?: Date;
+  startDate?: Date;
+  endDate?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 interface TaskListProps {
   projectId: string;

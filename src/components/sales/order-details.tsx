@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Order, Customer, OrderItem, Product, Transaction, Account } from '@prisma/client';
+import { Customer, OrderItem, Product, Transaction, Account } from '@prisma/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,11 +15,24 @@ import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
 import { ExchangeItemDialog } from './exchange-item-dialog';
 
-type OrderWithDetails = Order & {
+type OrderWithDetails = {
+  id: string;
+  number: number;
+  createdAt: Date;
+  updatedAt: Date;
+  wooId?: number;
+  customerId?: string;
+  status: string;
+  totalAmount: number;
+  transactionId?: string;
+  discount?: number;
+  paidAmount?: number;
+  paymentStatus: string;
+  invoiceId?: string;
   customer?: Customer;
   items: (OrderItem & { product: Product; status?: string })[];
   transaction?: Transaction & { account?: Account };
-  invoice?: any; // Using any for now to avoid type issues with outdated client
+  invoice?: any;
 };
 
 interface OrderDetailsProps {
