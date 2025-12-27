@@ -190,7 +190,7 @@ export async function applyPromotion(promotionId: string, orderTotal: number) {
     return {
       success: true,
       discountAmount,
-      giftProductId: promotion.type === 'GIFT' ? promotion.productId : null,
+      giftProductId: promotion.type === 'GIFT' ? promotion.productId : undefined,
       promotionName: promotion.name,
     };
   } catch (error) {

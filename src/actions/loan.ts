@@ -67,7 +67,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
         remaining: new Prisma.Decimal(amount),
         interestRate: interestRate ? new Prisma.Decimal(interestRate) : new Prisma.Decimal(0),
         description: description || undefined,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
         status: 'ACTIVE',
       },
     });

@@ -82,7 +82,7 @@ export async function createEmployee(prevState: ActionState, formData: FormData)
         email: email || undefined,
         address: address || undefined,
         position: position || undefined,
-        hireDate: hireDate ? new Date(hireDate) : null,
+        hireDate: hireDate ? new Date(hireDate) : undefined,
         salary: new Prisma.Decimal(salary),
       },
     });
@@ -163,7 +163,7 @@ export async function updateEmployee(id: string, prevState: ActionState, formDat
         email: email || undefined,
         address: address || undefined,
         position: position || undefined,
-        hireDate: hireDate ? new Date(hireDate) : null,
+        hireDate: hireDate ? new Date(hireDate) : undefined,
         salary: new Prisma.Decimal(salary),
       },
     });

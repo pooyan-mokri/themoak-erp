@@ -59,7 +59,7 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
           name,
           phone,
           address,
-          commissionRate: commissionRate ? new Prisma.Decimal(commissionRate) : null,
+          commissionRate: commissionRate ? new Prisma.Decimal(commissionRate) : undefined,
         },
       });
 
@@ -116,7 +116,7 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
           name,
           phone,
           address,
-          commissionRate: commissionRate ? new Prisma.Decimal(commissionRate) : null,
+          commissionRate: commissionRate ? new Prisma.Decimal(commissionRate) : undefined,
         },
       });
 

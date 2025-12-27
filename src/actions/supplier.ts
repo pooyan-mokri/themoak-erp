@@ -509,7 +509,7 @@ export async function receivePurchaseOrderItems(
             await tx.fixedAsset.create({
               data: {
                 name: `${product.name}${receivedItem.receivedQuantity > 1 ? ` #${i + 1}` : ''}`,
-                productId: i === 0 ? orderItem.productId : null,
+                productId: i === 0 ? orderItem.productId : undefined,
                 assetType: 'FIXED',
                 purchaseDate: purchaseDate,
                 purchasePrice: purchasePrice,
@@ -641,7 +641,7 @@ export async function receivePurchaseOrder(orderId: string, warehouseId: string)
             await tx.fixedAsset.create({
               data: {
                 name: `${product.name}${item.quantity > 1 ? ` #${i + 1}` : ''}`,
-                productId: i === 0 ? item.productId : null, // Only first one gets productId
+                productId: i === 0 ? item.productId : undefined, // Only first one gets productId
                 assetType: 'FIXED',
                 purchaseDate: purchaseDate,
                 purchasePrice: purchasePrice,

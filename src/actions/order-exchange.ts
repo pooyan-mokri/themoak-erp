@@ -94,7 +94,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       }
 
       // 6. Create transaction if there's a price difference
-      let transactionId = null;
+      let transactionId = undefined;
       if (priceDifference !== 0) {
         const transactionType = priceDifference > 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
         const transaction = await tx.transaction.create({

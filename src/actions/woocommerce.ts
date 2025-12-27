@@ -592,7 +592,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             // 3. Create Transaction (Financial Record)
             // Get account from WooCommerce settings, fallback to first account
             const wooSettings = await getWooSettings();
-            let account = null;
+            let account = undefined;
             
             if (wooSettings?.accountId) {
                 account = await prisma.account.findUnique({

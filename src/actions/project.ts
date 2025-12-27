@@ -306,8 +306,8 @@ export async function updateProject(id: string, prevState: ActionState, formData
         name,
         description,
         status,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
         budget,
       },
     });
@@ -380,8 +380,8 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         description,
         status,
         priority,
-        startDate: startDate && startDate.trim() ? new Date(startDate) : null,
-        dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : null,
+        startDate: startDate && startDate.trim() ? new Date(startDate) : undefined,
+        dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : undefined,
         assignedTo: assignedTo || undefined,
     });
 
@@ -441,7 +441,7 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
             // Prisma will validate if it's a valid user ID
             updateData.assignedTo = assignedToValue;
         } else {
-            updateData.assignedTo = null;
+            updateData.assignedTo = undefined;
         }
         
         console.log('assignedTo value:', updateData.assignedTo);
@@ -473,8 +473,8 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         if (finalUpdateData.startDate !== undefined) {
             if (finalUpdateData.startDate instanceof Date) {
                 updatePayload.startDate = finalUpdateData.startDate;
-            } else if (finalUpdateData.startDate === null) {
-                updatePayload.startDate = null;
+            } else if (finalUpdateData.startDate === undefined || finalUpdateData.startDate === null) {
+                updatePayload.startDate = undefined;
             } else {
                 // Should not happen, but handle it
                 updatePayload.startDate = finalUpdateData.startDate;
@@ -486,8 +486,8 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         if (finalUpdateData.dueDate !== undefined) {
             if (finalUpdateData.dueDate instanceof Date) {
                 updatePayload.dueDate = finalUpdateData.dueDate;
-            } else if (finalUpdateData.dueDate === null) {
-                updatePayload.dueDate = null;
+            } else if (finalUpdateData.dueDate === undefined || finalUpdateData.dueDate === null) {
+                updatePayload.dueDate = undefined;
             } else {
                 // Should not happen, but handle it
                 updatePayload.dueDate = finalUpdateData.dueDate;

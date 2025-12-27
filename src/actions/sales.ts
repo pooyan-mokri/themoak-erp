@@ -39,10 +39,10 @@ export async function createOrder(data: OrderData) {
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      let transactionId = null;
+      let transactionId = undefined;
 
       // 1. Fetch customer first to get name for transaction description
-      let customer = null;
+      let customer = undefined;
       if (customerId) {
         customer = await tx.customer.findUnique({
           where: { id: customerId },
