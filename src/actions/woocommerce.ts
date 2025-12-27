@@ -10,14 +10,14 @@ import { TransactionType, ActionResult } from '@/lib/types';
 import { downloadAndSaveProductImage } from './upload';
 
 // Helper function to get WooCommerce warehouse ID from settings
-async function getWooWarehouseId(): Promise<string | null> {
+async function getWooWarehouseId(): Promise<string | undefined> {
   const wooSettings = await getSetting('woo_settings');
   if (wooSettings?.warehouseId) {
     return wooSettings.warehouseId;
   }
   // Fallback to Main Warehouse if not configured
   const warehouse = await prisma.warehouse.findFirst({ where: { name: 'Main Warehouse' } });
-  return warehouse?.id || null;
+  return warehouse?.id || undefined;
 }
 
 // Test WooCommerce connection

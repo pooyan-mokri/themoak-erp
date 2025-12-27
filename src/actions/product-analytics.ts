@@ -53,7 +53,7 @@ interface ProductAnalytics {
   }>;
 }
 
-export async function getProductAnalytics(productId: string): Promise<ProductAnalytics | null> {
+export async function getProductAnalytics(productId: string): Promise<ProductAnalytics | undefined> {
   try {
     // Get product details
     const product = await prisma.product.findUnique({

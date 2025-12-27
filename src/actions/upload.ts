@@ -134,7 +134,7 @@ export async function deleteProductImage(url: string) {
 /**
  * Download image from URL and save it to products folder
  */
-export async function downloadAndSaveProductImage(imageUrl: string): Promise<string | null> {
+export async function downloadAndSaveProductImage(imageUrl: string): Promise<string | undefined> {
   try {
     console.log(`[Image Download] Starting download from: ${imageUrl}`);
     
