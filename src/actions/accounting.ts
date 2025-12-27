@@ -513,8 +513,8 @@ export async function getEmployeeDebts() {
           employee: {
             id: employee.id,
             name: employee.name,
-            phone: employee.phone,
-            email: employee.email,
+            phone: employee.phone ?? undefined,
+            email: employee.email ?? undefined,
           },
           totalDebt,
           expenseCount: expenseTransactions.length,
