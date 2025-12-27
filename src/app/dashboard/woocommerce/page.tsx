@@ -48,28 +48,28 @@ export default function WooCommercePage() {
       const result = await syncOrders();
       console.log('[CLIENT] نتیجه syncOrders:', JSON.stringify(result, null, 2));
       
-      if (result.success) {
+      if (result.success && result.data) {
         console.log('[CLIENT] سینک موفق بود:', {
-          created: result.created,
-          skipped: result.skipped,
-          totalOrders: result.totalOrders,
-          totalOrdersInWooCommerce: result.totalOrdersInWooCommerce,
-          stats: result.stats,
-          errorCount: result.errorCount,
+          created: result.data.created,
+          skipped: result.data.skipped,
+          totalOrders: result.data.totalOrders,
+          totalOrdersInWooCommerce: result.data.totalOrdersInWooCommerce,
+          stats: result.data.stats,
+          errorCount: result.data.errorCount,
           message: result.message,
-          debugLogs: result.debugLogs
+          debugLogs: result.data.debugLogs
         });
-        
+
         // Log debug logs if available
-        if (result.debugLogs && result.debugLogs.length > 0) {
+        if (result.data.debugLogs && result.data.debugLogs.length > 0) {
           console.log('[CLIENT] لاگ‌های Debug:');
-          result.debugLogs.forEach((log: string) => console.log(log));
+          result.data.debugLogs.forEach((log: string) => console.log(log));
         }
-        
+
         if (result.message) {
           toast.success(result.message);
         } else {
-          toast.success(`Orders synced: ${result.created} new transactions created`);
+          toast.success(`Orders synced: ${result.data.created} new transactions created`);
         }
         if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
           console.warn('[CLIENT] خطاها در حین سینک:', result.errors);
