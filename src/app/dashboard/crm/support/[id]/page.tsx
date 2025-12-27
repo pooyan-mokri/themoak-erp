@@ -89,12 +89,14 @@ export default async function TicketDetailsPage({ params }: { params: { id: stri
               <CardTitle>جزئیات</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">مشتری:</span>
-                <Link href={`/dashboard/crm/customers/${ticket.customer.id}`} className="font-medium text-blue-600 hover:underline">
-                  {ticket.customer.name}
-                </Link>
-              </div>
+              {ticket.customer && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">مشتری:</span>
+                  <Link href={`/dashboard/crm/customers/${ticket.customer.id}`} className="font-medium text-blue-600 hover:underline">
+                    {ticket.customer.name}
+                  </Link>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">تاریخ ایجاد:</span>
                 <span className="font-medium">
