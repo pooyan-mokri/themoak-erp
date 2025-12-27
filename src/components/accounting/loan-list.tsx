@@ -49,7 +49,7 @@ export function LoanList({ loans: initialLoans, accounts }: LoanListProps) {
 
   const handlePaymentSuccess = () => {
     setPaymentDialogOpen(false);
-    setSelectedLoan(null);
+    setSelectedLoan(undefined);
     window.location.reload();
   };
 

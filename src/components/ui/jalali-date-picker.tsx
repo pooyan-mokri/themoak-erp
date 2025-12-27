@@ -144,7 +144,7 @@ export function JalaliDatePicker({
       const newDate = typeof defaultValue === 'string' ? new Date(defaultValue) : defaultValue;
       setSelectedDate(newDate);
     } else {
-      setSelectedDate(null);
+      setSelectedDate(undefined);
     }
   }, [defaultValue]);
 

@@ -25,7 +25,7 @@ export function UserList({ users }: UserListProps) {
   };
 
   const handleCreate = () => {
-    setSelectedUser(null);
+    setSelectedUser(undefined);
     setIsFormOpen(true);
   };
 

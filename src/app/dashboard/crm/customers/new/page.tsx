@@ -7,7 +7,7 @@ export default async function NewCustomerPage({
 }: {
   searchParams: { leadId?: string };
 }) {
-  let initialData = null;
+  let initialData = undefined;
 
   if (searchParams.leadId) {
     const lead = await getLeadById(searchParams.leadId);

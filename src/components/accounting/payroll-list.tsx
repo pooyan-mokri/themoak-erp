@@ -55,7 +55,7 @@ export function PayrollList({ payrolls: initialPayrolls, accounts }: PayrollList
 
   const handlePaymentSuccess = () => {
     setPaymentDialogOpen(false);
-    setSelectedPayroll(null);
+    setSelectedPayroll(undefined);
     window.location.reload();
   };
 

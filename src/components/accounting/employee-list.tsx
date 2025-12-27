@@ -71,7 +71,7 @@ export function EmployeeList({ employees: initialEmployees }: EmployeeListProps)
 
   const handleSuccess = () => {
     setEditDialogOpen(false);
-    setSelectedEmployee(null);
+    setSelectedEmployee(undefined);
     window.location.reload();
   };
 

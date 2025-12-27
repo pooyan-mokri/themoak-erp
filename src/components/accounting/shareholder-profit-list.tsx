@@ -50,7 +50,7 @@ export function ShareholderProfitList({ profits: initialProfits, accounts }: Sha
 
   const handleWithdrawalSuccess = () => {
     setWithdrawalDialogOpen(false);
-    setSelectedProfit(null);
+    setSelectedProfit(undefined);
     window.location.reload();
   };
 

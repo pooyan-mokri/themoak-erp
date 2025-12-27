@@ -95,7 +95,7 @@ export default function WooCommercePage() {
 
   const handleTestConnection = async () => {
     setIsTestingConnection(true);
-    setConnectionStatus(null);
+    setConnectionStatus(undefined);
     try {
       const result = await testWooCommerceConnection();
       setConnectionStatus(result);
@@ -117,7 +117,7 @@ export default function WooCommercePage() {
 
   const handleDebugProductMatching = async () => {
     setIsDebugging(true);
-    setDebugResult(null);
+    setDebugResult(undefined);
     try {
       const result = await debugProductMatching();
       setDebugResult(result);

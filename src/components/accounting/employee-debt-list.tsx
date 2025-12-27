@@ -39,7 +39,7 @@ export function EmployeeDebtList({ debts, accounts }: { debts: Debt[], accounts:
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
-    setSelectedEmployee(null);
+    setSelectedEmployee(undefined);
   };
 
   return (
