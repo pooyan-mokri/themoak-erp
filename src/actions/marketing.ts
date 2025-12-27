@@ -259,6 +259,7 @@ export async function getMarketingGifts() {
       reason: gift.reason ?? undefined,
       notes: gift.notes ?? undefined,
       campaignId: gift.campaignId ?? undefined,
+      recipientName: gift.recipientName ?? undefined,
       product: gift.product ? {
         ...gift.product,
         image: gift.product.image ?? undefined,
