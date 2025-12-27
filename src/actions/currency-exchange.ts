@@ -240,7 +240,7 @@ export async function getCurrencyExchangeHistory() {
       sourceCurrency: Currency;
       targetCurrency: Currency;
       exchangeRate: number;
-      description: string | null;
+      description?: string;
     }> = [];
 
     const processedIds = new Set<string>();
@@ -281,7 +281,7 @@ export async function getCurrencyExchangeHistory() {
             sourceCurrency: sourceTx.currency,
             targetCurrency: targetTx.currency,
             exchangeRate: Number(sourceTx.rateSnapshot),
-            description: sourceTx.description,
+            description: sourceTx.description ?? undefined,
           });
 
           processedIds.add(transaction.id);
