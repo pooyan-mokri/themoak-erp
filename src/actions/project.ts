@@ -120,8 +120,17 @@ export async function getProjectById(id: string) {
     // Map tasks with user information
     return {
       ...project,
+      budget: project.budget ? Number(project.budget) : undefined,
+      description: project.description ?? undefined,
+      endDate: project.endDate ?? undefined,
+      startDate: project.startDate ?? undefined,
       tasks: project.tasks.map((task) => ({
         ...task,
+        description: task.description ?? undefined,
+        dueDate: task.dueDate ?? undefined,
+        startDate: task.startDate ?? undefined,
+        endDate: task.endDate ?? undefined,
+        assignedTo: task.assignedTo ?? undefined,
         assignedToUser: task.assignedTo ? userMap.get(task.assignedTo) : undefined,
       })),
     };
