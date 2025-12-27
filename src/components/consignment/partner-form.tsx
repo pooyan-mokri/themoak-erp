@@ -26,7 +26,7 @@ export function PartnerForm() {
           <div className="space-y-2">
             <Label htmlFor="name">نام همکار / فروشگاه</Label>
             <Input id="name" name="name" placeholder="مثال: گالری نور" required />
-            {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name}</p>}
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="phone">شماره تماس</Label>
@@ -52,8 +52,8 @@ export function PartnerForm() {
             <p className="text-xs text-muted-foreground">
               درصد کمیسیون که به ازای هر فروش به این همکار پرداخت می‌شود
             </p>
-            {state.errors?.commissionRate && (
-              <p className="text-red-500 text-sm">{state.errors.commissionRate}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.commissionRate && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.commissionRate}</p>
             )}
           </div>
           {state.message && (

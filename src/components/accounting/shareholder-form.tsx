@@ -57,8 +57,8 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               required
               defaultValue={initialData?.name}
             />
-            {state.errors?.name && (
-              <p className="text-red-500 text-sm">{state.errors.name[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.name && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name[0]}</p>
             )}
           </div>
 
@@ -75,8 +75,8 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               required
               defaultValue={initialData?.percentage?.toString() || ''}
             />
-            {state.errors?.percentage && (
-              <p className="text-red-500 text-sm">{state.errors.percentage[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.percentage && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.percentage[0]}</p>
             )}
             <p className="text-xs text-muted-foreground">
               درصد سهام باید بین 0 تا 100 باشد. مجموع درصدهای همه صاحبان سهام نباید بیشتر از 100 باشد.
@@ -93,8 +93,8 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
                 placeholder="09123456789"
                 defaultValue={initialData?.phone || ''}
               />
-              {state.errors?.phone && (
-                <p className="text-red-500 text-sm">{state.errors.phone[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.phone && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone[0]}</p>
               )}
             </div>
 
@@ -107,8 +107,8 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
                 placeholder="example@email.com"
                 defaultValue={initialData?.email || ''}
               />
-              {state.errors?.email && (
-                <p className="text-red-500 text-sm">{state.errors.email[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.email && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.email[0]}</p>
               )}
             </div>
           </div>
@@ -122,8 +122,8 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               rows={2}
               defaultValue={initialData?.address || ''}
             />
-            {state.errors?.address && (
-              <p className="text-red-500 text-sm">{state.errors.address[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.address && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.address[0]}</p>
             )}
           </div>
 
@@ -136,8 +136,8 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               rows={3}
               defaultValue={initialData?.notes || ''}
             />
-            {state.errors?.notes && (
-              <p className="text-red-500 text-sm">{state.errors.notes[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.notes && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.notes[0]}</p>
             )}
           </div>
 

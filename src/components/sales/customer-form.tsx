@@ -50,7 +50,7 @@ export function CustomerForm({ initialData, onSuccess }: CustomerFormProps) {
           <div className="space-y-2">
             <Label htmlFor="name">نام مشتری</Label>
             <Input id="name" name="name" placeholder="مثال: علی رضایی" required defaultValue={initialData?.name} />
-            {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name}</p>}
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -60,7 +60,7 @@ export function CustomerForm({ initialData, onSuccess }: CustomerFormProps) {
             <div className="space-y-2">
               <Label htmlFor="email">ایمیل</Label>
               <Input id="email" name="email" type="email" placeholder="example@mail.com" defaultValue={initialData?.email || ''} />
-              {state.errors?.email && <p className="text-red-500 text-sm">{state.errors.email}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.email && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.email}</p>}
             </div>
           </div>
           <div className="space-y-2">

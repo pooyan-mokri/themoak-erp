@@ -40,13 +40,13 @@ export function QuickCustomerForm({ onSuccess, onCancel }: QuickCustomerFormProp
       <div className="space-y-2">
         <Label htmlFor="name">نام مشتری</Label>
         <Input id="name" name="name" required placeholder="نام و نام خانوادگی" />
-        {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name}</p>}
+        {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
       </div>
       
       <div className="space-y-2">
         <Label htmlFor="phone">شماره تماس</Label>
         <Input id="phone" name="phone" placeholder="0912..." />
-        {state.errors?.phone && <p className="text-red-500 text-sm">{state.errors.phone}</p>}
+        {(state.errors as Record<string, string[] | undefined> | undefined)?.phone && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone}</p>}
       </div>
 
       <div className="flex justify-end gap-2 pt-4">

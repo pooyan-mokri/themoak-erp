@@ -62,8 +62,8 @@ export function CampaignForm() {
                 placeholder="مثال: کمپین وفاداری مشتریان"
                 required
               />
-              {state.errors && 'name' in state.errors && state.errors.name?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.name[0]}</p>
+              {state.errors && 'name' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name[0]}</p>
               )}
             </div>
 
@@ -82,8 +82,8 @@ export function CampaignForm() {
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors && 'type' in state.errors && state.errors.type?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.type[0]}</p>
+              {state.errors && 'type' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.type?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.type[0]}</p>
               )}
             </div>
 
@@ -98,8 +98,8 @@ export function CampaignForm() {
                 }}
               />
               <input type="hidden" name="startDate" value={startDate} />
-              {state.errors && 'startDate' in state.errors && state.errors.startDate?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.startDate[0]}</p>
+              {state.errors && 'startDate' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.startDate?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.startDate[0]}</p>
               )}
             </div>
 

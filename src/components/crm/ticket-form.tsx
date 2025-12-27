@@ -55,8 +55,8 @@ export function TicketForm({ customers }: TicketFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            {state.errors?.customerId && (
-              <p className="text-sm text-red-500">{state.errors.customerId}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.customerId && (
+              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.customerId}</p>
             )}
           </div>
 
@@ -68,8 +68,8 @@ export function TicketForm({ customers }: TicketFormProps) {
               placeholder="موضوع تیکت"
               required
             />
-            {state.errors?.subject && (
-              <p className="text-sm text-red-500">{state.errors.subject}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.subject && (
+              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.subject}</p>
             )}
           </div>
 
@@ -82,8 +82,8 @@ export function TicketForm({ customers }: TicketFormProps) {
               rows={5}
               required
             />
-            {state.errors?.description && (
-              <p className="text-sm text-red-500">{state.errors.description}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
+              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.description}</p>
             )}
           </div>
 

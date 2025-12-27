@@ -75,7 +75,7 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
                 required 
                 className="h-12 md:h-10 text-base md:text-sm"
               />
-              {state.errors?.amount && <p className="text-red-500 text-sm">{state.errors.amount}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount}</p>}
             </div>
             
             <div className="space-y-2">

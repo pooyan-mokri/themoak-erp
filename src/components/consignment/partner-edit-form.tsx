@@ -77,7 +77,7 @@ export function PartnerEditForm({ partner }: PartnerEditFormProps) {
                 required
               />
               {state.errors?.name?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.name?.[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
               )}
             </div>
             <div className="space-y-2">
@@ -116,7 +116,7 @@ export function PartnerEditForm({ partner }: PartnerEditFormProps) {
                 درصد کمیسیون که به ازای هر فروش به این همکار پرداخت می‌شود
               </p>
               {state.errors?.commissionRate?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.commissionRate?.[0]}</p>
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.commissionRate?.[0]}</p>
               )}
             </div>
             {state.message && Object.keys(state.errors || {}).length > 0 && (
