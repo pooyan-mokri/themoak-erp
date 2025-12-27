@@ -24,7 +24,7 @@ interface CurrencyExchangeHistoryProps {
     sourceCurrency: Currency;
     targetCurrency: Currency;
     exchangeRate: number;
-    description: string | null;
+    description?: string;
   }>;
 }
 

@@ -20,7 +20,7 @@ import { formatJalaliDate } from '@/lib/date-utils';
 interface Promotion {
   id: string;
   name: string;
-  description: string | null;
+  description?: string;
   type: string;
   discountPercent?: number;
   discountAmount?: number;

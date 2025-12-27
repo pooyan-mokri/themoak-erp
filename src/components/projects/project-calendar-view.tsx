@@ -18,8 +18,8 @@ interface Task {
   title: string;
   status: string;
   priority: string;
-  startDate: string | null;
-  dueDate: string | null;
+  startDate?: string;
+  dueDate?: string;
   assignedTo: {
     id: string;
     name: string;
@@ -29,8 +29,8 @@ interface Task {
 interface ProjectCalendarViewProps {
   tasks: Task[];
   projectId: string;
-  projectStartDate?: string | null;
-  projectEndDate?: string | null;
+  projectStartDate?: string;
+  projectEndDate?: string;
 }
 
 const jalaliMonths = [

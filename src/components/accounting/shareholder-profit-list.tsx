@@ -27,7 +27,7 @@ interface ShareholderProfit {
   amount: number;
   withdrawn: number;
   available: number;
-  description: string | null;
+  description?: string;
   periodStart: Date;
   periodEnd: Date;
   withdrawals: any[];

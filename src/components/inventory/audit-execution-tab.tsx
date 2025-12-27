@@ -42,7 +42,7 @@ interface InventoryAuditItem {
   countedQuantity2: number | null;
   countedQuantity3: number | null;
   finalQuantity: number | null;
-  notes?: string | null;
+  notes?: string;
   product: Product;
 }
 

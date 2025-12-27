@@ -11,8 +11,8 @@ import { HandCoins } from 'lucide-react';
 interface Employee {
   id: string;
   name: string;
-  phone?: string | null;
-  email?: string | null;
+  phone?: string;
+  email?: string;
 }
 
 interface Debt {

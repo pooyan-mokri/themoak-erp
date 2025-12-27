@@ -10,8 +10,8 @@ interface Partner {
   customer: {
     id: string;
     name: string;
-    phone: string | null;
-    address: string | null;
+    phone?: string;
+    address?: string;
     commissionRate?: number;
   } | null;
 }

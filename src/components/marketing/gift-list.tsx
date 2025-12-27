@@ -12,7 +12,7 @@ interface Gift {
     sku: string;
   };
   quantity: number;
-  recipientName: string | null;
+  recipientName?: string;
   account: {
     name: string;
   };
@@ -21,8 +21,8 @@ interface Gift {
   } | null;
   costPrice: number;
   totalCost: number;
-  reason: string | null;
-  notes: string | null;
+  reason?: string;
+  notes?: string;
   date: Date | string;
 }
 

@@ -27,10 +27,10 @@ interface Task {
   id: string;
   title: string;
   status: string;
-  description?: string | null;
+  description?: string;
   priority?: string;
   dueDate?: Date | string | null;
-  assignedTo?: string | null;
+  assignedTo?: string;
   assignedToUser?: User | null;
 }
 

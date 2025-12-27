@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 interface ProductImageUploadProps {
   onUploadComplete: (url: string) => void;
   onRemove: () => void;
-  currentUrl?: string | null;
+  currentUrl?: string;
 }
 
 export function ProductImageUpload({ onUploadComplete, onRemove, currentUrl }: ProductImageUploadProps) {

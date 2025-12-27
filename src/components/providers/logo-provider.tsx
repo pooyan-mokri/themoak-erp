@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { getCompanyInfo } from '@/actions/settings';
 
 interface LogoContextType {
-  logo: string | null;
+  logo?: string;
   refreshLogo: () => void;
 }
 
