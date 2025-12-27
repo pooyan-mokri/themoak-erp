@@ -337,6 +337,8 @@ export async function getMarketingCampaigns() {
 
     return campaigns.map((campaign) => ({
       ...campaign,
+      description: campaign.description ?? undefined,
+      endDate: campaign.endDate ?? undefined,
       budget: campaign.budget ? Number(campaign.budget) : undefined,
       spentAmount: Number(campaign.spentAmount),
     }));
