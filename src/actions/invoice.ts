@@ -156,6 +156,7 @@ export async function getInvoices() {
       tax: invoice.tax ? Number(invoice.tax) : undefined,
       total: Number(invoice.total),
       paidAmount: invoice.paidAmount ? Number(invoice.paidAmount) : undefined,
+      notes: invoice.notes ?? undefined,
       customer: invoice.customer ? {
         ...invoice.customer,
         phone: invoice.customer.phone ?? undefined,

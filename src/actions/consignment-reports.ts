@@ -128,6 +128,9 @@ export async function getConsignmentReport() {
           discount: order.discount ? Number(order.discount) : undefined,
           paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
           customerId: order.customerId ?? undefined,
+          wooId: order.wooId ?? undefined,
+          transactionId: order.transactionId ?? undefined,
+          invoiceId: order.invoiceId ?? undefined,
           customer: order.customer ? {
             ...order.customer,
             phone: order.customer.phone ?? undefined,

@@ -81,6 +81,9 @@ export async function getConsignmentCommissionsReport() {
             discount: comm.order.discount ? Number(comm.order.discount) : undefined,
             paidAmount: comm.order.paidAmount ? Number(comm.order.paidAmount) : undefined,
             customerId: comm.order.customerId ?? undefined,
+            wooId: comm.order.wooId ?? undefined,
+            transactionId: comm.order.transactionId ?? undefined,
+            invoiceId: comm.order.invoiceId ?? undefined,
           } : undefined,
         })).sort((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

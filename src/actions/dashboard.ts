@@ -296,7 +296,7 @@ export async function getUserTasks() {
       title: task.title,
       projectName: task.project.name,
       status: task.status,
-      deadline: null, // Task model doesn't have deadline field
+      deadline: undefined, // Task model doesn't have deadline field
       priority: 'MEDIUM' // Task model doesn't have priority field
     }));
   } catch (error) {

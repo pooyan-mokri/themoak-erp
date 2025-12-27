@@ -84,6 +84,7 @@ export async function getLeads() {
       email: lead.email ?? undefined,
       source: lead.source ?? undefined,
       notes: lead.notes ?? undefined,
+      assignedTo: lead.assignedTo ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching leads:', error);
@@ -109,6 +110,7 @@ export async function getLeadById(id: string) {
       email: lead.email ?? undefined,
       source: lead.source ?? undefined,
       notes: lead.notes ?? undefined,
+      assignedTo: lead.assignedTo ?? undefined,
     };
   } catch (error) {
     console.error('Error fetching lead:', error);

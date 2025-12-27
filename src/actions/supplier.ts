@@ -109,6 +109,8 @@ export async function getPurchaseOrders() {
         totalCostInToman: item.totalCostInToman ? Number(item.totalCostInToman) : undefined,
         additionalCost: item.additionalCost ? Number(item.additionalCost) : undefined,
         additionalCostInToman: item.additionalCostInToman ? Number(item.additionalCostInToman) : undefined,
+        receivedDate: item.receivedDate ?? undefined,
+        additionalCostCurrency: item.additionalCostCurrency ?? undefined,
       })),
       additionalCosts: order.additionalCosts.map(cost => ({
         ...cost,
@@ -121,6 +123,7 @@ export async function getPurchaseOrders() {
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
         exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
+        transactionId: cost.transactionId ?? undefined,
       })),
     }));
 
@@ -339,6 +342,7 @@ export async function getPurchaseOrder(orderId: string) {
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
         exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
+        transactionId: cost.transactionId ?? undefined,
       })),
     };
 

@@ -368,6 +368,20 @@ export async function getInventoryAudit(auditId: string) {
       description: audit.description ?? undefined,
       items: audit.items.map(item => ({
         ...item,
+        countedQuantity1: item.countedQuantity1 ?? undefined,
+        countedQuantity2: item.countedQuantity2 ?? undefined,
+        countedQuantity3: item.countedQuantity3 ?? undefined,
+        countedBy1: item.countedBy1 ?? undefined,
+        countedBy2: item.countedBy2 ?? undefined,
+        countedBy3: item.countedBy3 ?? undefined,
+        countedAt1: item.countedAt1 ?? undefined,
+        countedAt2: item.countedAt2 ?? undefined,
+        countedAt3: item.countedAt3 ?? undefined,
+        finalQuantity: item.finalQuantity ?? undefined,
+        discrepancy: item.discrepancy ?? undefined,
+        discrepancyValue: item.discrepancyValue ? Number(item.discrepancyValue) : undefined,
+        notes: item.notes ?? undefined,
+        adjustmentDocId: item.adjustmentDocId ?? undefined,
         product: item.product ? {
           ...item.product,
           image: item.product.image ?? undefined,
@@ -377,6 +391,10 @@ export async function getInventoryAudit(auditId: string) {
       })),
       tags: audit.tags.map(tag => ({
         ...tag,
+        location: tag.location ?? undefined,
+        productId: tag.productId ?? undefined,
+        printedAt: tag.printedAt ?? undefined,
+        printedBy: tag.printedBy ?? undefined,
         product: tag.product ? {
           ...tag.product,
           image: tag.product.image ?? undefined,
@@ -427,6 +445,10 @@ export async function getInventoryAudits(warehouseId?: string) {
     return audits.map(audit => ({
       ...audit,
       description: audit.description ?? undefined,
+      createdBy: audit.createdBy ?? undefined,
+      startDate: audit.startDate ?? undefined,
+      completedDate: audit.completedDate ?? undefined,
+      frozenAt: audit.frozenAt ?? undefined,
     }));
   } catch (error: unknown) {
     console.error('Error fetching inventory audits:', error);
