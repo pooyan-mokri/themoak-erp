@@ -43,12 +43,14 @@ export default async function DealDetailsPage({ params }: { params: { id: string
             <CardTitle>اطلاعات معامله</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">مشتری:</span>
-              <Link href={`/dashboard/crm/customers/${deal.customer.id}`} className="font-medium text-blue-600 hover:underline">
-                {deal.customer.name}
-              </Link>
-            </div>
+            {deal.customer && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">مشتری:</span>
+                <Link href={`/dashboard/crm/customers/${deal.customer.id}`} className="font-medium text-blue-600 hover:underline">
+                  {deal.customer.name}
+                </Link>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">ارزش:</span>
               <span className="font-medium text-green-600">
