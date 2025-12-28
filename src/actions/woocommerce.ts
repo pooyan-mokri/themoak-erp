@@ -1006,10 +1006,15 @@ export async function debugProductMatching(): Promise<ActionResult<{
                     itemSku: firstItem.sku,
                     productIdToSearch: productIdToSearch
                 },
-                productsInDatabase: productsWithWooId,
+                productsInDatabase: productsWithWooId.map((p: any) => ({
+                    id: p.id,
+                    wooId: p.wooId ?? undefined,
+                    sku: p.sku,
+                    name: p.name
+                })),
                 foundProduct: foundProduct ? {
                     id: foundProduct.id,
-                    wooId: foundProduct.wooId,
+                    wooId: foundProduct.wooId ?? undefined,
                     sku: foundProduct.sku,
                     name: foundProduct.name
                 } : undefined,
