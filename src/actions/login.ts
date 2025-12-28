@@ -28,10 +28,9 @@ export async function authenticate(
       switch (error.type) {
         case 'CredentialsSignin':
           return 'Invalid credentials.';
-        case 'Configuration':
-          return 'Server configuration error. Please contact administrator.';
         default:
-          return 'Something went wrong: ' + error.type;
+          console.error('[LOGIN ACTION] Unhandled AuthError type:', error.type);
+          return 'Authentication error: ' + error.message;
       }
     }
 
