@@ -195,6 +195,7 @@ export async function getOrders() {
         segment: order.customer.segment ?? undefined,
         taxId: order.customer.taxId ?? undefined,
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
+        type: order.customer.customerType,
       } : undefined,
       items: order.items.map((item: any) => ({
         ...item,
@@ -255,6 +256,7 @@ export async function getOrder(id: string) {
         segment: order.customer.segment ?? undefined,
         taxId: order.customer.taxId ?? undefined,
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
+        type: order.customer.customerType,
       } : undefined,
       items: order.items.map((item: any) => ({
         ...item,
