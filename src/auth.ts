@@ -31,9 +31,13 @@ console.log('[AUTH DEBUG] Using secret:', !!authSecret, 'Length:', authSecret?.l
 
 if (!authSecret) {
   console.error('[AUTH DEBUG] ❌ NO AUTH SECRET FOUND! This will cause authentication to fail.');
+  console.error('[AUTH DEBUG] Please set AUTH_SECRET or NEXTAUTH_SECRET environment variable.');
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+let authExport;
+try {
+  console.log('[AUTH DEBUG] Initializing NextAuth configuration...');
+  authExport = NextAuth({
   ...authConfig,
   secret: authSecret,
   trustHost: true,
@@ -101,3 +105,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+  console.log('[AUTH DEBUG] ✓ NextAuth configuration initialized successfully');
+} catch (error) {
+  console.error('[AUTH DEBUG] ❌ Failed to initialize NextAuth:', error);
+  throw error;
+}
+
+export const { handlers, auth, signIn, signOut } = authExport;
