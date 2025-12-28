@@ -53,13 +53,14 @@ interface InventoryAudit {
 }
 
 interface PendingCount {
-  id?: string;
+  id?: number;
   auditId: string;
   productId: string;
   count: number;
   countRound: 1 | 2 | 3;
   notes?: string;
-  timestamp?: number;
+  timestamp: number;
+  synced: boolean;
 }
 
 interface ExecutionTabProps {
@@ -92,7 +93,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
   const loadPendingCounts = async () => {
     try {
       const counts = await getPendingCounts(audit.id);
-      setPendingCounts(counts as any);
+      setPendingCounts(counts);
     } catch (error) {
       console.error('Error loading pending counts:', error);
     }
