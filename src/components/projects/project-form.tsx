@@ -105,7 +105,7 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
               placeholder="مثال: راه‌اندازی کمپین تابستانه" 
               required 
             />
-            {state?.errors?.name && (
+            {(state?.errors as Record<string, string[] | undefined> | undefined)?.name && (
               <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
             )}
           </div>

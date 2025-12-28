@@ -60,8 +60,8 @@ export function CreateAuditDialog({ warehouses }: CreateAuditDialogProps) {
         toast.success(result.message);
         setOpen(false);
         setWarehouseId('');
-        if (result.auditId) {
-          router.push(`/dashboard/inventory/audits/${result.auditId}`);
+        if (result.data?.auditId) {
+          router.push(`/dashboard/inventory/audits/${result.data.auditId}`);
         } else {
           router.push('/dashboard/inventory/audits');
         }

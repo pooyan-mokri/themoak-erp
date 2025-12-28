@@ -391,7 +391,7 @@ export async function getMarketingStats() {
       totalQuantity,
       totalCost,
       giftsByProduct: Object.entries(giftsByProduct)
-        .map(([name, data]) => ({ name, ...data }))
+        .map(([name, data]: [string, any]) => ({ name, ...data }))
         .sort((a: any, b: any) => b.cost - a.cost)
         .slice(0, 10),
       totalCampaigns: campaigns.length,

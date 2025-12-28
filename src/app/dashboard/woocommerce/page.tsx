@@ -27,7 +27,7 @@ export default function WooCommercePage() {
     try {
       const result = await syncProducts();
       if (result.success) {
-        toast.success(`محصولات سینک شدند: ${result.created} جدید، ${result.updated} به‌روزرسانی شد`);
+        toast.success(`محصولات سینک شدند: ${result.data?.created} جدید، ${result.data?.updated} به‌روزرسانی شد`);
       } else {
         toast.error(result.error || 'خطا در سینک محصولات');
         console.error('Sync products error:', result);
