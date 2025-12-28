@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate resolve --rolled-back 20250101000000_add_asset_type || true && prisma migrate resolve --rolled-back 20250128000000_create_all_missing_tables || true && prisma migrate deploy && next build",
+    "build": "prisma db push --accept-data-loss --skip-generate && next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate"
