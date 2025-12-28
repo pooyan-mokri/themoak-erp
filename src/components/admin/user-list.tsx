@@ -69,16 +69,16 @@ export function UserList({ users }: UserListProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, 'ADMIN')}>
+                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.ADMIN)}>
                       تغییر به مدیر
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, 'ACCOUNTANT')}>
+                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.ACCOUNTANT)}>
                       تغییر به حسابدار
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, 'SALES')}>
+                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.SALES)}>
                       تغییر به فروشنده
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, 'WAREHOUSE')}>
+                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.WAREHOUSE)}>
                       تغییر به انباردار
                     </DropdownMenuItem>
                     <DropdownMenuItem
