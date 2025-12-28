@@ -25,7 +25,7 @@ const MarketingGiftSchema = z.object({
         });
         return z.NEVER;
       }
-      return parsed.map(item => MarketingGiftItemSchema.parse(item));
+      return parsed.map((item: any) => MarketingGiftItemSchema.parse(item));
     } catch {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -85,7 +85,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
   } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Validate all products and calculate total cost
       let totalCost = 0;
       const validatedItems = [];
@@ -152,7 +152,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
 
       // 3. Create transaction for marketing expense
       const transactionDate = date ? new Date(date) : new Date();
-      const productNames = validatedItems.map(item => `${item.product.name} (${item.quantity} عدد)`).join('، ');
+      const productNames = validatedItems.map((item: any) => `${item.product.name} (${item.quantity} عدد)`).join('، ');
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -392,7 +392,7 @@ export async function getMarketingStats() {
       totalCost,
       giftsByProduct: Object.entries(giftsByProduct)
         .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.cost - a.cost)
+        .sort((a: any, b: any) => b.cost - a.cost)
         .slice(0, 10),
       totalCampaigns: campaigns.length,
       activeCampaigns,

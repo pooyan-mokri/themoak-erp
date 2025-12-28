@@ -81,7 +81,7 @@ export async function getAssets() {
 
     // Calculate current value on the fly for display accuracy
     // Convert Decimal to number for client components
-    return assets.map(asset => {
+    return assets.map((asset: any) => {
       const currentValue = calculateCurrentValue(asset);
       return {
         ...asset,

@@ -9,7 +9,7 @@ export default async function POSPage() {
   const allAccounts = await getAccounts();
   
   // Filter accounts to only show Bank and Cash
-  const accounts = allAccounts.filter(a => a.type === 'BANK' || a.type === 'CASH');
+  const accounts = allAccounts.filter((a: any) => a.type === 'BANK' || a.type === 'CASH');
 
   return (
     <div className="h-full">

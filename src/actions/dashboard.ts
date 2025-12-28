@@ -158,7 +158,7 @@ export async function getDashboardSales() {
 
     // Get product details
     const topProductsWithDetails = await Promise.all(
-      topProducts.map(async (item) => {
+      topProducts.map(async (item: any) => {
         const product = await prisma.product.findUnique({
           where: { id: item.productId }
         });
@@ -173,7 +173,7 @@ export async function getDashboardSales() {
     return {
       today: salesToday,
       yesterday: salesYesterday,
-      dailySales: dailySales.map(day => ({
+      dailySales: dailySales.map((day: any) => ({
         date: day.date.toISOString().split('T')[0],
         total: Number(day.total),
         count: day.count
@@ -207,21 +207,21 @@ export async function getLowStockItems(threshold: number = 10) {
     });
 
     const itemsBelowThreshold = lowStockProducts
-      .map(product => {
+      .map((product: any) => {
         const totalStock = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
         return {
           id: product.id,
           name: product.name,
           sku: product.sku,
           totalStock,
-          warehouses: product.inventory.map(inv => ({
+          warehouses: product.inventory.map((inv: any) => ({
             name: inv.warehouse.name,
             quantity: inv.quantity
           }))
         };
       })
-      .filter(item => item.totalStock < threshold)
-      .sort((a, b) => a.totalStock - b.totalStock)
+      .filter((item: any) => item.totalStock < threshold)
+      .sort((a: any, b: any) => a.totalStock - b.totalStock)
       .slice(0, 10); // Top 10 lowest
 
     return itemsBelowThreshold;
@@ -250,7 +250,7 @@ export async function getRecentActivity(limit: number = 5) {
       }
     });
 
-    return activities.map(log => ({
+    return activities.map((log: any) => ({
       id: log.id,
       userName: log.user?.name || 'System',
       action: log.action,
@@ -291,7 +291,7 @@ export async function getUserTasks() {
       take: 5
     });
 
-    return tasks.map(task => ({
+    return tasks.map((task: any) => ({
       id: task.id,
       title: task.title,
       projectName: task.project.name,

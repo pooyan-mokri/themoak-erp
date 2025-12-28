@@ -27,11 +27,11 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
     });
 
     const income = transactions
-      .filter(t => t.type === 'INCOME')
+      .filter((t: any) => t.type === 'INCOME')
       .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
     const expenses = transactions
-      .filter(t => t.type === 'EXPENSE')
+      .filter((t: any) => t.type === 'EXPENSE')
       .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
     const netProfit = income - expenses;
@@ -40,7 +40,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
     const incomeByCategory: Record<string, number> = {};
     const expensesByCategory: Record<string, number> = {};
 
-    transactions.forEach(t => {
+    transactions.forEach((t: any) => {
       const category = t.category || 'سایر';
       const amount = Number(t.amountInToman);
 
@@ -54,7 +54,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
     // Monthly breakdown
     const monthlyData: Record<string, { income: number; expenses: number; profit: number }> = {};
     
-    transactions.forEach(t => {
+    transactions.forEach((t: any) => {
       const monthKey = t.date.toISOString().substring(0, 7); // YYYY-MM
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { income: 0, expenses: 0, profit: 0 };
@@ -81,7 +81,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
       monthlyTrend: Object.entries(monthlyData).map(([month, data]) => ({
         month,
         ...data,
-      })).sort((a, b) => a.month.localeCompare(b.month)),
+      })).sort((a: any, b: any) => a.month.localeCompare(b.month)),
     };
   } catch (error) {
     console.error('Error generating P&L report:', error);
@@ -198,7 +198,7 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
 
     const productSales: Record<string, { name: string; quantity: number; revenue: number }> = {};
 
-    orderItems.forEach(item => {
+    orderItems.forEach((item: any) => {
       const key = item.productId;
       if (!productSales[key]) {
         productSales[key] = {
@@ -211,7 +211,7 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
       productSales[key].revenue += item.quantity * Number(item.price);
     });
 
-    return Object.values(productSales).sort((a, b) => b.revenue - a.revenue);
+    return Object.values(productSales).sort((a: any, b: any) => b.revenue - a.revenue);
   } catch (error) {
     console.error('Error generating sales by product report:', error);
     throw new Error('Failed to generate sales by product report');
@@ -239,7 +239,7 @@ export async function getSalesByCustomer(startDate: Date, endDate: Date) {
 
     const customerSales: Record<string, { name: string; orderCount: number; revenue: number }> = {};
 
-    orders.forEach(order => {
+    orders.forEach((order: any) => {
       const key = order.customerId || 'walk-in';
       const name = order.customer?.name || 'مشتری حضوری';
       
@@ -254,7 +254,7 @@ export async function getSalesByCustomer(startDate: Date, endDate: Date) {
       customerSales[key].revenue += Number(order.totalAmount);
     });
 
-    return Object.values(customerSales).sort((a, b) => b.revenue - a.revenue);
+    return Object.values(customerSales).sort((a: any, b: any) => b.revenue - a.revenue);
   } catch (error) {
     console.error('Error generating sales by customer report:', error);
     throw new Error('Failed to generate sales by customer report');
@@ -283,7 +283,7 @@ export async function getSalesOverTime(
 
     const salesByPeriod: Record<string, { revenue: number; orders: number }> = {};
 
-    orders.forEach(order => {
+    orders.forEach((order: any) => {
       let periodKey: string;
       
       if (interval === 'day') {
@@ -310,7 +310,7 @@ export async function getSalesOverTime(
         period,
         ...data,
       }))
-      .sort((a, b) => a.period.localeCompare(b.period));
+      .sort((a: any, b: any) => a.period.localeCompare(b.period));
   } catch (error) {
     console.error('Error generating sales over time report:', error);
     throw new Error('Failed to generate sales over time report');
@@ -366,7 +366,7 @@ export async function getStockTurnoverReport() {
     }> = {};
 
     // Calculate sold quantity
-    orderItems.forEach(item => {
+    orderItems.forEach((item: any) => {
       const key = item.productId;
       if (!productTurnover[key]) {
         productTurnover[key] = {
@@ -380,7 +380,7 @@ export async function getStockTurnoverReport() {
     });
 
     // Add current stock
-    currentInventory.forEach(inv => {
+    currentInventory.forEach((inv: any) => {
       const key = inv.productId;
       if (!productTurnover[key]) {
         productTurnover[key] = {
@@ -400,7 +400,7 @@ export async function getStockTurnoverReport() {
       }
     });
 
-    return Object.values(productTurnover).sort((a, b) => b.turnoverRate - a.turnoverRate);
+    return Object.values(productTurnover).sort((a: any, b: any) => b.turnoverRate - a.turnoverRate);
   } catch (error) {
     console.error('Error generating stock turnover report:', error);
     throw new Error('Failed to generate stock turnover report');
@@ -427,7 +427,7 @@ export async function getInventoryAgingReport() {
     });
 
     const now = new Date();
-    const agingData = products.map(product => {
+    const agingData = products.map((product: any) => {
       const daysInStock = Math.floor(
         (now.getTime() - product.createdAt.getTime()) / (1000 * 60 * 60 * 24)
       );
@@ -445,7 +445,7 @@ export async function getInventoryAgingReport() {
       };
     });
 
-    return agingData.sort((a, b) => b.daysInStock - a.daysInStock);
+    return agingData.sort((a: any, b: any) => b.daysInStock - a.daysInStock);
   } catch (error) {
     console.error('Error generating inventory aging report:', error);
     throw new Error('Failed to generate inventory aging report');

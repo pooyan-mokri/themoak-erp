@@ -85,11 +85,11 @@ export async function getConsignmentCommissionsReport() {
             transactionId: comm.order.transactionId ?? undefined,
             invoiceId: comm.order.invoiceId ?? undefined,
           } : undefined,
-        })).sort((a, b) =>
+        })).sort((a: any, b: any) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         ),
       }))
-      .sort((a, b) => b.totalCommission - a.totalCommission);
+      .sort((a: any, b: any) => b.totalCommission - a.totalCommission);
 
     // Calculate grand total
     const grandTotal = report.reduce((sum: any, item: any) => sum + item.totalCommission, 0);

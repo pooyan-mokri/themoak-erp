@@ -125,7 +125,7 @@ export async function getCustomers() {
     const customers = await prisma.customer.findMany({
       orderBy: { createdAt: 'desc' },
     });
-    return customers.map(customer => ({
+    return customers.map((customer: any) => ({
       ...customer,
       creditLimit: customer.creditLimit ? Number(customer.creditLimit) : undefined,
       commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
@@ -168,7 +168,7 @@ export async function getCustomer(id: string) {
       notes: customer.notes ?? undefined,
       segment: customer.segment ?? undefined,
       taxId: customer.taxId ?? undefined,
-      orders: customer.orders.map(order => ({
+      orders: customer.orders.map((order: any) => ({
         ...order,
         totalAmount: Number(order.totalAmount),
         discount: order.discount ? Number(order.discount) : undefined,
@@ -189,7 +189,7 @@ export async function getCustomer(id: string) {
           segment: order.customer.segment ?? undefined,
           taxId: order.customer.taxId ?? undefined,
         } : undefined,
-        items: order.items.map(item => ({
+        items: order.items.map((item: any) => ({
           ...item,
           price: Number(item.price),
         })),
@@ -239,7 +239,7 @@ export async function getCustomersWithDebt() {
     });
 
     // Calculate debt for each customer
-    return customers.map(customer => {
+    return customers.map((customer: any) => {
       const totalDebt = customer.orders.reduce((sum: any, order: any) => {
         const orderTotal = Number(order.totalAmount) - Number(order.discount);
         const debt = orderTotal - Number(order.paidAmount);
@@ -316,7 +316,7 @@ export async function getCustomerById(id: string) {
       segment: customer.segment ?? undefined,
       taxId: customer.taxId ?? undefined,
       commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
-      orders: customer.orders.map(order => ({
+      orders: customer.orders.map((order: any) => ({
         ...order,
         customerId: order.customerId ?? undefined,
         transactionId: order.transactionId ?? undefined,
@@ -325,7 +325,7 @@ export async function getCustomerById(id: string) {
         totalAmount: Number(order.totalAmount),
         discount: Number(order.discount),
         paidAmount: Number(order.paidAmount),
-        items: order.items.map(item => ({
+        items: order.items.map((item: any) => ({
           ...item,
           price: Number(item.price),
           product: item.product ? {
@@ -366,7 +366,7 @@ export async function getCustomerById(id: string) {
           notes: order.invoice.notes ?? undefined,
         } : undefined,
       })),
-      leads: customer.leads.map(lead => ({
+      leads: customer.leads.map((lead: any) => ({
         ...lead,
         company: lead.company ?? undefined,
         phone: lead.phone ?? undefined,
@@ -377,7 +377,7 @@ export async function getCustomerById(id: string) {
         expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
         notes: lead.notes ?? undefined,
       })),
-      deals: customer.deals.map(deal => ({
+      deals: customer.deals.map((deal: any) => ({
         ...deal,
         value: Number(deal.value),
         expectedClose: deal.expectedClose ?? undefined,
@@ -386,7 +386,7 @@ export async function getCustomerById(id: string) {
         assignedTo: deal.assignedTo ?? undefined,
         notes: deal.notes ?? undefined,
       })),
-      tickets: customer.tickets.map(ticket => ({
+      tickets: customer.tickets.map((ticket: any) => ({
         ...ticket,
         assignedTo: ticket.assignedTo ?? undefined,
         resolution: ticket.resolution ?? undefined,

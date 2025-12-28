@@ -75,7 +75,7 @@ export async function getLeads() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return leads.map(lead => ({
+    return leads.map((lead: any) => ({
       ...lead,
       expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
       customerId: lead.customerId ?? undefined,
@@ -235,7 +235,7 @@ export async function getDeals() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return deals.map(deal => ({
+    return deals.map((deal: any) => ({
       ...deal,
       value: Number(deal.value),
       expectedClose: deal.expectedClose ?? undefined,
@@ -379,7 +379,7 @@ export async function getTickets() {
       orderBy: { createdAt: 'desc' },
     });
 
-    return tickets.map(ticket => ({
+    return tickets.map((ticket: any) => ({
       ...ticket,
       assignedTo: ticket.assignedTo ?? undefined,
       resolution: ticket.resolution ?? undefined,
@@ -536,11 +536,11 @@ export async function getCRMDashboardStats() {
 
     // Calculate revenue for top customers and sort
     const customersWithRevenue = topCustomers
-      .map(customer => ({
+      .map((customer: any) => ({
         ...customer,
         totalRevenue: customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0)
       }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);
 
     return {

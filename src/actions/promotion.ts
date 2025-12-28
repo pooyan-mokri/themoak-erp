@@ -75,7 +75,7 @@ export async function getPromotions() {
     });
 
     // Serialize Decimal fields to numbers
-    return promotions.map(promotion => ({
+    return promotions.map((promotion: any) => ({
       ...promotion,
       description: promotion.description ?? undefined,
       productId: promotion.productId ?? undefined,
@@ -110,7 +110,7 @@ export async function getActivePromotions() {
       orderBy: { createdAt: 'desc' },
     });
 
-    return promotions.map(promotion => ({
+    return promotions.map((promotion: any) => ({
       ...promotion,
       description: promotion.description ?? undefined,
       productId: promotion.productId ?? undefined,

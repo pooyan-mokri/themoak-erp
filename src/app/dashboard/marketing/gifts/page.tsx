@@ -8,7 +8,7 @@ export default async function GiftsPage() {
   const gifts = await getMarketingGifts();
 
   // Convert dates and numbers
-  const giftsWithNumbers = gifts.map((gift) => ({
+  const giftsWithNumbers = gifts.map((gift: any) => ({
     ...gift,
     costPrice: Number(gift.costPrice || 0),
     totalCost: Number(gift.totalCost || 0),

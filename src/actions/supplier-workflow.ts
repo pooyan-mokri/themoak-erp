@@ -48,7 +48,7 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
 
 export async function recordPurchasePayment(orderId: string, accountId: string): Promise<ActionResult> {
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
         include: { items: true, additionalCosts: true }
@@ -158,7 +158,7 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
   try {
     const validatedCosts = arrivalCostsSchema.parse(arrivalCosts);
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId }
       });

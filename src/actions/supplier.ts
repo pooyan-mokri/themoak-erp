@@ -42,7 +42,7 @@ export async function getSuppliers() {
         }
       }
     });
-    const serializedSuppliers = suppliers.map(supplier => ({
+    const serializedSuppliers = suppliers.map((supplier: any) => ({
       ...supplier,
       phone: supplier.phone ?? undefined,
       email: supplier.email ?? undefined,
@@ -97,11 +97,11 @@ export async function getPurchaseOrders() {
     });
 
     // Serialize Decimal fields
-    const serializedOrders = orders.map(order => ({
+    const serializedOrders = orders.map((order: any) => ({
       ...order,
       totalAmount: Number(order.totalAmount),
       totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : undefined,
-      items: order.items.map(item => ({
+      items: order.items.map((item: any) => ({
         ...item,
         unitCost: Number(item.unitCost),
         unitCostInToman: item.unitCostInToman ? Number(item.unitCostInToman) : undefined,
@@ -112,13 +112,13 @@ export async function getPurchaseOrders() {
         receivedDate: item.receivedDate ?? undefined,
         additionalCostCurrency: item.additionalCostCurrency ?? undefined,
       })),
-      additionalCosts: order.additionalCosts.map(cost => ({
+      additionalCosts: order.additionalCosts.map((cost: any) => ({
         ...cost,
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
         exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
       })),
-      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map(cost => ({
+      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map((cost: any) => ({
         ...cost,
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
@@ -142,13 +142,13 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 
     // Get all unique currencies from items and additional costs
     const allCurrencies = [
-      ...validatedData.items.map(item => item.currency),
-      ...(validatedData.additionalCosts || []).map(cost => cost.currency)
+      ...validatedData.items.map((item: any) => item.currency),
+      ...(validatedData.additionalCosts || []).map((cost: any) => cost.currency)
     ].filter((c, i, arr) => arr.indexOf(c) === i);
 
     // Get exchange rates for currency conversion
     // Filter out TOMAN as it doesn't need exchange rate
-    const currenciesNeedingRates = allCurrencies.filter(c => c !== 'TOMAN');
+    const currenciesNeedingRates = allCurrencies.filter((c: any) => c !== 'TOMAN');
     
     type ExchangeRate = {
       id: string;
@@ -170,7 +170,7 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 
       // Get latest rate for each currency
       const latestRates: Record<string, ExchangeRate> = {};
-      exchangeRates.forEach(rate => {
+      exchangeRates.forEach((rate: any) => {
         const currency = rate.currency;
         if (!latestRates[currency] || new Date(rate.date) > new Date(latestRates[currency].date)) {
           latestRates[currency] = rate;
@@ -181,7 +181,7 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 
     const getExchangeRate = (currency: string) => {
       if (currency === 'TOMAN') return 1;
-      const rate = exchangeRates.find(r => r.currency === currency);
+      const rate = exchangeRates.find((r: any) => r.currency === currency);
       if (!rate) {
         console.warn(`Exchange rate not found for ${currency}, using 1`);
         return 1;
@@ -191,7 +191,7 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 
     // Calculate totals for each item and convert to Toman
     let totalAmountInToman = 0;
-    const itemsData = validatedData.items.map(item => {
+    const itemsData = validatedData.items.map((item: any) => {
       const exchangeRate = getExchangeRate(item.currency);
       const unitCostInToman = item.unitCost * exchangeRate;
       const itemTotalInToman = item.quantity * unitCostInToman;
@@ -209,7 +209,7 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 
     // Calculate additional costs in Toman
     let additionalCostsInToman = 0;
-    const additionalCostsData = (validatedData.additionalCosts || []).map(cost => {
+    const additionalCostsData = (validatedData.additionalCosts || []).map((cost: any) => {
       const exchangeRate = getExchangeRate(cost.currency);
       const amountInToman = cost.amount * exchangeRate;
       additionalCostsInToman += amountInToman;
@@ -331,13 +331,13 @@ export async function getPurchaseOrder(orderId: string) {
         additionalCost: item.additionalCost ? Number(item.additionalCost) : undefined,
         additionalCostInToman: item.additionalCostInToman ? Number(item.additionalCostInToman) : undefined,
       })),
-      additionalCosts: order.additionalCosts.map(cost => ({
+      additionalCosts: order.additionalCosts.map((cost: any) => ({
         ...cost,
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
         exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
       })),
-      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map(cost => ({
+      arrivalAdditionalCosts: order.arrivalAdditionalCosts.map((cost: any) => ({
         ...cost,
         amount: Number(cost.amount),
         amountInToman: cost.amountInToman ? Number(cost.amountInToman) : undefined,
@@ -359,7 +359,7 @@ export async function receivePurchaseOrderItems(
   receivedItems: Array<{ itemId: string; receivedQuantity: number }>
 ): Promise<ActionResult> {
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Get Order with products and all costs
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
@@ -384,7 +384,7 @@ export async function receivePurchaseOrderItems(
 
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
-        const rate = exchangeRates.find(r => r.currency === currency);
+        const rate = exchangeRates.find((r: any) => r.currency === currency);
         return rate ? Number(rate.rateToToman) : 1;
       };
 
@@ -393,20 +393,20 @@ export async function receivePurchaseOrderItems(
       
       // Add order additional costs
       if (order.additionalCosts && order.additionalCosts.length > 0) {
-        order.additionalCosts.forEach(cost => {
+        order.additionalCosts.forEach((cost: any) => {
           totalAdditionalCostsInToman += Number(cost.amountInToman || 0);
         });
       }
 
       // Add arrival additional costs
       if (order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0) {
-        order.arrivalAdditionalCosts.forEach(cost => {
+        order.arrivalAdditionalCosts.forEach((cost: any) => {
           totalAdditionalCostsInToman += Number(cost.amountInToman || 0);
         });
       }
 
       // Calculate total quantity of all items in the order
-      const totalOrderQuantity = order.items.reduce((sum: number, item) => sum + item.quantity, 0);
+      const totalOrderQuantity = order.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
       
       // Calculate additional cost per unit (distributed across all items)
       const additionalCostPerUnit = totalOrderQuantity > 0 ? totalAdditionalCostsInToman / totalOrderQuantity : 0;
@@ -415,7 +415,7 @@ export async function receivePurchaseOrderItems(
 
       // 2. Process each received item
       for (const receivedItem of receivedItems) {
-        const orderItem = order.items.find(item => item.id === receivedItem.itemId);
+        const orderItem = order.items.find((item: any) => item.id === receivedItem.itemId);
         if (!orderItem) continue;
 
         const newReceivedQuantity = (orderItem.receivedQuantity || 0) + receivedItem.receivedQuantity;
@@ -556,7 +556,7 @@ export async function receivePurchaseOrderItems(
 // Keep the old function for backward compatibility, but mark as deprecated
 export async function receivePurchaseOrder(orderId: string, warehouseId: string): Promise<ActionResult> {
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Get Order with products
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },

@@ -41,7 +41,7 @@ export default async function InventoryReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {stockTurnover.slice(0, 20).map((product, index) => (
+              {stockTurnover.slice(0, 20).map((product: any, index: any) => (
                 <TableRow key={index}>
                   <TableCell className="font-medium">{product.name}</TableCell>
                   <TableCell className="text-right">{product.currentStock}</TableCell>
@@ -79,7 +79,7 @@ export default async function InventoryReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {inventoryAging.filter(item => item.daysInStock > 90).map((product, index) => (
+              {inventoryAging.filter((item: any) => item.daysInStock > 90).map((product: any, index: any) => (
                 <TableRow key={index}>
                   <TableCell className="font-medium">{product.name}</TableCell>
                   <TableCell>{product.sku}</TableCell>

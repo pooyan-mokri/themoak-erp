@@ -75,7 +75,7 @@ export async function getSalesAnalytics(range?: DateRange) {
     }));
 
     // Top products by revenue
-    const productSales = orders.flatMap(order => order.items).reduce((acc: any, item: any) => {
+    const productSales = orders.flatMap((order: any) => order.items).reduce((acc: any, item: any) => {
       const productId = item.productId;
       if (!acc[productId]) {
         acc[productId] = {
@@ -116,7 +116,7 @@ export async function getSalesAnalytics(range?: DateRange) {
       .slice(0, 10);
 
     // Sales by product type
-    const salesByCategory = orders.flatMap(order => order.items).reduce((acc: any, item: any) => {
+    const salesByCategory = orders.flatMap((order: any) => order.items).reduce((acc: any, item: any) => {
       const type = item.product.productType;
       if (!acc[type]) {
         acc[type] = { type, revenue: 0, quantity: 0 };

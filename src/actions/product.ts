@@ -75,7 +75,7 @@ export async function getProducts() {
       orderBy: { createdAt: 'desc' },
     });
     // Convert Decimal to number for client components
-    return products.map(product => ({
+    return products.map((product: any) => ({
       id: product.id,
       name: product.name,
       sku: product.sku,
@@ -94,7 +94,7 @@ export async function getProducts() {
 
 export async function giftProduct(productId: string, quantity: number, recipient: string, note?: string) {
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       // 1. Find product to get cost price
       const product = await tx.product.findUnique({ where: { id: productId } });
       if (!product) throw new Error('Product not found');

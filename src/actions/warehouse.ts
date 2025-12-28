@@ -50,7 +50,7 @@ export async function getWarehouses() {
     const warehouses = await prisma.warehouse.findMany({
       orderBy: { createdAt: 'asc' },
     });
-    return warehouses.map(w => ({
+    return warehouses.map((w: any) => ({
       ...w,
       customerId: w.customerId ?? undefined,
     }));

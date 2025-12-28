@@ -123,7 +123,7 @@ export async function getConsignmentReport() {
         inventoryQuantity,
         productCount,
         orderCount: partnerOrders.length,
-        orders: partnerOrders.slice(0, 10).map(order => ({
+        orders: partnerOrders.slice(0, 10).map((order: any) => ({
           ...order,
           discount: order.discount ? Number(order.discount) : undefined,
           paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
@@ -141,7 +141,7 @@ export async function getConsignmentReport() {
             taxId: order.customer.taxId ?? undefined,
             segment: order.customer.segment ?? undefined,
           } : undefined,
-          items: order.items.map(item => ({
+          items: order.items.map((item: any) => ({
             ...item,
             product: item.product ? {
               ...item.product,
@@ -152,7 +152,7 @@ export async function getConsignmentReport() {
           })),
         })), // Last 10 orders
       };
-    }).filter((p): p is NonNullable<typeof p> => p !== null);
+    }).filter((p: any): p is NonNullable<typeof p> => p !== null);
 
     // Calculate grand totals
     const grandTotals = {

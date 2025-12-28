@@ -28,7 +28,7 @@ async function getExpenses() {
       take: 100 // Increased limit for better filtering
     });
 
-    return expenses.map(expense => ({
+    return expenses.map((expense: any) => ({
       ...expense,
       amount: Number(expense.amount),
       amountInToman: Number(expense.amountInToman),

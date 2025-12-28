@@ -52,7 +52,7 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
   const { name, phone, address, commissionRate } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Create Customer
       const customer = await tx.customer.create({
         data: {
@@ -98,7 +98,7 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
   const { name, phone, address, commissionRate } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // Find warehouse and customer
       const warehouse = await tx.warehouse.findUnique({
         where: { id: partnerId },
@@ -155,7 +155,7 @@ export async function transferStock(prevState: ActionState, formData: FormData):
   const { sourceWarehouseId, targetWarehouseId, productId, quantity } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // Check source stock
       const sourceStock = await tx.inventory.findUnique({
         where: {
@@ -233,7 +233,7 @@ export async function settleSales(prevState: ActionState, formData: FormData): P
   const totalAmount = quantity * unitPrice;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Deduct from Partner Warehouse
       const stock = await tx.inventory.findUnique({
         where: {
@@ -334,7 +334,7 @@ export async function getConsignmentPartners() {
             where: { isVirtual: true, customerId: { not: null } },
             include: { customer: true }
         });
-        return partners.map(partner => ({
+        return partners.map((partner: any) => ({
             ...partner,
             customer: partner.customer ? {
                 ...partner.customer,
@@ -404,12 +404,12 @@ export async function getPendingSettlements() {
         createdAt: 'desc'
       }
     });
-    return orders.map(order => ({
+    return orders.map((order: any) => ({
       ...order,
       totalAmount: Number(order.totalAmount),
       discount: order.discount ? Number(order.discount) : undefined,
       paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
-      items: order.items.map(item => ({
+      items: order.items.map((item: any) => ({
         ...item,
         price: Number(item.price),
       })),
@@ -437,7 +437,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   const { orderId, accountId } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Get Order
       const order = await tx.order.findUnique({
         where: { id: orderId },

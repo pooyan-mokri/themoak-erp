@@ -576,7 +576,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             take: 5,
                             select: { id: true, wooId: true, sku: true, name: true }
                         });
-                        console.log(`[PROCESS] نمونه محصولات موجود در سیستم:`, allProducts.map(p => ({ id: p.id, wooId: p.wooId, sku: p.sku, name: p.name })));
+                        console.log(`[PROCESS] نمونه محصولات موجود در سیستم:`, allProducts.map((p: any) => ({ id: p.id, wooId: p.wooId, sku: p.sku, name: p.name })));
                     }
                 }
             }
@@ -643,7 +643,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                      }
 
                      // Use a transaction to ensure atomicity
-                     await prisma.$transaction(async (tx) => {
+                     await prisma.$transaction(async (tx: any) => {
                         console.log(`[DEBUG] ایجاد تراکنش برای سفارش #${order.number}...`);
                         
                         // Get customer name for description
@@ -690,7 +690,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                                 transactionId: transaction.id,
                                 createdAt: new Date(order.date_created || Date.now()),
                                 items: {
-                                    create: orderItemsData.map(item => ({
+                                    create: orderItemsData.map((item: any) => ({
                                         productId: item.productId,
                                         quantity: item.quantity,
                                         price: new Prisma.Decimal(item.price)

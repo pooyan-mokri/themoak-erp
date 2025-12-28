@@ -9,7 +9,7 @@ export default async function CurrencyExchangePage() {
   const history = await getCurrencyExchangeHistory();
 
   // Convert Decimal to number for client
-  const accountsWithNumbers = accounts.map((account) => ({
+  const accountsWithNumbers = accounts.map((account: any) => ({
     ...account,
     balance: Number(account.balance),
   }));

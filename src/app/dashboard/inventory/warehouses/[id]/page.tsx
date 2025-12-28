@@ -148,7 +148,7 @@ export default async function WarehouseDetailPage({
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {lowStockItems.slice(0, 5).map((item) => (
+                  {lowStockItems.slice(0, 5).map((item: any) => (
                     <div
                       key={item.id}
                       className="flex justify-between items-center text-sm p-2 bg-white dark:bg-gray-900 rounded"
@@ -179,7 +179,7 @@ export default async function WarehouseDetailPage({
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {topProductsByValue.slice(0, 5).map((item, index) => (
+                {topProductsByValue.slice(0, 5).map((item: any, index: any) => (
                   <div
                     key={item.id}
                     className="flex justify-between items-center text-sm"

@@ -169,7 +169,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     const newRemaining = remainingAmount - principalAmount;
 
     // Create payment and update loan
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.INCOME,

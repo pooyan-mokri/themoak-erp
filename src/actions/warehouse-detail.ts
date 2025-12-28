@@ -72,10 +72,10 @@ export async function getWarehouseDetail(warehouseId: string) {
         take: 50,
       });
       // Sort manually by order createdAt
-      recentOrderItems.sort((a, b) => 
+      recentOrderItems.sort((a: any, b: any) => 
         new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime()
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching order items:', err);
       recentOrderItems = [];
     }
@@ -120,10 +120,10 @@ export async function getWarehouseDetail(warehouseId: string) {
         take: 50,
       });
       // Sort manually by purchaseOrder createdAt
-      recentPurchaseItems.sort((a, b) => 
+      recentPurchaseItems.sort((a: any, b: any) => 
         new Date(b.purchaseOrder.createdAt).getTime() - new Date(a.purchaseOrder.createdAt).getTime()
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching purchase items:', err);
       recentPurchaseItems = [];
     }
@@ -147,7 +147,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       },
       orderBy: { createdAt: 'desc' },
       take: 10,
-    }).catch((err) => {
+    }).catch((err: any) => {
       console.error('Error fetching audits:', err);
       return [];
     });
@@ -170,12 +170,12 @@ export async function getWarehouseDetail(warehouseId: string) {
             totalValue: item.quantity * Number(item.product.costPrice),
             productType: item.product.productType,
           };
-        } catch (err) {
+        } catch (err: any) {
           console.error('Error formatting inventory item:', err, item);
           return undefined;
         }
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+      .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
     const formattedOrderItems = relevantOrderItems
       .map((item: any) => {
@@ -194,12 +194,12 @@ export async function getWarehouseDetail(warehouseId: string) {
             orderDate: formatJalaliDateTime(item.order.createdAt),
             orderDateRaw: item.order.createdAt,
           };
-        } catch (err) {
+        } catch (err: any) {
           console.error('Error formatting order item:', err, item);
           return undefined;
         }
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+      .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
     const formattedPurchaseItems = relevantPurchaseItems
       .map((item: any) => {
@@ -218,12 +218,12 @@ export async function getWarehouseDetail(warehouseId: string) {
             orderDate: formatJalaliDateTime(item.purchaseOrder.createdAt),
             orderDateRaw: item.purchaseOrder.createdAt,
           };
-        } catch (err) {
+        } catch (err: any) {
           console.error('Error formatting purchase item:', err, item);
           return undefined;
         }
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+      .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
     const formattedAudits = recentAudits
       .map((audit: any) => {
@@ -235,12 +235,12 @@ export async function getWarehouseDetail(warehouseId: string) {
             createdAt: formatJalaliDateTime(audit.createdAt),
             createdAtRaw: audit.createdAt,
           };
-        } catch (err) {
+        } catch (err: any) {
           console.error('Error formatting audit:', err, audit);
           return undefined;
         }
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+      .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
     // Get low stock items
     const lowStockItems = formattedInventory.filter((item: any) => {
@@ -250,7 +250,7 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Get top products by value
     const topProductsByValue = [...formattedInventory]
-      .sort((a, b) => b.totalValue - a.totalValue)
+      .sort((a: any, b: any) => b.totalValue - a.totalValue)
       .slice(0, 10);
 
     return {

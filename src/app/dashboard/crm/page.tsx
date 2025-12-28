@@ -68,7 +68,7 @@ export default async function CRMDashboardPage() {
               {stats.recentDeals.length === 0 ? (
                 <p className="text-sm text-muted-foreground">هیچ فرصت فروشی یافت نشد.</p>
               ) : (
-                stats.recentDeals.map((deal) => (
+                stats.recentDeals.map((deal: any) => (
                   <div key={deal.id} className="flex items-center">
                     <div className="ml-4 space-y-1">
                       <p className="text-sm font-medium leading-none">{deal.title}</p>
@@ -94,7 +94,7 @@ export default async function CRMDashboardPage() {
               {stats.recentLeads.length === 0 ? (
                 <p className="text-sm text-muted-foreground">هیچ سرنخی یافت نشد.</p>
               ) : (
-                stats.recentLeads.map((lead) => (
+                stats.recentLeads.map((lead: any) => (
                   <div key={lead.id} className="flex items-center">
                     <div className="ml-4 space-y-1">
                       <p className="text-sm font-medium leading-none">{lead.name}</p>
@@ -123,7 +123,7 @@ export default async function CRMDashboardPage() {
               {stats.topCustomers.length === 0 ? (
                 <p className="text-sm text-muted-foreground">هیچ داده‌ای یافت نشد.</p>
               ) : (
-                stats.topCustomers.map((customer, index) => (
+                stats.topCustomers.map((customer: any, index: any) => (
                   <Link 
                     key={customer.id} 
                     href={`/dashboard/crm/customers/${customer.id}`}
@@ -160,7 +160,7 @@ export default async function CRMDashboardPage() {
               {stats.recentActivity.length === 0 ? (
                 <p className="text-sm text-muted-foreground">هیچ فعالیتی یافت نشد.</p>
               ) : (
-                stats.recentActivity.map((activity) => (
+                stats.recentActivity.map((activity: any) => (
                   <div key={activity.id} className="flex gap-4">
                     <div className="flex flex-col items-center">
                       <div className="h-2 w-2 rounded-full bg-primary" />

@@ -149,7 +149,7 @@ export async function getInvoices() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return invoices.map(invoice => ({
+    return invoices.map((invoice: any) => ({
       ...invoice,
       subtotal: Number(invoice.subtotal),
       discount: invoice.discount ? Number(invoice.discount) : undefined,
@@ -199,7 +199,7 @@ export async function getInvoiceById(id: string) {
         totalAmount: Number(invoice.order.totalAmount),
         discount: invoice.order.discount ? Number(invoice.order.discount) : undefined,
         paidAmount: invoice.order.paidAmount ? Number(invoice.order.paidAmount) : undefined,
-        items: invoice.order.items.map(item => ({
+        items: invoice.order.items.map((item: any) => ({
           ...item,
           price: Number(item.price),
         })),

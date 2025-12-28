@@ -137,7 +137,7 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
       costPrice: item.product.costPrice,
     }));
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // Create snapshots
       await tx.inventoryAuditSnapshot.createMany({
         data: snapshots,
@@ -366,7 +366,7 @@ export async function getInventoryAudit(auditId: string) {
     return {
       ...audit,
       description: audit.description ?? undefined,
-      items: audit.items.map(item => ({
+      items: audit.items.map((item: any) => ({
         ...item,
         countedQuantity1: item.countedQuantity1 ?? undefined,
         countedQuantity2: item.countedQuantity2 ?? undefined,
@@ -389,7 +389,7 @@ export async function getInventoryAudit(auditId: string) {
           barcode: item.product.barcode ?? undefined,
         } : undefined,
       })),
-      tags: audit.tags.map(tag => ({
+      tags: audit.tags.map((tag: any) => ({
         ...tag,
         location: tag.location ?? undefined,
         productId: tag.productId ?? undefined,
@@ -402,7 +402,7 @@ export async function getInventoryAudit(auditId: string) {
           barcode: tag.product.barcode ?? undefined,
         } : undefined,
       })),
-      snapshots: audit.snapshots.map(snapshot => ({
+      snapshots: audit.snapshots.map((snapshot: any) => ({
         ...snapshot,
         product: snapshot.product ? {
           ...snapshot.product,
@@ -442,7 +442,7 @@ export async function getInventoryAudits(warehouseId?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return audits.map(audit => ({
+    return audits.map((audit: any) => ({
       ...audit,
       description: audit.description ?? undefined,
       createdBy: audit.createdBy ?? undefined,
@@ -807,7 +807,7 @@ export async function issueAdjustmentDocuments(auditId: string): Promise<ActionR
     const { adjustStock } = await import('./inventory');
 
     // Adjust inventory for each item
-    const adjustments = audit.items.map(async (item) => {
+    const adjustments = audit.items.map(async (item: any) => {
       const adjustment = item.discrepancy || 0;
 
       if (adjustment !== 0) {

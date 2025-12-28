@@ -310,7 +310,7 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
 
     // Create transaction and update account balance
     // Type: INCOME (money comes in) but with shareholderId (creates Accounts Payable - debt to shareholder)
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.INCOME,
@@ -447,7 +447,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
 
     // Create transaction and update account balance
     // Type: EXPENSE (money goes out) but with shareholderId (creates Accounts Receivable - shareholder owes company)
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -546,7 +546,7 @@ export async function getShareholdersWithBalance() {
     });
 
     const shareholdersWithBalance = await Promise.all(
-      shareholders.map(async (shareholder) => {
+      shareholders.map(async (shareholder: any) => {
         const balance = await getShareholderBalance(shareholder.id);
         return {
           ...shareholder,

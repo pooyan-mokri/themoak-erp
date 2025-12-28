@@ -6,7 +6,7 @@ export default async function NewDealPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <DealForm customers={customers.map(c => ({ id: c.id, name: c.name }))} />
+      <DealForm customers={customers.map((c: any) => ({ id: c.id, name: c.name }))} />
     </div>
   );
 }

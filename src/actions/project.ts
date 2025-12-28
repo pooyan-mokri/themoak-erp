@@ -77,7 +77,7 @@ export async function getProjects() {
         },
       },
     });
-    return projects.map(project => ({
+    return projects.map((project: any) => ({
       ...project,
       budget: project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
@@ -105,7 +105,7 @@ export async function getProjectById(id: string) {
     // Get all user IDs from tasks
     const userIds = project.tasks
       .map((t: any) => t.assignedTo)
-      .filter((id): id is string => id !== null);
+      .filter((id: any): id is string => id !== null);
     
     // Fetch users
     const users = userIds.length > 0
@@ -154,9 +154,9 @@ export async function getProjectsForCalendar() {
 
     // Get all user IDs from tasks
     const userIds = projects
-      .flatMap((p) => p.tasks)
+      .flatMap((p: any) => p.tasks)
       .map((t: any) => t.assignedTo)
-      .filter((id): id is string => id !== null);
+      .filter((id: any): id is string => id !== null);
 
     // Fetch users
     const users = userIds.length > 0

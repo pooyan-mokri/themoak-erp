@@ -99,7 +99,7 @@ export async function getInventoryReport() {
         };
       })
       .filter((p: any) => p.quantity > 0)
-      .sort((a, b) => b.quantity - a.quantity)
+      .sort((a: any, b: any) => b.quantity - a.quantity)
       .slice(0, 10);
 
     // Get top products by value
@@ -118,7 +118,7 @@ export async function getInventoryReport() {
         };
       })
       .filter((p: any) => p.value > 0)
-      .sort((a, b) => b.value - a.value)
+      .sort((a: any, b: any) => b.value - a.value)
       .slice(0, 10);
 
     // Get total number of unique products

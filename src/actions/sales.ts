@@ -175,7 +175,7 @@ export async function getOrders() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return orders.map(order => ({
+    return orders.map((order: any) => ({
       ...order,
       customerId: order.customerId ?? undefined,
       transactionId: order.transactionId ?? undefined,
@@ -196,7 +196,7 @@ export async function getOrders() {
         taxId: order.customer.taxId ?? undefined,
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
       } : undefined,
-      items: order.items.map(item => ({
+      items: order.items.map((item: any) => ({
         ...item,
         price: Number(item.price),
         product: item.product ? {
@@ -256,7 +256,7 @@ export async function getOrder(id: string) {
         taxId: order.customer.taxId ?? undefined,
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
       } : undefined,
-      items: order.items.map(item => ({
+      items: order.items.map((item: any) => ({
         ...item,
         price: Number(item.price),
         product: item.product ? {

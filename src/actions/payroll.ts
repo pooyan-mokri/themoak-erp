@@ -191,7 +191,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
     const newStatus = newPaidAmount >= netAmount ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
 
     // Create payment and update payroll
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,

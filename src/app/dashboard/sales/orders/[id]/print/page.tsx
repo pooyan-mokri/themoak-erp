@@ -42,9 +42,9 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
   }
 
   // Build items list with exchanges and status
-  const itemsWithDetails = order.items.map((item) => {
-    const itemExchanges = (exchanges || []).filter((ex) => ex?.originalItem?.id === item.id);
-    const itemReturns = (returns || []).filter((ret) => ret?.orderItem?.id === item.id);
+  const itemsWithDetails = order.items.map((item: any) => {
+    const itemExchanges = (exchanges || []).filter((ex: any) => ex?.originalItem?.id === item.id);
+    const itemReturns = (returns || []).filter((ret: any) => ret?.orderItem?.id === item.id);
     return {
       ...item,
       exchanges: itemExchanges || [],
@@ -57,12 +57,12 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
   let subtotal = Number(order.totalAmount);
   
   // Subtract returned amounts
-  const totalReturns = (returns || []).reduce((sum, ret) => {
+  const totalReturns = (returns || []).reduce((sum: any, ret: any) => {
     return sum + Number(ret.refundAmount || 0);
   }, 0);
   
   // Add exchange price differences (can be positive or negative)
-  const totalExchangeDiff = (exchanges || []).reduce((sum, ex) => {
+  const totalExchangeDiff = (exchanges || []).reduce((sum: any, ex: any) => {
     return sum + Number(ex.priceDifference || 0);
   }, 0);
   
@@ -123,7 +123,7 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
             </tr>
           </thead>
           <tbody>
-            {itemsWithDetails.map((item, index) => (
+            {itemsWithDetails.map((item: any, index: any) => (
               <React.Fragment key={item.id}>
                 <tr className="border-b border-gray-200">
                   <td className="py-2">{index + 1}</td>

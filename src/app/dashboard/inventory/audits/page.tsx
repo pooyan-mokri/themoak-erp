@@ -58,7 +58,7 @@ export default async function InventoryAuditsPage() {
             </CardContent>
           </Card>
         ) : (
-          audits.map((audit) => (
+          audits.map((audit: any) => (
             <Card key={audit.id} className="hover:shadow-md transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">

@@ -107,7 +107,7 @@ export async function getAccounts() {
     });
 
     // Serialize Decimal fields
-    return accounts.map(account => ({
+    return accounts.map((account: any) => ({
       ...account,
       balance: Number(account.balance),
     }));
@@ -244,7 +244,7 @@ export async function getLatestExchangeRates() {
         });
 
         // Serialize Decimal fields
-        return rates.map(rate => ({
+        return rates.map((rate: any) => ({
             ...rate,
             rateToToman: Number(rate.rateToToman),
         }));
@@ -302,7 +302,7 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
     const amountInToman = amount * rate;
 
     // 2. Process expense based on payment source
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       if (employeeId) {
         // Expense paid by employee (Accounts Payable)
         // Verify employee exists
@@ -430,7 +430,7 @@ export async function getSalesByProduct() {
       salesByProduct[item.productId].total += Number(item.price) * item.quantity;
     }
 
-    return Object.values(salesByProduct).sort((a, b) => b.total - a.total);
+    return Object.values(salesByProduct).sort((a: any, b: any) => b.total - a.total);
   } catch (error) {
     console.error('Error fetching sales by product:', error);
     return [];
@@ -461,7 +461,7 @@ export async function getExpenseBreakdown() {
 
     return Object.entries(expenseByCategory)
       .map(([category, amount]) => ({ category, amount }))
-      .sort((a, b) => b.amount - a.amount);
+      .sort((a: any, b: any) => b.amount - a.amount);
   } catch (error) {
     console.error('Error fetching expense breakdown:', error);
     return [];
@@ -481,7 +481,7 @@ export async function getEmployeeDebts() {
 
     // Calculate debt for each employee
     const debtsWithDetails = await Promise.all(
-      employees.map(async (employee) => {
+      employees.map(async (employee: any) => {
         // Get all expense transactions (debts) for this employee
         const expenseTransactions = await prisma.transaction.findMany({
           where: {
@@ -641,7 +641,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   const { employeeId, amount, accountId, description, date } = validatedFields.data;
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // Verify employee exists
       const employee = await tx.employee.findUnique({
         where: { id: employeeId },
@@ -719,7 +719,7 @@ export async function getTransactions() {
     });
     
     // Get transaction IDs
-    const transactionIds = transactions.map(t => t.id);
+    const transactionIds = transactions.map((t: any) => t.id);
     
     // Fetch all orders related to these transactions in one query
     const orders = await prisma.order.findMany({
@@ -733,14 +733,14 @@ export async function getTransactions() {
     
     // Create a map of transactionId -> customer name
     const transactionIdToCustomerName = new Map<string, string>();
-    orders.forEach(order => {
+    orders.forEach((order: any) => {
       if (order.transactionId && order.customer) {
         transactionIdToCustomerName.set(order.transactionId, order.customer.name);
       }
     });
     
     // Replace customer ID with customer name in descriptions
-    return transactions.map(transaction => {
+    return transactions.map((transaction: any) => {
       // Check if description contains a customer ID pattern (cuid format)
       const customerIdPattern = /سفارش فروش - مشتری: ([a-z0-9]{20,})/;
       const match = transaction.description?.match(customerIdPattern);

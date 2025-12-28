@@ -36,7 +36,7 @@ export async function getRecentActivities() {
       include: { user: true },
     });
 
-    return activities.map(activity => ({
+    return activities.map((activity: any) => ({
       ...activity,
       userId: activity.userId ?? undefined,
       user: activity.user ? {

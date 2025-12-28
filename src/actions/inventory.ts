@@ -13,7 +13,7 @@ export async function getInventoryByProduct(productId: string) {
       where: { productId },
       include: { warehouse: true },
     });
-    return inventory.map(inv => ({
+    return inventory.map((inv: any) => ({
       ...inv,
       warehouse: {
         ...inv.warehouse,
@@ -32,7 +32,7 @@ export async function getInventoryByWarehouse(warehouseId: string) {
       include: { product: true },
       orderBy: { product: { name: 'asc' } }
     });
-    return inventory.map(inv => ({
+    return inventory.map((inv: any) => ({
       ...inv,
       product: {
         ...inv.product,
@@ -101,7 +101,7 @@ export async function adjustStock(productId: string, warehouseId: string, adjust
 
 export async function transferStock(productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number) {
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Check source stock
       const sourceStock = await tx.inventory.findUnique({
         where: {

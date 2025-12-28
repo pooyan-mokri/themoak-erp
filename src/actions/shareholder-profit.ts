@@ -121,7 +121,7 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
     }
 
     // Create profit records for each shareholder
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       for (const shareholder of shareholders) {
         const percentage = Number(shareholder.percentage);
         const shareholderProfit = (netProfit * percentage) / totalPercentage;
@@ -234,7 +234,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
     const transactionDate = date ? new Date(date) : new Date();
 
     // Create withdrawal and update profit
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,

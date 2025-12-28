@@ -35,7 +35,7 @@ export async function getUsers() {
       }
     });
 
-    return users.map(user => ({
+    return users.map((user: any) => ({
       ...user,
       phone: user.phone ?? undefined,
     }));
