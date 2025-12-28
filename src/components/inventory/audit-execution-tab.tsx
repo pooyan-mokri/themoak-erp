@@ -92,7 +92,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
   const loadPendingCounts = async () => {
     try {
       const counts = await getPendingCounts(audit.id);
-      setPendingCounts(counts);
+      setPendingCounts(counts as any);
     } catch (error) {
       console.error('Error loading pending counts:', error);
     }
@@ -104,13 +104,14 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     try {
       const { synced, failed } = await syncPendingCounts(async (count) => {
         if (count.productId) {
-          return await recordCount(
+          const result = await recordCount(
             count.auditId,
             count.productId,
             count.count,
             count.countRound,
             count.notes
           );
+          return { success: result.success ?? false };
         }
         return { success: false };
       });

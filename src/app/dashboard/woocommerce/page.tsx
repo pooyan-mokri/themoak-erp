@@ -98,7 +98,7 @@ export default function WooCommercePage() {
     setConnectionStatus(undefined);
     try {
       const result = await testWooCommerceConnection();
-      setConnectionStatus(result);
+      setConnectionStatus(result as { success: boolean; message: string; details?: any; });
       if (result.success) {
         toast.success(result.message);
       } else {

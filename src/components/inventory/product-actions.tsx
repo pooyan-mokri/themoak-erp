@@ -48,7 +48,7 @@ export function ProductActions({ products }: ProductActionsProps) {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
+        const data = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
 
         const result = await importProducts(data);
         if (result.success) {
