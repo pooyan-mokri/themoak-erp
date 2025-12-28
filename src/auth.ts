@@ -18,6 +18,8 @@ async function getUser(email: string) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  trustHost: true,
   providers: [
     Credentials({
       async authorize(credentials) {
@@ -29,7 +31,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const { email, password } = parsedCredentials.data;
           const user = await getUser(email);
           if (!user) return null;
-          
+
           const passwordsMatch = await bcrypt.compare(password, user.password);
           if (passwordsMatch) {
             return {

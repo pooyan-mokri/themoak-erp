@@ -15,12 +15,16 @@ Get this from your PostgreSQL provider (Vercel Postgres, Supabase, Neon, etc.)
 AUTH_SECRET=<generate-a-random-secret>
 ```
 
+**Note:** You can use either `AUTH_SECRET` (NextAuth v5) or `NEXTAUTH_SECRET` (NextAuth v4) - both are supported.
+
 **Generate the secret:**
 ```bash
 openssl rand -base64 32
 ```
 
 Or use this online: https://generate-secret.vercel.app/32
+
+**Important:** The secret MUST be at least 32 characters long.
 
 ### 3. Authentication URL (Production)
 ```
