@@ -92,7 +92,7 @@ export async function getSalesAnalytics(range?: DateRange) {
 
     const topProducts = Object.values(productSales)
       .sort((a: any, b: any) => b.revenue - a.revenue)
-      .slice(0, 10);
+      .slice(0, 10) as { id: string; name: string; quantity: number; revenue: number; }[];
 
     // Top customers
     const customerSales = orders.reduce((acc: any, order: any) => {
@@ -113,7 +113,7 @@ export async function getSalesAnalytics(range?: DateRange) {
 
     const topCustomers = Object.values(customerSales)
       .sort((a: any, b: any) => b.revenue - a.revenue)
-      .slice(0, 10);
+      .slice(0, 10) as { id: string; name: string; orders: number; revenue: number; }[];
 
     // Sales by product type
     const salesByCategory = orders.flatMap((order: any) => order.items).reduce((acc: any, item: any) => {
@@ -126,7 +126,7 @@ export async function getSalesAnalytics(range?: DateRange) {
       return acc;
     }, {} as Record<string, { type: string; revenue: number; quantity: number }>);
 
-    const categoryDistribution = Object.values(salesByCategory);
+    const categoryDistribution = Object.values(salesByCategory) as { type: string; revenue: number; quantity: number; }[];
 
     // Simple linear regression for forecasting
     const forecast = calculateForecast(salesOverTime);
