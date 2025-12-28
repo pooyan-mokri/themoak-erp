@@ -153,7 +153,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
             <input type="hidden" name="image" value={imageUrl || ''} />
             <ProductImageUpload
               onUploadComplete={(url) => setImageUrl(url)}
-              onRemove={() => setImageUrl(null)}
+              onRemove={() => setImageUrl(undefined)}
               currentUrl={imageUrl}
             />
           </div>

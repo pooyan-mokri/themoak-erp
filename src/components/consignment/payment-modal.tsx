@@ -48,7 +48,7 @@ export function PaymentModal({ orderId, amount, accounts }: PaymentModalProps) {
         </DialogHeader>
         <form
           action={async (formData) => {
-            await paySettlement(null, formData);
+            await paySettlement(undefined, formData);
             setOpen(false);
           }}
         >

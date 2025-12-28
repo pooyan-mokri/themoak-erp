@@ -47,7 +47,7 @@ export function AssetList({ assets }: AssetListProps) {
       } catch (error) {
         toast.error('خطا در حذف دارایی');
       } finally {
-        setLoading(null);
+        setLoading(undefined);
       }
     }
   };
@@ -66,7 +66,7 @@ export function AssetList({ assets }: AssetListProps) {
       } catch (error) {
         toast.error('خطا در ثبت استهلاک');
       } finally {
-        setLoading(null);
+        setLoading(undefined);
       }
     }
   };

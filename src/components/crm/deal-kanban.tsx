@@ -68,7 +68,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
     const { active, over } = event;
 
     if (!over) {
-      setActiveId(null);
+      setActiveId(undefined);
       return;
     }
 
@@ -78,7 +78,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
     // Find the deal
     const deal = deals.find(d => d.id === dealId);
     if (!deal || deal.stage === newStage) {
-      setActiveId(null);
+      setActiveId(undefined);
       return;
     }
 
@@ -100,7 +100,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
       toast.success('مرحله معامله به‌روز شد');
     }
 
-    setActiveId(null);
+    setActiveId(undefined);
   };
 
   const getDealsByStage = (stage: string) =>

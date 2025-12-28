@@ -44,7 +44,7 @@ export function PromotionList({ promotions }: PromotionListProps) {
     
     setIsDeleting(id);
     const result = await deletePromotion(id);
-    setIsDeleting(null);
+    setIsDeleting(undefined);
 
     if (result.success) {
       toast.success(result.message);

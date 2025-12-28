@@ -208,7 +208,7 @@ export async function generateAuditTags(
     const tags = [];
     for (let i = 0; i < tagCount; i++) {
       const item = audit.items[i];
-      const productBarcode = item?.product?.barcode;
+      const productBarcode = item?.product?.barcode ?? undefined;
       const barcode = generateTagBarcode(auditId, i + 1, productBarcode);
       tags.push({
         auditId,

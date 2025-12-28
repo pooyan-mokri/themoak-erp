@@ -105,7 +105,7 @@ const BarcodeScannerComponent = forwardRef<BarcodeScannerHandle, BarcodeScannerP
         }
 
         try {
-          setError(null);
+          setError(undefined);
           const Html5Qrcode = window.Html5Qrcode;
           const scanner = new Html5Qrcode(scannerId);
           scannerRef.current = scanner;

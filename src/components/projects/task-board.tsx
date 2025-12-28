@@ -136,7 +136,7 @@ export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    setActiveTask(null);
+    setActiveTask(undefined);
 
     if (!over) return;
 

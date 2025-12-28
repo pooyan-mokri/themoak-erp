@@ -62,7 +62,7 @@ export function ShareholderList({ shareholders: initialShareholders }: Sharehold
       toast.error(result.message);
     }
     setDeleteDialogOpen(false);
-    setShareholderToDelete(null);
+    setShareholderToDelete(undefined);
   };
 
   const handleEdit = (shareholder: Shareholder) => {
@@ -70,7 +70,7 @@ export function ShareholderList({ shareholders: initialShareholders }: Sharehold
   };
 
   const handleEditSuccess = () => {
-    setEditShareholder(null);
+    setEditShareholder(undefined);
     window.location.reload();
   };
 
@@ -170,7 +170,7 @@ export function ShareholderList({ shareholders: initialShareholders }: Sharehold
       </Dialog>
 
       {editShareholder && (
-        <Dialog open={!!editShareholder} onOpenChange={() => setEditShareholder(null)}>
+        <Dialog open={!!editShareholder} onOpenChange={() => setEditShareholder(undefined)}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>ویرایش صاحب سهام</DialogTitle>
