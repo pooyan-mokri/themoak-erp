@@ -322,7 +322,7 @@ export async function getPurchaseOrder(orderId: string) {
       ...order,
       totalAmount: Number(order.totalAmount),
       totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : undefined,
-      items: order.items.map((item: OrderItem) => ({
+      items: order.items.map((item: any) => ({
         ...item,
         unitCost: Number(item.unitCost),
         unitCostInToman: item.unitCostInToman ? Number(item.unitCostInToman) : undefined,
