@@ -131,14 +131,14 @@ export function Sidebar() {
               key={route.href}
               href={route.href}
               className={cn(
-                'text-sm group flex p-3 w-full justify-start font-medium cursor-pointer hover:text-white hover:bg-white/10 rounded-lg transition',
-                pathname === route.href || (route.href !== '/dashboard/accounting' && pathname?.startsWith(route.href)) 
-                  ? 'text-white bg-white/10' 
+                'text-sm group flex p-3 w-full justify-end font-medium cursor-pointer hover:text-white hover:bg-white/10 rounded-lg transition',
+                pathname === route.href || (route.href !== '/dashboard/accounting' && pathname?.startsWith(route.href))
+                  ? 'text-white bg-white/10'
                   : 'text-zinc-400'
               )}
             >
-              <div className="flex items-center flex-1">
-                <route.icon className={cn('h-5 w-5 ml-3', route.color)} />
+              <div className="flex items-center flex-1 flex-row-reverse">
+                <route.icon className={cn('h-5 w-5 mr-3', route.color)} />
                 {route.label}
               </div>
             </Link>
@@ -148,12 +148,12 @@ export function Sidebar() {
 
       {/* Logout button - Fixed at bottom */}
       <div className="px-3 py-4 flex-shrink-0 border-t border-white/10">
-        <Button 
+        <Button
             onClick={() => signOut()}
-            variant="destructive" 
-            className="w-full justify-start"
+            variant="destructive"
+            className="w-full justify-end flex-row-reverse"
         >
-            <LogOut className="h-5 w-5 ml-3" />
+            <LogOut className="h-5 w-5 mr-3" />
             خروج
         </Button>
       </div>
