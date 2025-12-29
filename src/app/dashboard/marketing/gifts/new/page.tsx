@@ -7,7 +7,7 @@ import { GiftForm } from '@/components/marketing/gift-form';
 // Filter only active campaigns
 async function getActiveCampaigns() {
   const campaigns = await getMarketingCampaigns();
-  return campaigns.filter((c) => c.status === 'ACTIVE' || c.status === 'PLANNED');
+  return campaigns.filter((c: any) => c.status === 'ACTIVE' || c.status === 'PLANNED');
 }
 
 export default async function NewGiftPage() {
@@ -19,15 +19,15 @@ export default async function NewGiftPage() {
   ]);
 
   // Filter only active/planned campaigns
-  const campaigns = allCampaigns.filter((c) => c.status === 'ACTIVE' || c.status === 'PLANNED');
+  const campaigns = allCampaigns.filter((c: any) => c.status === 'ACTIVE' || c.status === 'PLANNED');
 
   // Convert Decimal to number for client
-  const productsWithNumbers = products.map((product) => ({
+  const productsWithNumbers = products.map((product: any) => ({
     ...product,
     costPrice: Number(product.costPrice || 0),
   }));
 
-  const accountsWithNumbers = accounts.map((account) => ({
+  const accountsWithNumbers = accounts.map((account: any) => ({
     ...account,
     balance: Number(account.balance),
   }));

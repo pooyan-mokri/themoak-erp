@@ -52,7 +52,7 @@ export async function sendMessage(conversationId: string, userMessage: string) {
         role: 'system' as const,
         content: systemPrompt,
       },
-      ...messages.reverse().map(m => ({
+      ...messages.reverse().map((m: any) => ({
         role: m.role.toLowerCase() as 'user' | 'assistant',
         content: m.content,
       })),
@@ -86,7 +86,7 @@ export async function sendMessage(conversationId: string, userMessage: string) {
       
       try {
         const params = JSON.parse(paramsStr);
-        const tool = agentTools.find(t => t.name === toolName);
+        const tool = agentTools.find((t: any) => t.name === toolName);
         
         if (tool) {
           console.log('[AI AGENT] Executing tool:', toolName, 'with params:', params);
@@ -128,7 +128,7 @@ export async function sendMessage(conversationId: string, userMessage: string) {
 
     // If tools were executed, ask AI to explain the results
     if (executedActions.length > 0) {
-      const resultsContext = executedActions.map(action => 
+      const resultsContext = executedActions.map((action: any) => 
         `نتیجه ${action.tool}:\n${JSON.stringify(action.result, null, 2)}`
       ).join('\n\n');
 
@@ -190,7 +190,7 @@ export async function sendMessage(conversationId: string, userMessage: string) {
             take: 3, // First user message + first assistant response
           });
 
-          const firstUserMessage = firstMessages.find(m => m.role === 'USER');
+          const firstUserMessage = firstMessages.find((m: any) => m.role === 'USER');
           if (firstUserMessage) {
             // Generate a short title using AI
             const titlePrompt = `لطفاً یک عنوان کوتاه و مناسب (حداکثر 4-5 کلمه) برای این گفتگو انتخاب کن:\n\nسوال کاربر: ${firstUserMessage.content}\n\nعنوان باید مختصر و واضح باشد، فقط متن عنوان را برگردان (بدون توضیح اضافی).`;

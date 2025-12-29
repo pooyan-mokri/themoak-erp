@@ -4,23 +4,23 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { getCompanyInfo } from '@/actions/settings';
 
 interface LogoContextType {
-  logo: string | null;
+  logo?: string;
   refreshLogo: () => void;
 }
 
 const LogoContext = createContext<LogoContextType | undefined>(undefined);
 
 export function LogoProvider({ children }: { children: ReactNode }) {
-  const [logo, setLogo] = useState<string | null>(null);
+  const [logo, setLogo] = useState<string | undefined>(undefined);
 
   const refreshLogo = () => {
     getCompanyInfo()
       .then((companyInfo) => {
-        setLogo(companyInfo?.logo || null);
+        setLogo(companyInfo?.logo || undefined);
       })
       .catch((error) => {
         console.error('Error loading logo:', error);
-        setLogo(null);
+        setLogo(undefined);
       });
   };
 

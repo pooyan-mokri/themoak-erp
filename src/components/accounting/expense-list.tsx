@@ -12,12 +12,12 @@ import { formatJalaliDate } from '@/lib/date-utils';
 interface Expense {
   id: string;
   date: Date;
-  description: string | null;
+  description?: string;
   amount: any;
   currency: string;
-  category: string | null;
-  account?: { name: string } | null;
-  employee?: { name: string } | null;
+  category?: string;
+  account?: { name: string };
+  employee?: { name: string };
 }
 
 export function ExpenseList({ expenses }: { expenses: Expense[] }) {

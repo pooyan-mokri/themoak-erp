@@ -10,7 +10,7 @@ interface ProductAnalytics {
   productId: string;
   productName: string;
   sku: string;
-  image: string | null;
+  image?: string;
   
   // Sales metrics
   totalUnitsSold: number;
@@ -53,7 +53,7 @@ interface ProductAnalytics {
   }>;
 }
 
-export async function getProductAnalytics(productId: string): Promise<ProductAnalytics | null> {
+export async function getProductAnalytics(productId: string): Promise<ProductAnalytics | undefined> {
   try {
     // Get product details
     const product = await prisma.product.findUnique({
@@ -80,7 +80,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
       }
     });
 
-    if (!product) return null;
+    if (!product) return undefined;
 
     // Calculate sales metrics
     let totalUnitsSold = 0;
@@ -146,7 +146,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
       productId: product.id,
       productName: product.name,
       sku: product.sku,
-      image: product.image,
+      image: product.image ?? undefined,
       totalUnitsSold,
       totalRevenue,
       averageSellingPrice,
@@ -165,7 +165,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
     };
   } catch (error) {
     console.error('Error fetching product analytics:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -186,7 +186,7 @@ export async function getProductSalesByWarehouse(productId: string) {
 
     const warehouseSales: Record<string, { units: number; revenue: number }> = {};
 
-    product.orderItems.forEach((item) => {
+    product.orderItems.forEach((item: any) => {
       const warehouseId = 'default'; // Would need to track warehouse per order
       const units = item.quantity;
       const revenue = Number(item.price) * units;
@@ -217,7 +217,7 @@ export async function getProductStockByWarehouse(productId: string) {
       include: { warehouse: true },
     });
 
-    return inventory.map((inv) => ({
+    return inventory.map((inv: any) => ({
       warehouseId: inv.warehouseId,
       warehouseName: inv.warehouse.name,
       quantity: inv.quantity,

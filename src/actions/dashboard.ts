@@ -21,7 +21,7 @@ export async function getDashboardFinancials() {
       }
     });
     
-    const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.balance), 0);
+    const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
     // Total Receivables (simplified - sum all non-cancelled orders)
     // Note: In production, this should track actual unpaid amounts
@@ -37,7 +37,7 @@ export async function getDashboardFinancials() {
     });
     
     // Estimate 30% of total orders are receivables
-    const totalReceivables = allOrders.reduce((sum, order) => {
+    const totalReceivables = allOrders.reduce((sum: any, order: any) => {
       return sum + Number(order.totalAmount);
     }, 0) * 0.3;
 
@@ -48,7 +48,7 @@ export async function getDashboardFinancials() {
       }
     });
     
-    const totalPayables = purchaseOrders.reduce((sum, po) => sum + Number(po.totalAmount), 0);
+    const totalPayables = purchaseOrders.reduce((sum: any, po: any) => sum + Number(po.totalAmount), 0);
 
     return {
       totalBalance,
@@ -95,7 +95,7 @@ export async function getDashboardSales() {
     });
 
     const salesToday = {
-      total: ordersToday.reduce((sum, order) => sum + Number(order.totalAmount), 0),
+      total: ordersToday.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0),
       count: ordersToday.length
     };
 
@@ -116,7 +116,7 @@ export async function getDashboardSales() {
     });
 
     const salesYesterday = {
-      total: ordersYesterday.reduce((sum, order) => sum + Number(order.totalAmount), 0)
+      total: ordersYesterday.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0)
     };
 
     // Last 30 days daily sales for chart
@@ -158,7 +158,7 @@ export async function getDashboardSales() {
 
     // Get product details
     const topProductsWithDetails = await Promise.all(
-      topProducts.map(async (item) => {
+      topProducts.map(async (item: any) => {
         const product = await prisma.product.findUnique({
           where: { id: item.productId }
         });
@@ -173,7 +173,7 @@ export async function getDashboardSales() {
     return {
       today: salesToday,
       yesterday: salesYesterday,
-      dailySales: dailySales.map(day => ({
+      dailySales: dailySales.map((day: any) => ({
         date: day.date.toISOString().split('T')[0],
         total: Number(day.total),
         count: day.count
@@ -207,21 +207,21 @@ export async function getLowStockItems(threshold: number = 10) {
     });
 
     const itemsBelowThreshold = lowStockProducts
-      .map(product => {
-        const totalStock = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+      .map((product: any) => {
+        const totalStock = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
         return {
           id: product.id,
           name: product.name,
           sku: product.sku,
           totalStock,
-          warehouses: product.inventory.map(inv => ({
+          warehouses: product.inventory.map((inv: any) => ({
             name: inv.warehouse.name,
             quantity: inv.quantity
           }))
         };
       })
-      .filter(item => item.totalStock < threshold)
-      .sort((a, b) => a.totalStock - b.totalStock)
+      .filter((item: any) => item.totalStock < threshold)
+      .sort((a: any, b: any) => a.totalStock - b.totalStock)
       .slice(0, 10); // Top 10 lowest
 
     return itemsBelowThreshold;
@@ -250,7 +250,7 @@ export async function getRecentActivity(limit: number = 5) {
       }
     });
 
-    return activities.map(log => ({
+    return activities.map((log: any) => ({
       id: log.id,
       userName: log.user?.name || 'System',
       action: log.action,
@@ -291,12 +291,12 @@ export async function getUserTasks() {
       take: 5
     });
 
-    return tasks.map(task => ({
+    return tasks.map((task: any) => ({
       id: task.id,
       title: task.title,
       projectName: task.project.name,
       status: task.status,
-      deadline: null, // Task model doesn't have deadline field
+      deadline: undefined, // Task model doesn't have deadline field
       priority: 'MEDIUM' // Task model doesn't have priority field
     }));
   } catch (error) {

@@ -27,7 +27,7 @@ interface ShareholderProfit {
   amount: number;
   withdrawn: number;
   available: number;
-  description: string | null;
+  description?: string;
   periodStart: Date;
   periodEnd: Date;
   withdrawals: any[];
@@ -41,7 +41,7 @@ interface ShareholderProfitListProps {
 export function ShareholderProfitList({ profits: initialProfits, accounts }: ShareholderProfitListProps) {
   const [profits] = useState(initialProfits);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
-  const [selectedProfit, setSelectedProfit] = useState<ShareholderProfit | null>(null);
+  const [selectedProfit, setSelectedProfit] = useState<ShareholderProfit | undefined>(undefined);
 
   const handleWithdraw = (profit: ShareholderProfit) => {
     setSelectedProfit(profit);
@@ -50,7 +50,7 @@ export function ShareholderProfitList({ profits: initialProfits, accounts }: Sha
 
   const handleWithdrawalSuccess = () => {
     setWithdrawalDialogOpen(false);
-    setSelectedProfit(null);
+    setSelectedProfit(undefined);
     window.location.reload();
   };
 

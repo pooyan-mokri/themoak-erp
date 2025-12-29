@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -28,7 +28,7 @@ const LoanPaymentSchema = z.object({
 
 // --- Actions ---
 
-export async function createLoan(prevState: any, formData: FormData) {
+export async function createLoan(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = LoanSchema.safeParse({
     borrowerId: formData.get('borrowerId'),
     amount: formData.get('amount'),
@@ -66,24 +66,24 @@ export async function createLoan(prevState: any, formData: FormData) {
         amount: new Prisma.Decimal(amount),
         remaining: new Prisma.Decimal(amount),
         interestRate: interestRate ? new Prisma.Decimal(interestRate) : new Prisma.Decimal(0),
-        description: description || null,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        description: description || undefined,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
         status: 'ACTIVE',
       },
     });
 
     revalidatePath('/dashboard/accounting/loans');
     return { message: 'قرض با موفقیت ثبت شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating loan:', error);
     return {
-      message: error.message || 'خطا در ثبت قرض.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت قرض.',
       success: false,
     };
   }
 }
 
-export async function recordLoanPayment(prevState: any, formData: FormData) {
+export async function recordLoanPayment(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = LoanPaymentSchema.safeParse({
     loanId: formData.get('loanId'),
     amount: formData.get('amount'),
@@ -192,7 +192,7 @@ export async function recordLoanPayment(prevState: any, formData: FormData) {
           interest: new Prisma.Decimal(interestAmount),
           accountId,
           transactionId: transaction.id,
-          description: description || null,
+          description: description || undefined,
           date: transactionDate,
         },
       });
@@ -222,10 +222,10 @@ export async function recordLoanPayment(prevState: any, formData: FormData) {
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت ثبت شد.`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording loan payment:', error);
     return {
-      message: error.message || 'خطا در ثبت بازپرداخت.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت.',
       success: false,
     };
   }
@@ -246,11 +246,31 @@ export async function getLoans(status?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return loans.map((l) => ({
+    return loans.map((l: any) => ({
       ...l,
       amount: Number(l.amount),
       remaining: Number(l.remaining),
       interestRate: Number(l.interestRate),
+      description: l.description ?? undefined,
+      dueDate: l.dueDate ?? undefined,
+      employee: {
+        ...l.employee,
+        salary: Number(l.employee.salary),
+        userId: l.employee.userId ?? undefined,
+        nationalId: l.employee.nationalId ?? undefined,
+        phone: l.employee.phone ?? undefined,
+        email: l.employee.email ?? undefined,
+        address: l.employee.address ?? undefined,
+        position: l.employee.position ?? undefined,
+        hireDate: l.employee.hireDate ?? undefined,
+      },
+      payments: l.payments.map((p: any) => ({
+        ...p,
+        amount: Number(p.amount),
+        principal: Number(p.principal),
+        interest: Number(p.interest),
+        description: p.description ?? undefined,
+      })),
     }));
   } catch (error) {
     console.error('Error fetching loans:', error);
@@ -274,23 +294,56 @@ export async function getLoanById(id: string) {
       },
     });
 
-    if (!loan) return null;
+    if (!loan) return undefined;
 
     return {
       ...loan,
       amount: Number(loan.amount),
       remaining: Number(loan.remaining),
       interestRate: Number(loan.interestRate),
-      payments: loan.payments.map((p) => ({
+      description: loan.description ?? undefined,
+      dueDate: loan.dueDate ?? undefined,
+      employee: {
+        ...loan.employee,
+        salary: Number(loan.employee.salary),
+        userId: loan.employee.userId ?? undefined,
+        nationalId: loan.employee.nationalId ?? undefined,
+        phone: loan.employee.phone ?? undefined,
+        email: loan.employee.email ?? undefined,
+        address: loan.employee.address ?? undefined,
+        position: loan.employee.position ?? undefined,
+        hireDate: loan.employee.hireDate ?? undefined,
+      },
+      payments: loan.payments.map((p: any) => ({
         ...p,
         amount: Number(p.amount),
         principal: Number(p.principal),
         interest: Number(p.interest),
+        description: p.description ?? undefined,
+        account: {
+          ...p.account,
+          balance: Number(p.account.balance),
+        },
+        transaction: p.transaction ? {
+          ...p.transaction,
+          amount: Number(p.transaction.amount),
+          amountInToman: Number(p.transaction.amountInToman),
+          rateSnapshot: Number(p.transaction.rateSnapshot),
+          description: p.transaction.description ?? undefined,
+          category: p.transaction.category ?? undefined,
+          accountId: p.transaction.accountId ?? undefined,
+          projectId: p.transaction.projectId ?? undefined,
+          employeeId: p.transaction.employeeId ?? undefined,
+          shareholderId: p.transaction.shareholderId ?? undefined,
+          receiptUrl: p.transaction.receiptUrl ?? undefined,
+          wooId: p.transaction.wooId ?? undefined,
+          wooStatus: p.transaction.wooStatus ?? undefined,
+        } : undefined,
       })),
     };
   } catch (error) {
     console.error('Error fetching loan:', error);
-    return null;
+    return undefined;
   }
 }
 

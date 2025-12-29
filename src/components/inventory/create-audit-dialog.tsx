@@ -53,15 +53,15 @@ export function CreateAuditDialog({ warehouses }: CreateAuditDialogProps) {
     console.log('Submitting audit form:', { warehouseId, description });
 
     try {
-      const result = await createInventoryAudit(null, formData);
+      const result = await createInventoryAudit(undefined, formData);
       console.log('Audit creation result:', result);
       
       if (result?.success) {
         toast.success(result.message);
         setOpen(false);
         setWarehouseId('');
-        if (result.auditId) {
-          router.push(`/dashboard/inventory/audits/${result.auditId}`);
+        if (result.data?.auditId) {
+          router.push(`/dashboard/inventory/audits/${result.data.auditId}`);
         } else {
           router.push('/dashboard/inventory/audits');
         }

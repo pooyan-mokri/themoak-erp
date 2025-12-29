@@ -11,8 +11,8 @@ import { HandCoins } from 'lucide-react';
 interface Employee {
   id: string;
   name: string;
-  phone?: string | null;
-  email?: string | null;
+  phone?: string;
+  email?: string;
 }
 
 interface Debt {
@@ -29,7 +29,7 @@ interface Account {
 }
 
 export function EmployeeDebtList({ debts, accounts }: { debts: Debt[], accounts: Account[] }) {
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>(undefined);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handlePayDebt = (employee: Employee) => {
@@ -39,7 +39,7 @@ export function EmployeeDebtList({ debts, accounts }: { debts: Debt[], accounts:
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
-    setSelectedEmployee(null);
+    setSelectedEmployee(undefined);
   };
 
   return (

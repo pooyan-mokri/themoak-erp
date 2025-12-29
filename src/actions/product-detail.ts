@@ -34,22 +34,22 @@ export async function getProductDetail(productId: string) {
     });
 
     if (!product) {
-      return null;
+      return undefined;
     }
 
     // Calculate totals
-    const totalStock = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+    const totalStock = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
     const availableStock = product.inventory
-      .filter(inv => !inv.warehouse.isVirtual)
-      .reduce((sum, inv) => sum + inv.quantity, 0);
+      .filter((inv: any) => !inv.warehouse.isVirtual)
+      .reduce((sum: any, inv: any) => sum + inv.quantity, 0);
     const stockValue = totalStock * Number(product.costPrice);
 
     return {
       id: product.id,
       name: product.name,
       sku: product.sku,
-      barcode: product.barcode,
-      image: product.image,
+      barcode: product.barcode ?? undefined,
+      image: product.image ?? undefined,
       costPrice: Number(product.costPrice),
       sellPrice: Number(product.sellPrice),
       totalStock,
@@ -60,7 +60,7 @@ export async function getProductDetail(productId: string) {
     };
   } catch (error) {
     console.error('Error fetching product detail:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -76,7 +76,7 @@ export async function getProductStockBreakdown(productId: string) {
       }
     });
 
-    return inventory.map(inv => ({
+    return inventory.map((inv: any) => ({
       warehouseId: inv.warehouse.id,
       warehouseName: inv.warehouse.name,
       isVirtual: inv.warehouse.isVirtual,
@@ -115,13 +115,13 @@ export async function getProductSalesAnalytics(productId: string) {
     });
 
     // Calculate metrics
-    const totalUnitsSold = orderItems.reduce((sum, item) => sum + item.quantity, 0);
-    const totalRevenue = orderItems.reduce((sum, item) => sum + (item.quantity * Number(item.price)), 0);
+    const totalUnitsSold = orderItems.reduce((sum: any, item: any) => sum + item.quantity, 0);
+    const totalRevenue = orderItems.reduce((sum: any, item: any) => sum + (item.quantity * Number(item.price)), 0);
     const avgSellingPrice = totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : 0;
 
     // Calculate velocity (items per time period)
     const oldestOrder = orderItems.length > 0 
-      ? new Date(Math.min(...orderItems.map(item => item.order.createdAt.getTime())))
+      ? new Date(Math.min(...orderItems.map((item: any) => item.order.createdAt.getTime())))
       : new Date();
     const daysSinceFirstSale = (Date.now() - oldestOrder.getTime()) / (1000 * 60 * 60 * 24);
     const weeksSinceFirstSale = daysSinceFirstSale / 7;
@@ -204,7 +204,7 @@ export async function getProductMovementHistory(productId: string, limit: number
 
     // Combine and format movements
     const movements = [
-      ...sales.map(item => ({
+      ...sales.map((item: any) => ({
         id: item.id,
         date: item.order.createdAt,
         dateFormatted: formatJalaliDate(item.order.createdAt, 'jYYYY/jMM/jDD HH:mm'),
@@ -213,7 +213,7 @@ export async function getProductMovementHistory(productId: string, limit: number
         reference: item.order.customer?.name || 'Walk-in',
         status: item.order.status
       })),
-      ...purchases.map(item => ({
+      ...purchases.map((item: any) => ({
         id: item.id,
         date: item.purchaseOrder.createdAt,
         dateFormatted: formatJalaliDate(item.purchaseOrder.createdAt, 'jYYYY/jMM/jDD HH:mm'),
@@ -226,7 +226,7 @@ export async function getProductMovementHistory(productId: string, limit: number
 
     // Sort by date descending and limit
     return movements
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .sort((a: any, b: any) => b.date.getTime() - a.date.getTime())
       .slice(0, limit);
   } catch (error) {
     console.error('Error fetching movement history:', error);
@@ -267,7 +267,7 @@ export async function getProductSalesHistory(productId: string, months: number =
     // Group by month
     const monthlyData = new Map<string, { units: number; revenue: number }>();
     
-    orderItems.forEach(item => {
+    orderItems.forEach((item: any) => {
       const date = new Date(item.order.createdAt);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       
@@ -284,7 +284,7 @@ export async function getProductSalesHistory(productId: string, months: number =
         units: data.units,
         revenue: data.revenue
       }))
-      .sort((a, b) => a.month.localeCompare(b.month));
+      .sort((a: any, b: any) => a.month.localeCompare(b.month));
   } catch (error) {
     console.error('Error fetching sales history:', error);
     return [];

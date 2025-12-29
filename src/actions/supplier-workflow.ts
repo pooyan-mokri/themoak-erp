@@ -2,18 +2,18 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { TransactionType, Currency } from '@/lib/types';
+import { TransactionType, Currency, ActionResult } from '@/lib/types';
 import { z } from 'zod';
 
 // Workflow Actions
-export async function updatePurchaseOrderStatus(orderId: string, newStatus: string) {
+export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
   try {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: orderId }
     });
 
     if (!order) {
-      return { success: false, error: 'سفارش یافت نشد' };
+      return { success: false, message: 'سفارش یافت نشد' };
     }
 
     // Validate status transition
@@ -28,7 +28,7 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
     };
 
     if (!validTransitions[order.status]?.includes(newStatus)) {
-      return { success: false, error: `تغییر وضعیت از ${order.status} به ${newStatus} مجاز نیست` };
+      return { success: false, message: `تغییر وضعیت از ${order.status} به ${newStatus} مجاز نیست` };
     }
 
     await prisma.purchaseOrder.update({
@@ -39,13 +39,14 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
     revalidatePath('/dashboard/suppliers/orders');
     revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
     return { success: true, message: 'وضعیت سفارش به‌روزرسانی شد' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating purchase order status:', error);
-    return { success: false, error: error.message || 'خطا در به‌روزرسانی وضعیت' };
+    const message = error instanceof Error ? error.message : 'خطا در به‌روزرسانی وضعیت';
+    return { success: false, message };
   }
 }
 
-export async function recordPurchasePayment(orderId: string, accountId: string) {
+export async function recordPurchasePayment(orderId: string, accountId: string): Promise<ActionResult> {
   try {
     await prisma.$transaction(async (tx: any) => {
       const order = await tx.purchaseOrder.findUnique({
@@ -140,9 +141,10 @@ export async function recordPurchasePayment(orderId: string, accountId: string) 
     revalidatePath('/dashboard/accounting/expenses');
     revalidatePath('/dashboard/accounting/transactions');
     return { success: true, message: 'پرداخت با موفقیت ثبت شد' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording payment:', error);
-    return { success: false, error: error.message || 'خطا در ثبت پرداخت' };
+    const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت';
+    return { success: false, message };
   }
 }
 
@@ -152,7 +154,7 @@ const arrivalCostsSchema = z.array(z.object({
   currency: z.enum(['TOMAN', 'USD', 'EUR', 'CNY']),
 }));
 
-export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeof arrivalCostsSchema>, accountId: string) {
+export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeof arrivalCostsSchema>, accountId: string): Promise<ActionResult> {
   try {
     const validatedCosts = arrivalCostsSchema.parse(arrivalCosts);
 
@@ -263,12 +265,13 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
     revalidatePath('/dashboard/accounting/expenses');
     revalidatePath('/dashboard/accounting/transactions');
     return { success: true, message: 'رسیدن به مقصد و هزینه‌های اضافی ثبت شد' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording arrival:', error);
     if (error instanceof z.ZodError) {
-      return { success: false, error: error.issues[0].message };
+      return { success: false, message: error.issues[0].message };
     }
-    return { success: false, error: error instanceof Error ? error.message : 'خطا در ثبت رسیدن به مقصد' };
+    const message = error instanceof Error ? error.message : 'خطا در ثبت رسیدن به مقصد';
+    return { success: false, message };
   }
 }
 

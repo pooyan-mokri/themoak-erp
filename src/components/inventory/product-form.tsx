@@ -29,13 +29,13 @@ interface ProductFormProps {
 }
 
 export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
-  const updateProductWithId = initialData ? updateProduct.bind(null, initialData.id) : null;
+  const updateProductWithId = initialData ? updateProduct.bind(null, initialData.id) : undefined;
   const action = initialData ? updateProductWithId : createProduct;
   
   const [productType, setProductType] = useState<string>(
     initialData?.productType || 'SALEABLE'
   );
-  const [imageUrl, setImageUrl] = useState<string | null>(initialData?.image || null);
+  const [imageUrl, setImageUrl] = useState<string | undefined>(initialData?.image || undefined);
   
   // @ts-ignore
   const [state, dispatch] = useFormState(action, initialState);
@@ -46,7 +46,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
       setProductType(initialData.productType);
     }
     if (initialData?.image !== undefined) {
-      setImageUrl(initialData.image || null);
+      setImageUrl(initialData.image || undefined);
     }
   }, [initialData]);
 
@@ -78,7 +78,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
                 required 
                 defaultValue={initialData?.name}
               />
-              {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="sku">کد کالا (SKU) *</Label>
@@ -89,7 +89,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
                 required 
                 defaultValue={initialData?.sku}
               />
-              {state.errors?.sku && <p className="text-red-500 text-sm">{state.errors.sku}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.sku && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sku}</p>}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="productType">نوع کالا *</Label>
@@ -109,7 +109,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
                 </SelectContent>
               </Select>
               <input type="hidden" name="productType" value={productType} />
-              {state.errors?.productType && <p className="text-red-500 text-sm">{state.errors.productType}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.productType && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.productType}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="costPrice">قیمت خرید (تومان)</Label>
@@ -121,7 +121,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
                 required 
                 defaultValue={initialData ? Number(initialData.costPrice) : undefined}
               />
-              {state.errors?.costPrice && <p className="text-red-500 text-sm">{state.errors.costPrice}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="sellPrice">
@@ -136,7 +136,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
                 required={productType === 'SALEABLE'}
                 defaultValue={initialData ? Number(initialData.sellPrice) : undefined}
               />
-              {state.errors?.sellPrice && <p className="text-red-500 text-sm">{state.errors.sellPrice}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="wooId">شناسه ووکامرس (اختیاری)</Label>
@@ -153,7 +153,7 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
             <input type="hidden" name="image" value={imageUrl || ''} />
             <ProductImageUpload
               onUploadComplete={(url) => setImageUrl(url)}
-              onRemove={() => setImageUrl(null)}
+              onRemove={() => setImageUrl(undefined)}
               currentUrl={imageUrl}
             />
           </div>

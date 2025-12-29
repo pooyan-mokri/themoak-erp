@@ -6,8 +6,8 @@ import { prisma } from '@/lib/prisma';
 
 async function getExpenses() {
   try {
-    return await prisma.transaction.findMany({
-      where: { 
+    const expenses = await prisma.transaction.findMany({
+      where: {
         type: 'EXPENSE',
         // Exclude purchase-related expenses, payroll, and other non-expense transactions
         // Only show actual expenses (marketing, office, rent, etc.)
@@ -20,13 +20,44 @@ async function getExpenses() {
           ]
         }
       },
-      include: { 
+      include: {
         account: true,
         employee: true,
       },
       orderBy: { date: 'desc' },
       take: 100 // Increased limit for better filtering
     });
+
+    return expenses.map((expense: any) => ({
+      ...expense,
+      amount: Number(expense.amount),
+      amountInToman: Number(expense.amountInToman),
+      rateSnapshot: Number(expense.rateSnapshot),
+      description: expense.description ?? undefined,
+      category: expense.category ?? undefined,
+      accountId: expense.accountId ?? undefined,
+      projectId: expense.projectId ?? undefined,
+      employeeId: expense.employeeId ?? undefined,
+      shareholderId: expense.shareholderId ?? undefined,
+      receiptUrl: expense.receiptUrl ?? undefined,
+      wooId: expense.wooId ?? undefined,
+      wooStatus: expense.wooStatus ?? undefined,
+      account: expense.account ? {
+        ...expense.account,
+        balance: Number(expense.account.balance),
+      } : undefined,
+      employee: expense.employee ? {
+        ...expense.employee,
+        salary: Number(expense.employee.salary),
+        userId: expense.employee.userId ?? undefined,
+        nationalId: expense.employee.nationalId ?? undefined,
+        phone: expense.employee.phone ?? undefined,
+        email: expense.employee.email ?? undefined,
+        address: expense.employee.address ?? undefined,
+        position: expense.employee.position ?? undefined,
+        hireDate: expense.employee.hireDate ?? undefined,
+      } : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching expenses:', error);
     return [];

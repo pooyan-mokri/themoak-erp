@@ -27,10 +27,10 @@ interface Shareholder {
   id: string;
   name: string;
   percentage: number;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  notes: string | null;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
   _count: {
     transactions: number;
   };
@@ -43,8 +43,8 @@ interface ShareholderListProps {
 export function ShareholderList({ shareholders: initialShareholders }: ShareholderListProps) {
   const [shareholders, setShareholders] = useState(initialShareholders);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [shareholderToDelete, setShareholderToDelete] = useState<string | null>(null);
-  const [editShareholder, setEditShareholder] = useState<Shareholder | null>(null);
+  const [shareholderToDelete, setShareholderToDelete] = useState<string | undefined>(undefined);
+  const [editShareholder, setEditShareholder] = useState<Shareholder | undefined>(undefined);
 
   const handleDelete = async (id: string) => {
     setShareholderToDelete(id);
@@ -62,7 +62,7 @@ export function ShareholderList({ shareholders: initialShareholders }: Sharehold
       toast.error(result.message);
     }
     setDeleteDialogOpen(false);
-    setShareholderToDelete(null);
+    setShareholderToDelete(undefined);
   };
 
   const handleEdit = (shareholder: Shareholder) => {
@@ -70,7 +70,7 @@ export function ShareholderList({ shareholders: initialShareholders }: Sharehold
   };
 
   const handleEditSuccess = () => {
-    setEditShareholder(null);
+    setEditShareholder(undefined);
     window.location.reload();
   };
 
@@ -170,7 +170,7 @@ export function ShareholderList({ shareholders: initialShareholders }: Sharehold
       </Dialog>
 
       {editShareholder && (
-        <Dialog open={!!editShareholder} onOpenChange={() => setEditShareholder(null)}>
+        <Dialog open={!!editShareholder} onOpenChange={() => setEditShareholder(undefined)}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>ویرایش صاحب سهام</DialogTitle>

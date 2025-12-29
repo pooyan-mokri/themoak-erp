@@ -15,9 +15,9 @@ import Link from 'next/link';
 interface Supplier {
   id: string;
   name: string;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
+  phone?: string;
+  email?: string;
+  address?: string;
   _count?: {
     orders: number;
   };

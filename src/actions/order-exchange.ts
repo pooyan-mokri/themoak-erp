@@ -94,7 +94,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       }
 
       // 6. Create transaction if there's a price difference
-      let transactionId = null;
+      let transactionId = undefined;
       if (priceDifference !== 0) {
         const transactionType = priceDifference > 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
         const transaction = await tx.transaction.create({
@@ -266,9 +266,40 @@ export async function getOrderExchanges(orderId: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return exchanges.map((ex) => ({
+    return exchanges.map((ex: any) => ({
       ...ex,
       priceDifference: Number(ex.priceDifference),
+      transactionId: ex.transactionId ?? undefined,
+      originalItem: ex.originalItem ? {
+        ...ex.originalItem,
+        product: ex.originalItem.product ? {
+          ...ex.originalItem.product,
+          image: ex.originalItem.product.image ?? undefined,
+          wooId: ex.originalItem.product.wooId ?? undefined,
+          barcode: ex.originalItem.product.barcode ?? undefined,
+        } : undefined,
+      } : undefined,
+      exchangeItem: ex.exchangeItem ? {
+        ...ex.exchangeItem,
+        product: ex.exchangeItem.product ? {
+          ...ex.exchangeItem.product,
+          image: ex.exchangeItem.product.image ?? undefined,
+          wooId: ex.exchangeItem.product.wooId ?? undefined,
+          barcode: ex.exchangeItem.product.barcode ?? undefined,
+        } : undefined,
+      } : undefined,
+      transaction: ex.transaction ? {
+        ...ex.transaction,
+        description: ex.transaction.description ?? undefined,
+        category: ex.transaction.category ?? undefined,
+        accountId: ex.transaction.accountId ?? undefined,
+        projectId: ex.transaction.projectId ?? undefined,
+        employeeId: ex.transaction.employeeId ?? undefined,
+        shareholderId: ex.transaction.shareholderId ?? undefined,
+        receiptUrl: ex.transaction.receiptUrl ?? undefined,
+        wooId: ex.transaction.wooId ?? undefined,
+        wooStatus: ex.transaction.wooStatus ?? undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching order exchanges:', error);

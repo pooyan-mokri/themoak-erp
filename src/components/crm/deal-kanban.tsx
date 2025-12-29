@@ -27,13 +27,13 @@ import Link from 'next/link';
 interface Deal {
   id: string;
   title: string;
-  customer: {
+  customer?: {
     name: string;
   };
   stage: string;
   value: any;
   probability: number;
-  expectedClose: Date | null;
+  expectedClose?: Date;
 }
 
 interface DealKanbanProps {
@@ -50,7 +50,7 @@ const STAGES = [
 
 export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
   const [deals, setDeals] = useState(initialDeals);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | undefined>(undefined);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -68,7 +68,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
     const { active, over } = event;
 
     if (!over) {
-      setActiveId(null);
+      setActiveId(undefined);
       return;
     }
 
@@ -78,7 +78,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
     // Find the deal
     const deal = deals.find(d => d.id === dealId);
     if (!deal || deal.stage === newStage) {
-      setActiveId(null);
+      setActiveId(undefined);
       return;
     }
 
@@ -100,13 +100,13 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
       toast.success('مرحله معامله به‌روز شد');
     }
 
-    setActiveId(null);
+    setActiveId(undefined);
   };
 
   const getDealsByStage = (stage: string) =>
     deals.filter(deal => deal.stage === stage);
 
-  const activeDeal = activeId ? deals.find(d => d.id === activeId) : null;
+  const activeDeal = activeId ? deals.find(d => d.id === activeId) : undefined;
 
   return (
     <DndContext
@@ -211,7 +211,7 @@ function DealCard({ deal, isOverlay }: { deal: Deal; isOverlay?: boolean }) {
     <Card className={isOverlay ? 'rotate-3 opacity-80' : 'cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow'}>
       <CardContent className="p-3">
         <div className="font-medium text-sm mb-1">{deal.title}</div>
-        <div className="text-xs text-muted-foreground mb-2">{deal.customer.name}</div>
+        <div className="text-xs text-muted-foreground mb-2">{deal.customer?.name}</div>
         <div className="flex justify-between items-center">
           <span className="text-sm font-medium text-green-600">
             {new Intl.NumberFormat('fa-IR').format(Number(deal.value))} ت

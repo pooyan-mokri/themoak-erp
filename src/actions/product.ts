@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { generateProductBarcode, ensureUniqueBarcode } from '@/lib/barcode-utils';
+import { ActionState, ActionResult } from '@/lib/types';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -17,9 +18,9 @@ const ProductSchema = z.object({
   wooId: z.coerce.number().optional(),
 });
 
-export async function createProduct(prevState: any, formData: FormData) {
+export async function createProduct(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const imageValue = formData.get('image');
-  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : null;
+  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : undefined;
 
   const validatedFields = ProductSchema.safeParse({
     name: formData.get('name'),
@@ -50,10 +51,10 @@ export async function createProduct(prevState: any, formData: FormData) {
         name,
         sku,
         barcode,
-        productType: productType as any,
+        productType,
         costPrice,
         sellPrice,
-        image: validatedImage || null,
+        image: validatedImage || undefined,
         wooId,
       },
     });
@@ -74,16 +75,16 @@ export async function getProducts() {
       orderBy: { createdAt: 'desc' },
     });
     // Convert Decimal to number for client components
-    return products.map(product => ({
+    return products.map((product: any) => ({
       id: product.id,
       name: product.name,
       sku: product.sku,
-      barcode: product.barcode,
+      barcode: product.barcode ?? undefined,
       productType: product.productType,
       costPrice: Number(product.costPrice),
       sellPrice: Number(product.sellPrice),
-      image: product.image,
-      wooId: product.wooId,
+      image: product.image ?? undefined,
+      wooId: product.wooId ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -93,7 +94,7 @@ export async function getProducts() {
 
 export async function giftProduct(productId: string, quantity: number, recipient: string, note?: string) {
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       // 1. Find product to get cost price
       const product = await tx.product.findUnique({ where: { id: productId } });
       if (!product) throw new Error('Product not found');
@@ -155,13 +156,13 @@ export async function giftProduct(productId: string, quantity: number, recipient
       // Ignore revalidatePath error outside of Next.js context
     }
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error gifting product:', error);
-    return { success: false, error: error.message || 'Failed to gift product' };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to gift product' };
   }
 }
 
-export async function importProducts(products: any[]) {
+export async function importProducts(products: Array<Record<string, unknown>>) {
   let successCount = 0;
   let errorCount = 0;
 
@@ -182,10 +183,10 @@ export async function importProducts(products: any[]) {
         await prisma.product.update({
           where: { sku: String(p.sku) },
           data: {
-            name: p.name,
+            name: String(p.name),
             costPrice: Number(p.costPrice) || 0,
             sellPrice: Number(p.sellPrice) || 0,
-            image: p.image,
+            image: typeof p.image === 'string' ? p.image : undefined,
             // Don't update barcode if it exists
           },
         });
@@ -196,12 +197,12 @@ export async function importProducts(products: any[]) {
         
         await prisma.product.create({
           data: {
-            name: p.name,
+            name: String(p.name),
             sku: String(p.sku),
             barcode,
             costPrice: Number(p.costPrice) || 0,
             sellPrice: Number(p.sellPrice) || 0,
-            image: p.image,
+            image: typeof p.image === 'string' ? p.image : undefined,
           },
         });
       }
@@ -216,9 +217,9 @@ export async function importProducts(products: any[]) {
   return { success: true, successCount, errorCount };
 }
 
-export async function updateProduct(id: string, prevState: any, formData: FormData) {
+export async function updateProduct(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const imageValue = formData.get('image');
-  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : null;
+  const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : undefined;
 
   const validatedFields = ProductSchema.safeParse({
     name: formData.get('name'),
@@ -245,10 +246,10 @@ export async function updateProduct(id: string, prevState: any, formData: FormDa
       data: {
         name,
         sku,
-        productType: productType as any,
+        productType,
         costPrice,
         sellPrice,
-        image: validatedImage || null,
+        image: validatedImage || undefined,
         wooId,
       },
     });
@@ -292,7 +293,7 @@ export async function generateProductBarcodeAction(productId: string) {
       message: 'بارکد با موفقیت تولید شد.',
       barcode,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating barcode:', error);
     return {
       success: false,

@@ -112,8 +112,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            {state.errors?.employeeId && (
-              <p className="text-red-500 text-sm">{state.errors.employeeId[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId?.[0]}</p>
             )}
           </div>
 
@@ -132,8 +132,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors?.periodMonth && (
-                <p className="text-red-500 text-sm">{state.errors.periodMonth[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth?.[0]}</p>
               )}
             </div>
 
@@ -148,8 +148,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 required
                 defaultValue={currentYear ? currentYear.toString() : '1403'}
               />
-              {state.errors?.periodYear && (
-                <p className="text-red-500 text-sm">{state.errors.periodYear[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear?.[0]}</p>
               )}
             </div>
           </div>
@@ -167,8 +167,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            {state.errors?.amount && (
-              <p className="text-red-500 text-sm">{state.errors.amount[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
             )}
             {selectedEmployee && (
               <p className="text-xs text-muted-foreground">
@@ -190,8 +190,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 value={bonuses}
                 onChange={(e) => setBonuses(e.target.value)}
               />
-              {state.errors?.bonuses && (
-                <p className="text-red-500 text-sm">{state.errors.bonuses[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses?.[0]}</p>
               )}
             </div>
 
@@ -207,8 +207,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
                 value={deductions}
                 onChange={(e) => setDeductions(e.target.value)}
               />
-              {state.errors?.deductions && (
-                <p className="text-red-500 text-sm">{state.errors.deductions[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.deductions && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.deductions?.[0]}</p>
               )}
             </div>
           </div>
@@ -232,8 +232,8 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
               placeholder="توضیحات (اختیاری)..."
               rows={3}
             />
-            {state.errors?.description && (
-              <p className="text-red-500 text-sm">{state.errors.description[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 

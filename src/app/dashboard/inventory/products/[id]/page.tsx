@@ -18,11 +18,14 @@ import { notFound } from 'next/navigation';
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   try {
     // Fetch product first to check if it exists
-    const product = await getProductDetail(params.id);
-    
-    if (!product) {
+    const productData = await getProductDetail(params.id);
+
+    if (!productData) {
       notFound();
     }
+
+    // TypeScript-safe: product is guaranteed to exist after notFound() check
+    const product = productData;
 
     // Fetch other data in parallel (with error handling for each)
     const [stockBreakdown, salesAnalytics, movementHistory, salesHistory] = await Promise.allSettled([

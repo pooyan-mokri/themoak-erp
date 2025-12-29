@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -39,7 +39,7 @@ const ExchangeRateSchema = z.object({
 
 // --- Actions ---
 
-export async function createAccount(prevState: any, formData: FormData) {
+export async function createAccount(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = AccountSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -101,17 +101,23 @@ export async function getAccounts() {
   try {
     // Ensure Marketing Expenses account exists
     await ensureMarketingExpensesAccount();
-    
-    return await prisma.account.findMany({
+
+    const accounts = await prisma.account.findMany({
       orderBy: { createdAt: 'desc' },
     });
+
+    // Serialize Decimal fields
+    return accounts.map((account: any) => ({
+      ...account,
+      balance: Number(account.balance),
+    }));
   } catch (error) {
     console.error('Error fetching accounts:', error);
     throw new Error(`Failed to fetch accounts: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-export async function updateAccount(id: string, prevState: any, formData: FormData) {
+export async function updateAccount(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   // Check if this is the Marketing Expenses account and prevent name change
   const existingAccount = await prisma.account.findUnique({
     where: { id },
@@ -163,7 +169,7 @@ export async function updateAccount(id: string, prevState: any, formData: FormDa
   return { message: 'حساب با موفقیت ویرایش شد.', success: true };
 }
 
-export async function deleteAccount(id: string) {
+export async function deleteAccount(id: string): Promise<ActionResult> {
   try {
     // Check if this is the Marketing Expenses account
     const account = await prisma.account.findUnique({
@@ -196,7 +202,7 @@ export async function deleteAccount(id: string) {
   }
 }
 
-export async function setExchangeRate(prevState: any, formData: FormData) {
+export async function setExchangeRate(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ExchangeRateSchema.safeParse({
     currency: formData.get('currency'),
     rateToToman: formData.get('rateToToman'),
@@ -236,13 +242,18 @@ export async function getLatestExchangeRates() {
             orderBy: { date: 'desc' },
             take: 100, // Limit to recent
         });
-        return rates;
+
+        // Serialize Decimal fields
+        return rates.map((rate: any) => ({
+            ...rate,
+            rateToToman: Number(rate.rateToToman),
+        }));
     } catch (error) {
         return [];
     }
 }
 
-export async function recordExpense(prevState: any, formData: FormData) {
+export async function recordExpense(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const rawProjectId = formData.get('projectId');
   const projectIdValue = rawProjectId && rawProjectId !== 'none' ? rawProjectId : undefined;
   
@@ -317,8 +328,8 @@ export async function recordExpense(prevState: any, formData: FormData) {
             category: category,
             description: description ? `${category} - ${description} (پرداخت شده توسط: ${employee.name})` : `${category} - پرداخت شده توسط: ${employee.name}`,
             date: date ? new Date(date) : new Date(),
-            projectId: projectId || null,
-            receiptUrl: receiptUrl || null,
+            projectId: projectId || undefined,
+            receiptUrl: receiptUrl || undefined,
           }
         });
         // No account balance update needed - this creates a payable (liability)
@@ -351,8 +362,8 @@ export async function recordExpense(prevState: any, formData: FormData) {
             category: category,
             description: description ? `${category} - ${description}` : category,
             date: date ? new Date(date) : new Date(),
-            projectId: projectId || null,
-            receiptUrl: receiptUrl || null,
+            projectId: projectId || undefined,
+            receiptUrl: receiptUrl || undefined,
           }
         });
 
@@ -371,21 +382,22 @@ export async function recordExpense(prevState: any, formData: FormData) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording expense:', error);
+    const errorObj = error as { message?: string; code?: string; meta?: unknown; stack?: string };
     console.error('Error details:', {
-      message: error?.message,
-      code: error?.code,
-      meta: error?.meta,
-      stack: error?.stack
+      message: errorObj.message,
+      code: errorObj.code,
+      meta: errorObj.meta,
+      stack: errorObj.stack
     });
-    
+
     // Return more specific error message if available
-    if (error?.message) {
-      return { message: `خطا در ثبت هزینه: ${error.message}` };
+    if (errorObj.message) {
+      return { message: `خطا در ثبت هزینه: ${errorObj.message}`, success: false };
     }
-    
-    return { message: 'خطا در ثبت هزینه.' };
+
+    return { message: 'خطا در ثبت هزینه.', success: false };
   }
 
   try {
@@ -418,7 +430,7 @@ export async function getSalesByProduct() {
       salesByProduct[item.productId].total += Number(item.price) * item.quantity;
     }
 
-    return Object.values(salesByProduct).sort((a, b) => b.total - a.total);
+    return Object.values(salesByProduct).sort((a: any, b: any) => b.total - a.total);
   } catch (error) {
     console.error('Error fetching sales by product:', error);
     return [];
@@ -449,7 +461,7 @@ export async function getExpenseBreakdown() {
 
     return Object.entries(expenseByCategory)
       .map(([category, amount]) => ({ category, amount }))
-      .sort((a, b) => b.amount - a.amount);
+      .sort((a: any, b: any) => b.amount - a.amount);
   } catch (error) {
     console.error('Error fetching expense breakdown:', error);
     return [];
@@ -469,7 +481,7 @@ export async function getEmployeeDebts() {
 
     // Calculate debt for each employee
     const debtsWithDetails = await Promise.all(
-      employees.map(async (employee) => {
+      employees.map(async (employee: any) => {
         // Get all expense transactions (debts) for this employee
         const expenseTransactions = await prisma.transaction.findMany({
           where: {
@@ -488,11 +500,11 @@ export async function getEmployeeDebts() {
 
         // Calculate total debt (expenses - payments)
         const totalExpenses = expenseTransactions.reduce(
-          (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
           0
         );
         const totalPayments = incomeTransactions.reduce(
-          (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
           0
         );
         const totalDebt = totalExpenses - totalPayments;
@@ -501,8 +513,8 @@ export async function getEmployeeDebts() {
           employee: {
             id: employee.id,
             name: employee.name,
-            phone: employee.phone,
-            email: employee.email,
+            phone: employee.phone ?? undefined,
+            email: employee.email ?? undefined,
           },
           totalDebt,
           expenseCount: expenseTransactions.length,
@@ -512,7 +524,7 @@ export async function getEmployeeDebts() {
     );
 
     // Filter out employees with zero debt
-    return debtsWithDetails.filter((debt) => debt.totalDebt > 0);
+    return debtsWithDetails.filter((debt: any) => debt.totalDebt > 0);
   } catch (error) {
     console.error('Error fetching employee debts:', error);
     return [];
@@ -529,7 +541,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     });
 
     if (!employee) {
-      return null;
+      return undefined;
     }
 
     // Get all expense transactions (debts)
@@ -557,11 +569,11 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     });
 
     const totalExpenses = expenseTransactions.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
     const totalPayments = incomeTransactions.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
     const totalDebt = totalExpenses - totalPayments;
@@ -576,7 +588,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
       totalDebt,
       totalExpenses,
       totalPayments,
-      expenseTransactions: expenseTransactions.map((tx) => ({
+      expenseTransactions: expenseTransactions.map((tx: any) => ({
         id: tx.id,
         amount: Number(tx.amountInToman),
         description: tx.description,
@@ -584,7 +596,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
         category: tx.category,
         project: tx.project?.name,
       })),
-      paymentTransactions: incomeTransactions.map((tx) => ({
+      paymentTransactions: incomeTransactions.map((tx: any) => ({
         id: tx.id,
         amount: Number(tx.amountInToman),
         description: tx.description,
@@ -594,7 +606,7 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     };
   } catch (error) {
     console.error('Error fetching employee debt details:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -609,7 +621,7 @@ const PayDebtSchema = z.object({
   date: z.string().optional(),
 });
 
-export async function payEmployeeDebt(prevState: any, formData: FormData) {
+export async function payEmployeeDebt(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PayDebtSchema.safeParse({
     employeeId: formData.get('employeeId'),
     amount: formData.get('amount'),
@@ -685,10 +697,11 @@ export async function payEmployeeDebt(prevState: any, formData: FormData) {
       message: 'بازپرداخت بدهی با موفقیت ثبت شد.',
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error paying employee debt:', error);
+    const message = error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت بدهی.';
     return {
-      message: error.message || 'خطا در ثبت بازپرداخت بدهی.',
+      message,
       success: false,
     };
   }
@@ -706,7 +719,7 @@ export async function getTransactions() {
     });
     
     // Get transaction IDs
-    const transactionIds = transactions.map(t => t.id);
+    const transactionIds = transactions.map((t: any) => t.id);
     
     // Fetch all orders related to these transactions in one query
     const orders = await prisma.order.findMany({
@@ -720,27 +733,54 @@ export async function getTransactions() {
     
     // Create a map of transactionId -> customer name
     const transactionIdToCustomerName = new Map<string, string>();
-    orders.forEach(order => {
+    orders.forEach((order: any) => {
       if (order.transactionId && order.customer) {
         transactionIdToCustomerName.set(order.transactionId, order.customer.name);
       }
     });
     
     // Replace customer ID with customer name in descriptions
-    return transactions.map(transaction => {
+    return transactions.map((transaction: any) => {
       // Check if description contains a customer ID pattern (cuid format)
       const customerIdPattern = /سفارش فروش - مشتری: ([a-z0-9]{20,})/;
       const match = transaction.description?.match(customerIdPattern);
-      
+
+      let description = transaction.description;
       if (match && transactionIdToCustomerName.has(transaction.id)) {
         const customerName = transactionIdToCustomerName.get(transaction.id)!;
-        return {
-          ...transaction,
-          description: transaction.description?.replace(customerIdPattern, `سفارش فروش - مشتری: ${customerName}`) || transaction.description,
-        };
+        description = transaction.description?.replace(customerIdPattern, `سفارش فروش - مشتری: ${customerName}`) || transaction.description;
       }
-      
-      return transaction;
+
+      return {
+        ...transaction,
+        amount: Number(transaction.amount),
+        amountInToman: Number(transaction.amountInToman),
+        rateSnapshot: Number(transaction.rateSnapshot),
+        description: description ?? undefined,
+        category: transaction.category ?? undefined,
+        accountId: transaction.accountId ?? undefined,
+        projectId: transaction.projectId ?? undefined,
+        employeeId: transaction.employeeId ?? undefined,
+        shareholderId: transaction.shareholderId ?? undefined,
+        receiptUrl: transaction.receiptUrl ?? undefined,
+        wooId: transaction.wooId ?? undefined,
+        wooStatus: transaction.wooStatus ?? undefined,
+        account: transaction.account ? {
+          ...transaction.account,
+          balance: Number(transaction.account.balance),
+        } : undefined,
+        employee: transaction.employee ? {
+          ...transaction.employee,
+          salary: Number(transaction.employee.salary),
+          userId: transaction.employee.userId ?? undefined,
+          nationalId: transaction.employee.nationalId ?? undefined,
+          phone: transaction.employee.phone ?? undefined,
+          email: transaction.employee.email ?? undefined,
+          address: transaction.employee.address ?? undefined,
+          position: transaction.employee.position ?? undefined,
+          hireDate: transaction.employee.hireDate ?? undefined,
+        } : undefined,
+      };
     });
   } catch (error) {
     console.error('Error fetching transactions:', error);

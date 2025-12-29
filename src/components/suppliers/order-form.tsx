@@ -117,7 +117,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
       if (newSupplierEmail) formData.append('email', newSupplierEmail);
       if (newSupplierAddress) formData.append('address', newSupplierAddress);
 
-      const result = await createSupplier(null, formData);
+      const result = await createSupplier(undefined, formData);
       if (result.success) {
         // Refresh suppliers list - in a real app, we'd update the list
         router.refresh();

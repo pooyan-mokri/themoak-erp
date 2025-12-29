@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -28,7 +28,7 @@ const ShareholderDepositSchema = z.object({
 
 // --- Actions ---
 
-export async function createShareholder(prevState: any, formData: FormData) {
+export async function createShareholder(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ShareholderSchema.safeParse({
     name: formData.get('name'),
     percentage: formData.get('percentage'),
@@ -52,7 +52,7 @@ export async function createShareholder(prevState: any, formData: FormData) {
     // Check total percentage
     const existingShareholders = await prisma.shareholder.findMany();
     const totalPercentage = existingShareholders.reduce(
-      (sum, s) => sum + Number(s.percentage),
+  (sum: any, s: any) => sum + Number(s.percentage),
       0
     );
 
@@ -68,25 +68,26 @@ export async function createShareholder(prevState: any, formData: FormData) {
       data: {
         name,
         percentage: new Prisma.Decimal(percentage),
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        notes: notes || null,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        notes: notes || undefined,
       },
     });
 
     revalidatePath('/dashboard/accounting/shareholders');
     return { message: 'صاحب سهام با موفقیت ایجاد شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating shareholder:', error);
+    const message = error instanceof Error ? error.message : 'خطا در ایجاد صاحب سهام.';
     return {
-      message: error.message || 'خطا در ایجاد صاحب سهام.',
+      message,
       success: false,
     };
   }
 }
 
-export async function updateShareholder(id: string, prevState: any, formData: FormData) {
+export async function updateShareholder(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ShareholderSchema.safeParse({
     name: formData.get('name'),
     percentage: formData.get('percentage'),
@@ -118,7 +119,7 @@ export async function updateShareholder(id: string, prevState: any, formData: Fo
     });
 
     const totalPercentage = existingShareholders.reduce(
-      (sum, s) => sum + Number(s.percentage),
+  (sum: any, s: any) => sum + Number(s.percentage),
       0
     );
 
@@ -135,25 +136,26 @@ export async function updateShareholder(id: string, prevState: any, formData: Fo
       data: {
         name,
         percentage: new Prisma.Decimal(percentage),
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        notes: notes || null,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        notes: notes || undefined,
       },
     });
 
     revalidatePath('/dashboard/accounting/shareholders');
     return { message: 'صاحب سهام با موفقیت به‌روزرسانی شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating shareholder:', error);
+    const message = error instanceof Error ? error.message : 'خطا در به‌روزرسانی صاحب سهام.';
     return {
-      message: error.message || 'خطا در به‌روزرسانی صاحب سهام.',
+      message,
       success: false,
     };
   }
 }
 
-export async function deleteShareholder(id: string) {
+export async function deleteShareholder(id: string): Promise<ActionResult> {
   try {
     // Check if shareholder has transactions
     const transactions = await prisma.transaction.findMany({
@@ -173,11 +175,12 @@ export async function deleteShareholder(id: string) {
 
     revalidatePath('/dashboard/accounting/shareholders');
     return { success: true, message: 'صاحب سهام با موفقیت حذف شد.' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting shareholder:', error);
+    const message = error instanceof Error ? error.message : 'خطا در حذف صاحب سهام.';
     return {
       success: false,
-      message: error.message || 'خطا در حذف صاحب سهام.',
+      message,
     };
   }
 }
@@ -193,9 +196,13 @@ export async function getShareholders() {
       },
     });
 
-    return shareholders.map((s) => ({
+    return shareholders.map((s: any) => ({
       ...s,
       percentage: Number(s.percentage),
+      phone: s.phone ?? undefined,
+      email: s.email ?? undefined,
+      address: s.address ?? undefined,
+      notes: s.notes ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching shareholders:', error);
@@ -214,15 +221,19 @@ export async function getShareholderById(id: string) {
       },
     });
 
-    if (!shareholder) return null;
+    if (!shareholder) return undefined;
 
     return {
       ...shareholder,
       percentage: Number(shareholder.percentage),
+      phone: shareholder.phone ?? undefined,
+      email: shareholder.email ?? undefined,
+      address: shareholder.address ?? undefined,
+      notes: shareholder.notes ?? undefined,
     };
   } catch (error) {
     console.error('Error fetching shareholder:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -230,7 +241,7 @@ export async function getShareholderById(id: string) {
  * Deposit funds from shareholder (creates Accounts Payable - company owes shareholder)
  * When shareholder deposits money, the company receives it but owes it back as a debt
  */
-export async function depositShareholderFunds(prevState: any, formData: FormData) {
+export async function depositShareholderFunds(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ShareholderDepositSchema.safeParse({
     shareholderId: formData.get('shareholderId'),
     accountId: formData.get('accountId'),
@@ -335,10 +346,11 @@ export async function depositShareholderFunds(prevState: any, formData: FormData
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${currency} با موفقیت واریز شد. (سهامدار طلبکار شد)`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error depositing funds:', error);
+    const message = error instanceof Error ? error.message : 'خطا در واریز مبلغ.';
     return {
-      message: error.message || 'خطا در واریز مبلغ.',
+      message,
       success: false,
     };
   }
@@ -357,7 +369,7 @@ const ShareholderWithdrawalSchema = z.object({
   date: z.string().optional(),
 });
 
-export async function withdrawShareholderFunds(prevState: any, formData: FormData) {
+export async function withdrawShareholderFunds(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ShareholderWithdrawalSchema.safeParse({
     shareholderId: formData.get('shareholderId'),
     accountId: formData.get('accountId'),
@@ -471,10 +483,11 @@ export async function withdrawShareholderFunds(prevState: any, formData: FormDat
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${currency} با موفقیت پرداخت شد. (سهامدار بدهکار شد)`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error withdrawing funds:', error);
+    const message = error instanceof Error ? error.message : 'خطا در پرداخت مبلغ.';
     return {
-      message: error.message || 'خطا در پرداخت مبلغ.',
+      message,
       success: false,
     };
   }
@@ -506,11 +519,11 @@ export async function getShareholderBalance(shareholderId: string): Promise<numb
     });
 
     const totalDeposits = deposits.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
     const totalWithdrawals = withdrawals.reduce(
-      (sum, tx) => sum + Number(tx.amountInToman),
+  (sum: any, tx: any) => sum + Number(tx.amountInToman),
       0
     );
 
@@ -533,11 +546,15 @@ export async function getShareholdersWithBalance() {
     });
 
     const shareholdersWithBalance = await Promise.all(
-      shareholders.map(async (shareholder) => {
+      shareholders.map(async (shareholder: any) => {
         const balance = await getShareholderBalance(shareholder.id);
         return {
           ...shareholder,
           percentage: Number(shareholder.percentage),
+          phone: shareholder.phone ?? undefined,
+          email: shareholder.email ?? undefined,
+          address: shareholder.address ?? undefined,
+          notes: shareholder.notes ?? undefined,
           balance, // Positive = company owes, Negative = shareholder owes
         };
       })

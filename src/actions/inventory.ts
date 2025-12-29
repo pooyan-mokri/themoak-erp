@@ -13,7 +13,13 @@ export async function getInventoryByProduct(productId: string) {
       where: { productId },
       include: { warehouse: true },
     });
-    return inventory;
+    return inventory.map((inv: any) => ({
+      ...inv,
+      warehouse: {
+        ...inv.warehouse,
+        customerId: inv.warehouse.customerId ?? undefined,
+      },
+    }));
   } catch (error) {
     throw new Error('Failed to fetch inventory');
   }
@@ -26,7 +32,17 @@ export async function getInventoryByWarehouse(warehouseId: string) {
       include: { product: true },
       orderBy: { product: { name: 'asc' } }
     });
-    return inventory;
+    return inventory.map((inv: any) => ({
+      ...inv,
+      product: {
+        ...inv.product,
+        costPrice: Number(inv.product.costPrice),
+        sellPrice: Number(inv.product.sellPrice),
+        image: inv.product.image ?? undefined,
+        wooId: inv.product.wooId ?? undefined,
+        barcode: inv.product.barcode ?? undefined,
+      },
+    }));
   } catch (error) {
     throw new Error('Failed to fetch warehouse inventory');
   }
@@ -85,7 +101,7 @@ export async function adjustStock(productId: string, warehouseId: string, adjust
 
 export async function transferStock(productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number) {
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Check source stock
       const sourceStock = await tx.inventory.findUnique({
         where: {
@@ -158,7 +174,7 @@ export async function getWarehouseDashboardStats() {
       })
     ]);
 
-    const totalValue = totalInventoryValue.reduce((sum, item) => {
+    const totalValue = totalInventoryValue.reduce((sum: any, item: any) => {
       return sum + (item.quantity * Number(item.product.costPrice || 0));
     }, 0);
 

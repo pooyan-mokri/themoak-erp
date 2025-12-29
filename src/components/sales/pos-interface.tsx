@@ -37,7 +37,7 @@ interface Product {
   name: string;
   sku: string;
   sellPrice: any;
-  image: string | null;
+  image?: string;
 }
 
 interface Customer {

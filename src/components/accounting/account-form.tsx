@@ -23,7 +23,7 @@ interface AccountFormProps {
 }
 
 export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
-  const updateAccountWithId = initialData ? updateAccount.bind(null, initialData.id) : null;
+  const updateAccountWithId = initialData ? updateAccount.bind(null, initialData.id) : undefined;
   const action = initialData ? updateAccountWithId : createAccount;
   
   // @ts-ignore
@@ -60,7 +60,7 @@ export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
             {initialData?.name === 'Marketing Expenses' && (
               <p className="text-xs text-muted-foreground">این حساب سیستم است و نام آن قابل تغییر نیست.</p>
             )}
-            {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name}</p>}
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
           </div>
           
           <div className="grid grid-cols-2 gap-4">

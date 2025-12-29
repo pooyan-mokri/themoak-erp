@@ -19,15 +19,15 @@ export default function WooCommercePage() {
     success: boolean;
     message: string;
     details?: any;
-  } | null>(null);
-  const [debugResult, setDebugResult] = useState<any>(null);
+  } | undefined>(undefined);
+  const [debugResult, setDebugResult] = useState<any>(undefined);
 
   const handleSyncProducts = async () => {
     setIsSyncingProducts(true);
     try {
       const result = await syncProducts();
       if (result.success) {
-        toast.success(`محصولات سینک شدند: ${result.created} جدید، ${result.updated} به‌روزرسانی شد`);
+        toast.success(`محصولات سینک شدند: ${result.data?.created} جدید، ${result.data?.updated} به‌روزرسانی شد`);
       } else {
         toast.error(result.error || 'خطا در سینک محصولات');
         console.error('Sync products error:', result);
@@ -48,30 +48,30 @@ export default function WooCommercePage() {
       const result = await syncOrders();
       console.log('[CLIENT] نتیجه syncOrders:', JSON.stringify(result, null, 2));
       
-      if (result.success) {
+      if (result.success && result.data) {
         console.log('[CLIENT] سینک موفق بود:', {
-          created: result.created,
-          skipped: result.skipped,
-          totalOrders: result.totalOrders,
-          totalOrdersInWooCommerce: result.totalOrdersInWooCommerce,
-          stats: result.stats,
-          errorCount: result.errorCount,
+          created: result.data.created,
+          skipped: result.data.skipped,
+          totalOrders: result.data.totalOrders,
+          totalOrdersInWooCommerce: result.data.totalOrdersInWooCommerce,
+          stats: result.data.stats,
+          errorCount: result.data.errorCount,
           message: result.message,
-          debugLogs: result.debugLogs
+          debugLogs: result.data.debugLogs
         });
-        
+
         // Log debug logs if available
-        if (result.debugLogs && result.debugLogs.length > 0) {
+        if (result.data.debugLogs && result.data.debugLogs.length > 0) {
           console.log('[CLIENT] لاگ‌های Debug:');
-          result.debugLogs.forEach((log: string) => console.log(log));
+          result.data.debugLogs.forEach((log: string) => console.log(log));
         }
-        
+
         if (result.message) {
           toast.success(result.message);
         } else {
-          toast.success(`Orders synced: ${result.created} new transactions created`);
+          toast.success(`Orders synced: ${result.data.created} new transactions created`);
         }
-        if (result.errors && result.errors.length > 0) {
+        if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
           console.warn('[CLIENT] خطاها در حین سینک:', result.errors);
           // Show errors in console for debugging
           result.errors.forEach((err: string) => {
@@ -95,14 +95,20 @@ export default function WooCommercePage() {
 
   const handleTestConnection = async () => {
     setIsTestingConnection(true);
-    setConnectionStatus(null);
+    setConnectionStatus(undefined);
     try {
       const result = await testWooCommerceConnection();
-      setConnectionStatus(result);
-      if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message);
+      if (result.success !== undefined && result.message !== undefined) {
+        setConnectionStatus({
+          success: result.success,
+          message: result.message,
+          details: result.data,
+        });
+        if (result.success) {
+          toast.success(result.message);
+        } else {
+          toast.error(result.message);
+        }
       }
     } catch (error: any) {
       setConnectionStatus({
@@ -117,7 +123,7 @@ export default function WooCommercePage() {
 
   const handleDebugProductMatching = async () => {
     setIsDebugging(true);
-    setDebugResult(null);
+    setDebugResult(undefined);
     try {
       const result = await debugProductMatching();
       setDebugResult(result);

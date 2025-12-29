@@ -26,8 +26,8 @@ interface Loan {
   amount: number;
   remaining: number;
   interestRate: number;
-  description: string | null;
-  dueDate: Date | null;
+  description?: string;
+  dueDate?: Date;
   status: string;
   payments: any[];
 }
@@ -40,7 +40,7 @@ interface LoanListProps {
 export function LoanList({ loans: initialLoans, accounts }: LoanListProps) {
   const [loans] = useState(initialLoans);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
+  const [selectedLoan, setSelectedLoan] = useState<Loan | undefined>(undefined);
 
   const handlePayment = (loan: Loan) => {
     setSelectedLoan(loan);
@@ -49,7 +49,7 @@ export function LoanList({ loans: initialLoans, accounts }: LoanListProps) {
 
   const handlePaymentSuccess = () => {
     setPaymentDialogOpen(false);
-    setSelectedLoan(null);
+    setSelectedLoan(undefined);
     window.location.reload();
   };
 

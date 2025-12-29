@@ -157,8 +157,8 @@ export function ExchangeItemDialog({
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors?.exchangeProductId && (
-                <p className="text-red-500 text-sm">{state.errors.exchangeProductId[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeProductId && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeProductId?.[0]}</p>
               )}
             </div>
 
@@ -174,8 +174,8 @@ export function ExchangeItemDialog({
                 onChange={(e) => setQuantity(e.target.value)}
                 required
               />
-              {state.errors?.quantity && (
-                <p className="text-red-500 text-sm">{state.errors.quantity[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.quantity && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
               )}
             </div>
 
@@ -193,8 +193,8 @@ export function ExchangeItemDialog({
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors?.accountId && (
-                <p className="text-red-500 text-sm">{state.errors.accountId[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}
             </div>
 

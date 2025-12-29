@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { ActionState, ActionResult } from '@/lib/types';
 
 // --- Schemas ---
 
@@ -20,7 +21,7 @@ const EmployeeSchema = z.object({
 
 // --- Actions ---
 
-export async function createEmployee(prevState: any, formData: FormData) {
+export async function createEmployee(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
     nationalId: formData.get('nationalId') || undefined,
@@ -76,28 +77,28 @@ export async function createEmployee(prevState: any, formData: FormData) {
     await prisma.employee.create({
       data: {
         name,
-        nationalId: nationalId || null,
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        position: position || null,
-        hireDate: hireDate ? new Date(hireDate) : null,
+        nationalId: nationalId || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        position: position || undefined,
+        hireDate: hireDate ? new Date(hireDate) : undefined,
         salary: new Prisma.Decimal(salary),
       },
     });
 
     revalidatePath('/dashboard/accounting/employees');
     return { message: 'کارمند با موفقیت ثبت شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating employee:', error);
     return {
-      message: error.message || 'خطا در ثبت کارمند.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت کارمند.',
       success: false,
     };
   }
 }
 
-export async function updateEmployee(id: string, prevState: any, formData: FormData) {
+export async function updateEmployee(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
     nationalId: formData.get('nationalId') || undefined,
@@ -157,22 +158,22 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
       where: { id },
       data: {
         name,
-        nationalId: nationalId || null,
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        position: position || null,
-        hireDate: hireDate ? new Date(hireDate) : null,
+        nationalId: nationalId || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        position: position || undefined,
+        hireDate: hireDate ? new Date(hireDate) : undefined,
         salary: new Prisma.Decimal(salary),
       },
     });
 
     revalidatePath('/dashboard/accounting/employees');
     return { message: 'کارمند با موفقیت به‌روزرسانی شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating employee:', error);
     return {
-      message: error.message || 'خطا در به‌روزرسانی کارمند.',
+      message: error instanceof Error ? error.message : 'خطا در به‌روزرسانی کارمند.',
       success: false,
     };
   }
@@ -198,11 +199,11 @@ export async function deleteEmployee(id: string) {
 
     revalidatePath('/dashboard/accounting/employees');
     return { success: true, message: 'کارمند با موفقیت حذف شد.' };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting employee:', error);
     return {
       success: false,
-      message: error.message || 'خطا در حذف کارمند.',
+      message: error instanceof Error ? error.message : 'خطا در حذف کارمند.',
     };
   }
 }
@@ -213,9 +214,16 @@ export async function getEmployees() {
       orderBy: { createdAt: 'desc' },
     });
 
-    return employees.map((e) => ({
+    return employees.map((e: any) => ({
       ...e,
       salary: Number(e.salary),
+      userId: e.userId ?? undefined,
+      nationalId: e.nationalId ?? undefined,
+      phone: e.phone ?? undefined,
+      email: e.email ?? undefined,
+      address: e.address ?? undefined,
+      position: e.position ?? undefined,
+      hireDate: e.hireDate ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching employees:', error);
@@ -229,15 +237,22 @@ export async function getEmployeeById(id: string) {
       where: { id },
     });
 
-    if (!employee) return null;
+    if (!employee) return undefined;
 
     return {
       ...employee,
       salary: Number(employee.salary),
+      userId: employee.userId ?? undefined,
+      nationalId: employee.nationalId ?? undefined,
+      phone: employee.phone ?? undefined,
+      email: employee.email ?? undefined,
+      address: employee.address ?? undefined,
+      position: employee.position ?? undefined,
+      hireDate: employee.hireDate ?? undefined,
     };
   } catch (error) {
     console.error('Error fetching employee:', error);
-    return null;
+    return undefined;
   }
 }
 

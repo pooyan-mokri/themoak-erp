@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
+import { ActionResult, ActionState } from '@/lib/types';
 
 // Generate unique audit number
 function generateAuditNumber(): string {
@@ -14,7 +15,7 @@ function generateAuditNumber(): string {
 }
 
 // Generate unique barcode for tags (if product doesn't have barcode, generate one)
-function generateTagBarcode(auditId: string, index: number, productBarcode?: string | null): string {
+function generateTagBarcode(auditId: string, index: number, productBarcode?: string): string {
   // Use product barcode if available, otherwise generate tag barcode
   if (productBarcode) {
     return productBarcode;
@@ -23,7 +24,10 @@ function generateTagBarcode(auditId: string, index: number, productBarcode?: str
 }
 
 // 1. Pre-Audit: Create Inventory Audit
-export async function createInventoryAudit(prevState: any, formData: FormData) {
+export async function createInventoryAudit(
+  prevState: ActionState<{ auditId: string }>,
+  formData: FormData
+): Promise<ActionResult<{ auditId: string }>> {
   try {
     console.log('=== createInventoryAudit START ===');
     const session = await auth();
@@ -74,7 +78,7 @@ export async function createInventoryAudit(prevState: any, formData: FormData) {
       data: {
         auditNumber,
         warehouseId,
-        description: description || null,
+        description: description || undefined,
         status: 'PLANNED',
         createdBy: session.user.id,
       },
@@ -85,19 +89,20 @@ export async function createInventoryAudit(prevState: any, formData: FormData) {
     return {
       success: true,
       message: 'انبارگردانی با موفقیت ایجاد شد.',
-      auditId: audit.id,
+      data: { auditId: audit.id },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('=== createInventoryAudit ERROR ===', error);
+    const message = error instanceof Error ? error.message : 'لطفاً دوباره تلاش کنید.';
     return {
       success: false,
-      message: `خطا در ایجاد انبارگردانی: ${error.message || 'لطفاً دوباره تلاش کنید.'}`,
+      message: `خطا در ایجاد انبارگردانی: ${message}`,
     };
   }
 }
 
 // 2. Pre-Audit: Freeze Inventory (Create Snapshot)
-export async function freezeInventory(auditId: string) {
+export async function freezeInventory(auditId: string): Promise<ActionResult<{ snapshotCount: number }>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -124,7 +129,7 @@ export async function freezeInventory(auditId: string) {
     });
 
     // Create snapshots
-    const snapshots = inventoryItems.map((item) => ({
+    const snapshots = inventoryItems.map((item: any) => ({
       auditId,
       productId: item.productId,
       warehouseId: item.warehouseId,
@@ -132,14 +137,14 @@ export async function freezeInventory(auditId: string) {
       costPrice: item.product.costPrice,
     }));
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // Create snapshots
       await tx.inventoryAuditSnapshot.createMany({
         data: snapshots,
       });
 
       // Create audit items for each product
-      const auditItems = inventoryItems.map((item) => ({
+      const auditItems = inventoryItems.map((item: any) => ({
         auditId,
         productId: item.productId,
         systemQuantity: item.quantity,
@@ -165,9 +170,9 @@ export async function freezeInventory(auditId: string) {
     return {
       success: true,
       message: 'موجودی با موفقیت فریز شد.',
-      snapshotCount: snapshots.length,
+      data: { snapshotCount: snapshots.length },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error freezing inventory:', error);
     return {
       success: false,
@@ -177,7 +182,11 @@ export async function freezeInventory(auditId: string) {
 }
 
 // 3. Pre-Audit: Generate Audit Tags
-export async function generateAuditTags(auditId: string, tagType: string = 'SHELF', count?: number) {
+export async function generateAuditTags(
+  auditId: string,
+  tagType: string = 'SHELF',
+  count?: number
+): Promise<ActionResult<{ tagCount: number }>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -199,13 +208,13 @@ export async function generateAuditTags(auditId: string, tagType: string = 'SHEL
     const tags = [];
     for (let i = 0; i < tagCount; i++) {
       const item = audit.items[i];
-      const productBarcode = item?.product?.barcode;
+      const productBarcode = item?.product?.barcode ?? undefined;
       const barcode = generateTagBarcode(auditId, i + 1, productBarcode);
       tags.push({
         auditId,
         barcode,
         tagType,
-        productId: item?.productId || null,
+        productId: item?.productId || undefined,
         createdAt: new Date(),
       });
     }
@@ -218,9 +227,9 @@ export async function generateAuditTags(auditId: string, tagType: string = 'SHEL
     return {
       success: true,
       message: `${tags.length} تگ با موفقیت ایجاد شد.`,
-      tagCount: tags.length,
+      data: { tagCount: tags.length },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating audit tags:', error);
     return {
       success: false,
@@ -230,7 +239,11 @@ export async function generateAuditTags(auditId: string, tagType: string = 'SHEL
 }
 
 // 4. Pre-Audit: Add Team Member
-export async function addAuditTeamMember(auditId: string, userId: string, role: string = 'COUNTER') {
+export async function addAuditTeamMember(
+  auditId: string,
+  userId: string,
+  role: string = 'COUNTER'
+): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -275,7 +288,7 @@ export async function addAuditTeamMember(auditId: string, userId: string, role: 
       success: true,
       message: 'عضو تیم با موفقیت اضافه شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error adding team member:', error);
     return {
       success: false,
@@ -285,7 +298,7 @@ export async function addAuditTeamMember(auditId: string, userId: string, role: 
 }
 
 // 5. Pre-Audit: Remove Team Member
-export async function removeAuditTeamMember(auditId: string, userId: string) {
+export async function removeAuditTeamMember(auditId: string, userId: string): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -306,7 +319,7 @@ export async function removeAuditTeamMember(auditId: string, userId: string) {
       success: true,
       message: 'عضو تیم با موفقیت حذف شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error removing team member:', error);
     return {
       success: false,
@@ -348,10 +361,60 @@ export async function getInventoryAudit(auditId: string) {
       },
     });
 
-    return audit;
-  } catch (error: any) {
+    if (!audit) return undefined;
+
+    return {
+      ...audit,
+      description: audit.description ?? undefined,
+      items: audit.items.map((item: any) => ({
+        ...item,
+        countedQuantity1: item.countedQuantity1 ?? undefined,
+        countedQuantity2: item.countedQuantity2 ?? undefined,
+        countedQuantity3: item.countedQuantity3 ?? undefined,
+        countedBy1: item.countedBy1 ?? undefined,
+        countedBy2: item.countedBy2 ?? undefined,
+        countedBy3: item.countedBy3 ?? undefined,
+        countedAt1: item.countedAt1 ?? undefined,
+        countedAt2: item.countedAt2 ?? undefined,
+        countedAt3: item.countedAt3 ?? undefined,
+        finalQuantity: item.finalQuantity ?? undefined,
+        discrepancy: item.discrepancy ?? undefined,
+        discrepancyValue: item.discrepancyValue ? Number(item.discrepancyValue) : undefined,
+        notes: item.notes ?? undefined,
+        adjustmentDocId: item.adjustmentDocId ?? undefined,
+        product: item.product ? {
+          ...item.product,
+          image: item.product.image ?? undefined,
+          wooId: item.product.wooId ?? undefined,
+          barcode: item.product.barcode ?? undefined,
+        } : undefined,
+      })),
+      tags: audit.tags.map((tag: any) => ({
+        ...tag,
+        location: tag.location ?? undefined,
+        productId: tag.productId ?? undefined,
+        printedAt: tag.printedAt ?? undefined,
+        printedBy: tag.printedBy ?? undefined,
+        product: tag.product ? {
+          ...tag.product,
+          image: tag.product.image ?? undefined,
+          wooId: tag.product.wooId ?? undefined,
+          barcode: tag.product.barcode ?? undefined,
+        } : undefined,
+      })),
+      snapshots: audit.snapshots.map((snapshot: any) => ({
+        ...snapshot,
+        product: snapshot.product ? {
+          ...snapshot.product,
+          image: snapshot.product.image ?? undefined,
+          wooId: snapshot.product.wooId ?? undefined,
+          barcode: snapshot.product.barcode ?? undefined,
+        } : undefined,
+      })),
+    };
+  } catch (error: unknown) {
     console.error('Error fetching inventory audit:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -379,8 +442,15 @@ export async function getInventoryAudits(warehouseId?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return audits;
-  } catch (error: any) {
+    return audits.map((audit: any) => ({
+      ...audit,
+      description: audit.description ?? undefined,
+      createdBy: audit.createdBy ?? undefined,
+      startDate: audit.startDate ?? undefined,
+      completedDate: audit.completedDate ?? undefined,
+      frozenAt: audit.frozenAt ?? undefined,
+    }));
+  } catch (error: unknown) {
     console.error('Error fetching inventory audits:', error);
     return [];
   }
@@ -395,7 +465,7 @@ export async function recordCount(
   count: number,
   countRound: 1 | 2 | 3 = 1,
   notes?: string
-) {
+): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -433,7 +503,7 @@ export async function recordCount(
     }
 
     // Update or create audit item
-    const updateData: any = {
+    const updateData: Record<string, number | string | Date> = {
       [`countedQuantity${countRound}`]: count,
       [`countedBy${countRound}`]: session.user.id,
       [`countedAt${countRound}`]: new Date(),
@@ -464,7 +534,7 @@ export async function recordCount(
       success: true,
       message: 'شمارش با موفقیت ثبت شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording count:', error);
     return {
       success: false,
@@ -479,7 +549,7 @@ export async function recordCountByBarcode(
   barcode: string,
   count: number,
   countRound: 1 | 2 | 3 = 1
-) {
+): Promise<ActionResult> {
   try {
     // Find tag by barcode
     const tag = await prisma.inventoryAuditTag.findUnique({
@@ -500,7 +570,7 @@ export async function recordCountByBarcode(
     }
 
     return await recordCount(auditId, tag.productId, count, countRound);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording count by barcode:', error);
     return {
       success: false,
@@ -514,7 +584,7 @@ export async function setFinalQuantity(
   auditId: string,
   productId: string,
   finalQuantity: number
-) {
+): Promise<ActionResult> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -584,7 +654,7 @@ export async function setFinalQuantity(
       success: true,
       message: 'مقدار نهایی با موفقیت ثبت شد.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error setting final quantity:', error);
     return {
       success: false,
@@ -596,7 +666,7 @@ export async function setFinalQuantity(
 // ==================== POST-AUDIT TASKS ====================
 
 // 9. Post-Audit: Calculate Discrepancies
-export async function calculateDiscrepancies(auditId: string) {
+export async function calculateDiscrepancies(auditId: string): Promise<ActionResult> {
   try {
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
@@ -612,9 +682,9 @@ export async function calculateDiscrepancies(auditId: string) {
     }
 
     // Calculate discrepancies for all items
-    const updates = audit.items.map((item) => {
+    const updates = audit.items.map((item: any) => {
       if (item.finalQuantity === null) {
-        return null;
+        return undefined;
       }
 
       const discrepancy = item.finalQuantity - item.systemQuantity;
@@ -634,14 +704,14 @@ export async function calculateDiscrepancies(auditId: string) {
       });
     });
 
-    await Promise.all(updates.filter((u) => u !== null) as Promise<any>[]);
+    await Promise.all(updates.filter((u: any) => u !== null));
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
       success: true,
       message: 'مغایرت‌ها با موفقیت محاسبه شدند.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error calculating discrepancies:', error);
     return {
       success: false,
@@ -676,16 +746,16 @@ export async function getDiscrepancyReport(auditId: string) {
     });
 
     if (!audit) {
-      return null;
+      return undefined;
     }
 
     const totalDiscrepancyValue = audit.items.reduce(
-      (sum, item) => sum + Number(item.discrepancyValue || 0),
+  (sum: any, item: any) => sum + Number(item.discrepancyValue || 0),
       0
     );
 
-    const shortageCount = audit.items.filter((item) => (item.discrepancy || 0) < 0).length;
-    const excessCount = audit.items.filter((item) => (item.discrepancy || 0) > 0).length;
+    const shortageCount = audit.items.filter((item: any) => (item.discrepancy || 0) < 0).length;
+    const excessCount = audit.items.filter((item: any) => (item.discrepancy || 0) > 0).length;
 
     return {
       audit,
@@ -694,14 +764,14 @@ export async function getDiscrepancyReport(auditId: string) {
       excessCount,
       totalItems: audit.items.length,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching discrepancy report:', error);
-    return null;
+    return undefined;
   }
 }
 
 // 11. Post-Audit: Issue Adjustment Documents
-export async function issueAdjustmentDocuments(auditId: string) {
+export async function issueAdjustmentDocuments(auditId: string): Promise<ActionResult<{ adjustedCount: number }>> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -737,7 +807,7 @@ export async function issueAdjustmentDocuments(auditId: string) {
     const { adjustStock } = await import('./inventory');
 
     // Adjust inventory for each item
-    const adjustments = audit.items.map(async (item) => {
+    const adjustments = audit.items.map(async (item: any) => {
       const adjustment = item.discrepancy || 0;
 
       if (adjustment !== 0) {
@@ -775,9 +845,9 @@ export async function issueAdjustmentDocuments(auditId: string) {
     return {
       success: true,
       message: `اسناد اصلاحی برای ${audit.items.length} آیتم صادر شد.`,
-      adjustedCount: audit.items.length,
+      data: { adjustedCount: audit.items.length },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error issuing adjustment documents:', error);
     return {
       success: false,
@@ -810,20 +880,20 @@ export async function getPerformanceReport(auditId: string) {
     });
 
     if (!audit) {
-      return null;
+      return undefined;
     }
 
     // Calculate statistics
     const totalItems = audit.items.length;
-    const countedItems = audit.items.filter((item) => item.finalQuantity !== null).length;
+    const countedItems = audit.items.filter((item: any) => item.finalQuantity !== null).length;
     const itemsWithDiscrepancy = audit.items.filter(
-      (item) => item.discrepancy !== null && item.discrepancy !== 0
+  (item: any) => item.discrepancy !== null && item.discrepancy !== 0
     ).length;
 
     // Count by user
     const countByUser: Record<string, { name: string; count: number }> = {};
-    audit.items.forEach((item) => {
-      [item.countedBy1User, item.countedBy2User, item.countedBy3User].forEach((user) => {
+    audit.items.forEach((item: any) => {
+      [item.countedBy1User, item.countedBy2User, item.countedBy3User].forEach((user: any) => {
         if (user) {
           if (!countByUser[user.id]) {
             countByUser[user.id] = { name: user.name, count: 0 };
@@ -843,9 +913,9 @@ export async function getPerformanceReport(auditId: string) {
       },
       countByUser: Object.values(countByUser),
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching performance report:', error);
-    return null;
+    return undefined;
   }
 }
 

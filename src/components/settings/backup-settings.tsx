@@ -23,7 +23,7 @@ export function BackupSettings() {
     dayOfMonth: 1,
     keepBackups: 30,
   });
-  const [lastBackup, setLastBackup] = useState<any>(null);
+  const [lastBackup, setLastBackup] = useState<any>(undefined);
   const [backups, setBackups] = useState<any[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
 

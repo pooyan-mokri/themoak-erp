@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { ActionState, ActionResult } from '@/lib/types';
 
 const ProjectSchema = z.object({
   name: z.string().min(1, 'نام پروژه الزامی است'),
@@ -24,7 +25,7 @@ const TaskSchema = z.object({
   assignedTo: z.string().optional(),
 });
 
-export async function createProject(prevState: any, formData: FormData) {
+export async function createProject(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ProjectSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
@@ -76,7 +77,13 @@ export async function getProjects() {
         },
       },
     });
-    return projects;
+    return projects.map((project: any) => ({
+      ...project,
+      budget: project.budget ? Number(project.budget) : undefined,
+      description: project.description ?? undefined,
+      endDate: project.endDate ?? undefined,
+      startDate: project.startDate ?? undefined,
+    }));
   } catch (error) {
     throw new Error('Failed to fetch projects');
   }
@@ -93,29 +100,38 @@ export async function getProjectById(id: string) {
       },
     });
     
-    if (!project) return null;
+    if (!project) return undefined;
     
     // Get all user IDs from tasks
     const userIds = project.tasks
-      .map((t) => t.assignedTo)
-      .filter((id): id is string => id !== null);
+      .map((t: any) => t.assignedTo)
+      .filter((id: any): id is string => id !== null);
     
     // Fetch users
     const users = userIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         })
       : [];
     
-    const userMap = new Map(users.map((u) => [u.id, u]));
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
     
     // Map tasks with user information
     return {
       ...project,
-      tasks: project.tasks.map((task) => ({
+      budget: project.budget ? Number(project.budget) : undefined,
+      description: project.description ?? undefined,
+      endDate: project.endDate ?? undefined,
+      startDate: project.startDate ?? undefined,
+      tasks: project.tasks.map((task: any) => ({
         ...task,
-        assignedToUser: task.assignedTo ? userMap.get(task.assignedTo) || null : null,
+        description: task.description ?? undefined,
+        dueDate: task.dueDate ?? undefined,
+        startDate: task.startDate ?? undefined,
+        endDate: task.endDate ?? undefined,
+        assignedTo: task.assignedTo ?? undefined,
+        assignedToUser: task.assignedTo ? userMap.get(task.assignedTo) : undefined,
       })),
     };
   } catch (error) {
@@ -138,26 +154,34 @@ export async function getProjectsForCalendar() {
 
     // Get all user IDs from tasks
     const userIds = projects
-      .flatMap((p) => p.tasks)
-      .map((t) => t.assignedTo)
-      .filter((id): id is string => id !== null);
+      .flatMap((p: any) => p.tasks)
+      .map((t: any) => t.assignedTo)
+      .filter((id: any): id is string => id !== null);
 
     // Fetch users
     const users = userIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         })
       : [];
 
-    const userMap = new Map(users.map((u) => [u.id, u]));
+    const userMap = new Map(users.map((u: any) => [u.id, u]));
 
     // Map projects with user information
-    return projects.map((project) => ({
+    return projects.map((project: any) => ({
       ...project,
-      tasks: project.tasks.map((task) => ({
+      budget: project.budget ? Number(project.budget) : undefined,
+      description: project.description ?? undefined,
+      endDate: project.endDate ?? undefined,
+      startDate: project.startDate ?? undefined,
+      tasks: project.tasks.map((task: any) => ({
         ...task,
-        assignedTo: task.assignedTo ? userMap.get(task.assignedTo) || null : null,
+        description: task.description ?? undefined,
+        dueDate: task.dueDate ?? undefined,
+        endDate: task.endDate ?? undefined,
+        startDate: task.startDate ?? undefined,
+        assignedTo: task.assignedTo ? userMap.get(task.assignedTo) : undefined,
         project: {
           id: project.id,
           name: project.name,
@@ -170,7 +194,7 @@ export async function getProjectsForCalendar() {
   }
 }
 
-export async function createTask(prevState: any, formData: FormData) {
+export async function createTask(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = TaskSchema.safeParse({
     title: formData.get('title'),
     description: formData.get('description'),
@@ -214,7 +238,7 @@ export async function createTask(prevState: any, formData: FormData) {
         startDate: startDate && startDate.trim() ? new Date(startDate) : undefined,
         dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : undefined,
         projectId,
-        assignedTo: assignedTo || null,
+        assignedTo: assignedTo || undefined,
       },
     });
   } catch (error) {
@@ -256,7 +280,7 @@ export async function deleteTask(taskId: string, projectId: string) {
   }
 }
 
-export async function updateProject(id: string, prevState: any, formData: FormData) {
+export async function updateProject(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ProjectSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
@@ -282,8 +306,8 @@ export async function updateProject(id: string, prevState: any, formData: FormDa
         name,
         description,
         status,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
         budget,
       },
     });
@@ -300,7 +324,7 @@ export async function updateProject(id: string, prevState: any, formData: FormDa
   return { message: 'پروژه با موفقیت بروزرسانی شد.', success: true, errors: undefined };
 }
 
-export async function updateTask(taskId: string, prevState: any, formData: FormData) {
+export async function updateTask(taskId: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
     console.log('=== updateTask START ===');
     console.log('taskId:', taskId);
     
@@ -356,16 +380,16 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         description,
         status,
         priority,
-        startDate: startDate && startDate.trim() ? new Date(startDate) : null,
-        dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : null,
-        assignedTo: assignedTo || null,
+        startDate: startDate && startDate.trim() ? new Date(startDate) : undefined,
+        dueDate: dueDate && dueDate.trim() ? new Date(dueDate) : undefined,
+        assignedTo: assignedTo || undefined,
     });
 
     try {
         // Prepare data for update
-        const updateData: any = {
+        const updateData: Record<string, unknown> = {
             title,
-            description: description || null,
+            description: description || undefined,
             status,
             priority,
         };
@@ -417,7 +441,7 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
             // Prisma will validate if it's a valid user ID
             updateData.assignedTo = assignedToValue;
         } else {
-            updateData.assignedTo = null;
+            updateData.assignedTo = undefined;
         }
         
         console.log('assignedTo value:', updateData.assignedTo);
@@ -425,20 +449,20 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         console.log('Update data prepared:', JSON.stringify(updateData, null, 2));
         console.log('Update data keys:', Object.keys(updateData));
         console.log('Updating task with ID:', taskId);
-        
+
         // Validate updateData before sending to Prisma
-        const finalUpdateData: any = {};
+        const finalUpdateData: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(updateData)) {
             if (value !== undefined) {
                 finalUpdateData[key] = value;
             }
         }
-        
+
         console.log('Final update data:', JSON.stringify(finalUpdateData, null, 2));
         console.log('Final update data keys:', Object.keys(finalUpdateData));
-        
+
         // Build update payload directly - similar to createTask pattern
-        const updatePayload: any = {
+        const updatePayload: Record<string, unknown> = {
             title: finalUpdateData.title,
             description: finalUpdateData.description,
             status: finalUpdateData.status,
@@ -449,8 +473,8 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         if (finalUpdateData.startDate !== undefined) {
             if (finalUpdateData.startDate instanceof Date) {
                 updatePayload.startDate = finalUpdateData.startDate;
-            } else if (finalUpdateData.startDate === null) {
-                updatePayload.startDate = null;
+            } else if (finalUpdateData.startDate === undefined || finalUpdateData.startDate === null) {
+                updatePayload.startDate = undefined;
             } else {
                 // Should not happen, but handle it
                 updatePayload.startDate = finalUpdateData.startDate;
@@ -462,8 +486,8 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         if (finalUpdateData.dueDate !== undefined) {
             if (finalUpdateData.dueDate instanceof Date) {
                 updatePayload.dueDate = finalUpdateData.dueDate;
-            } else if (finalUpdateData.dueDate === null) {
-                updatePayload.dueDate = null;
+            } else if (finalUpdateData.dueDate === undefined || finalUpdateData.dueDate === null) {
+                updatePayload.dueDate = undefined;
             } else {
                 // Should not happen, but handle it
                 updatePayload.dueDate = finalUpdateData.dueDate;
@@ -473,7 +497,7 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         
         // Add assignedTo if it's provided
         if (finalUpdateData.assignedTo !== undefined) {
-            updatePayload.assignedTo = finalUpdateData.assignedTo || null;
+            updatePayload.assignedTo = finalUpdateData.assignedTo || undefined;
         }
         
         console.log('Final update payload:', JSON.stringify(updatePayload, null, 2));
@@ -494,40 +518,39 @@ export async function updateTask(taskId: string, prevState: any, formData: FormD
         
         console.log('=== updateTask SUCCESS ===');
         return { success: true, message: 'وظیفه با موفقیت بروزرسانی شد.', errors: undefined };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('=== updateTask ERROR ===');
         console.error('Error type:', typeof error);
         console.error('Error:', error);
-        
+
         let errorMessage = 'خطا در بروزرسانی وظیفه';
-        
+
         if (error) {
             if (typeof error === 'string') {
                 errorMessage = error;
-            } else if (error.message) {
+            } else if (error instanceof Error) {
                 errorMessage = error.message;
-            } else if (error.toString) {
-                errorMessage = error.toString();
-            }
-            
-            if (error.name) {
                 console.error('Error name:', error.name);
-            }
-            if (error.message) {
                 console.error('Error message:', error.message);
-            }
-            if (error.code) {
-                console.error('Error code:', error.code);
-            }
-            if (error && typeof error === 'object' && 'stack' in error && error.stack) {
                 console.error('Error stack:', error.stack);
+            } else if (error && typeof error === 'object') {
+                if ('message' in error && typeof error.message === 'string') {
+                    errorMessage = error.message;
+                    console.error('Error message:', error.message);
+                }
+                if ('name' in error) {
+                    console.error('Error name:', error.name);
+                }
+                if ('code' in error) {
+                    console.error('Error code:', error.code);
+                }
             }
         }
-        
-        return { 
-            success: false, 
-            message: `خطا در بروزرسانی وظیفه: ${errorMessage}`, 
-            errors: undefined 
+
+        return {
+            success: false,
+            message: `خطا در بروزرسانی وظیفه: ${errorMessage}`,
+            errors: undefined
         };
     }
 }

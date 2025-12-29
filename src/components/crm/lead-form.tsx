@@ -50,7 +50,7 @@ export function LeadForm() {
             <div className="space-y-2">
               <Label htmlFor="name">نام *</Label>
               <Input id="name" name="name" placeholder="نام کامل" required />
-              {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name[0]}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="company">نام شرکت</Label>

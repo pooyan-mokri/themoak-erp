@@ -16,7 +16,7 @@ interface PendingCount {
   synced: boolean;
 }
 
-let db: IDBDatabase | null = null;
+let db: IDBDatabase | undefined = undefined;
 
 export async function initOfflineDB(): Promise<IDBDatabase> {
   if (db) return db;

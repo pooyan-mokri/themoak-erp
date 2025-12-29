@@ -27,7 +27,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
   const router = useRouter();
   const updateEmployeeWithId = initialData
     ? updateEmployee.bind(null, initialData.id)
-    : null;
+    : undefined;
   const action = initialData ? updateEmployeeWithId : createEmployee;
 
   // @ts-ignore
@@ -77,8 +77,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               required
               defaultValue={initialData?.name}
             />
-            {state.errors?.name && (
-              <p className="text-red-500 text-sm">{state.errors.name[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.name && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
             )}
           </div>
 
@@ -91,8 +91,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
                 placeholder="1234567890"
                 defaultValue={initialData?.nationalId || ''}
               />
-              {state.errors?.nationalId && (
-                <p className="text-red-500 text-sm">{state.errors.nationalId[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.nationalId && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.nationalId?.[0]}</p>
               )}
             </div>
 
@@ -104,8 +104,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
                 placeholder="09123456789"
                 defaultValue={initialData?.phone || ''}
               />
-              {state.errors?.phone && (
-                <p className="text-red-500 text-sm">{state.errors.phone[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.phone && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone?.[0]}</p>
               )}
             </div>
           </div>
@@ -119,8 +119,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               placeholder="example@email.com"
               defaultValue={initialData?.email || ''}
             />
-            {state.errors?.email && (
-              <p className="text-red-500 text-sm">{state.errors.email[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.email && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.email?.[0]}</p>
             )}
           </div>
 
@@ -132,8 +132,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               placeholder="مثال: حسابدار"
               defaultValue={initialData?.position || ''}
             />
-            {state.errors?.position && (
-              <p className="text-red-500 text-sm">{state.errors.position[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.position && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.position?.[0]}</p>
             )}
           </div>
 
@@ -150,8 +150,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
                 required
                 defaultValue={initialData?.salary?.toString() || ''}
               />
-              {state.errors?.salary && (
-                <p className="text-red-500 text-sm">{state.errors.salary[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.salary && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.salary?.[0]}</p>
               )}
             </div>
 
@@ -159,14 +159,14 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               <Label htmlFor="hireDate">تاریخ استخدام</Label>
               <JalaliDatePicker
                 name="hireDate"
-                defaultValue={initialData?.hireDate ? new Date(initialData.hireDate) : null}
+                defaultValue={initialData?.hireDate ? new Date(initialData.hireDate) : undefined}
                 onChange={(selectedDate) => {
                   setHireDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}
               />
               <input type="hidden" name="hireDate" value={hireDate} />
-              {state.errors?.hireDate && (
-                <p className="text-red-500 text-sm">{state.errors.hireDate[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.hireDate && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.hireDate?.[0]}</p>
               )}
             </div>
           </div>
@@ -180,8 +180,8 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
               rows={3}
               defaultValue={initialData?.address || ''}
             />
-            {state.errors?.address && (
-              <p className="text-red-500 text-sm">{state.errors.address[0]}</p>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.address && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.address?.[0]}</p>
             )}
           </div>
 

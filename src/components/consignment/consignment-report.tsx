@@ -29,7 +29,7 @@ interface ConsignmentReportProps {
       partnerId: string;
       partnerName: string;
       customerId: string;
-      commissionRate: number | null;
+      commissionRate?: number;
       totalSales: number;
       totalPaid: number;
       totalDebt: number;

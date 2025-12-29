@@ -11,7 +11,7 @@ interface Task {
   title: string;
   projectName: string;
   status: string;
-  deadline: Date | null;
+  deadline?: Date;
   priority: string;
 }
 

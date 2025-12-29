@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Order, Customer, OrderItem, Product, Transaction, Account } from '@prisma/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,11 +14,86 @@ import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
 import { ExchangeItemDialog } from './exchange-item-dialog';
 
-type OrderWithDetails = Order & {
-  customer: Customer | null;
-  items: (OrderItem & { product: Product; status?: string | null })[];
-  transaction: (Transaction & { account: Account | null }) | null;
-  invoice: any | null; // Using any for now to avoid type issues with outdated client
+type Customer = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  wooId?: number;
+  taxId?: string;
+  segment?: string;
+  creditLimit?: number;
+  commissionRate?: number;
+  createdAt: Date;
+  updatedAt: Date;
+  type: string;
+  paymentTerms: number;
+};
+
+type Product = {
+  id: string;
+  name: string;
+  sku: string;
+  costPrice: number;
+  sellPrice: number;
+  image?: string;
+  wooId?: number;
+  barcode?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  productType: string;
+};
+
+type OrderItem = {
+  id: string;
+  orderId: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  status: string;
+  product: Product;
+};
+
+type Account = {
+  id: string;
+  name: string;
+  type: string;
+  currency: string;
+  balance: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type Transaction = {
+  id: string;
+  amount: number;
+  description?: string;
+  date: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  account?: Account;
+};
+
+type OrderWithDetails = {
+  id: string;
+  number: number;
+  createdAt: Date;
+  updatedAt: Date;
+  wooId?: number;
+  customerId?: string;
+  status: string;
+  totalAmount: number;
+  transactionId?: string;
+  discount?: number;
+  paidAmount?: number;
+  paymentStatus: string;
+  invoiceId?: string;
+  customer?: Customer;
+  items: OrderItem[];
+  transaction?: Transaction;
+  invoice?: any;
 };
 
 interface OrderDetailsProps {
@@ -35,7 +109,7 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
   const router = useRouter();
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<OrderDetailsProps['order']['items'][0] | null>(null);
+  const [selectedItem, setSelectedItem] = useState<OrderDetailsProps['order']['items'][0] | undefined>(undefined);
 
   const handleReturnClick = (item: OrderDetailsProps['order']['items'][0]) => {
     setSelectedItem(item);

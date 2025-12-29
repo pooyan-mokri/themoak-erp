@@ -17,15 +17,16 @@ export default async function WarehouseDetailPage({
   console.log('WarehouseDetailPage called with params:', params);
   
   try {
-    const data = await getWarehouseDetail(params.id);
-    console.log('Warehouse detail data received:', data ? 'data exists' : 'data is null');
+    const warehouseData = await getWarehouseDetail(params.id);
+    console.log('Warehouse detail data received:', warehouseData ? 'data exists' : 'data is undefined');
 
-    if (!data) {
-      console.error('Warehouse detail returned null for ID:', params.id);
+    if (!warehouseData) {
+      console.error('Warehouse detail returned undefined for ID:', params.id);
       notFound();
     }
 
-    const { warehouse, statistics, inventory, recentOrderItems, recentPurchaseItems, recentAudits, lowStockItems, topProductsByValue } = data;
+    // TypeScript-safe: data is guaranteed to exist after notFound() check
+    const { warehouse, statistics, inventory, recentOrderItems, recentPurchaseItems, recentAudits, lowStockItems, topProductsByValue } = warehouseData;
 
     return (
     <div className="space-y-6">
@@ -147,7 +148,7 @@ export default async function WarehouseDetailPage({
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {lowStockItems.slice(0, 5).map((item) => (
+                  {lowStockItems.slice(0, 5).map((item: any) => (
                     <div
                       key={item.id}
                       className="flex justify-between items-center text-sm p-2 bg-white dark:bg-gray-900 rounded"
@@ -178,7 +179,7 @@ export default async function WarehouseDetailPage({
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {topProductsByValue.slice(0, 5).map((item, index) => (
+                {topProductsByValue.slice(0, 5).map((item: any, index: any) => (
                   <div
                     key={item.id}
                     className="flex justify-between items-center text-sm"

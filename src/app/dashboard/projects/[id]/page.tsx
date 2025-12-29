@@ -98,7 +98,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
                 assignedTo: task.assignedToUser ? {
                   id: task.assignedToUser.id,
                   name: task.assignedToUser.name
-                } : null
+                } : undefined
               }))}
               projectId={project.id}
               projectStartDate={serializeDate(project.startDate)}

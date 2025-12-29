@@ -31,14 +31,58 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+}
+
+interface InventoryAuditItem {
+  id: string;
+  productId: string;
+  systemQuantity: number;
+  finalQuantity?: number;
+  discrepancy?: number;
+  discrepancyValue?: number;
+  product: Product;
+}
+
+interface InventoryAudit {
+  id: string;
+  status: string;
+  completedDate?: Date | string;
+  items?: InventoryAuditItem[];
+}
+
+interface DiscrepancyReport {
+  totalItems: number;
+  shortageCount: number;
+  excessCount: number;
+  totalDiscrepancyValue: number;
+  audit: InventoryAudit;
+}
+
+interface PerformanceReport {
+  statistics: {
+    totalItems: number;
+    countedItems: number;
+    itemsWithDiscrepancy: number;
+    accuracy: number;
+  };
+  countByUser?: Array<{
+    name: string;
+    count: number;
+  }>;
+}
+
 interface PostAuditTabProps {
-  audit: any;
+  audit: InventoryAudit;
 }
 
 export function PostAuditTab({ audit }: PostAuditTabProps) {
   const router = useRouter();
-  const [discrepancyReport, setDiscrepancyReport] = useState<any>(null);
-  const [performanceReport, setPerformanceReport] = useState<any>(null);
+  const [discrepancyReport, setDiscrepancyReport] = useState<DiscrepancyReport | undefined>(undefined);
+  const [performanceReport, setPerformanceReport] = useState<PerformanceReport | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -105,7 +149,7 @@ export function PostAuditTab({ audit }: PostAuditTabProps) {
 
   const hasDiscrepancies =
     discrepancyReport?.audit?.items?.some(
-      (item: any) => item.discrepancy !== null && item.discrepancy !== 0
+      (item) => item.discrepancy !== null && item.discrepancy !== 0
     ) || false;
 
   return (
@@ -189,7 +233,7 @@ export function PostAuditTab({ audit }: PostAuditTabProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {discrepancyReport.audit.items.map((item: any) => {
+                    {discrepancyReport.audit.items?.map((item) => {
                       const discrepancy = item.discrepancy || 0;
                       return (
                         <TableRow key={item.id}>
@@ -303,7 +347,7 @@ export function PostAuditTab({ audit }: PostAuditTabProps) {
               <div>
                 <h3 className="font-semibold mb-4">آمار شمارش به تفکیک کاربر</h3>
                 <div className="space-y-2">
-                  {performanceReport.countByUser.map((user: any, index: number) => (
+                  {performanceReport.countByUser.map((user, index) => (
                     <div
                       key={index}
                       className="flex items-center justify-between p-3 border rounded-lg"

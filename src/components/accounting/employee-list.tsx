@@ -32,12 +32,12 @@ import { formatJalaliDate } from '@/lib/date-utils';
 interface Employee {
   id: string;
   name: string;
-  nationalId: string | null;
-  phone: string | null;
-  email: string | null;
-  position: string | null;
+  nationalId?: string;
+  phone?: string;
+  email?: string;
+  position?: string;
   salary: number;
-  hireDate: Date | null;
+  hireDate?: Date;
 }
 
 interface EmployeeListProps {
@@ -47,7 +47,7 @@ interface EmployeeListProps {
 export function EmployeeList({ employees: initialEmployees }: EmployeeListProps) {
   const [employees, setEmployees] = useState(initialEmployees);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>(undefined);
 
   // Update employees when initialEmployees prop changes
   useEffect(() => {
@@ -71,7 +71,7 @@ export function EmployeeList({ employees: initialEmployees }: EmployeeListProps)
 
   const handleSuccess = () => {
     setEditDialogOpen(false);
-    setSelectedEmployee(null);
+    setSelectedEmployee(undefined);
     window.location.reload();
   };
 

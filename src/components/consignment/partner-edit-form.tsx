@@ -23,13 +23,13 @@ interface PartnerEditFormProps {
   partner: {
     id: string;
     name: string;
-    customer: {
+    customer?: {
       id: string;
       name: string;
-      phone: string | null;
-      address: string | null;
-      commissionRate: number | null;
-    } | null;
+      phone?: string;
+      address?: string;
+      commissionRate?: number;
+    };
   };
 }
 
@@ -76,8 +76,8 @@ export function PartnerEditForm({ partner }: PartnerEditFormProps) {
                 placeholder="مثال: گالری نور"
                 required
               />
-              {state.errors?.name?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.name?.[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
               )}
             </div>
             <div className="space-y-2">
@@ -115,8 +115,8 @@ export function PartnerEditForm({ partner }: PartnerEditFormProps) {
               <p className="text-xs text-muted-foreground">
                 درصد کمیسیون که به ازای هر فروش به این همکار پرداخت می‌شود
               </p>
-              {state.errors?.commissionRate?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.commissionRate?.[0]}</p>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.commissionRate?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.commissionRate?.[0]}</p>
               )}
             </div>
             {state.message && Object.keys(state.errors || {}).length > 0 && (

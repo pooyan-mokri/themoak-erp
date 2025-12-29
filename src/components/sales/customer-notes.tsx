@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export function CustomerNotes({ customerId, initialNotes }: { customerId: string, initialNotes: string | null }) {
+export function CustomerNotes({ customerId, initialNotes }: { customerId: string, initialNotes?: string }) {
   const [notes, setNotes] = useState(initialNotes || '');
   const [isPending, startTransition] = useTransition();
 

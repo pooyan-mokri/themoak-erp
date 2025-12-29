@@ -17,7 +17,7 @@ interface UserListProps {
 
 export function UserList({ users }: UserListProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<any>(undefined);
 
   const handleEdit = (user: any) => {
     setSelectedUser(user);
@@ -25,7 +25,7 @@ export function UserList({ users }: UserListProps) {
   };
 
   const handleCreate = () => {
-    setSelectedUser(null);
+    setSelectedUser(undefined);
     setIsFormOpen(true);
   };
 

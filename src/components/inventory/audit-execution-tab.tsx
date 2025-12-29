@@ -28,8 +28,43 @@ import {
 } from '@/lib/offline-storage';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+}
+
+interface InventoryAuditItem {
+  id: string;
+  productId: string;
+  systemQuantity: number;
+  countedQuantity1?: number;
+  countedQuantity2?: number;
+  countedQuantity3?: number;
+  finalQuantity?: number;
+  notes?: string;
+  product: Product;
+}
+
+interface InventoryAudit {
+  id: string;
+  status: string;
+  items?: InventoryAuditItem[];
+}
+
+interface PendingCount {
+  id?: number;
+  auditId: string;
+  productId: string;
+  count: number;
+  countRound: 1 | 2 | 3;
+  notes?: string;
+  timestamp: number;
+  synced: boolean;
+}
+
 interface ExecutionTabProps {
-  audit: any;
+  audit: InventoryAudit;
 }
 
 export function ExecutionTab({ audit }: ExecutionTabProps) {
@@ -41,7 +76,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [online, setOnline] = useState(true);
-  const [pendingCounts, setPendingCounts] = useState<any[]>([]);
+  const [pendingCounts, setPendingCounts] = useState<PendingCount[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [manualEntries, setManualEntries] = useState<Array<{ productId: string; count: string; notes: string }>>([]);
 
@@ -70,13 +105,14 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     try {
       const { synced, failed } = await syncPendingCounts(async (count) => {
         if (count.productId) {
-          return await recordCount(
+          const result = await recordCount(
             count.auditId,
             count.productId,
             count.count,
             count.countRound,
             count.notes
           );
+          return { success: result.success ?? false };
         }
         return { success: false };
       });
@@ -244,10 +280,10 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
             targetNotes || undefined
           );
           successCount++;
-        } catch (error: any) {
+        } catch (error) {
           errorCount++;
           console.error('Error saving offline:', error);
-          errors.push(error?.message || 'خطا در ذخیره آفلاین');
+          errors.push(error instanceof Error ? error.message : 'خطا در ذخیره آفلاین');
         }
       } else {
         try {
@@ -259,10 +295,10 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
             console.error('Record count error:', result.message);
             errors.push(result.message || 'خطا در ثبت شمارش');
           }
-        } catch (error: any) {
+        } catch (error) {
           errorCount++;
           console.error('Error recording count:', error);
-          errors.push(error?.message || 'خطا در ثبت شمارش');
+          errors.push(error instanceof Error ? error.message : 'خطا در ثبت شمارش');
         }
       }
     }
@@ -297,7 +333,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     }
   };
 
-  const filteredItems = audit.items?.filter((item: any) => {
+  const filteredItems = audit.items?.filter((item) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -306,17 +342,17 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     );
   }) || [];
 
-  const getCountStatus = (item: any) => {
-    if (item.finalQuantity !== null) {
+  const getCountStatus = (item: InventoryAuditItem) => {
+    if (item.finalQuantity !== undefined) {
       return { status: 'final', label: 'نهایی شده', variant: 'default' as const };
     }
-    if (item.countedQuantity3 !== null) {
+    if (item.countedQuantity3 !== undefined) {
       return { status: 'third', label: 'شمارش سوم', variant: 'secondary' as const };
     }
-    if (item.countedQuantity2 !== null) {
+    if (item.countedQuantity2 !== undefined) {
       return { status: 'second', label: 'شمارش دوم', variant: 'outline' as const };
     }
-    if (item.countedQuantity1 !== null) {
+    if (item.countedQuantity1 !== undefined) {
       return { status: 'first', label: 'شمارش اول', variant: 'outline' as const };
     }
     return { status: 'none', label: 'شمارش نشده', variant: 'outline' as const };
@@ -455,9 +491,9 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                     <SelectValue placeholder="انتخاب محصول" />
                   </SelectTrigger>
                   <SelectContent>
-                    {audit.items?.map((item: any) => (
-                      <SelectItem 
-                        key={item.productId} 
+                    {audit.items?.map((item) => (
+                      <SelectItem
+                        key={item.productId}
                         value={item.productId}
                         disabled={manualEntries.some(e => e.productId === item.productId)}
                       >
@@ -501,7 +537,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                   <Label>لیست آیتم‌های انتخابی ({manualEntries.length})</Label>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto">
                     {manualEntries.map((entry, index) => {
-                      const product = audit.items?.find((item: any) => item.productId === entry.productId)?.product;
+                      const product = audit.items?.find((item) => item.productId === entry.productId)?.product;
                       return (
                         <div
                           key={index}
@@ -578,7 +614,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                 </div>
               </div>
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredItems.map((item: any) => {
+                {filteredItems.map((item) => {
                   const countStatus = getCountStatus(item);
                   return (
                     <div
@@ -597,25 +633,25 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                           <span className="text-muted-foreground">موجودی سیستم:</span>
                           <span className="font-medium mr-2">{item.systemQuantity}</span>
                         </div>
-                        {item.countedQuantity1 !== null && (
+                        {item.countedQuantity1 !== undefined && (
                           <div>
                             <span className="text-muted-foreground">شمارش اول:</span>
                             <span className="font-medium mr-2">{item.countedQuantity1}</span>
                           </div>
                         )}
-                        {item.countedQuantity2 !== null && (
+                        {item.countedQuantity2 !== undefined && (
                           <div>
                             <span className="text-muted-foreground">شمارش دوم:</span>
                             <span className="font-medium mr-2">{item.countedQuantity2}</span>
                           </div>
                         )}
-                        {item.countedQuantity3 !== null && (
+                        {item.countedQuantity3 !== undefined && (
                           <div>
                             <span className="text-muted-foreground">شمارش سوم:</span>
                             <span className="font-medium mr-2">{item.countedQuantity3}</span>
                           </div>
                         )}
-                        {item.finalQuantity !== null && (
+                        {item.finalQuantity !== undefined && (
                           <div>
                             <span className="text-muted-foreground">مقدار نهایی:</span>
                             <span className="font-medium mr-2 text-green-600">
@@ -629,7 +665,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                           <span className="font-medium">توضیحات:</span> {item.notes}
                         </div>
                       )}
-                      {item.countedQuantity1 !== null && item.finalQuantity === null && (
+                      {item.countedQuantity1 !== undefined && item.finalQuantity === undefined && (
                         <div className="flex gap-2 items-center">
                           <Input
                             type="number"
@@ -637,10 +673,10 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                             className="w-32"
                             defaultValue={
                               // Auto-suggest: use last count or average if multiple counts exist
-                              item.countedQuantity3 !== null 
-                                ? item.countedQuantity3 
-                                : item.countedQuantity2 !== null 
-                                ? item.countedQuantity2 
+                              item.countedQuantity3 !== undefined
+                                ? item.countedQuantity3
+                                : item.countedQuantity2 !== undefined
+                                ? item.countedQuantity2
                                 : item.countedQuantity1
                             }
                             onKeyDown={(e) => {
@@ -657,12 +693,14 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
                             variant="outline"
                             onClick={() => {
                               // Auto-set to last count
-                              const suggestedQty = item.countedQuantity3 !== null 
-                                ? item.countedQuantity3 
-                                : item.countedQuantity2 !== null 
-                                ? item.countedQuantity2 
+                              const suggestedQty = item.countedQuantity3 !== undefined
+                                ? item.countedQuantity3
+                                : item.countedQuantity2 !== undefined
+                                ? item.countedQuantity2
                                 : item.countedQuantity1;
-                              handleSetFinal(item.productId, suggestedQty);
+                              if (suggestedQty !== undefined) {
+                                handleSetFinal(item.productId, suggestedQty);
+                              }
                             }}
                             title="استفاده از آخرین شمارش"
                           >

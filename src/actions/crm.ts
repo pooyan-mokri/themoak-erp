@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { ActionState, ActionResult } from '@/lib/types';
 
 // const prisma = new PrismaClient();
 
@@ -20,7 +21,7 @@ const LeadSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function createLead(prevState: any, formData: FormData) {
+export async function createLead(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = LeadSchema.safeParse({
     name: formData.get('name'),
     company: formData.get('company'),
@@ -46,7 +47,7 @@ export async function createLead(prevState: any, formData: FormData) {
         name,
         company,
         phone,
-        email: email || null,
+        email: email || undefined,
         source,
         expectedValue,
         notes,
@@ -63,7 +64,7 @@ export async function createLead(prevState: any, formData: FormData) {
 
 export async function getLeads() {
   try {
-    return await prisma.lead.findMany({
+    const leads = await prisma.lead.findMany({
       include: {
         customer: {
           select: {
@@ -74,6 +75,17 @@ export async function getLeads() {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return leads.map((lead: any) => ({
+      ...lead,
+      expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+      customerId: lead.customerId ?? undefined,
+      company: lead.company ?? undefined,
+      phone: lead.phone ?? undefined,
+      email: lead.email ?? undefined,
+      source: lead.source ?? undefined,
+      notes: lead.notes ?? undefined,
+      assignedTo: lead.assignedTo ?? undefined,
+    }));
   } catch (error) {
     console.error('Error fetching leads:', error);
     return [];
@@ -82,15 +94,27 @@ export async function getLeads() {
 
 export async function getLeadById(id: string) {
   try {
-    return await prisma.lead.findUnique({
+    const lead = await prisma.lead.findUnique({
       where: { id },
       include: {
         customer: true,
       }
     });
+    if (!lead) return undefined;
+    return {
+      ...lead,
+      expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+      customerId: lead.customerId ?? undefined,
+      company: lead.company ?? undefined,
+      phone: lead.phone ?? undefined,
+      email: lead.email ?? undefined,
+      source: lead.source ?? undefined,
+      notes: lead.notes ?? undefined,
+      assignedTo: lead.assignedTo ?? undefined,
+    };
   } catch (error) {
     console.error('Error fetching lead:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -158,7 +182,7 @@ const DealSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function createDeal(prevState: any, formData: FormData) {
+export async function createDeal(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = DealSchema.safeParse({
     title: formData.get('title'),
     customerId: formData.get('customerId'),
@@ -199,7 +223,7 @@ export async function createDeal(prevState: any, formData: FormData) {
 
 export async function getDeals() {
   try {
-    return await prisma.deal.findMany({
+    const deals = await prisma.deal.findMany({
       include: {
         customer: {
           select: {
@@ -211,6 +235,19 @@ export async function getDeals() {
       },
       orderBy: { createdAt: 'desc' },
     });
+    return deals.map((deal: any) => ({
+      ...deal,
+      value: Number(deal.value),
+      expectedClose: deal.expectedClose ?? undefined,
+      actualClose: deal.actualClose ?? undefined,
+      notes: deal.notes ?? undefined,
+      assignedTo: deal.assignedTo ?? undefined,
+      lostReason: deal.lostReason ?? undefined,
+      customer: deal.customer ? {
+        ...deal.customer,
+        phone: deal.customer.phone ?? undefined,
+      } : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching deals:', error);
     return [];
@@ -219,21 +256,41 @@ export async function getDeals() {
 
 export async function getDealById(id: string) {
   try {
-    return await prisma.deal.findUnique({
+    const deal = await prisma.deal.findUnique({
       where: { id },
       include: {
         customer: true,
       }
     });
+    if (!deal) return undefined;
+    return {
+      ...deal,
+      value: Number(deal.value),
+      expectedClose: deal.expectedClose ?? undefined,
+      actualClose: deal.actualClose ?? undefined,
+      notes: deal.notes ?? undefined,
+      assignedTo: deal.assignedTo ?? undefined,
+      lostReason: deal.lostReason ?? undefined,
+      customer: deal.customer ? {
+        ...deal.customer,
+        phone: deal.customer.phone ?? undefined,
+        email: deal.customer.email ?? undefined,
+        address: deal.customer.address ?? undefined,
+        notes: deal.customer.notes ?? undefined,
+        wooId: deal.customer.wooId ?? undefined,
+        taxId: deal.customer.taxId ?? undefined,
+        segment: deal.customer.segment ?? undefined,
+      } : undefined,
+    };
   } catch (error) {
     console.error('Error fetching deal:', error);
-    return null;
+    return undefined;
   }
 }
 
 export async function updateDealStage(id: string, stage: string) {
   try {
-    const updateData: any = { stage };
+    const updateData: { stage: string; actualClose?: Date; probability?: number } = { stage };
 
     // If won or lost, set actual close date
     if (stage === 'WON' || stage === 'LOST') {
@@ -272,7 +329,7 @@ const TicketSchema = z.object({
   priority: z.string().optional(),
 });
 
-export async function createTicket(prevState: any, formData: FormData) {
+export async function createTicket(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = TicketSchema.safeParse({
     customerId: formData.get('customerId'),
     subject: formData.get('subject'),
@@ -309,7 +366,7 @@ export async function createTicket(prevState: any, formData: FormData) {
 
 export async function getTickets() {
   try {
-    return await prisma.supportTicket.findMany({
+    const tickets = await prisma.supportTicket.findMany({
       include: {
         customer: {
           select: {
@@ -321,6 +378,16 @@ export async function getTickets() {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return tickets.map((ticket: any) => ({
+      ...ticket,
+      assignedTo: ticket.assignedTo ?? undefined,
+      resolution: ticket.resolution ?? undefined,
+      customer: ticket.customer ? {
+        ...ticket.customer,
+        phone: ticket.customer.phone ?? undefined,
+      } : undefined,
+    }));
   } catch (error) {
     console.error('Error fetching tickets:', error);
     return [];
@@ -329,15 +396,35 @@ export async function getTickets() {
 
 export async function getTicketById(id: string) {
   try {
-    return await prisma.supportTicket.findUnique({
+    const ticket = await prisma.supportTicket.findUnique({
       where: { id },
       include: {
         customer: true,
       }
     });
+
+    if (!ticket) return undefined;
+
+    return {
+      ...ticket,
+      assignedTo: ticket.assignedTo ?? undefined,
+      resolution: ticket.resolution ?? undefined,
+      customer: ticket.customer ? {
+        ...ticket.customer,
+        phone: ticket.customer.phone ?? undefined,
+        email: ticket.customer.email ?? undefined,
+        address: ticket.customer.address ?? undefined,
+        wooId: ticket.customer.wooId ?? undefined,
+        notes: ticket.customer.notes ?? undefined,
+        creditLimit: Number(ticket.customer.creditLimit),
+        segment: ticket.customer.segment ?? undefined,
+        taxId: ticket.customer.taxId ?? undefined,
+        commissionRate: ticket.customer.commissionRate ? Number(ticket.customer.commissionRate) : undefined,
+      } : undefined,
+    };
   } catch (error) {
     console.error('Error fetching ticket:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -449,11 +536,11 @@ export async function getCRMDashboardStats() {
 
     // Calculate revenue for top customers and sort
     const customersWithRevenue = topCustomers
-      .map(customer => ({
+      .map((customer: any) => ({
         ...customer,
-        totalRevenue: customer.orders.reduce((sum, order) => sum + Number(order.totalAmount), 0)
+        totalRevenue: customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0)
       }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);
 
     return {

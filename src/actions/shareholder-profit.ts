@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -24,7 +24,7 @@ const ShareholderWithdrawalSchema = z.object({
 
 // --- Actions ---
 
-export async function calculateShareholderProfits(prevState: any, formData: FormData) {
+export async function calculateShareholderProfits(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = CalculateProfitSchema.safeParse({
     periodStart: formData.get('periodStart'),
     periodEnd: formData.get('periodEnd'),
@@ -109,7 +109,7 @@ export async function calculateShareholderProfits(prevState: any, formData: Form
 
     // Calculate total percentage
     const totalPercentage = shareholders.reduce(
-      (sum, s) => sum + Number(s.percentage),
+  (sum: any, s: any) => sum + Number(s.percentage),
       0
     );
 
@@ -144,16 +144,16 @@ export async function calculateShareholderProfits(prevState: any, formData: Form
       message: `سود دوره با موفقیت محاسبه و ثبت شد. (سود کل: ${netProfit.toLocaleString('fa-IR')} تومان)`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error calculating shareholder profits:', error);
     return {
-      message: error.message || 'خطا در محاسبه سود.',
+      message: error instanceof Error ? error.message : 'خطا در محاسبه سود.',
       success: false,
     };
   }
 }
 
-export async function withdrawShareholderProfit(prevState: any, formData: FormData) {
+export async function withdrawShareholderProfit(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = ShareholderWithdrawalSchema.safeParse({
     profitId: formData.get('profitId'),
     amount: formData.get('amount'),
@@ -255,7 +255,7 @@ export async function withdrawShareholderProfit(prevState: any, formData: FormDa
           amount: new Prisma.Decimal(amount),
           accountId,
           transactionId: transaction.id,
-          description: description || null,
+          description: description || undefined,
           date: transactionDate,
         },
       });
@@ -289,10 +289,10 @@ export async function withdrawShareholderProfit(prevState: any, formData: FormDa
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت برداشت شد.`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error withdrawing profit:', error);
     return {
-      message: error.message || 'خطا در برداشت سود.',
+      message: error instanceof Error ? error.message : 'خطا در برداشت سود.',
       success: false,
     };
   }
@@ -315,14 +315,19 @@ export async function getShareholderProfits(shareholderId?: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return profits.map((p) => ({
+    return profits.map((p: any) => ({
       ...p,
+      description: p.description ?? undefined,
       amount: Number(p.amount),
       withdrawn: Number(p.withdrawn),
       available: Number(p.amount) - Number(p.withdrawn),
       shareholder: {
         ...p.shareholder,
         percentage: Number(p.shareholder.percentage),
+        phone: p.shareholder.phone ?? undefined,
+        email: p.shareholder.email ?? undefined,
+        address: p.shareholder.address ?? undefined,
+        notes: p.shareholder.notes ?? undefined,
       },
     }));
   } catch (error) {
@@ -346,21 +351,26 @@ export async function getShareholderProfitById(id: string) {
       },
     });
 
-    if (!profit) return null;
+    if (!profit) return undefined;
 
     return {
       ...profit,
+      description: profit.description ?? undefined,
       amount: Number(profit.amount),
       withdrawn: Number(profit.withdrawn),
       available: Number(profit.amount) - Number(profit.withdrawn),
       shareholder: {
         ...profit.shareholder,
         percentage: Number(profit.shareholder.percentage),
+        phone: profit.shareholder.phone ?? undefined,
+        email: profit.shareholder.email ?? undefined,
+        address: profit.shareholder.address ?? undefined,
+        notes: profit.shareholder.notes ?? undefined,
       },
     };
   } catch (error) {
     console.error('Error fetching shareholder profit:', error);
-    return null;
+    return undefined;
   }
 }
 

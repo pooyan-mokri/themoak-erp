@@ -56,7 +56,7 @@ export async function createAsset(prevState: any, formData: FormData) {
         purchasePrice,
         salvageValue,
         usefulLife,
-        quantity: assetType === 'CONSUMABLE' ? quantity : null,
+        quantity: assetType === 'CONSUMABLE' ? quantity : undefined,
         depreciationMethod: DepreciationMethod.STRAIGHT_LINE,
         currentValue: purchasePrice, // Initially equal to purchase price
       },
@@ -81,13 +81,14 @@ export async function getAssets() {
 
     // Calculate current value on the fly for display accuracy
     // Convert Decimal to number for client components
-    return assets.map(asset => {
+    return assets.map((asset: any) => {
       const currentValue = calculateCurrentValue(asset);
       return {
         ...asset,
         purchasePrice: Number(asset.purchasePrice),
         salvageValue: Number(asset.salvageValue),
         currentValue,
+        quantity: asset.quantity ?? undefined,
       };
     });
   } catch (error) {

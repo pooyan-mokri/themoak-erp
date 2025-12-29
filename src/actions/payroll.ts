@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType } from '@/lib/types';
+import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -28,7 +28,7 @@ const PayrollPaymentSchema = z.object({
 
 // --- Actions ---
 
-export async function createPayroll(prevState: any, formData: FormData) {
+export async function createPayroll(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PayrollSchema.safeParse({
     employeeId: formData.get('employeeId'),
     amount: formData.get('amount'),
@@ -92,23 +92,23 @@ export async function createPayroll(prevState: any, formData: FormData) {
         paidAmount: new Prisma.Decimal(0),
         periodMonth,
         periodYear,
-        description: description || null,
+        description: description || undefined,
         status: 'PENDING',
       },
     });
 
     revalidatePath('/dashboard/accounting/payroll');
     return { message: 'فیش حقوقی با موفقیت ثبت شد.', success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating payroll:', error);
     return {
-      message: error.message || 'خطا در ثبت فیش حقوقی.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت فیش حقوقی.',
       success: false,
     };
   }
 }
 
-export async function recordPayrollPayment(prevState: any, formData: FormData) {
+export async function recordPayrollPayment(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = PayrollPaymentSchema.safeParse({
     payrollId: formData.get('payrollId'),
     amount: formData.get('amount'),
@@ -212,7 +212,7 @@ export async function recordPayrollPayment(prevState: any, formData: FormData) {
           amount: new Prisma.Decimal(amount),
           accountId,
           transactionId: transaction.id,
-          description: description || null,
+          description: description || undefined,
           date: transactionDate,
         },
       });
@@ -242,10 +242,10 @@ export async function recordPayrollPayment(prevState: any, formData: FormData) {
       message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت ثبت شد.`,
       success: true,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error recording payroll payment:', error);
     return {
-      message: error.message || 'خطا در ثبت پرداخت.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت پرداخت.',
       success: false,
     };
   }
@@ -253,7 +253,7 @@ export async function recordPayrollPayment(prevState: any, formData: FormData) {
 
 export async function getPayrolls(employeeId?: string, status?: string) {
   try {
-    const where: any = {};
+    const where: { employeeId?: string; status?: string } = {};
     if (employeeId) {
       where.employeeId = employeeId;
     }
@@ -275,13 +275,30 @@ export async function getPayrolls(employeeId?: string, status?: string) {
       ],
     });
 
-    return payrolls.map((p) => ({
+    return payrolls.map((p: any) => ({
       ...p,
       amount: Number(p.amount),
       bonuses: Number(p.bonuses) || 0,
       deductions: Number(p.deductions) || 0,
       netAmount: Number(p.netAmount),
       paidAmount: Number(p.paidAmount),
+      description: p.description ?? undefined,
+      employee: {
+        ...p.employee,
+        salary: Number(p.employee.salary),
+        userId: p.employee.userId ?? undefined,
+        nationalId: p.employee.nationalId ?? undefined,
+        phone: p.employee.phone ?? undefined,
+        email: p.employee.email ?? undefined,
+        address: p.employee.address ?? undefined,
+        position: p.employee.position ?? undefined,
+        hireDate: p.employee.hireDate ?? undefined,
+      },
+      payments: p.payments.map((payment: any) => ({
+        ...payment,
+        amount: Number(payment.amount),
+        description: payment.description ?? undefined,
+      })),
     }));
   } catch (error) {
     console.error('Error fetching payrolls:', error);
@@ -305,7 +322,7 @@ export async function getPayrollById(id: string) {
       },
     });
 
-    if (!payroll) return null;
+    if (!payroll) return undefined;
 
     return {
       ...payroll,
@@ -314,14 +331,46 @@ export async function getPayrollById(id: string) {
       deductions: Number(payroll.deductions) || 0,
       netAmount: Number(payroll.netAmount),
       paidAmount: Number(payroll.paidAmount),
-      payments: payroll.payments.map((p) => ({
+      description: payroll.description ?? undefined,
+      employee: {
+        ...payroll.employee,
+        salary: Number(payroll.employee.salary),
+        userId: payroll.employee.userId ?? undefined,
+        nationalId: payroll.employee.nationalId ?? undefined,
+        phone: payroll.employee.phone ?? undefined,
+        email: payroll.employee.email ?? undefined,
+        address: payroll.employee.address ?? undefined,
+        position: payroll.employee.position ?? undefined,
+        hireDate: payroll.employee.hireDate ?? undefined,
+      },
+      payments: payroll.payments.map((p: any) => ({
         ...p,
         amount: Number(p.amount),
+        description: p.description ?? undefined,
+        account: {
+          ...p.account,
+          balance: Number(p.account.balance),
+        },
+        transaction: p.transaction ? {
+          ...p.transaction,
+          amount: Number(p.transaction.amount),
+          amountInToman: Number(p.transaction.amountInToman),
+          rateSnapshot: Number(p.transaction.rateSnapshot),
+          description: p.transaction.description ?? undefined,
+          category: p.transaction.category ?? undefined,
+          accountId: p.transaction.accountId ?? undefined,
+          projectId: p.transaction.projectId ?? undefined,
+          employeeId: p.transaction.employeeId ?? undefined,
+          shareholderId: p.transaction.shareholderId ?? undefined,
+          receiptUrl: p.transaction.receiptUrl ?? undefined,
+          wooId: p.transaction.wooId ?? undefined,
+          wooStatus: p.transaction.wooStatus ?? undefined,
+        } : undefined,
       })),
     };
   } catch (error) {
     console.error('Error fetching payroll:', error);
-    return null;
+    return undefined;
   }
 }
 

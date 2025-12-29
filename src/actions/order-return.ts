@@ -101,7 +101,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           orderId,
           orderItemId,
           quantity,
-          reason: reason || null,
+          reason: reason || undefined,
           refundAmount: new Prisma.Decimal(refundAmount),
           accountId,
           transactionId: transaction.id,
@@ -197,9 +197,42 @@ export async function getOrderReturns(orderId: string) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return returns.map((ret) => ({
+    return returns.map((ret: any) => ({
       ...ret,
+      reason: ret.reason ?? undefined,
+      transactionId: ret.transactionId ?? undefined,
       refundAmount: Number(ret.refundAmount),
+      orderItem: ret.orderItem ? {
+        ...ret.orderItem,
+        price: Number(ret.orderItem.price),
+        product: ret.orderItem.product ? {
+          ...ret.orderItem.product,
+          costPrice: Number(ret.orderItem.product.costPrice),
+          sellPrice: Number(ret.orderItem.product.sellPrice),
+          image: ret.orderItem.product.image ?? undefined,
+          wooId: ret.orderItem.product.wooId ?? undefined,
+          barcode: ret.orderItem.product.barcode ?? undefined,
+        } : undefined,
+      } : undefined,
+      account: ret.account ? {
+        ...ret.account,
+        balance: Number(ret.account.balance),
+      } : undefined,
+      transaction: ret.transaction ? {
+        ...ret.transaction,
+        amount: Number(ret.transaction.amount),
+        amountInToman: Number(ret.transaction.amountInToman),
+        rateSnapshot: Number(ret.transaction.rateSnapshot),
+        accountId: ret.transaction.accountId ?? undefined,
+        projectId: ret.transaction.projectId ?? undefined,
+        description: ret.transaction.description ?? undefined,
+        category: ret.transaction.category ?? undefined,
+        wooId: ret.transaction.wooId ?? undefined,
+        wooStatus: ret.transaction.wooStatus ?? undefined,
+        receiptUrl: ret.transaction.receiptUrl ?? undefined,
+        shareholderId: ret.transaction.shareholderId ?? undefined,
+        employeeId: ret.transaction.employeeId ?? undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching order returns:', error);

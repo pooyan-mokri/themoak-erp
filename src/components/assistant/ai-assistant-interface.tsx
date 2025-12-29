@@ -39,8 +39,8 @@ interface AIAssistantInterfaceProps {
 export function AIAssistantInterface({ conversations: initialConversations, settings }: AIAssistantInterfaceProps) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    initialConversations[0]?.id || null
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(
+    initialConversations[0]?.id || undefined
   );
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -99,7 +99,7 @@ export function AIAssistantInterface({ conversations: initialConversations, sett
     if (result.success) {
       setConversations(conversations.filter(c => c.id !== id));
       if (activeConversationId === id) {
-        setActiveConversationId(conversations[0]?.id || null);
+        setActiveConversationId(conversations[0]?.id || undefined);
       }
       toast.success(result.message);
     } else {

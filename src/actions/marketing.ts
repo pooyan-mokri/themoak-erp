@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { TransactionType } from '@/lib/types';
+import { TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -25,7 +25,7 @@ const MarketingGiftSchema = z.object({
         });
         return z.NEVER;
       }
-      return parsed.map(item => MarketingGiftItemSchema.parse(item));
+      return parsed.map((item: any) => MarketingGiftItemSchema.parse(item));
     } catch {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -54,7 +54,7 @@ const MarketingCampaignSchema = z.object({
 
 // --- Actions ---
 
-export async function createMarketingGift(prevState: any, formData: FormData) {
+export async function createMarketingGift(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const campaignIdValue = formData.get('campaignId');
   
   const validatedFields = MarketingGiftSchema.safeParse({
@@ -152,7 +152,7 @@ export async function createMarketingGift(prevState: any, formData: FormData) {
 
       // 3. Create transaction for marketing expense
       const transactionDate = date ? new Date(date) : new Date();
-      const productNames = validatedItems.map(item => `${item.product.name} (${item.quantity} عدد)`).join('، ');
+      const productNames = validatedItems.map((item: any) => `${item.product.name} (${item.quantity} عدد)`).join('، ');
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -188,12 +188,12 @@ export async function createMarketingGift(prevState: any, formData: FormData) {
             quantity: item.quantity,
             recipientName: recipientName,
             accountId,
-            transactionId: i === 0 ? transaction.id : null, // Only first item gets transactionId
-            campaignId: campaignId || null,
+            transactionId: i === 0 ? transaction.id : undefined, // Only first item gets transactionId
+            campaignId: campaignId || undefined,
             costPrice: new Prisma.Decimal(item.costPrice),
             totalCost: new Prisma.Decimal(item.itemCost),
-            reason: reason || null,
-            notes: notes || null,
+            reason: reason || undefined,
+            notes: notes || undefined,
             date: transactionDate,
           },
         });
@@ -224,10 +224,10 @@ export async function createMarketingGift(prevState: any, formData: FormData) {
         });
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating marketing gift:', error);
     return {
-      message: error.message || 'خطا در ثبت هدیه بازاریابی.',
+      message: error instanceof Error ? error.message : 'خطا در ثبت هدیه بازاریابی.',
       errors: {},
     };
   }
@@ -252,10 +252,26 @@ export async function getMarketingGifts() {
       },
     });
 
-    return gifts.map((gift) => ({
+    return gifts.map((gift: any) => ({
       ...gift,
       costPrice: Number(gift.costPrice),
       totalCost: Number(gift.totalCost || 0),
+      reason: gift.reason ?? undefined,
+      notes: gift.notes ?? undefined,
+      campaignId: gift.campaignId ?? undefined,
+      recipientName: gift.recipientName ?? undefined,
+      product: gift.product ? {
+        ...gift.product,
+        image: gift.product.image ?? undefined,
+        wooId: gift.product.wooId ?? undefined,
+        barcode: gift.product.barcode ?? undefined,
+      } : undefined,
+      campaign: gift.campaign ? {
+        ...gift.campaign,
+        description: gift.campaign.description ?? undefined,
+        endDate: gift.campaign.endDate ?? undefined,
+        budget: gift.campaign.budget ? Number(gift.campaign.budget) : undefined,
+      } : undefined,
     }));
   } catch (error) {
     console.error('Error fetching marketing gifts:', error);
@@ -263,7 +279,7 @@ export async function getMarketingGifts() {
   }
 }
 
-export async function createMarketingCampaign(prevState: any, formData: FormData) {
+export async function createMarketingCampaign(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const validatedFields = MarketingCampaignSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description') || undefined,
@@ -288,17 +304,17 @@ export async function createMarketingCampaign(prevState: any, formData: FormData
     await prisma.marketingCampaign.create({
       data: {
         name,
-        description: description || null,
+        description: description || undefined,
         type,
         startDate: new Date(startDate),
-        endDate: endDate ? new Date(endDate) : null,
-        budget: budget ? new Prisma.Decimal(budget) : null,
+        endDate: endDate ? new Date(endDate) : undefined,
+        budget: budget ? new Prisma.Decimal(budget) : undefined,
         status: status || 'PLANNED',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
-      message: error.message || 'خطا در ایجاد کمپین بازاریابی.',
+      message: error instanceof Error ? error.message : 'خطا در ایجاد کمپین بازاریابی.',
       errors: {},
     };
   }
@@ -321,9 +337,11 @@ export async function getMarketingCampaigns() {
       },
     });
 
-    return campaigns.map((campaign) => ({
+    return campaigns.map((campaign: any) => ({
       ...campaign,
-      budget: campaign.budget ? Number(campaign.budget) : null,
+      description: campaign.description ?? undefined,
+      endDate: campaign.endDate ?? undefined,
+      budget: campaign.budget ? Number(campaign.budget) : undefined,
       spentAmount: Number(campaign.spentAmount),
     }));
   } catch (error) {
@@ -341,13 +359,13 @@ export async function getMarketingStats() {
     });
 
     const totalGifts = gifts.length;
-    const totalQuantity = gifts.reduce((sum, gift) => sum + gift.quantity, 0);
+    const totalQuantity = gifts.reduce((sum: any, gift: any) => sum + gift.quantity, 0);
     const totalCost = gifts.reduce(
-      (sum, gift) => sum + Number(gift.totalCost),
+  (sum: any, gift: any) => sum + Number(gift.totalCost),
       0
     );
 
-    const giftsByProduct = gifts.reduce((acc, gift) => {
+    const giftsByProduct = gifts.reduce((acc: any, gift: any) => {
       const productName = gift.product.name;
       if (!acc[productName]) {
         acc[productName] = { quantity: 0, cost: 0 };
@@ -358,13 +376,13 @@ export async function getMarketingStats() {
     }, {} as Record<string, { quantity: number; cost: number }>);
 
     const campaigns = await prisma.marketingCampaign.findMany();
-    const activeCampaigns = campaigns.filter((c) => c.status === 'ACTIVE').length;
+    const activeCampaigns = campaigns.filter((c: any) => c.status === 'ACTIVE').length;
     const totalBudget = campaigns.reduce(
-      (sum, c) => sum + (c.budget ? Number(c.budget) : 0),
+  (sum: any, c: any) => sum + (c.budget ? Number(c.budget) : 0),
       0
     );
     const totalSpent = campaigns.reduce(
-      (sum, c) => sum + Number(c.spentAmount),
+  (sum: any, c: any) => sum + Number(c.spentAmount),
       0
     );
 
@@ -373,8 +391,8 @@ export async function getMarketingStats() {
       totalQuantity,
       totalCost,
       giftsByProduct: Object.entries(giftsByProduct)
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.cost - a.cost)
+        .map(([name, data]: [string, any]) => ({ name, ...data }))
+        .sort((a: any, b: any) => b.cost - a.cost)
         .slice(0, 10),
       totalCampaigns: campaigns.length,
       activeCampaigns,

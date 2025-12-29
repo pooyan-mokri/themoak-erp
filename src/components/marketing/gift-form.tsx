@@ -279,8 +279,8 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
             </div>
           )}
 
-          {state.errors && 'items' in state.errors && state.errors.items?.[0] && (
-            <p className="text-red-500 text-sm">{state.errors.items[0]}</p>
+          {state.errors && 'items' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0] && (
+            <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0]}</p>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-4">
@@ -294,8 +294,8 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                 required
                 className="h-12 md:h-10 text-base md:text-sm"
               />
-              {state.errors && 'recipientName' in state.errors && state.errors.recipientName?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.recipientName[0]}</p>
+              {state.errors && 'recipientName' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0]}</p>
               )}
             </div>
 
@@ -318,8 +318,8 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors && 'accountId' in state.errors && state.errors.accountId?.[0] && (
-                <p className="text-red-500 text-sm">{state.errors.accountId[0]}</p>
+              {state.errors && 'accountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0] && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}
             </div>
 
@@ -347,7 +347,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
               <Label htmlFor="date">تاریخ</Label>
               <JalaliDatePicker
                 name="date"
-                defaultValue={date ? new Date(date) : null}
+                defaultValue={date ? new Date(date) : undefined}
                 onChange={(selectedDate) => {
                   setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
                 }}

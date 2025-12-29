@@ -12,8 +12,8 @@ interface ProductHeaderProps {
     id: string;
     name: string;
     sku: string;
-    barcode?: string | null;
-    image: string | null;
+    barcode?: string;
+    image?: string;
     createdAt: Date;
     updatedAt: Date;
   };

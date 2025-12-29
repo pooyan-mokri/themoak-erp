@@ -26,7 +26,7 @@ export function WarehouseForm() {
           <div className="space-y-2">
             <Label htmlFor="name">نام انبار</Label>
             <Input id="name" name="name" placeholder="مثال: انبار مرکزی" required />
-            {state.errors?.name && <p className="text-red-500 text-sm">{state.errors.name}</p>}
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
           </div>
           <div className="flex items-center space-x-2 space-x-reverse">
             <Switch id="isVirtual" name="isVirtual" />

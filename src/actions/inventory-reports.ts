@@ -25,11 +25,11 @@ export async function getInventoryReport() {
     const outOfStockItems: any[] = [];
     const warehouseDistribution: Record<string, { quantity: number; value: number }> = {};
 
-    saleableProducts.forEach((product) => {
+    saleableProducts.forEach((product: any) => {
       const costPrice = Number(product.costPrice || 0);
       const sellPrice = Number(product.sellPrice || 0);
       
-      product.inventory.forEach((inv) => {
+      product.inventory.forEach((inv: any) => {
         const quantity = inv.quantity;
         const value = quantity * costPrice;
         
@@ -86,8 +86,8 @@ export async function getInventoryReport() {
 
     // Get top products by quantity
     const topProductsByQuantity = saleableProducts
-      .map((product) => {
-        const totalQty = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+      .map((product: any) => {
+        const totalQty = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
         return {
           productId: product.id,
           productName: product.name,
@@ -98,14 +98,14 @@ export async function getInventoryReport() {
           value: totalQty * Number(product.costPrice || 0),
         };
       })
-      .filter((p) => p.quantity > 0)
-      .sort((a, b) => b.quantity - a.quantity)
+      .filter((p: any) => p.quantity > 0)
+      .sort((a: any, b: any) => b.quantity - a.quantity)
       .slice(0, 10);
 
     // Get top products by value
     const topProductsByValue = saleableProducts
-      .map((product) => {
-        const totalQty = product.inventory.reduce((sum, inv) => sum + inv.quantity, 0);
+      .map((product: any) => {
+        const totalQty = product.inventory.reduce((sum: any, inv: any) => sum + inv.quantity, 0);
         const costPrice = Number(product.costPrice || 0);
         return {
           productId: product.id,
@@ -117,8 +117,8 @@ export async function getInventoryReport() {
           value: totalQty * costPrice,
         };
       })
-      .filter((p) => p.value > 0)
-      .sort((a, b) => b.value - a.value)
+      .filter((p: any) => p.value > 0)
+      .sort((a: any, b: any) => b.value - a.value)
       .slice(0, 10);
 
     // Get total number of unique products

@@ -10,7 +10,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
   try {
-    const whereClause: any = {};
+    const whereClause: { date?: { gte: Date; lte: Date } } = {};
     if (startDate && endDate) {
       whereClause.date = {
         gte: startDate,

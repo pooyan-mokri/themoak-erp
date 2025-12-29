@@ -24,11 +24,11 @@ import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 interface Customer {
   id: string;
   name: string;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
+  phone?: string;
+  email?: string;
+  address?: string;
   totalDebt?: number;
-  segment?: string | null;
+  segment?: string;
 }
 
 interface CustomerListProps {

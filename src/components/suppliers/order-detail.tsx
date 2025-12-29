@@ -18,13 +18,76 @@ import { useRouter } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { Plus, Trash2 } from 'lucide-react';
 
+type Currency = 'TOMAN' | 'USD' | 'EUR' | 'CNY';
+
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+interface PurchaseOrderItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitCost: number;
+  currency: Currency;
+  unitCostInToman?: number;
+  exchangeRateSnapshot?: number;
+  totalCostInToman?: number;
+  additionalCost?: number;
+  additionalCostInToman?: number;
+  receivedQuantity: number;
+  product: Product;
+}
+
+interface PurchaseOrderAdditionalCost {
+  id: string;
+  title: string;
+  amount: number;
+  currency: Currency;
+  amountInToman?: number;
+  exchangeRateSnapshot?: number;
+}
+
+interface PurchaseOrderArrivalCost {
+  id: string;
+  title: string;
+  amount: number;
+  currency: Currency;
+  amountInToman?: number;
+  exchangeRateSnapshot?: number;
+}
+
+interface PurchaseOrder {
+  id: string;
+  number: number;
+  status: string;
+  totalAmount: number;
+  totalAmountInToman?: number;
+  createdAt: Date | string;
+  supplier: Supplier;
+  items: PurchaseOrderItem[];
+  additionalCosts?: PurchaseOrderAdditionalCost[];
+  arrivalAdditionalCosts?: PurchaseOrderArrivalCost[];
+}
+
+interface ExchangeRate {
+  currency: string;
+  rateToToman: number;
+  date: Date | string;
+}
+
 interface OrderDetailProps {
-  order: any;
+  order: PurchaseOrder;
   warehouses: Array<{ id: string; name: string }>;
   accounts: Array<{ id: string; name: string; currency: string }>;
 }
-
-type Currency = 'TOMAN' | 'USD' | 'EUR' | 'CNY';
 
 export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
   const router = useRouter();
@@ -43,10 +106,10 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
 
   useEffect(() => {
     // Load exchange rates
-    getLatestExchangeRates().then((rates: any[]) => {
+    getLatestExchangeRates().then((rates: ExchangeRate[]) => {
       const ratesMap: Record<string, number> = { TOMAN: 1 };
-      rates.forEach((rate: any) => {
-        if (!ratesMap[rate.currency] || new Date(rate.date) > new Date(ratesMap[rate.currency] ? rates.find((r: any) => r.currency === rate.currency && ratesMap[rate.currency] === Number(r.rateToToman))?.date || rate.date : rate.date)) {
+      rates.forEach((rate) => {
+        if (!ratesMap[rate.currency] || new Date(rate.date) > new Date(ratesMap[rate.currency] ? rates.find((r) => r.currency === rate.currency && ratesMap[rate.currency] === Number(r.rateToToman))?.date || rate.date : rate.date)) {
           ratesMap[rate.currency] = Number(rate.rateToToman);
         }
       });
@@ -55,7 +118,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
 
     // Initialize received items
     const initialReceivedItems: Record<string, { quantity: number }> = {};
-    order.items.forEach((item: any) => {
+    order.items.forEach((item) => {
       const remaining = item.quantity - (item.receivedQuantity || 0);
       if (remaining > 0) {
         initialReceivedItems[item.id] = {
@@ -71,45 +134,45 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
   };
 
   // Calculate landed cost per unit for an item
-  const calculateLandedCostPerUnit = (item: any, order: any): number => {
+  const calculateLandedCostPerUnit = (item: PurchaseOrderItem, order: PurchaseOrder): number => {
     // Get unit cost in Toman - ensure it's a number
     const unitCost = Number(item.unitCost || 0);
     const itemCurrency = item.currency || 'TOMAN';
     const exchangeRate = getExchangeRate(itemCurrency);
     const unitCostInToman = Number(item.unitCostInToman) || (unitCost * exchangeRate);
-    
+
     // Get total additional costs (order + arrival) in Toman
     let totalAdditionalCostsInToman = 0;
-    
+
     // Sum order additional costs
     if (order.additionalCosts && order.additionalCosts.length > 0) {
-      order.additionalCosts.forEach((cost: any) => {
+      order.additionalCosts.forEach((cost) => {
         const costInToman = Number(cost.amountInToman || 0);
         totalAdditionalCostsInToman += costInToman;
       });
     }
-    
+
     // Sum arrival additional costs
     if (order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0) {
-      order.arrivalAdditionalCosts.forEach((cost: any) => {
+      order.arrivalAdditionalCosts.forEach((cost) => {
         const costInToman = Number(cost.amountInToman || 0);
         totalAdditionalCostsInToman += costInToman;
       });
     }
-    
+
     // Calculate total quantity of all items in the order
-    const totalOrderQuantity = order.items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
-    
+    const totalOrderQuantity = order.items.reduce((sum: number, i) => sum + Number(i.quantity || 0), 0);
+
     // Calculate additional cost per unit: total additional costs divided by total quantity
     const additionalCostPerUnit = totalOrderQuantity > 0 ? totalAdditionalCostsInToman / totalOrderQuantity : 0;
-    
+
     // Landed cost per unit = unit cost + additional cost per unit
     const landedCostPerUnit = Number(unitCostInToman) + Number(additionalCostPerUnit);
-    
+
     return landedCostPerUnit;
   };
 
-  const updateReceivedItem = (itemId: string, field: string, value: any) => {
+  const updateReceivedItem = (itemId: string, field: string, value: number) => {
     setReceivedItems(prev => ({
       ...prev,
       [itemId]: {
@@ -165,9 +228,9 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
     setArrivalCosts(arrivalCosts.filter((_, i) => i !== index));
   };
 
-  const updateArrivalCost = (index: number, field: string, value: any) => {
+  const updateArrivalCost = (index: number, field: keyof { title: string; amount: number; currency: Currency }, value: string | number | Currency) => {
     const newCosts = [...arrivalCosts];
-    newCosts[index] = { ...newCosts[index], [field]: value };
+    newCosts[index] = { ...newCosts[index], [field]: value } as { title: string; amount: number; currency: Currency };
     setArrivalCosts(newCosts);
   };
 
@@ -420,7 +483,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {order.additionalCosts.map((cost: any, index: number) => (
+                {order.additionalCosts.map((cost, index) => (
                   <div key={index} className="flex justify-between items-center">
                     <span className="text-sm">{cost.title}:</span>
                     <div className="text-right">
@@ -469,13 +532,13 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {order.items.map((item: any) => {
+              {order.items.map((item) => {
                 const receivedQty = item.receivedQuantity || 0;
                 const remaining = item.quantity - receivedQty;
                 // Ensure unitCostInToman is a number, not Decimal or string
                 const unitCostInToman = Number(item.unitCostInToman) || (Number(item.unitCost) * getExchangeRate(item.currency));
                 const totalInToman = Number(item.quantity) * unitCostInToman;
-                
+
                 // Calculate landed cost per unit
                 const landedCostPerUnit = calculateLandedCostPerUnit(item, order);
 
@@ -538,11 +601,11 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
               <Label>اقلام دریافت شده</Label>
               <div className="border rounded-lg divide-y">
                 {order.items
-                  .filter((item: any) => {
+                  .filter((item) => {
                     const receivedQty = item.receivedQuantity || 0;
                     return item.quantity - receivedQty > 0;
                   })
-                  .map((item: any) => {
+                  .map((item) => {
                     const receivedQty = item.receivedQuantity || 0;
                     const remaining = item.quantity - receivedQty;
                     const receivedData = receivedItems[item.id] || { quantity: 0 };
@@ -753,7 +816,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {order.arrivalAdditionalCosts.map((cost: any, index: number) => (
+              {order.arrivalAdditionalCosts.map((cost, index) => (
                 <div key={index} className="flex justify-between items-center">
                   <span className="text-sm">{cost.title}:</span>
                   <div className="text-right">

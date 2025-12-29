@@ -37,7 +37,7 @@ export async function createCustomer(prevState: any, formData: FormData) {
       data: {
         name,
         phone,
-        email: email || null,
+        email: email || undefined,
         address,
       },
     });
@@ -80,7 +80,7 @@ export async function updateCustomer(id: string, prevState: any, formData: FormD
       data: {
         name,
         phone,
-        email: email || null,
+        email: email || undefined,
         address,
       },
     });
@@ -122,9 +122,21 @@ export async function deleteCustomer(id: string) {
 
 export async function getCustomers() {
   try {
-    return await prisma.customer.findMany({
+    const customers = await prisma.customer.findMany({
       orderBy: { createdAt: 'desc' },
     });
+    return customers.map((customer: any) => ({
+      ...customer,
+      creditLimit: customer.creditLimit ? Number(customer.creditLimit) : undefined,
+      commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
+      phone: customer.phone ?? undefined,
+      email: customer.email ?? undefined,
+      address: customer.address ?? undefined,
+      wooId: customer.wooId ?? undefined,
+      notes: customer.notes ?? undefined,
+      segment: customer.segment ?? undefined,
+      taxId: customer.taxId ?? undefined,
+    }));
   } catch (error) {
     throw new Error('Failed to fetch customers');
   }
@@ -132,20 +144,59 @@ export async function getCustomers() {
 
 export async function getCustomer(id: string) {
   try {
-    return await prisma.customer.findUnique({
+    const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
         orders: {
             orderBy: { createdAt: 'desc' },
-            include: { 
+            include: {
               customer: true,
-              items: { include: { product: true } } 
+              items: { include: { product: true } }
             }
         }
       }
     });
+    if (!customer) return undefined;
+    return {
+      ...customer,
+      creditLimit: customer.creditLimit ? Number(customer.creditLimit) : undefined,
+      commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
+      phone: customer.phone ?? undefined,
+      email: customer.email ?? undefined,
+      address: customer.address ?? undefined,
+      wooId: customer.wooId ?? undefined,
+      notes: customer.notes ?? undefined,
+      segment: customer.segment ?? undefined,
+      taxId: customer.taxId ?? undefined,
+      orders: customer.orders.map((order: any) => ({
+        ...order,
+        totalAmount: Number(order.totalAmount),
+        discount: order.discount ? Number(order.discount) : undefined,
+        paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+        customerId: order.customerId ?? undefined,
+        transactionId: order.transactionId ?? undefined,
+        wooId: order.wooId ?? undefined,
+        invoiceId: order.invoiceId ?? undefined,
+        customer: order.customer ? {
+          ...order.customer,
+          creditLimit: order.customer.creditLimit ? Number(order.customer.creditLimit) : undefined,
+          commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
+          phone: order.customer.phone ?? undefined,
+          email: order.customer.email ?? undefined,
+          address: order.customer.address ?? undefined,
+          wooId: order.customer.wooId ?? undefined,
+          notes: order.customer.notes ?? undefined,
+          segment: order.customer.segment ?? undefined,
+          taxId: order.customer.taxId ?? undefined,
+        } : undefined,
+        items: order.items.map((item: any) => ({
+          ...item,
+          price: Number(item.price),
+        })),
+      })),
+    };
   } catch (error) {
-    return null;
+    return undefined;
   }
 }
 
@@ -188,8 +239,8 @@ export async function getCustomersWithDebt() {
     });
 
     // Calculate debt for each customer
-    return customers.map(customer => {
-      const totalDebt = customer.orders.reduce((sum, order) => {
+    return customers.map((customer: any) => {
+      const totalDebt = customer.orders.reduce((sum: any, order: any) => {
         const orderTotal = Number(order.totalAmount) - Number(order.discount);
         const debt = orderTotal - Number(order.paidAmount);
         return sum + debt;
@@ -197,6 +248,15 @@ export async function getCustomersWithDebt() {
 
       return {
         ...customer,
+        phone: customer.phone ?? undefined,
+        email: customer.email ?? undefined,
+        address: customer.address ?? undefined,
+        wooId: customer.wooId ?? undefined,
+        notes: customer.notes ?? undefined,
+        creditLimit: Number(customer.creditLimit),
+        segment: customer.segment ?? undefined,
+        taxId: customer.taxId ?? undefined,
+        commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
         totalDebt,
       };
     });
@@ -229,10 +289,10 @@ export async function getCustomerById(id: string) {
       }
     });
 
-    if (!customer) return null;
+    if (!customer) return undefined;
 
     // Calculate debt
-    const totalDebt = customer.orders.reduce((sum, order) => {
+    const totalDebt = customer.orders.reduce((sum: any, order: any) => {
       const orderTotal = Number(order.totalAmount) - Number(order.discount);
       const debt = orderTotal - Number(order.paidAmount);
       return sum + debt;
@@ -240,13 +300,97 @@ export async function getCustomerById(id: string) {
 
     // Calculate stats
     const totalOrders = customer.orders.length;
-    const totalSpent = customer.orders.reduce((sum, order) => 
+    const totalSpent = customer.orders.reduce((sum: any, order: any) =>
       sum + Number(order.paidAmount), 0
     );
     const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
 
     return {
       ...customer,
+      phone: customer.phone ?? undefined,
+      email: customer.email ?? undefined,
+      address: customer.address ?? undefined,
+      wooId: customer.wooId ?? undefined,
+      notes: customer.notes ?? undefined,
+      creditLimit: Number(customer.creditLimit),
+      segment: customer.segment ?? undefined,
+      taxId: customer.taxId ?? undefined,
+      commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
+      orders: customer.orders.map((order: any) => ({
+        ...order,
+        customerId: order.customerId ?? undefined,
+        transactionId: order.transactionId ?? undefined,
+        wooId: order.wooId ?? undefined,
+        invoiceId: order.invoiceId ?? undefined,
+        totalAmount: Number(order.totalAmount),
+        discount: Number(order.discount),
+        paidAmount: Number(order.paidAmount),
+        items: order.items.map((item: any) => ({
+          ...item,
+          price: Number(item.price),
+          product: item.product ? {
+            ...item.product,
+            costPrice: Number(item.product.costPrice),
+            sellPrice: Number(item.product.sellPrice),
+            image: item.product.image ?? undefined,
+            wooId: item.product.wooId ?? undefined,
+            barcode: item.product.barcode ?? undefined,
+          } : undefined,
+        })),
+        transaction: order.transaction ? {
+          ...order.transaction,
+          amount: Number(order.transaction.amount),
+          amountInToman: Number(order.transaction.amountInToman),
+          rateSnapshot: Number(order.transaction.rateSnapshot),
+          accountId: order.transaction.accountId ?? undefined,
+          projectId: order.transaction.projectId ?? undefined,
+          description: order.transaction.description ?? undefined,
+          category: order.transaction.category ?? undefined,
+          wooId: order.transaction.wooId ?? undefined,
+          wooStatus: order.transaction.wooStatus ?? undefined,
+          receiptUrl: order.transaction.receiptUrl ?? undefined,
+          shareholderId: order.transaction.shareholderId ?? undefined,
+          employeeId: order.transaction.employeeId ?? undefined,
+          account: order.transaction.account ? {
+            ...order.transaction.account,
+            balance: Number(order.transaction.account.balance),
+          } : undefined,
+        } : undefined,
+        invoice: order.invoice ? {
+          ...order.invoice,
+          subtotal: Number(order.invoice.subtotal),
+          discount: Number(order.invoice.discount),
+          tax: Number(order.invoice.tax),
+          total: Number(order.invoice.total),
+          paidAmount: Number(order.invoice.paidAmount),
+          notes: order.invoice.notes ?? undefined,
+        } : undefined,
+      })),
+      leads: customer.leads.map((lead: any) => ({
+        ...lead,
+        company: lead.company ?? undefined,
+        phone: lead.phone ?? undefined,
+        email: lead.email ?? undefined,
+        source: lead.source ?? undefined,
+        customerId: lead.customerId ?? undefined,
+        assignedTo: lead.assignedTo ?? undefined,
+        expectedValue: lead.expectedValue ? Number(lead.expectedValue) : undefined,
+        notes: lead.notes ?? undefined,
+      })),
+      deals: customer.deals.map((deal: any) => ({
+        ...deal,
+        value: Number(deal.value),
+        expectedClose: deal.expectedClose ?? undefined,
+        actualClose: deal.actualClose ?? undefined,
+        lostReason: deal.lostReason ?? undefined,
+        assignedTo: deal.assignedTo ?? undefined,
+        notes: deal.notes ?? undefined,
+      })),
+      tickets: customer.tickets.map((ticket: any) => ({
+        ...ticket,
+        assignedTo: ticket.assignedTo ?? undefined,
+        resolution: ticket.resolution ?? undefined,
+      })),
       stats: {
         totalDebt,
         totalOrders,
@@ -256,7 +400,7 @@ export async function getCustomerById(id: string) {
     };
   } catch (error) {
     console.error('Error fetching customer by ID:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -274,7 +418,7 @@ export async function calculateCustomerDebt(customerId: string): Promise<number>
       }
     });
 
-    return orders.reduce((sum, order) => {
+    return orders.reduce((sum: any, order: any) => {
       const orderTotal = Number(order.totalAmount) - Number(order.discount);
       const debt = orderTotal - Number(order.paidAmount);
       return sum + debt;
@@ -299,8 +443,8 @@ export async function getCustomerStats(customerId: string) {
     });
 
     const totalOrders = orders.length;
-    const totalSpent = orders.reduce((sum, order) => sum + Number(order.paidAmount), 0);
-    const totalDebt = orders.reduce((sum, order) => {
+    const totalSpent = orders.reduce((sum: any, order: any) => sum + Number(order.paidAmount), 0);
+    const totalDebt = orders.reduce((sum: any, order: any) => {
       if (order.paymentStatus === 'PAID') return sum;
       const orderTotal = Number(order.totalAmount) - Number(order.discount);
       return sum + (orderTotal - Number(order.paidAmount));
@@ -320,11 +464,11 @@ export async function getCustomerStats(customerId: string) {
       totalDebt,
       averageOrderValue,
       orderFrequency,
-      lastOrderDate: orders[0]?.createdAt || null,
+      lastOrderDate: orders[0]?.createdAt,
     };
   } catch (error) {
     console.error('Error getting customer stats:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -346,7 +490,7 @@ export async function updateCustomerCredit(id: string, creditLimit: number, paym
   }
 }
 
-export async function updateCustomerSegment(id: string, segment: string | null) {
+export async function updateCustomerSegment(id: string, segment?: string) {
   try {
     await prisma.customer.update({
       where: { id },

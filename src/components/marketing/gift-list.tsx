@@ -7,22 +7,22 @@ import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
 interface Gift {
   id: string;
-  product: {
+  product?: {
     name: string;
     sku: string;
   };
   quantity: number;
-  recipientName: string | null;
+  recipientName?: string;
   account: {
     name: string;
   };
-  campaign: {
+  campaign?: {
     name: string;
-  } | null;
+  };
   costPrice: number;
   totalCost: number;
-  reason: string | null;
-  notes: string | null;
+  reason?: string;
+  notes?: string;
   date: Date | string;
 }
 
@@ -50,11 +50,13 @@ export function GiftList({ gifts }: GiftListProps) {
       key: 'product',
       label: 'محصول',
       sortable: true,
-      render: (gift) => (
+      render: (gift) => gift.product ? (
         <div>
           <div className="font-medium">{gift.product.name}</div>
           <div className="text-xs text-muted-foreground">SKU: {gift.product.sku}</div>
         </div>
+      ) : (
+        <span className="text-muted-foreground">-</span>
       ),
     },
     {

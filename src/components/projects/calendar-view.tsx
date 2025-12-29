@@ -19,11 +19,11 @@ interface Task {
   title: string;
   status: string;
   priority: string;
-  dueDate: Date | null;
-  assignedTo: {
+  dueDate?: Date;
+  assignedTo?: {
     id: string;
     name: string;
-  } | null;
+  };
   project: {
     id: string;
     name: string;
@@ -33,8 +33,8 @@ interface Task {
 interface Project {
   id: string;
   name: string;
-  startDate: Date | null;
-  endDate: Date | null;
+  startDate?: Date;
+  endDate?: Date;
   status: string;
   tasks: Task[];
 }

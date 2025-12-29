@@ -19,7 +19,7 @@ interface Asset {
   purchasePrice: number;
   salvageValue: number;
   usefulLife: number;
-  quantity: number | null;
+  quantity?: number;
   depreciationMethod: string;
   currentValue: number;
   createdAt: Date;
@@ -31,7 +31,7 @@ interface AssetListProps {
 
 export function AssetList({ assets }: AssetListProps) {
   const router = useRouter();
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | undefined>(undefined);
 
   const handleDelete = async (assetId: string) => {
     if (confirm('آیا از حذف این دارایی اطمینان دارید؟')) {
@@ -47,7 +47,7 @@ export function AssetList({ assets }: AssetListProps) {
       } catch (error) {
         toast.error('خطا در حذف دارایی');
       } finally {
-        setLoading(null);
+        setLoading(undefined);
       }
     }
   };
@@ -66,7 +66,7 @@ export function AssetList({ assets }: AssetListProps) {
       } catch (error) {
         toast.error('خطا در ثبت استهلاک');
       } finally {
-        setLoading(null);
+        setLoading(undefined);
       }
     }
   };
@@ -105,7 +105,7 @@ export function AssetList({ assets }: AssetListProps) {
       label: 'تعداد',
       sortable: true,
       render: (asset) =>
-        asset.assetType === 'CONSUMABLE' && asset.quantity !== null
+        asset.assetType === 'CONSUMABLE' && asset.quantity !== null && asset.quantity !== undefined
           ? asset.quantity.toLocaleString('fa-IR')
           : '-',
     },

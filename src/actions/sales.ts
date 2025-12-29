@@ -39,10 +39,10 @@ export async function createOrder(data: OrderData) {
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      let transactionId = null;
+      let transactionId = undefined;
 
       // 1. Fetch customer first to get name for transaction description
-      let customer = null;
+      let customer = undefined;
       if (customerId) {
         customer = await tx.customer.findUnique({
           where: { id: customerId },
@@ -94,7 +94,7 @@ export async function createOrder(data: OrderData) {
           status: 'COMPLETED',
           transactionId: transactionId,
           items: {
-            create: items.map((item) => ({
+            create: items.map((item: any) => ({
               productId: item.productId,
               quantity: item.quantity,
               price: item.price,
@@ -175,7 +175,41 @@ export async function getOrders() {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return orders;
+    return orders.map((order: any) => ({
+      ...order,
+      customerId: order.customerId ?? undefined,
+      transactionId: order.transactionId ?? undefined,
+      wooId: order.wooId ?? undefined,
+      invoiceId: order.invoiceId ?? undefined,
+      totalAmount: Number(order.totalAmount),
+      discount: Number(order.discount),
+      paidAmount: Number(order.paidAmount),
+      customer: order.customer ? {
+        ...order.customer,
+        phone: order.customer.phone ?? undefined,
+        email: order.customer.email ?? undefined,
+        address: order.customer.address ?? undefined,
+        wooId: order.customer.wooId ?? undefined,
+        notes: order.customer.notes ?? undefined,
+        creditLimit: Number(order.customer.creditLimit),
+        segment: order.customer.segment ?? undefined,
+        taxId: order.customer.taxId ?? undefined,
+        commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
+        type: order.customer.customerType,
+      } : undefined,
+      items: order.items.map((item: any) => ({
+        ...item,
+        price: Number(item.price),
+        product: item.product ? {
+          ...item.product,
+          costPrice: Number(item.product.costPrice),
+          sellPrice: Number(item.product.sellPrice),
+          image: item.product.image ?? undefined,
+          wooId: item.product.wooId ?? undefined,
+          barcode: item.product.barcode ?? undefined,
+        } : undefined,
+      })),
+    }));
   } catch (error) {
     console.error('Error fetching orders:', error);
     return [];
@@ -201,9 +235,72 @@ export async function getOrder(id: string) {
         invoice: true,
       },
     });
-    return order;
+    if (!order) return undefined;
+    return {
+      ...order,
+      customerId: order.customerId ?? undefined,
+      transactionId: order.transactionId ?? undefined,
+      wooId: order.wooId ?? undefined,
+      invoiceId: order.invoiceId ?? undefined,
+      totalAmount: Number(order.totalAmount),
+      discount: Number(order.discount),
+      paidAmount: Number(order.paidAmount),
+      customer: order.customer ? {
+        ...order.customer,
+        phone: order.customer.phone ?? undefined,
+        email: order.customer.email ?? undefined,
+        address: order.customer.address ?? undefined,
+        wooId: order.customer.wooId ?? undefined,
+        notes: order.customer.notes ?? undefined,
+        creditLimit: Number(order.customer.creditLimit),
+        segment: order.customer.segment ?? undefined,
+        taxId: order.customer.taxId ?? undefined,
+        commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
+        type: order.customer.customerType,
+      } : undefined,
+      items: order.items.map((item: any) => ({
+        ...item,
+        price: Number(item.price),
+        product: item.product ? {
+          ...item.product,
+          costPrice: Number(item.product.costPrice),
+          sellPrice: Number(item.product.sellPrice),
+          image: item.product.image ?? undefined,
+          wooId: item.product.wooId ?? undefined,
+          barcode: item.product.barcode ?? undefined,
+        } : undefined,
+      })),
+      transaction: order.transaction ? {
+        ...order.transaction,
+        amount: Number(order.transaction.amount),
+        amountInToman: Number(order.transaction.amountInToman),
+        rateSnapshot: Number(order.transaction.rateSnapshot),
+        accountId: order.transaction.accountId ?? undefined,
+        projectId: order.transaction.projectId ?? undefined,
+        description: order.transaction.description ?? undefined,
+        category: order.transaction.category ?? undefined,
+        wooId: order.transaction.wooId ?? undefined,
+        wooStatus: order.transaction.wooStatus ?? undefined,
+        receiptUrl: order.transaction.receiptUrl ?? undefined,
+        shareholderId: order.transaction.shareholderId ?? undefined,
+        employeeId: order.transaction.employeeId ?? undefined,
+        account: order.transaction.account ? {
+          ...order.transaction.account,
+          balance: Number(order.transaction.account.balance),
+        } : undefined,
+      } : undefined,
+      invoice: order.invoice ? {
+        ...order.invoice,
+        subtotal: Number(order.invoice.subtotal),
+        discount: Number(order.invoice.discount),
+        tax: Number(order.invoice.tax),
+        total: Number(order.invoice.total),
+        paidAmount: Number(order.invoice.paidAmount),
+        notes: order.invoice.notes ?? undefined,
+      } : undefined,
+    };
   } catch (error) {
     console.error('Error fetching order:', error);
-    return null;
+    return undefined;
   }
 }

@@ -16,8 +16,8 @@ export default async function WarehouseDetailsPage({ params }: { params: { id: s
     notFound();
   }
 
-  const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
-  const totalValue = inventory.reduce((sum, item) => sum + (item.quantity * Number(item.product.costPrice)), 0);
+  const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
+  const totalValue = inventory.reduce((sum: any, item: any) => sum + (item.quantity * Number(item.product.costPrice)), 0);
 
   return (
     <div className="space-y-6">

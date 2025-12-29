@@ -46,7 +46,7 @@ export function DealForm({ customers }: DealFormProps) {
           <div className="space-y-2">
             <Label htmlFor="title">عنوان *</Label>
             <Input id="title" name="title" placeholder="عنوان معامله" required />
-            {state.errors?.title && <p className="text-red-500 text-sm">{state.errors.title[0]}</p>}
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.title && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.title?.[0]}</p>}
           </div>
           
           <div className="space-y-2">
@@ -59,7 +59,7 @@ export function DealForm({ customers }: DealFormProps) {
                 </option>
               ))}
             </select>
-            {state.errors?.customerId && <p className="text-red-500 text-sm">{state.errors.customerId[0]}</p>}
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.customerId && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.customerId?.[0]}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

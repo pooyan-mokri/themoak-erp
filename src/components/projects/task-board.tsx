@@ -17,10 +17,27 @@ import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useDroppable } from '@dnd-kit/core';
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  status: string;
+  description?: string;
+  priority?: string;
+  dueDate?: Date | string;
+  assignedTo?: string;
+  assignedToUser?: User;
+}
+
 interface TaskBoardProps {
-  tasks: any[];
+  tasks: Task[];
   projectId: string;
-  users?: Array<{ id: string; name: string; email: string }>;
+  users?: User[];
 }
 
 const COLUMNS = [
@@ -30,7 +47,15 @@ const COLUMNS = [
   { id: 'DONE', title: 'انجام شده' },
 ];
 
-function TaskColumn({ id, title, tasks, projectId, users }: { id: string; title: string; tasks: any[]; projectId: string; users?: Array<{ id: string; name: string; email: string }> }) {
+interface TaskColumnProps {
+  id: string;
+  title: string;
+  tasks: Task[];
+  projectId: string;
+  users?: User[];
+}
+
+function TaskColumn({ id, title, tasks, projectId, users }: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -60,19 +85,19 @@ function TaskColumn({ id, title, tasks, projectId, users }: { id: string; title:
 }
 
 export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
-  const [activeTask, setActiveTask] = useState<any>(null);
+  const [activeTask, setActiveTask] = useState<Task | undefined>(undefined);
   const [optimisticTasks, setOptimisticTasks] = useState(tasks);
 
   // Debug: Log tasks
-  console.log('TaskBoard received tasks:', tasks.length, tasks.map((t: any) => ({ id: t.id, title: t.title, status: t.status })));
-  
+  console.log('TaskBoard received tasks:', tasks.length, tasks.map((t) => ({ id: t.id, title: t.title, status: t.status })));
+
   // Fix tasks with invalid status - if status is not in COLUMNS, set to TODO
   // Create a stable dependency key from task IDs to prevent infinite loops
   const knownStatuses = COLUMNS.map(col => col.id);
-  const tasksKey = useMemo(() => tasks.map((t: any) => `${t.id}-${t.status}`).join(','), [tasks]);
-  
+  const tasksKey = useMemo(() => tasks.map((t) => `${t.id}-${t.status}`).join(','), [tasks]);
+
   const fixedTasks = useMemo(() => {
-    return tasks.map((t: any) => {
+    return tasks.map((t) => {
       if (!knownStatuses.includes(t.status)) {
         console.warn(`Task ${t.id} has invalid status "${t.status}", setting to TODO`);
         return { ...t, status: 'TODO' };
@@ -80,11 +105,11 @@ export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
       return t;
     });
   }, [tasks]);
-  
+
   // Debug: Check for tasks with unknown status
-  const unknownStatusTasks = fixedTasks.filter((t: any) => !knownStatuses.includes(t.status));
+  const unknownStatusTasks = fixedTasks.filter((t) => !knownStatuses.includes(t.status));
   if (unknownStatusTasks.length > 0) {
-    console.warn('Tasks with unknown status after fix:', unknownStatusTasks.map((t: any) => ({ id: t.id, title: t.title, status: t.status })));
+    console.warn('Tasks with unknown status after fix:', unknownStatusTasks.map((t) => ({ id: t.id, title: t.title, status: t.status })));
   }
 
   // Update optimistic state when props change - use tasksKey as stable dependency
@@ -111,7 +136,7 @@ export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
 
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    setActiveTask(null);
+    setActiveTask(undefined);
 
     if (!over) return;
 
@@ -154,7 +179,7 @@ export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full">
         {COLUMNS.map((col) => {
           const columnTasks = optimisticTasks.filter((t) => t.status === col.id);
-          console.log(`Column ${col.id} (${col.title}): ${columnTasks.length} tasks`, columnTasks.map((t: any) => ({ id: t.id, title: t.title })));
+          console.log(`Column ${col.id} (${col.title}): ${columnTasks.length} tasks`, columnTasks.map((t) => ({ id: t.id, title: t.title })));
           return (
             <TaskColumn
               key={col.id}

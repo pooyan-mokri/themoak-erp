@@ -16,10 +16,10 @@ import Link from 'next/link';
 interface Lead {
   id: string;
   name: string;
-  company: string | null;
-  phone: string | null;
-  email: string | null;
-  source: string | null;
+  company?: string;
+  phone?: string;
+  email?: string;
+  source?: string;
   status: string;
   score: number;
   expectedValue: any;

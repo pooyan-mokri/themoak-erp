@@ -280,7 +280,7 @@ export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpe
                 key={`dueDate-${task?.id || 'new'}`}
                 name="dueDate"
                 label="تاریخ سررسید"
-                defaultValue={task?.dueDate ? new Date(task.dueDate) : null}
+                defaultValue={task?.dueDate ? new Date(task.dueDate) : undefined}
               />
             </div>
           </div>
@@ -290,7 +290,7 @@ export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpe
               key={`startDate-${task?.id || 'new'}`}
               name="startDate"
               label="تاریخ شروع (اختیاری)"
-              defaultValue={task?.startDate ? new Date(task.startDate) : null}
+              defaultValue={task?.startDate ? new Date(task.startDate) : undefined}
             />
           </div>
 

@@ -44,48 +44,48 @@ export async function getConsignmentReport() {
     });
 
     // Calculate statistics for each partner
-    const partnerStats = partners.map((partner) => {
+    const partnerStats = partners.map((partner: any) => {
       const customerId = partner.customerId;
-      if (!customerId) return null;
+      if (!customerId) return undefined;
 
       // Get orders for this partner
       const partnerOrders = consignmentOrders.filter(
-        (order) => order.customerId === customerId
+  (order: any) => order.customerId === customerId
       );
 
       // Calculate totals
       const totalSales = partnerOrders.reduce(
-        (sum, order) => sum + Number(order.totalAmount) - Number(order.discount || 0),
+  (sum: any, order: any) => sum + Number(order.totalAmount) - Number(order.discount || 0),
         0
       );
 
       const totalPaid = partnerOrders.reduce(
-        (sum, order) => sum + Number(order.paidAmount || 0),
+  (sum: any, order: any) => sum + Number(order.paidAmount || 0),
         0
       );
 
       const totalDebt = totalSales - totalPaid;
 
       // Calculate total commissions
-      const totalCommissions = partnerOrders.reduce((sum, order) => {
+      const totalCommissions = partnerOrders.reduce((sum: any, order: any) => {
         const orderCommissions = order.commissions || [];
         return (
           sum +
           orderCommissions.reduce(
-            (s, c) => s + Number(c.commissionAmount),
+            (s: any, c: any) => s + Number(c.commissionAmount),
             0
           )
         );
       }, 0);
 
       // Calculate paid commissions
-      const paidCommissions = partnerOrders.reduce((sum, order) => {
+      const paidCommissions = partnerOrders.reduce((sum: any, order: any) => {
         const orderCommissions = order.commissions || [];
         return (
           sum +
           orderCommissions
-            .filter((c) => c.isPaid)
-            .reduce((s, c) => s + Number(c.commissionAmount), 0)
+            .filter((c: any) => c.isPaid)
+            .reduce((s: any, c: any) => s + Number(c.commissionAmount), 0)
         );
       }, 0);
 
@@ -93,13 +93,13 @@ export async function getConsignmentReport() {
       const unpaidCommissions = totalCommissions - paidCommissions;
 
       // Calculate inventory value
-      const inventoryValue = partner.inventory.reduce((sum, inv) => {
+      const inventoryValue = partner.inventory.reduce((sum: any, inv: any) => {
         const costPrice = Number(inv.product.costPrice || 0);
         return sum + inv.quantity * costPrice;
       }, 0);
 
       const inventoryQuantity = partner.inventory.reduce(
-        (sum, inv) => sum + inv.quantity,
+  (sum: any, inv: any) => sum + inv.quantity,
         0
       );
 
@@ -112,7 +112,7 @@ export async function getConsignmentReport() {
         customerId,
         commissionRate: partner.customer?.commissionRate
           ? Number(partner.customer.commissionRate)
-          : null,
+          : undefined,
         totalSales,
         totalPaid,
         totalDebt,
@@ -123,37 +123,64 @@ export async function getConsignmentReport() {
         inventoryQuantity,
         productCount,
         orderCount: partnerOrders.length,
-        orders: partnerOrders.slice(0, 10), // Last 10 orders
+        orders: partnerOrders.slice(0, 10).map((order: any) => ({
+          ...order,
+          discount: order.discount ? Number(order.discount) : undefined,
+          paidAmount: order.paidAmount ? Number(order.paidAmount) : undefined,
+          customerId: order.customerId ?? undefined,
+          wooId: order.wooId ?? undefined,
+          transactionId: order.transactionId ?? undefined,
+          invoiceId: order.invoiceId ?? undefined,
+          customer: order.customer ? {
+            ...order.customer,
+            phone: order.customer.phone ?? undefined,
+            email: order.customer.email ?? undefined,
+            address: order.customer.address ?? undefined,
+            notes: order.customer.notes ?? undefined,
+            wooId: order.customer.wooId ?? undefined,
+            taxId: order.customer.taxId ?? undefined,
+            segment: order.customer.segment ?? undefined,
+          } : undefined,
+          items: order.items.map((item: any) => ({
+            ...item,
+            product: item.product ? {
+              ...item.product,
+              image: item.product.image ?? undefined,
+              wooId: item.product.wooId ?? undefined,
+              barcode: item.product.barcode ?? undefined,
+            } : undefined,
+          })),
+        })), // Last 10 orders
       };
-    }).filter((p): p is NonNullable<typeof p> => p !== null);
+    }).filter((p: any): p is NonNullable<typeof p> => p !== null);
 
     // Calculate grand totals
     const grandTotals = {
       totalPartners: partnerStats.length,
-      totalSales: partnerStats.reduce((sum, p) => sum + (p?.totalSales || 0), 0),
-      totalPaid: partnerStats.reduce((sum, p) => sum + (p?.totalPaid || 0), 0),
-      totalDebt: partnerStats.reduce((sum, p) => sum + (p?.totalDebt || 0), 0),
+      totalSales: partnerStats.reduce((sum: any, p: any) => sum + (p?.totalSales || 0), 0),
+      totalPaid: partnerStats.reduce((sum: any, p: any) => sum + (p?.totalPaid || 0), 0),
+      totalDebt: partnerStats.reduce((sum: any, p: any) => sum + (p?.totalDebt || 0), 0),
       totalCommissions: partnerStats.reduce(
-        (sum, p) => sum + (p?.totalCommissions || 0),
+  (sum: any, p: any) => sum + (p?.totalCommissions || 0),
         0
       ),
       paidCommissions: partnerStats.reduce(
-        (sum, p) => sum + (p?.paidCommissions || 0),
+  (sum: any, p: any) => sum + (p?.paidCommissions || 0),
         0
       ),
       unpaidCommissions: partnerStats.reduce(
-        (sum, p) => sum + (p?.unpaidCommissions || 0),
+  (sum: any, p: any) => sum + (p?.unpaidCommissions || 0),
         0
       ),
       totalInventoryValue: partnerStats.reduce(
-        (sum, p) => sum + (p?.inventoryValue || 0),
+  (sum: any, p: any) => sum + (p?.inventoryValue || 0),
         0
       ),
       totalInventoryQuantity: partnerStats.reduce(
-        (sum, p) => sum + (p?.inventoryQuantity || 0),
+  (sum: any, p: any) => sum + (p?.inventoryQuantity || 0),
         0
       ),
-      totalOrders: partnerStats.reduce((sum, p) => sum + (p?.orderCount || 0), 0),
+      totalOrders: partnerStats.reduce((sum: any, p: any) => sum + (p?.orderCount || 0), 0),
     };
 
     return {

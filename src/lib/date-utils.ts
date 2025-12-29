@@ -5,12 +5,12 @@ moment.loadPersian({ dialect: 'persian-modern', usePersianDigits: true });
 
 /**
  * Format a date to Persian Jalali format
- * @param date - Date object, string, or null
+ * @param date - Date object, string, or undefined
  * @param format - Format string (default: 'jYYYY/jMM/jDD')
  * @returns Formatted Persian date string
  */
 export function formatJalaliDate(
-  date: Date | string | null | undefined,
+  date: Date | string | undefined,
   format: string = 'jYYYY/jMM/jDD'
 ): string {
   if (!date) return '-';
@@ -19,11 +19,11 @@ export function formatJalaliDate(
 
 /**
  * Format a date to Persian Jalali with time
- * @param date - Date object, string, or null
+ * @param date - Date object, string, or undefined
  * @returns Formatted Persian date and time string
  */
 export function formatJalaliDateTime(
-  date: Date | string | null | undefined
+  date: Date | string | undefined
 ): string {
   if (!date) return '-';
   return moment(date).format('jYYYY/jMM/jDD HH:mm');
@@ -31,11 +31,11 @@ export function formatJalaliDateTime(
 
 /**
  * Format a date to a more readable Persian format
- * @param date - Date object, string, or null
+ * @param date - Date object, string, or undefined
  * @returns Formatted Persian date in long format (e.g., "۱۴۰۳ آذر ۱۱")
  */
 export function formatJalaliDateLong(
-  date: Date | string | null | undefined
+  date: Date | string | undefined
 ): string {
   if (!date) return '-';
   return moment(date).format('jYYYY jMMMM jDD');
@@ -43,11 +43,11 @@ export function formatJalaliDateLong(
 
 /**
  * Format a date to a short readable format
- * @param date - Date object, string, or null
+ * @param date - Date object, string, or undefined
  * @returns Formatted Persian date (e.g., "۱۱ آذر")
  */
 export function formatJalaliDateShort(
-  date: Date | string | null | undefined
+  date: Date | string | undefined
 ): string {
   if (!date) return '-';
   return moment(date).format('jDD jMMMM');
@@ -55,11 +55,11 @@ export function formatJalaliDateShort(
 
 /**
  * Get relative time in Persian (e.g., "۲ روز پیش")
- * @param date - Date object, string, or null
+ * @param date - Date object, string, or undefined
  * @returns Relative time string in Persian
  */
 export function getJalaliRelativeTime(
-  date: Date | string | null | undefined
+  date: Date | string | undefined
 ): string {
   if (!date) return '-';
   return moment(date).fromNow();
@@ -186,7 +186,7 @@ export function getEndOfJalaliYear(date?: Date | string): Date {
  * @param date - Date to format
  * @returns Date in YYYY-MM-DD format for input fields
  */
-export function formatDateForInput(date: Date | string | null | undefined): string {
+export function formatDateForInput(date: Date | string | undefined): string {
   if (!date) return '';
   return moment(date).format('YYYY-MM-DD');
 }

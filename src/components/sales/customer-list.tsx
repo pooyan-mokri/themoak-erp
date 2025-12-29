@@ -32,9 +32,9 @@ import { CustomerForm } from './customer-form';
 interface Customer {
   id: string;
   name: string;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
+  phone?: string;
+  email?: string;
+  address?: string;
 }
 
 interface CustomerListProps {

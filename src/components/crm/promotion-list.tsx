@@ -20,15 +20,15 @@ import { formatJalaliDate } from '@/lib/date-utils';
 interface Promotion {
   id: string;
   name: string;
-  description: string | null;
+  description?: string;
   type: string;
-  discountPercent: any | null;
-  discountAmount: any | null;
+  discountPercent?: number;
+  discountAmount?: number;
   startDate: Date;
   endDate: Date;
   isActive: boolean;
   usedCount: number;
-  maxUses: number | null;
+  maxUses?: number;
 }
 
 
@@ -37,14 +37,14 @@ interface PromotionListProps {
 }
 
 export function PromotionList({ promotions }: PromotionListProps) {
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | undefined>(undefined);
 
   const handleDelete = async (id: string) => {
     if (!confirm('آیا از حذف این کد تخفیف اطمینان دارید؟')) return;
     
     setIsDeleting(id);
     const result = await deletePromotion(id);
-    setIsDeleting(null);
+    setIsDeleting(undefined);
 
     if (result.success) {
       toast.success(result.message);
