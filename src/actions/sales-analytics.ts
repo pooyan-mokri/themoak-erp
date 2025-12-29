@@ -34,14 +34,14 @@ export async function getSalesAnalytics(range?: DateRange) {
     });
 
     // Calculate key metrics
-    const totalRevenue = orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+    const totalRevenue = orders.reduce((sum: number, order) => sum + Number(order.totalAmount), 0);
     const totalOrders = orders.length;
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     // Get previous period for comparison
     const previousStartDate = new Date(startDate);
     previousStartDate.setDate(previousStartDate.getDate() - (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     const previousOrders = await prisma.order.findMany({
       where: {
         createdAt: {
@@ -52,12 +52,18 @@ export async function getSalesAnalytics(range?: DateRange) {
       },
     });
 
-    const previousRevenue = previousOrders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+    const previousRevenue = previousOrders.reduce((sum: number, order) => sum + Number(order.totalAmount), 0);
     const revenueGrowth = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0;
     const ordersGrowth = previousOrders.length > 0 ? ((totalOrders - previousOrders.length) / previousOrders.length) * 100 : 0;
 
     // Sales by day
-    const salesByDay = orders.reduce((acc: any, order: any) => {
+    interface DailySales {
+      date: string;
+      revenue: number;
+      orders: number;
+    }
+
+    const salesByDay = orders.reduce((acc: Record<string, DailySales>, order) => {
       const date = order.createdAt.toISOString().split('T')[0];
       if (!acc[date]) {
         acc[date] = { date, revenue: 0, orders: 0 };
@@ -65,9 +71,9 @@ export async function getSalesAnalytics(range?: DateRange) {
       acc[date].revenue += Number(order.totalAmount);
       acc[date].orders += 1;
       return acc;
-    }, {} as Record<string, { date: string; revenue: number; orders: number }>);
+    }, {} as Record<string, DailySales>);
 
-    const salesOverTime = Object.values(salesByDay).map((day: any) => ({
+    const salesOverTime = Object.values(salesByDay).map((day) => ({
       date: day.date,
       dateFormatted: formatJalaliDate(new Date(day.date)),
       revenue: day.revenue,
@@ -75,7 +81,14 @@ export async function getSalesAnalytics(range?: DateRange) {
     }));
 
     // Top products by revenue
-    const productSales = orders.flatMap((order: any) => order.items).reduce((acc: any, item: any) => {
+    interface ProductSales {
+      id: string;
+      name: string;
+      quantity: number;
+      revenue: number;
+    }
+
+    const productSales = orders.flatMap((order) => order.items).reduce((acc: Record<string, ProductSales>, item) => {
       const productId = item.productId;
       if (!acc[productId]) {
         acc[productId] = {
@@ -88,14 +101,21 @@ export async function getSalesAnalytics(range?: DateRange) {
       acc[productId].quantity += item.quantity;
       acc[productId].revenue += item.quantity * Number(item.price);
       return acc;
-    }, {} as Record<string, { id: string; name: string; quantity: number; revenue: number }>);
+    }, {} as Record<string, ProductSales>);
 
     const topProducts = Object.values(productSales)
-      .sort((a: any, b: any) => b.revenue - a.revenue)
-      .slice(0, 10) as { id: string; name: string; quantity: number; revenue: number; }[];
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
 
     // Top customers
-    const customerSales = orders.reduce((acc: any, order: any) => {
+    interface CustomerSales {
+      id: string;
+      name: string;
+      orders: number;
+      revenue: number;
+    }
+
+    const customerSales = orders.reduce((acc: Record<string, CustomerSales>, order) => {
       const customerId = order.customerId || 'walk-in';
       const customerName = order.customer?.name || 'مشتری عمومی';
       if (!acc[customerId]) {
@@ -109,14 +129,20 @@ export async function getSalesAnalytics(range?: DateRange) {
       acc[customerId].orders += 1;
       acc[customerId].revenue += Number(order.totalAmount);
       return acc;
-    }, {} as Record<string, { id: string; name: string; orders: number; revenue: number }>);
+    }, {} as Record<string, CustomerSales>);
 
     const topCustomers = Object.values(customerSales)
-      .sort((a: any, b: any) => b.revenue - a.revenue)
-      .slice(0, 10) as { id: string; name: string; orders: number; revenue: number; }[];
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
 
     // Sales by product type
-    const salesByCategory = orders.flatMap((order: any) => order.items).reduce((acc: any, item: any) => {
+    interface CategorySales {
+      type: string;
+      revenue: number;
+      quantity: number;
+    }
+
+    const salesByCategory = orders.flatMap((order) => order.items).reduce((acc: Record<string, CategorySales>, item) => {
       const type = item.product.productType;
       if (!acc[type]) {
         acc[type] = { type, revenue: 0, quantity: 0 };
@@ -124,9 +150,9 @@ export async function getSalesAnalytics(range?: DateRange) {
       acc[type].revenue += item.quantity * Number(item.price);
       acc[type].quantity += item.quantity;
       return acc;
-    }, {} as Record<string, { type: string; revenue: number; quantity: number }>);
+    }, {} as Record<string, CategorySales>);
 
-    const categoryDistribution = Object.values(salesByCategory) as { type: string; revenue: number; quantity: number; }[];
+    const categoryDistribution = Object.values(salesByCategory);
 
     // Simple linear regression for forecasting
     const forecast = calculateForecast(salesOverTime);
@@ -158,8 +184,8 @@ function calculateForecast(salesData: Array<{ date: string; revenue: number; ord
 
   // Simple moving average for next 7 days
   const lastSevenDays = salesData.slice(-7);
-  const avgRevenue = lastSevenDays.reduce((sum: any, day: any) => sum + day.revenue, 0) / 7;
-  const avgOrders = lastSevenDays.reduce((sum: any, day: any) => sum + day.orders, 0) / 7;
+  const avgRevenue = lastSevenDays.reduce((sum: number, day) => sum + day.revenue, 0) / 7;
+  const avgOrders = lastSevenDays.reduce((sum: number, day) => sum + day.orders, 0) / 7;
 
   const forecast = [];
   const lastDate = new Date(salesData[salesData.length - 1].date);

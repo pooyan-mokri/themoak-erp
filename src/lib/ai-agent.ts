@@ -3,11 +3,21 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 
+export interface AgentToolParameter {
+  type: string;
+  description: string;
+  required?: boolean;
+}
+
 export interface AgentTool {
   name: string;
   description: string;
-  parameters: Record<string, any>;
-  execute: (params: any) => Promise<any>;
+  parameters: Record<string, string>;
+  execute: (params: Record<string, unknown>) => Promise<{
+    success?: boolean;
+    error?: string;
+    [key: string]: unknown;
+  }>;
 }
 
 // Define available tools for the AI agent
@@ -27,12 +37,12 @@ export const agentTools: AgentTool[] = [
           include: { product: true, warehouse: true },
         });
 
-        const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
+        const totalItems = inventory.reduce((sum: number, item) => sum + item.quantity, 0);
         const totalValue = inventory.reduce(
-  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
+          (sum: number, item) => sum + item.quantity * Number(item.product.costPrice),
           0
         );
-        const lowStockItems = inventory.filter((item: any) => item.quantity < 10 && item.quantity > 0);
+        const lowStockItems = inventory.filter((item) => item.quantity < 10 && item.quantity > 0);
 
         return {
           success: true,
@@ -40,17 +50,17 @@ export const agentTools: AgentTool[] = [
           totalItems,
           totalValue,
           lowStockCount: lowStockItems.length,
-          lowStockItems: lowStockItems.slice(0, 10).map((item: any) => ({
+          lowStockItems: lowStockItems.slice(0, 10).map((item) => ({
             product: item.product.name,
             warehouse: item.warehouse.name,
             quantity: item.quantity,
           })),
         };
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error in get_inventory_summary:', error);
         return {
           success: false,
-          error: error.message,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
         };
       }
     },
@@ -77,9 +87,15 @@ export const agentTools: AgentTool[] = [
         },
       });
 
-      const totalRevenue = orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+      const totalRevenue = orders.reduce((sum: number, order) => sum + Number(order.totalAmount), 0);
       const totalOrders = orders.length;
       const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+      interface CustomerSummary {
+        name: string;
+        orders: number;
+        revenue: number;
+      }
 
       return {
         period: `${days} روز گذشته`,
@@ -87,7 +103,7 @@ export const agentTools: AgentTool[] = [
         totalOrders,
         averageOrderValue,
         topCustomers: orders
-          .reduce((acc: any, order: any) => {
+          .reduce((acc: Record<string, CustomerSummary>, order) => {
             const customerId = order.customerId || 'walk-in';
             const customerName = order.customer?.name || 'مشتری عمومی';
             if (!acc[customerId]) {
@@ -96,7 +112,7 @@ export const agentTools: AgentTool[] = [
             acc[customerId].orders += 1;
             acc[customerId].revenue += Number(order.totalAmount);
             return acc;
-          }, {} as Record<string, any>)
+          }, {} as Record<string, CustomerSummary>)
       };
     },
   },
@@ -122,7 +138,7 @@ export const agentTools: AgentTool[] = [
       }
 
       const totalOrders = customer.orders.length;
-      const totalSpent = customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+      const totalSpent = customer.orders.reduce((sum: number, order) => sum + Number(order.totalAmount), 0);
 
       return {
         name: customer.name,
@@ -132,7 +148,7 @@ export const agentTools: AgentTool[] = [
         creditLimit: Number(customer.creditLimit),
         totalOrders,
         totalSpent,
-        recentOrders: customer.orders.slice(0, 5).map((order: any) => ({
+        recentOrders: customer.orders.slice(0, 5).map((order) => ({
           number: order.number,
           amount: Number(order.totalAmount),
           date: order.createdAt,
@@ -168,23 +184,23 @@ export const agentTools: AgentTool[] = [
         return {
           success: true,
           count: products.length,
-          products: products.map((product: any) => ({
+          products: products.map((product) => ({
             id: product.id,
             name: product.name,
             sku: product.sku || 'ندارد',
             costPrice: Number(product.costPrice),
             sellPrice: Number(product.sellPrice),
-            stock: product.inventory.map((inv: any) => ({
+            stock: product.inventory.map((inv) => ({
               warehouse: inv.warehouse.name,
               quantity: inv.quantity,
             })),
           })),
         };
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error in search_products:', error);
         return {
           success: false,
-          error: error.message,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
         };
       }
     },
@@ -213,16 +229,16 @@ export const agentTools: AgentTool[] = [
       });
 
       const totalIncome = transactions
-        .filter((t: any) => t.type === 'INCOME')
-        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
+        .filter((t) => t.type === 'INCOME')
+        .reduce((sum: number, t) => sum + Number(t.amount), 0);
 
       const totalExpense = transactions
-        .filter((t: any) => t.type === 'EXPENSE')
-        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
+        .filter((t) => t.type === 'EXPENSE')
+        .reduce((sum: number, t) => sum + Number(t.amount), 0);
 
       return {
         period: `${days} روز گذشته`,
-        accounts: accounts.map((acc: any) => ({
+        accounts: accounts.map((acc) => ({
           name: acc.name,
           type: acc.type,
           balance: Number(acc.balance),
@@ -340,11 +356,11 @@ export async function getSystemContext() {
       orders: ordersCount,
       warehouses: warehousesCount,
     },
-    accounts: accounts.map((acc: any) => ({
+    accounts: accounts.map((acc) => ({
       name: acc.name,
       balance: Number(acc.balance),
     })),
-    availableTools: agentTools.map((tool: any) => ({
+    availableTools: agentTools.map((tool) => ({
       name: tool.name,
       description: tool.description,
     })),

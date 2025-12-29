@@ -45,14 +45,14 @@ declare module '@prisma/client' {
     name: string;
     type: string;
     currency: Currency;
-    balance: any; // Decimal
+    balance: Prisma.Decimal;
     createdAt: Date;
     updatedAt: Date;
   }
 
   export interface Transaction {
     id: string;
-    amount: any; // Decimal
+    amount: Prisma.Decimal;
     accountId?: string | null;
     projectId?: string | null;
     description?: string | null;
@@ -66,8 +66,8 @@ declare module '@prisma/client' {
     id: string;
     name: string;
     purchaseDate: Date;
-    purchasePrice: any; // Decimal
-    salvageValue: any; // Decimal
+    purchasePrice: Prisma.Decimal;
+    salvageValue: Prisma.Decimal;
     usefulLife: number;
     depreciationMethod: DepreciationMethod;
     assetType: AssetType;
@@ -75,13 +75,38 @@ declare module '@prisma/client' {
     updatedAt: Date;
   }
 
+  // Transaction options interface
+  export interface TransactionOptions {
+    maxWait?: number;
+    timeout?: number;
+    isolationLevel?: 'ReadUncommitted' | 'ReadCommitted' | 'RepeatableRead' | 'Serializable';
+  }
+
   // PrismaClient class
   export class PrismaClient {
-    constructor(options?: any);
+    constructor(options?: {
+      datasources?: { db?: { url?: string } };
+      log?: Array<'query' | 'info' | 'warn' | 'error'>;
+    });
     $connect(): Promise<void>;
     $disconnect(): Promise<void>;
-    $transaction<R>(fn: (prisma: any) => Promise<R>, options?: any): Promise<R>;
-    [key: string]: any;
+    $transaction<R>(fn: (prisma: PrismaClient) => Promise<R>, options?: TransactionOptions): Promise<R>;
+
+    // Model accessors
+    user: any;
+    customer: any;
+    product: any;
+    warehouse: any;
+    inventory: any;
+    order: any;
+    account: any;
+    transaction: any;
+    supplier: any;
+    employee: any;
+    shareholder: any;
+    loan: any;
+    fixedAsset: any;
+    project: any;
   }
 
   // Prisma namespace
@@ -97,9 +122,33 @@ declare module '@prisma/client' {
       insensitive = 'insensitive',
     }
 
-    // Type helpers for GetPayload
-    export type OrderItemGetPayload<T = {}> = any;
-    export type PurchaseOrderItemGetPayload<T = {}> = any;
-    export type InventoryAuditWhereInput = any;
+    // Type helpers for GetPayload - these will be replaced by actual Prisma generated types
+    export type OrderItemGetPayload<T extends { select?: any; include?: any }> = {
+      id: string;
+      orderId: string;
+      productId: string;
+      quantity: number;
+      price: Decimal;
+      product?: T extends { include: { product: true } } ? any : never;
+    };
+
+    export type PurchaseOrderItemGetPayload<T extends { select?: any; include?: any }> = {
+      id: string;
+      purchaseOrderId: string;
+      productId: string;
+      quantity: number;
+      unitPrice: Decimal;
+      product?: T extends { include: { product: true } } ? any : never;
+    };
+
+    export interface InventoryAuditWhereInput {
+      id?: string;
+      warehouseId?: string;
+      status?: string;
+      createdAt?: { gte?: Date; lte?: Date; };
+      AND?: InventoryAuditWhereInput[];
+      OR?: InventoryAuditWhereInput[];
+      NOT?: InventoryAuditWhereInput[];
+    }
   }
 }

@@ -10,7 +10,7 @@ interface Product {
   id: string;
   name: string;
   sku: string;
-  sellPrice: any;
+  sellPrice: number | string;
   image?: string;
 }
 

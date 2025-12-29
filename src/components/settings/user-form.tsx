@@ -23,10 +23,17 @@ import { toast } from 'sonner';
 import { Role } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 
+interface User {
+  id: string;
+  name: string | null;
+  email: string;
+  role: Role;
+}
+
 interface UserFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user?: any; // User type
+  user?: User;
 }
 
 export function UserForm({ open, onOpenChange, user }: UserFormProps) {
@@ -67,7 +74,7 @@ export function UserForm({ open, onOpenChange, user }: UserFormProps) {
       router.refresh(); // Refresh the page to show updated user list
     } else {
       if (result.errors) {
-        Object.values(result.errors).forEach((error: any) => {
+        Object.values(result.errors).forEach((error) => {
           if (Array.isArray(error)) {
             error.forEach((msg) => toast.error(msg));
           } else {

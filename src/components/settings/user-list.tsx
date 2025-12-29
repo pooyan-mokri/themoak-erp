@@ -11,15 +11,23 @@ import { Role } from '@/lib/types';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
+interface User {
+  id: string;
+  name: string | null;
+  email: string;
+  role: Role;
+  createdAt: Date;
+}
+
 interface UserListProps {
-  users: any[];
+  users: User[];
 }
 
 export function UserList({ users }: UserListProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(undefined);
+  const [selectedUser, setSelectedUser] = useState<User | undefined>(undefined);
 
-  const handleEdit = (user: any) => {
+  const handleEdit = (user: User) => {
     setSelectedUser(user);
     setIsFormOpen(true);
   };

@@ -7,14 +7,21 @@ import Link from 'next/link';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
+interface PurchaseOrderItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitCost: number | string;
+}
+
 interface PurchaseOrder {
   id: string;
   number: number;
   supplier: { name: string };
-  totalAmount: any;
+  totalAmount: number | string;
   status: string;
   createdAt: Date;
-  items: any[];
+  items: PurchaseOrderItem[];
 }
 
 interface OrderListProps {

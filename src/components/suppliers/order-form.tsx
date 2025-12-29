@@ -49,11 +49,17 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
 
   useEffect(() => {
     // Load exchange rates
-    getLatestExchangeRates().then((rates: any[]) => {
+    interface ExchangeRate {
+      currency: string;
+      rateToToman: number | string;
+      date: Date;
+    }
+
+    getLatestExchangeRates().then((rates: ExchangeRate[]) => {
       const ratesMap: Record<string, number> = { TOMAN: 1 };
       // Group by currency and get the latest rate for each
-      const currencyGroups: Record<string, any[]> = {};
-      rates.forEach((rate: any) => {
+      const currencyGroups: Record<string, ExchangeRate[]> = {};
+      rates.forEach((rate) => {
         if (!currencyGroups[rate.currency]) {
           currencyGroups[rate.currency] = [];
         }
@@ -83,7 +89,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const updateItem = (index: number, field: string, value: any) => {
+  const updateItem = (index: number, field: string, value: string | number) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
@@ -97,7 +103,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
     setAdditionalCosts(additionalCosts.filter((_, i) => i !== index));
   };
 
-  const updateAdditionalCost = (index: number, field: string, value: any) => {
+  const updateAdditionalCost = (index: number, field: string, value: string | number) => {
     const newCosts = [...additionalCosts];
     newCosts[index] = { ...newCosts[index], [field]: value };
     setAdditionalCosts(newCosts);

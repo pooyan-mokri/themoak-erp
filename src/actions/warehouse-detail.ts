@@ -32,14 +32,14 @@ export async function getWarehouseDetail(warehouseId: string) {
     });
 
     // Calculate statistics
-    const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
+    const totalItems = inventory.reduce((sum: number, item) => sum + item.quantity, 0);
     const totalValue = inventory.reduce(
-  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
+      (sum: number, item) => sum + item.quantity * Number(item.product.costPrice),
       0
     );
     const uniqueProducts = inventory.length;
-    const itemsWithStock = inventory.filter((item: any) => item.quantity > 0).length;
-    const itemsOutOfStock = inventory.filter((item: any) => item.quantity === 0).length;
+    const itemsWithStock = inventory.filter((item) => item.quantity > 0).length;
+    const itemsOutOfStock = inventory.filter((item) => item.quantity === 0).length;
 
     // Get recent order items (sales)
     type OrderItemWithRelations = Prisma.OrderItemGetPayload<{
@@ -72,10 +72,10 @@ export async function getWarehouseDetail(warehouseId: string) {
         take: 50,
       });
       // Sort manually by order createdAt
-      recentOrderItems.sort((a: any, b: any) => 
+      recentOrderItems.sort((a, b) =>
         new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime()
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching order items:', err);
       recentOrderItems = [];
     }
@@ -83,9 +83,9 @@ export async function getWarehouseDetail(warehouseId: string) {
     // Filter order items that might be from this warehouse
     // (We can't directly link order items to warehouses, but we can show recent sales)
     const relevantOrderItems = recentOrderItems
-      .filter((item: any) => {
+      .filter((item) => {
         // Check if product exists in this warehouse inventory
-        return inventory.some((inv: any) => inv.productId === item.productId);
+        return inventory.some((inv) => inv.productId === item.productId);
       })
       .slice(0, 20);
 
@@ -120,18 +120,18 @@ export async function getWarehouseDetail(warehouseId: string) {
         take: 50,
       });
       // Sort manually by purchaseOrder createdAt
-      recentPurchaseItems.sort((a: any, b: any) => 
+      recentPurchaseItems.sort((a, b) =>
         new Date(b.purchaseOrder.createdAt).getTime() - new Date(a.purchaseOrder.createdAt).getTime()
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching purchase items:', err);
       recentPurchaseItems = [];
     }
 
     // Filter purchase items that might be to this warehouse
     const relevantPurchaseItems = recentPurchaseItems
-      .filter((item: any) => {
-        return inventory.some((inv: any) => inv.productId === item.productId);
+      .filter((item) => {
+        return inventory.some((inv) => inv.productId === item.productId);
       })
       .slice(0, 20);
 
@@ -147,14 +147,14 @@ export async function getWarehouseDetail(warehouseId: string) {
       },
       orderBy: { createdAt: 'desc' },
       take: 10,
-    }).catch((err: any) => {
+    }).catch((err) => {
       console.error('Error fetching audits:', err);
       return [];
     });
 
     // Format data
     const formattedInventory = inventory
-      .map((item: any) => {
+      .map((item) => {
         try {
           if (!item.product) {
             console.warn('Inventory item missing product:', item.productId);
@@ -170,15 +170,15 @@ export async function getWarehouseDetail(warehouseId: string) {
             totalValue: item.quantity * Number(item.product.costPrice),
             productType: item.product.productType,
           };
-        } catch (err: any) {
+        } catch (err) {
           console.error('Error formatting inventory item:', err, item);
           return undefined;
         }
       })
-      .filter((item: any): item is NonNullable<typeof item> => item !== null);
+      .filter((item): item is NonNullable<typeof item> => item !== null && item !== undefined);
 
     const formattedOrderItems = relevantOrderItems
-      .map((item: any) => {
+      .map((item) => {
         try {
           if (!item.product || !item.order) {
             return undefined;
@@ -194,15 +194,15 @@ export async function getWarehouseDetail(warehouseId: string) {
             orderDate: formatJalaliDateTime(item.order.createdAt),
             orderDateRaw: item.order.createdAt,
           };
-        } catch (err: any) {
+        } catch (err) {
           console.error('Error formatting order item:', err, item);
           return undefined;
         }
       })
-      .filter((item: any): item is NonNullable<typeof item> => item !== null);
+      .filter((item): item is NonNullable<typeof item> => item !== null && item !== undefined);
 
     const formattedPurchaseItems = relevantPurchaseItems
-      .map((item: any) => {
+      .map((item) => {
         try {
           if (!item.product || !item.purchaseOrder) {
             return undefined;
@@ -218,15 +218,15 @@ export async function getWarehouseDetail(warehouseId: string) {
             orderDate: formatJalaliDateTime(item.purchaseOrder.createdAt),
             orderDateRaw: item.purchaseOrder.createdAt,
           };
-        } catch (err: any) {
+        } catch (err) {
           console.error('Error formatting purchase item:', err, item);
           return undefined;
         }
       })
-      .filter((item: any): item is NonNullable<typeof item> => item !== null);
+      .filter((item): item is NonNullable<typeof item> => item !== null && item !== undefined);
 
     const formattedAudits = recentAudits
-      .map((audit: any) => {
+      .map((audit) => {
         try {
           return {
             id: audit.id,
@@ -235,22 +235,22 @@ export async function getWarehouseDetail(warehouseId: string) {
             createdAt: formatJalaliDateTime(audit.createdAt),
             createdAtRaw: audit.createdAt,
           };
-        } catch (err: any) {
+        } catch (err) {
           console.error('Error formatting audit:', err, audit);
           return undefined;
         }
       })
-      .filter((item: any): item is NonNullable<typeof item> => item !== null);
+      .filter((item): item is NonNullable<typeof item> => item !== null && item !== undefined);
 
     // Get low stock items
-    const lowStockItems = formattedInventory.filter((item: any) => {
+    const lowStockItems = formattedInventory.filter((item) => {
       // Items with quantity less than 10 or items that have been in stock for a while
       return item.quantity < 10 && item.quantity > 0;
     });
 
     // Get top products by value
     const topProductsByValue = [...formattedInventory]
-      .sort((a: any, b: any) => b.totalValue - a.totalValue)
+      .sort((a, b) => b.totalValue - a.totalValue)
       .slice(0, 10);
 
     return {
@@ -281,10 +281,12 @@ export async function getWarehouseDetail(warehouseId: string) {
       lowStockItems,
       topProductsByValue,
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching warehouse detail:', error);
-    console.error('Error stack:', error?.stack);
-    console.error('Error message:', error?.message);
+    if (error instanceof Error) {
+      console.error('Error stack:', error.stack);
+      console.error('Error message:', error.message);
+    }
     return undefined;
   }
 }
