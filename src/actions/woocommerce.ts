@@ -386,15 +386,19 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             console.log(`[PROCESS] پردازش سفارش جدید WooCommerce #${order.number} (ID: ${order.id})... (${processedCount}/${wooOrders.length})`);
             // 1. Find or Create Customer
             let customerId: string | undefined = undefined;
-            if (order.billing?.email) {
-                const existingCustomer = await prisma.customer.findFirst({
-                    where: { 
-                        OR: [
-                            { email: order.billing.email },
-                            { wooId: order.customer_id && order.customer_id !== 0 ? order.customer_id : undefined }
-                        ]
-                    }
-                });
+            if (order.billing?.email || order.billing?.phone || order.billing?.first_name) {
+                // Try to find existing customer by email or wooId
+                let existingCustomer = undefined;
+                if (order.billing?.email) {
+                    existingCustomer = await prisma.customer.findFirst({
+                        where: {
+                            OR: [
+                                { email: order.billing.email },
+                                { wooId: order.customer_id && order.customer_id !== 0 ? order.customer_id : undefined }
+                            ]
+                        }
+                    });
+                }
 
                 if (existingCustomer) {
                     customerId = existingCustomer.id;
@@ -406,18 +410,29 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             });
                     }
                 } else {
+                    // Generate customer name with priority: full name > email > phone > order number
+                    let customerName = `${order.billing.first_name || ''} ${order.billing.last_name || ''}`.trim();
+
+                    if (!customerName && order.billing.email) {
+                        customerName = order.billing.email;
+                    } else if (!customerName && order.billing.phone) {
+                        customerName = order.billing.phone;
+                    } else if (!customerName) {
+                        customerName = `مشتری سفارش #${order.number || order.id}`;
+                    }
+
                     const newCustomer = await prisma.customer.create({
                         data: {
-                            name: `${order.billing.first_name} ${order.billing.last_name}`.trim() || 'Guest',
-                            email: order.billing.email,
-                            phone: order.billing.phone,
+                            name: customerName,
+                            email: order.billing?.email || undefined,
+                            phone: order.billing?.phone || undefined,
                             address: [
-                                order.billing.address_1,
-                                order.billing.address_2,
-                                order.billing.city,
-                                order.billing.state,
-                                order.billing.postcode
-                            ].filter(Boolean).join(', '),
+                                order.billing?.address_1,
+                                order.billing?.address_2,
+                                order.billing?.city,
+                                order.billing?.state,
+                                order.billing?.postcode
+                            ].filter(Boolean).join(', ') || undefined,
                             wooId: order.customer_id && order.customer_id !== 0 ? order.customer_id : undefined
                         }
                     });
@@ -924,6 +939,101 @@ export async function syncOrders(): Promise<ActionResult<{
                 skipped: 0,
                 totalOrders: 0,
             }
+        };
+    }
+}
+
+// Update product price in WooCommerce
+export async function updateProductPriceInWooCommerce(productId: string, newPrice: number): Promise<ActionResult<{ updated: boolean }>> {
+    try {
+        // Get product from database
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            select: { wooId: true, name: true, sku: true }
+        });
+
+        if (!product || !product.wooId) {
+            return {
+                success: true,
+                message: 'محصول WooCommerce ID ندارد. فقط در سیستم ذخیره شد.',
+                data: { updated: false }
+            };
+        }
+
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update price in WooCommerce
+        await wooCommerce.put(`products/${product.wooId}`, {
+            regular_price: newPrice.toString()
+        });
+
+        console.log(`[WooCommerce] قیمت محصول ${product.name} (WooID: ${product.wooId}) به ${newPrice} تومان آپدیت شد`);
+
+        return {
+            success: true,
+            message: 'قیمت محصول در WooCommerce به‌روزرسانی شد.',
+            data: { updated: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error updating price in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در به‌روزرسانی قیمت در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { updated: false }
+        };
+    }
+}
+
+// Update product stock in WooCommerce
+export async function updateProductStockInWooCommerce(productId: string, warehouseId: string, newQuantity: number): Promise<ActionResult<{ updated: boolean }>> {
+    try {
+        // Get product from database
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            select: { wooId: true, name: true, sku: true }
+        });
+
+        if (!product || !product.wooId) {
+            return {
+                success: true,
+                message: 'محصول WooCommerce ID ندارد. فقط در سیستم ذخیره شد.',
+                data: { updated: false }
+            };
+        }
+
+        // Check if this is the WooCommerce warehouse
+        const wooWarehouseId = await getWooWarehouseId();
+        if (warehouseId !== wooWarehouseId) {
+            return {
+                success: true,
+                message: 'این انبار مربوط به WooCommerce نیست. فقط در سیستم ذخیره شد.',
+                data: { updated: false }
+            };
+        }
+
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update stock in WooCommerce
+        await wooCommerce.put(`products/${product.wooId}`, {
+            stock_quantity: newQuantity,
+            manage_stock: true
+        });
+
+        console.log(`[WooCommerce] موجودی محصول ${product.name} (WooID: ${product.wooId}) به ${newQuantity} عدد آپدیت شد`);
+
+        return {
+            success: true,
+            message: 'موجودی محصول در WooCommerce به‌روزرسانی شد.',
+            data: { updated: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error updating stock in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در به‌روزرسانی موجودی در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { updated: false }
         };
     }
 }
