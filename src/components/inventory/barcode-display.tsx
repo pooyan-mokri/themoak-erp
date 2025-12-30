@@ -37,10 +37,9 @@ export function BarcodeDisplay({ barcode, format }: BarcodeDisplayProps) {
           (window as any).JsBarcode(svgRef.current, barcode, {
             format: format,
             width: 2,
-            height: 80,
-            displayValue: true,
-            fontSize: 16,
-            margin: 10,
+            height: 60,
+            displayValue: false, // We display the value separately
+            margin: 0,
           });
         } catch (error) {
           console.error('Error rendering barcode:', error);
@@ -52,8 +51,8 @@ export function BarcodeDisplay({ barcode, format }: BarcodeDisplayProps) {
   }, [barcode, format]);
 
   return (
-    <div className="flex justify-center mb-4">
-      <svg ref={svgRef} className="max-w-full" style={{ minHeight: '100px' }}></svg>
+    <div className="flex justify-center w-full">
+      <svg ref={svgRef} className="w-full h-auto"></svg>
     </div>
   );
 }
