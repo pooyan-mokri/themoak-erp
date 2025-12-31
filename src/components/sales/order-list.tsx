@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, DollarSign, XCircle } from 'lucide-react';
+import { Eye, DollarSign, XCircle, Download } from 'lucide-react';
 import Link from 'next/link';
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
@@ -11,6 +11,7 @@ import { PaymentDialog } from './payment-dialog';
 import { cancelOrder } from '@/actions/sales';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import * as XLSX from 'xlsx';
 
 type Customer = {
   id: string;
@@ -106,6 +107,57 @@ export function OrderList({ orders }: OrderListProps) {
     } else {
       toast.error(result.message);
     }
+  };
+
+  const handleExportToExcel = () => {
+    // Prepare data for Excel
+    const excelData = orders.map((order) => ({
+      'شماره سفارش': order.number,
+      'مشتری': order.customer?.name || 'مشتری عمومی',
+      'مبلغ کل (تومان)': Number(order.totalAmount),
+      'تخفیف (تومان)': Number(order.discount || 0),
+      'مبلغ پرداختی (تومان)': Number(order.paidAmount || 0),
+      'باقیمانده (تومان)': Number(order.totalAmount) - Number(order.paidAmount || 0),
+      'وضعیت پرداخت': order.paymentStatus === 'PAID' ? 'پرداخت شده' :
+                      order.paymentStatus === 'PARTIAL' ? 'پرداخت جزئی' : 'پرداخت نشده',
+      'تعداد اقلام': order.items.reduce((acc, item) => acc + item.quantity, 0),
+      'وضعیت سفارش': order.status === 'COMPLETED' ? 'تکمیل شده' :
+                     order.status === 'CANCELLED' ? 'لغو شده' : 'در انتظار',
+      'تاریخ': formatJalaliDateTime(order.createdAt),
+      'منبع': order.wooId ? 'WooCommerce' : 'سیستم',
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // Set column widths
+    const colWidths = [
+      { wch: 12 }, // شماره سفارش
+      { wch: 20 }, // مشتری
+      { wch: 15 }, // مبلغ کل
+      { wch: 15 }, // تخفیف
+      { wch: 15 }, // مبلغ پرداختی
+      { wch: 15 }, // باقیمانده
+      { wch: 15 }, // وضعیت پرداخت
+      { wch: 12 }, // تعداد اقلام
+      { wch: 15 }, // وضعیت سفارش
+      { wch: 20 }, // تاریخ
+      { wch: 15 }, // منبع
+    ];
+    ws['!cols'] = colWidths;
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'سفارشات');
+
+    // Generate filename with current date
+    const now = new Date();
+    const filename = `سفارشات-${now.toLocaleDateString('fa-IR').replace(/\//g, '-')}.xlsx`;
+
+    // Download
+    XLSX.writeFile(wb, filename);
+
+    toast.success('فایل اکسل با موفقیت دانلود شد');
   };
 
   const columns: DataTableColumn<OrderWithDetails>[] = [
@@ -245,6 +297,17 @@ export function OrderList({ orders }: OrderListProps) {
 
   return (
     <>
+      <div className="flex justify-end mb-4">
+        <Button
+          onClick={handleExportToExcel}
+          variant="outline"
+          className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+        >
+          <Download className="ml-2 h-4 w-4" />
+          دانلود Excel
+        </Button>
+      </div>
+
       <DataTable
         data={orders}
         columns={columns}
