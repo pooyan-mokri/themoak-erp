@@ -30,6 +30,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { QuickCustomerForm } from './quick-customer-form';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ShoppingCart } from 'lucide-react';
 
 interface Product {
@@ -69,6 +70,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
   const [discount, setDiscount] = useState<string>('0');
   const [paidAmount, setPaidAmount] = useState<string>('');
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
+  const [isCreditSale, setIsCreditSale] = useState(false);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -112,31 +114,49 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
   const openCheckout = () => {
     setDiscount('0');
     setPaidAmount(totalAmount.toString());
+    setIsCreditSale(false);
     setIsCheckoutOpen(true);
   };
 
   // Update paidAmount when discount changes
   const handleDiscountChange = (value: string) => {
     setDiscount(value);
-    const discountVal = Number(value) || 0;
-    const newFinalAmount = totalAmount - discountVal;
-    // Auto-update paidAmount to match the new final amount after discount
-    // This ensures the paid amount reflects the discount
-    setPaidAmount(newFinalAmount.toString());
+    if (!isCreditSale) {
+      const discountVal = Number(value) || 0;
+      const newFinalAmount = totalAmount - discountVal;
+      // Auto-update paidAmount to match the new final amount after discount
+      // This ensures the paid amount reflects the discount
+      setPaidAmount(newFinalAmount.toString());
+    }
+  };
+
+  // Handle credit sale toggle
+  const handleCreditSaleChange = (checked: boolean) => {
+    setIsCreditSale(checked);
+    if (checked) {
+      // Credit sale: no payment now
+      setPaidAmount('0');
+    } else {
+      // Regular sale: full payment
+      setPaidAmount(finalAmount.toString());
+    }
   };
 
   const handleCheckout = async () => {
     if (!selectedCustomer) {
-      alert('لطفا مشتری را انتخاب کنید.');
-      return;
-    }
-    if (!selectedAccount) {
-      alert('لطفا حساب دریافت وجه را انتخاب کنید.');
+      toast.error('لطفا مشتری را انتخاب کنید.');
       return;
     }
 
     const discountVal = Number(discount) || 0;
     const paidVal = paidAmount === '' ? (totalAmount - discountVal) : Number(paidAmount);
+
+    // For credit sales or unpaid orders, account is optional
+    // For sales with payment, account is required
+    if (paidVal > 0 && !selectedAccount) {
+      toast.error('لطفا حساب دریافت وجه را انتخاب کنید.');
+      return;
+    }
 
     setIsSubmitting(true);
     const result = await createOrder({
@@ -291,8 +311,8 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
             </div>
 
             <div className="space-y-2">
-              <Label className="text-base md:text-sm">حساب دریافت وجه *</Label>
-              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+              <Label className="text-base md:text-sm">حساب دریافت وجه {paidAmount !== '0' && Number(paidAmount) > 0 ? '*' : ''}</Label>
+              <Select value={selectedAccount} onValueChange={setSelectedAccount} disabled={isCreditSale}>
                 <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
                   <SelectValue placeholder="انتخاب صندوق/بانک" />
                 </SelectTrigger>
@@ -304,6 +324,21 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center space-x-2 space-x-reverse bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-900">
+              <Checkbox
+                id="creditSale"
+                checked={isCreditSale}
+                onCheckedChange={handleCreditSaleChange}
+                className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+              />
+              <label
+                htmlFor="creditSale"
+                className="text-base md:text-sm font-medium leading-none cursor-pointer text-orange-900 dark:text-orange-100"
+              >
+                فروش نسیه (بدهکار کردن مشتری)
+              </label>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-4">
@@ -318,11 +353,12 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
               </div>
               <div className="space-y-2">
                 <Label className="text-base md:text-sm">مبلغ پرداختی</Label>
-                <Input 
-                  type="number" 
-                  value={paidAmount} 
+                <Input
+                  type="number"
+                  value={paidAmount}
                   placeholder={finalAmount.toString()}
                   onChange={(e) => setPaidAmount(e.target.value)}
+                  disabled={isCreditSale}
                   className="h-12 md:h-10 text-base md:text-sm"
                 />
               </div>

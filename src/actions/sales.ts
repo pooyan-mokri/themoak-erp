@@ -216,6 +216,79 @@ export async function getOrders() {
   }
 }
 
+// Record payment for an unpaid or partially paid order
+export async function recordOrderPayment(orderId: string, accountId: string, amount: number) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { customer: true },
+    });
+
+    if (!order) {
+      return { success: false, message: 'سفارش یافت نشد.' };
+    }
+
+    const currentPaid = Number(order.paidAmount);
+    const totalAmount = Number(order.totalAmount) - Number(order.discount);
+    const remainingDebt = totalAmount - currentPaid;
+
+    if (amount <= 0) {
+      return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
+    }
+
+    if (amount > remainingDebt) {
+      return { success: false, message: `مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString()} تومان) باشد.` };
+    }
+
+    await prisma.$transaction(async (tx: any) => {
+      // 1. Create Income Transaction
+      const customerName = order.customer?.name || 'مشتری';
+      const transaction = await tx.transaction.create({
+        data: {
+          amount,
+          currency: 'TOMAN',
+          rateSnapshot: 1,
+          amountInToman: amount,
+          type: TransactionType.INCOME,
+          accountId,
+          description: `دریافت بابت سفارش #${order.number} - مشتری: ${customerName}`,
+          category: 'Sales',
+          date: new Date(),
+        },
+      });
+
+      // 2. Update Account Balance
+      await tx.account.update({
+        where: { id: accountId },
+        data: {
+          balance: {
+            increment: amount,
+          },
+        },
+      });
+
+      // 3. Update Order Payment Status
+      const newPaidAmount = currentPaid + amount;
+      const newPaymentStatus = newPaidAmount >= totalAmount ? 'PAID' : 'PARTIAL';
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidAmount: newPaidAmount,
+          paymentStatus: newPaymentStatus,
+        },
+      });
+    });
+
+    revalidatePath('/dashboard/sales/history');
+    revalidatePath(`/dashboard/sales/history/${orderId}`);
+    return { success: true, message: 'پرداخت با موفقیت ثبت شد.' };
+  } catch (error: any) {
+    console.error('Error recording payment:', error);
+    return { success: false, message: error.message || 'خطا در ثبت پرداخت.' };
+  }
+}
+
 export async function getOrder(id: string) {
   try {
     const order = await prisma.order.findUnique({
