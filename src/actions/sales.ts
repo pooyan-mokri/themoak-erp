@@ -1,5 +1,12 @@
 'use server';
 
+/**
+ * Sales Actions - فروش و سفارشات
+ * - ایجاد سفارش
+ * - مدیریت پرداخت‌ها
+ * - لغو سفارشات
+ */
+
 import { TransactionType } from '@/lib/types';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
