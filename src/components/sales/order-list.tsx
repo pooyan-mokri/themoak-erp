@@ -137,11 +137,22 @@ export function OrderList({ orders }: OrderListProps) {
       key: 'status',
       label: 'وضعیت',
       sortable: true,
-      render: (order) => (
-        <Badge variant={order.status === 'COMPLETED' ? 'default' : 'secondary'}>
-          {order.status === 'COMPLETED' ? 'تکمیل شده' : order.status}
-        </Badge>
-      ),
+      render: (order) => {
+        const statusLabels: Record<string, string> = {
+          COMPLETED: 'تکمیل شده',
+          PENDING: 'در انتظار',
+          CANCELLED: 'لغو شده',
+        };
+        const variant =
+          order.status === 'COMPLETED' ? 'default' :
+          order.status === 'CANCELLED' ? 'destructive' :
+          'secondary';
+        return (
+          <Badge variant={variant}>
+            {statusLabels[order.status] || order.status}
+          </Badge>
+        );
+      },
     },
     {
       key: 'createdAt',
@@ -156,7 +167,9 @@ export function OrderList({ orders }: OrderListProps) {
       className: 'text-left',
       render: (order) => (
         <div className="flex items-center gap-2">
-          {(order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIAL') && (
+          {/* فقط برای سفارشات غیرلغوشده دکمه پرداخت نمایش داده می‌شود */}
+          {(order.paymentStatus === 'UNPAID' || order.paymentStatus === 'PARTIAL') &&
+           order.status !== 'CANCELLED' && (
             <Button
               variant="outline"
               size="sm"

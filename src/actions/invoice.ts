@@ -315,11 +315,13 @@ export async function getARAgingReport() {
     });
 
     // Also get orders without invoices that have unpaid/partial status
+    // BUT exclude CANCELLED orders (refunded, cancelled, failed in WooCommerce)
     const ordersWithoutInvoice = await prisma.order.findMany({
       where: {
         invoiceId: null,
         customerId: { not: null },
-        paymentStatus: { in: ['UNPAID', 'PARTIAL'] }
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        status: { not: 'CANCELLED' } // سفارشات لغو شده طلبکار نیستند
       },
       include: {
         customer: true
