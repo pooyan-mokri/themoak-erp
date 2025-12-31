@@ -937,6 +937,129 @@ export async function syncOrders(): Promise<ActionResult<{
     }
 }
 
+// Update product price in WooCommerce
+export async function updateProductPriceInWooCommerce(productId: string, newPrice: number): Promise<ActionResult<{ updated: boolean }>> {
+    try {
+        // Get product from database
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            select: { wooId: true, name: true, sku: true }
+        });
+
+        if (!product || !product.wooId) {
+            return {
+                success: true,
+                message: 'محصول WooCommerce ID ندارد. فقط در سیستم ذخیره شد.',
+                data: { updated: false }
+            };
+        }
+
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update price in WooCommerce
+        await wooCommerce.put(`products/${product.wooId}`, {
+            regular_price: newPrice.toString()
+        });
+
+        console.log(`[WooCommerce] قیمت محصول ${product.name} (WooID: ${product.wooId}) به ${newPrice} تومان آپدیت شد`);
+
+        return {
+            success: true,
+            message: 'قیمت محصول در WooCommerce به‌روزرسانی شد.',
+            data: { updated: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error updating price in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در به‌روزرسانی قیمت در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { updated: false }
+        };
+    }
+}
+
+// Update product stock in WooCommerce
+export async function updateProductStockInWooCommerce(productId: string, warehouseId: string, newQuantity: number): Promise<ActionResult<{ updated: boolean }>> {
+    try {
+        // Get product from database
+        const product = await prisma.product.findUnique({
+            where: { id: productId },
+            select: { wooId: true, name: true, sku: true }
+        });
+
+        if (!product || !product.wooId) {
+            return {
+                success: true,
+                message: 'محصول WooCommerce ID ندارد. فقط در سیستم ذخیره شد.',
+                data: { updated: false }
+            };
+        }
+
+        // Check if this is the WooCommerce warehouse
+        const wooWarehouseId = await getWooWarehouseId();
+        if (warehouseId !== wooWarehouseId) {
+            return {
+                success: true,
+                message: 'این انبار مربوط به WooCommerce نیست. فقط در سیستم ذخیره شد.',
+                data: { updated: false }
+            };
+        }
+
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update stock in WooCommerce
+        await wooCommerce.put(`products/${product.wooId}`, {
+            stock_quantity: newQuantity,
+            manage_stock: true
+        });
+
+        console.log(`[WooCommerce] موجودی محصول ${product.name} (WooID: ${product.wooId}) به ${newQuantity} عدد آپدیت شد`);
+
+        return {
+            success: true,
+            message: 'موجودی محصول در WooCommerce به‌روزرسانی شد.',
+            data: { updated: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error updating stock in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در به‌روزرسانی موجودی در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { updated: false }
+        };
+    }
+}
+
+// Cancel order in WooCommerce
+export async function cancelOrderInWooCommerce(wooOrderId: number): Promise<ActionResult<{ cancelled: boolean }>> {
+    try {
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update order status to cancelled in WooCommerce
+        await wooCommerce.put(`orders/${wooOrderId}`, {
+            status: 'cancelled'
+        });
+
+        console.log(`[WooCommerce] سفارش با ID ${wooOrderId} در WooCommerce لغو شد`);
+
+        return {
+            success: true,
+            message: 'سفارش در WooCommerce لغو شد.',
+            data: { cancelled: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error cancelling order in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در لغو سفارش در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { cancelled: false }
+        };
+    }
+}
+
 // Debug function to check product matching
 export async function debugProductMatching(): Promise<ActionResult<{
   orderInfo?: {

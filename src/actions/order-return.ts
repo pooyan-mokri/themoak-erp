@@ -168,6 +168,27 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       }
     });
 
+    // 8. Cancel order in WooCommerce if it came from WooCommerce
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { wooId: true, number: true },
+    });
+
+    if (order?.wooId) {
+      try {
+        const { cancelOrderInWooCommerce } = await import('./woocommerce');
+        const result = await cancelOrderInWooCommerce(order.wooId);
+        if (result.success) {
+          console.log(`[Return] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
+        } else {
+          console.warn(`[Return] خطا در لغو سفارش در WooCommerce: ${result.message}`);
+        }
+      } catch (error) {
+        console.error('[Return] خطا در لغو سفارش در WooCommerce:', error);
+        // Don't fail the return process if WooCommerce cancellation fails
+      }
+    }
+
     revalidatePath('/dashboard/sales/history');
     revalidatePath(`/dashboard/sales/history/${orderId}`);
     return {

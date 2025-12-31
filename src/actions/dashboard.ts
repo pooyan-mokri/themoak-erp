@@ -23,23 +23,29 @@ export async function getDashboardFinancials() {
     
     const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
-    // Total Receivables (simplified - sum all non-cancelled orders)
-    // Note: In production, this should track actual unpaid amounts
+    // Total Receivables (actual unpaid amounts from orders)
     const allOrders = await prisma.order.findMany({
       where: {
         status: {
           not: 'CANCELLED'
+        },
+        paymentStatus: {
+          in: ['UNPAID', 'PARTIAL']
         }
       },
       select: {
-        totalAmount: true
+        totalAmount: true,
+        discount: true,
+        paidAmount: true
       }
     });
-    
-    // Estimate 30% of total orders are receivables
+
+    // Calculate actual receivables: (totalAmount - discount) - paidAmount
     const totalReceivables = allOrders.reduce((sum: any, order: any) => {
-      return sum + Number(order.totalAmount);
-    }, 0) * 0.3;
+      const orderTotal = Number(order.totalAmount) - Number(order.discount || 0);
+      const unpaid = orderTotal - Number(order.paidAmount || 0);
+      return sum + (unpaid > 0 ? unpaid : 0);
+    }, 0);
 
     // Total Payables (received purchase orders - simplified)
     const purchaseOrders = await prisma.purchaseOrder.findMany({
