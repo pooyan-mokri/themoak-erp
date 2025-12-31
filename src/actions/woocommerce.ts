@@ -1489,6 +1489,7 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
 /**
  * Force sync: دریافت مجدد تمام سفارشات از WooCommerce و به‌روزرسانی وضعیت پرداخت
  * این تابع ساده‌تر و مطمئن‌تر است و همه status ها را پشتیبانی می‌کند
+ * بهینه‌سازی شده با batch fetching برای جلوگیری از timeout
  */
 export async function forceSyncOrderStatus(): Promise<ActionResult<{
   synced: number;
@@ -1517,6 +1518,43 @@ export async function forceSyncOrderStatus(): Promise<ActionResult<{
 
     console.log(`[FORCE-SYNC] ${ordersInDb.length} سفارش از WooCommerce در دیتابیس یافت شد`);
 
+    // Fetch ALL orders from WooCommerce in batches (much faster than individual requests)
+    console.log('[FORCE-SYNC] در حال دریافت تمام سفارشات از WooCommerce...');
+    const allWooOrders: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await wooCommerce.get('orders', {
+        per_page: perPage,
+        page: page,
+      });
+
+      const orders = response.data;
+      if (orders && orders.length > 0) {
+        allWooOrders.push(...orders);
+        console.log(`[FORCE-SYNC] صفحه ${page}: ${orders.length} سفارش دریافت شد`);
+
+        // Check if there are more pages
+        if (orders.length < perPage) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    console.log(`[FORCE-SYNC] مجموع ${allWooOrders.length} سفارش از WooCommerce دریافت شد`);
+
+    // Create a map for fast lookup
+    const wooOrdersMap = new Map<number, any>();
+    for (const wooOrder of allWooOrders) {
+      wooOrdersMap.set(wooOrder.id, wooOrder);
+    }
+
     let syncedCount = 0;
     const statusCounts = {
       pending: 0,
@@ -1527,14 +1565,17 @@ export async function forceSyncOrderStatus(): Promise<ActionResult<{
       other: 0,
     };
 
-    // For each order, get its current status from WooCommerce and update
+    // Now update database orders based on WooCommerce status
     for (const order of ordersInDb) {
       try {
-        // Get current order from WooCommerce
-        const wooOrderResponse = await wooCommerce.get(`orders/${order.wooId}`);
-        const wooOrder = wooOrderResponse.data;
-        const currentStatus = wooOrder.status;
+        const wooOrder = wooOrdersMap.get(order.wooId!);
 
+        if (!wooOrder) {
+          console.log(`[FORCE-SYNC] سفارش #${order.number} (wooId: ${order.wooId}) در WooCommerce یافت نشد - احتمالا حذف شده`);
+          continue;
+        }
+
+        const currentStatus = wooOrder.status;
         console.log(`[FORCE-SYNC] سفارش #${order.number} - WooCommerce status: ${currentStatus}`);
 
         // Determine correct status and payment status based on WooCommerce status
