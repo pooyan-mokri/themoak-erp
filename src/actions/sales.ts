@@ -492,6 +492,11 @@ export async function cancelOrder(orderId: string): Promise<{
       }
     }
 
+    // Revalidate relevant paths to update the UI
+    revalidatePath('/dashboard/sales/history');
+    revalidatePath('/dashboard/sales');
+    revalidatePath('/dashboard/reports/ar-aging');
+
     return {
       success: true,
       message: `سفارش #${order.number} با موفقیت لغو شد.`,
