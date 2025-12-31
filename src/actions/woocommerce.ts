@@ -1350,16 +1350,20 @@ export async function performAutoSync(): Promise<ActionResult<{
 }
 
 /**
- * تصحیح وضعیت پرداخت سفارشات قدیمی براساس وجود transaction
+ * تصحیح وضعیت پرداخت سفارشات قدیمی براساس وضعیت آنها در WooCommerce
  * این تابع سفارشاتی که از WooCommerce آمده‌اند را بررسی می‌کند و
- * اگر transaction ندارند، paymentStatus آنها را به UNPAID تغییر می‌دهد
+ * paymentStatus آنها را براساس وضعیت فعلی در WooCommerce به‌روز می‌کند
  */
 export async function fixOldPendingOrders(): Promise<ActionResult<{
   fixed: number;
   checked: number;
+  errors: number;
 }>> {
   try {
     console.log('[FIX-PENDING] شروع تصحیح سفارشات pending قدیمی...');
+
+    // Get WooCommerce client
+    const wooCommerce = await getWooCommerceClient();
 
     // Get all orders that came from WooCommerce
     const ordersFromWoo = await prisma.order.findMany({
@@ -1375,19 +1379,23 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
 
     let fixedCount = 0;
     let checkedCount = 0;
+    let errorCount = 0;
 
     for (const order of ordersFromWoo) {
       try {
         checkedCount++;
 
-        // If order has a transaction, it means it was completed and paid
-        // If order has no transaction, it should be UNPAID
-        const hasTransaction = !!order.transaction;
-        const correctPaymentStatus = hasTransaction ? 'PAID' : 'UNPAID';
-        const correctPaidAmount = hasTransaction ? order.totalAmount : 0;
-        const correctStatus = hasTransaction ? 'COMPLETED' : 'PENDING';
+        // Get current status from WooCommerce
+        const wooOrder = await wooCommerce.get(`orders/${order.wooId}`);
+        const currentStatus = wooOrder.data.status;
 
-        console.log(`[FIX-PENDING] بررسی سفارش #${order.number}: hasTransaction=${hasTransaction}, currentStatus=${order.paymentStatus}`);
+        console.log(`[FIX-PENDING] بررسی سفارش #${order.number} (WooCommerce status: ${currentStatus})`);
+
+        // Determine correct payment status based on WooCommerce status
+        const shouldBePaid = currentStatus === 'completed';
+        const correctPaymentStatus = shouldBePaid ? 'PAID' : 'UNPAID';
+        const correctPaidAmount = shouldBePaid ? order.totalAmount : 0;
+        const correctStatus = shouldBePaid ? 'COMPLETED' : 'PENDING';
 
         // Check if needs fixing
         if (order.paymentStatus !== correctPaymentStatus ||
@@ -1407,6 +1415,7 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
           fixedCount++;
         }
       } catch (error: any) {
+        errorCount++;
         console.error(`[FIX-PENDING] خطا در بررسی سفارش #${order.number}:`, error.message);
         // Continue with next order
       }
@@ -1414,12 +1423,25 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
 
     console.log(`[FIX-PENDING] تصحیح کامل شد: ${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش بررسی شده`);
 
+    if (errorCount > 0) {
+      return {
+        success: true,
+        message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش. ${errorCount} خطا در اتصال به WooCommerce.`,
+        data: {
+          fixed: fixedCount,
+          checked: checkedCount,
+          errors: errorCount,
+        },
+      };
+    }
+
     return {
       success: true,
       message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش بررسی شده`,
       data: {
         fixed: fixedCount,
         checked: checkedCount,
+        errors: 0,
       },
     };
   } catch (error: unknown) {
@@ -1427,7 +1449,7 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
     console.error('[FIX-PENDING] خطا در تصحیح سفارشات:', error);
     return {
       success: false,
-      message: `خطا در تصحیح سفارشات: ${errorObj.message || 'خطای نامشخص'}`,
+      message: `خطا در تصحیح سفارشات: ${errorObj.message || 'خطای نامشخص'}. لطفا تنظیمات WooCommerce را بررسی کنید.`,
     };
   }
 }
