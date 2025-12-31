@@ -35,15 +35,14 @@ export async function getDashboardFinancials() {
       },
       select: {
         totalAmount: true,
-        discount: true,
         paidAmount: true
       }
     });
 
-    // Calculate actual receivables: (totalAmount - discount) - paidAmount
+    // Calculate actual receivables: totalAmount - paidAmount
+    // توجه: totalAmount در WooCommerce قبلاً تخفیف را کم کرده است، پس نباید دوباره کم کنیم
     const totalReceivables = allOrders.reduce((sum: any, order: any) => {
-      const orderTotal = Number(order.totalAmount) - Number(order.discount || 0);
-      const unpaid = orderTotal - Number(order.paidAmount || 0);
+      const unpaid = Number(order.totalAmount) - Number(order.paidAmount || 0);
       return sum + (unpaid > 0 ? unpaid : 0);
     }, 0);
 
