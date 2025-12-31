@@ -304,6 +304,7 @@ export async function recordInvoicePayment(invoiceId: string, amount: number, ac
 
 export async function getARAgingReport() {
   try {
+    // Get invoices with unpaid/partial status
     const invoices = await prisma.invoice.findMany({
       where: {
         status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] }
@@ -313,11 +314,24 @@ export async function getARAgingReport() {
       }
     });
 
+    // Also get orders without invoices that have unpaid/partial status
+    const ordersWithoutInvoice = await prisma.order.findMany({
+      where: {
+        invoiceId: null,
+        customerId: { not: null },
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] }
+      },
+      include: {
+        customer: true
+      }
+    });
+
     const today = new Date();
-    
+
     // Group by customer and calculate buckets
     const customerBuckets: Record<string, any> = {};
 
+    // Process invoices
     for (const invoice of invoices) {
       const customerId = invoice.customerId;
       const balance = Number(invoice.total) - Number(invoice.paidAmount);
@@ -326,6 +340,45 @@ export async function getARAgingReport() {
       if (!customerBuckets[customerId]) {
         customerBuckets[customerId] = {
           customerName: invoice.customer.name,
+          totalDue: 0,
+          current: 0,
+          days1_30: 0,
+          days31_60: 0,
+          days61_90: 0,
+          days90Plus: 0,
+        };
+      }
+
+      customerBuckets[customerId].totalDue += balance;
+
+      if (daysPastDue <= 0) {
+        customerBuckets[customerId].current += balance;
+      } else if (daysPastDue <= 30) {
+        customerBuckets[customerId].days1_30 += balance;
+      } else if (daysPastDue <= 60) {
+        customerBuckets[customerId].days31_60 += balance;
+      } else if (daysPastDue <= 90) {
+        customerBuckets[customerId].days61_90 += balance;
+      } else {
+        customerBuckets[customerId].days90Plus += balance;
+      }
+    }
+
+    // Process orders without invoices
+    for (const order of ordersWithoutInvoice) {
+      if (!order.customerId || !order.customer) continue;
+
+      const customerId = order.customerId;
+      const balance = Number(order.totalAmount) - Number(order.discount) - Number(order.paidAmount);
+
+      if (balance <= 0) continue; // Skip if no balance due
+
+      // Use order creation date for aging since there's no due date
+      const daysPastDue = Math.floor((today.getTime() - order.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (!customerBuckets[customerId]) {
+        customerBuckets[customerId] = {
+          customerName: order.customer.name,
           totalDue: 0,
           current: 0,
           days1_30: 0,
