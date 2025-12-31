@@ -1350,9 +1350,9 @@ export async function performAutoSync(): Promise<ActionResult<{
 }
 
 /**
- * تصحیح وضعیت پرداخت سفارشات قدیمی براساس وضعیت آنها در WooCommerce
+ * تصحیح وضعیت پرداخت سفارشات قدیمی براساس وجود transaction
  * این تابع سفارشاتی که از WooCommerce آمده‌اند را بررسی می‌کند و
- * paymentStatus آنها را براساس وضعیت فعلی در WooCommerce به‌روز می‌کند
+ * اگر transaction ندارند، paymentStatus آنها را به UNPAID تغییر می‌دهد
  */
 export async function fixOldPendingOrders(): Promise<ActionResult<{
   fixed: number;
@@ -1360,9 +1360,6 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
 }>> {
   try {
     console.log('[FIX-PENDING] شروع تصحیح سفارشات pending قدیمی...');
-
-    // Get WooCommerce client
-    const wooCommerce = await getWooCommerceClient();
 
     // Get all orders that came from WooCommerce
     const ordersFromWoo = await prisma.order.findMany({
@@ -1383,19 +1380,19 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
       try {
         checkedCount++;
 
-        // Get current status from WooCommerce
-        const wooOrder = await wooCommerce.get(`orders/${order.wooId}`);
-        const currentStatus = wooOrder.data.status;
+        // If order has a transaction, it means it was completed and paid
+        // If order has no transaction, it should be UNPAID
+        const hasTransaction = !!order.transaction;
+        const correctPaymentStatus = hasTransaction ? 'PAID' : 'UNPAID';
+        const correctPaidAmount = hasTransaction ? order.totalAmount : 0;
+        const correctStatus = hasTransaction ? 'COMPLETED' : 'PENDING';
 
-        console.log(`[FIX-PENDING] بررسی سفارش #${order.number} (WooCommerce status: ${currentStatus})`);
-
-        // Determine correct payment status
-        const shouldBePaid = currentStatus === 'completed';
-        const correctPaymentStatus = shouldBePaid ? 'PAID' : 'UNPAID';
-        const correctPaidAmount = shouldBePaid ? order.totalAmount : 0;
+        console.log(`[FIX-PENDING] بررسی سفارش #${order.number}: hasTransaction=${hasTransaction}, currentStatus=${order.paymentStatus}`);
 
         // Check if needs fixing
-        if (order.paymentStatus !== correctPaymentStatus || order.paidAmount.toString() !== correctPaidAmount.toString()) {
+        if (order.paymentStatus !== correctPaymentStatus ||
+            order.paidAmount.toString() !== correctPaidAmount.toString() ||
+            order.status !== correctStatus) {
           console.log(`[FIX-PENDING] تصحیح سفارش #${order.number}: ${order.paymentStatus} -> ${correctPaymentStatus}`);
 
           await prisma.order.update({
@@ -1403,7 +1400,7 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
             data: {
               paymentStatus: correctPaymentStatus,
               paidAmount: new Prisma.Decimal(correctPaidAmount),
-              status: shouldBePaid ? 'COMPLETED' : 'PENDING',
+              status: correctStatus,
             },
           });
 
