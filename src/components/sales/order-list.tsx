@@ -3,11 +3,14 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, DollarSign } from 'lucide-react';
+import { Eye, DollarSign, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 import { PaymentDialog } from './payment-dialog';
+import { cancelOrder } from '@/actions/sales';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 type Customer = {
   id: string;
@@ -76,10 +79,33 @@ interface OrderListProps {
 export function OrderList({ orders }: OrderListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const router = useRouter();
 
   const handlePaymentClick = (order: OrderWithDetails) => {
     setSelectedOrder(order);
     setIsPaymentDialogOpen(true);
+  };
+
+  const handleCancelOrder = async (order: OrderWithDetails) => {
+    // Confirm with user
+    const confirmed = window.confirm(
+      `آیا مطمئن هستید که می‌خواهید سفارش #${order.number} را لغو کنید؟\n\n` +
+      `این عملیات:\n` +
+      `- وضعیت سفارش را به "لغو شده" تغییر می‌دهد\n` +
+      `- پرداخت‌ها را لغو و موجودی حساب را بازگردانی می‌کند\n` +
+      (order.wooId ? `- سفارش را در WooCommerce هم لغو می‌کند\n` : '')
+    );
+
+    if (!confirmed) return;
+
+    const result = await cancelOrder(order.id);
+
+    if (result.success) {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
   };
 
   const columns: DataTableColumn<OrderWithDetails>[] = [
@@ -200,6 +226,18 @@ export function OrderList({ orders }: OrderListProps) {
               جزئیات
             </Button>
           </Link>
+          {/* دکمه لغو فقط برای سفارشات غیرلغوشده */}
+          {order.status !== 'CANCELLED' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCancelOrder(order)}
+              className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              لغو
+            </Button>
+          )}
         </div>
       ),
     },

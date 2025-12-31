@@ -396,3 +396,109 @@ export async function getOrder(id: string) {
     return undefined;
   }
 }
+
+/**
+ * لغو (حذف) سفارش
+ * - اگر از WooCommerce باشد، در WooCommerce هم لغو می‌شود
+ * - اگر transaction داشته باشد، transaction حذف می‌شود
+ * - موجودی حساب بازگردانده می‌شود
+ */
+export async function cancelOrder(orderId: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  try {
+    // Get order with all relations
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        transaction: {
+          include: {
+            account: true,
+          },
+        },
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return { success: false, message: 'سفارش یافت نشد.' };
+    }
+
+    // Check if already cancelled
+    if (order.status === 'CANCELLED') {
+      return { success: false, message: 'این سفارش قبلاً لغو شده است.' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. If order has transaction, delete it and restore account balance
+      if (order.transactionId && order.transaction) {
+        const transaction = order.transaction;
+
+        // Restore account balance
+        // If transaction was income (type = INCOME), subtract from balance
+        // If transaction was expense (type = EXPENSE), add to balance
+        const balanceChange = transaction.type === 'INCOME'
+          ? -Number(transaction.amount)
+          : Number(transaction.amount);
+
+        await tx.account.update({
+          where: { id: transaction.accountId },
+          data: {
+            balance: {
+              increment: balanceChange,
+            },
+          },
+        });
+
+        // Delete transaction
+        await tx.transaction.delete({
+          where: { id: transaction.id },
+        });
+      }
+
+      // 2. Update order status to CANCELLED
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: 'UNPAID',
+          paidAmount: 0,
+          transactionId: null,
+        },
+      });
+    });
+
+    // 3. If order is from WooCommerce, cancel it there too
+    if (order.wooId) {
+      try {
+        const { getWooCommerceClient } = await import('./woocommerce');
+        const wooCommerce = await getWooCommerceClient();
+
+        await wooCommerce.put(`orders/${order.wooId}`, {
+          status: 'cancelled',
+        });
+
+        console.log(`[CANCEL-ORDER] سفارش WooCommerce #${order.wooId} لغو شد`);
+      } catch (wooError) {
+        console.error('[CANCEL-ORDER] خطا در لغو سفارش در WooCommerce:', wooError);
+        // Don't fail the whole operation if WooCommerce update fails
+      }
+    }
+
+    return {
+      success: true,
+      message: `سفارش #${order.number} با موفقیت لغو شد.`,
+    };
+  } catch (error) {
+    console.error('Error cancelling order:', error);
+    return {
+      success: false,
+      message: 'خطا در لغو سفارش.',
+    };
+  }
+}
