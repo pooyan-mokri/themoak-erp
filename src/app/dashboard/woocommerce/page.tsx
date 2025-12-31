@@ -120,6 +120,10 @@ export default function WooCommercePage() {
     setIsAutoSyncing(true);
     try {
       const result = await performAutoSync();
+      if (!result) {
+        toast.error('خطا: پاسخی از سرور دریافت نشد');
+        return;
+      }
       if (result.success) {
         toast.success(result.message);
         // Reload settings to get updated lastSyncAt
@@ -144,6 +148,10 @@ export default function WooCommercePage() {
         enabled: autoSyncEnabled,
         intervalMinutes: autoSyncInterval,
       });
+      if (!result) {
+        toast.error('خطا: پاسخی از سرور دریافت نشد');
+        return;
+      }
       if (result.success) {
         toast.success(result.message);
       } else {
@@ -161,6 +169,10 @@ export default function WooCommercePage() {
     setIsFixingOrders(true);
     try {
       const result = await fixOldPendingOrders();
+      if (!result) {
+        toast.error('خطا: پاسخی از سرور دریافت نشد');
+        return;
+      }
       if (result.success) {
         toast.success(result.message);
         router.refresh();
