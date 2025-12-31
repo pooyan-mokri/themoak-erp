@@ -386,9 +386,70 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             });
 
             if (existingOrder) {
-                // Check if there are missing items that can now be added
-                console.log(`[PROCESS] 🔄 سفارش WooCommerce #${order.number} (ID: ${order.id}) قبلا ثبت شده - بررسی آیتم‌های گمشده...`);
+                console.log(`[PROCESS] 🔄 سفارش WooCommerce #${order.number} (ID: ${order.id}) قبلا ثبت شده - بررسی تغییرات...`);
 
+                // Check if order status changed from pending to completed
+                const wasNotCompleted = existingOrder.status !== 'COMPLETED';
+                const isNowCompleted = order.status === 'completed';
+                const needsCompletion = wasNotCompleted && isNowCompleted;
+
+                if (needsCompletion) {
+                    console.log(`[PROCESS] 🎯 سفارش #${order.number} از ${existingOrder.status} به completed تغییر کرد - ایجاد تراکنش...`);
+
+                    try {
+                        await prisma.$transaction(async (tx) => {
+                            const orderTotal = Number(order.total) || 0;
+
+                            // Create transaction
+                            const transaction = await tx.transaction.create({
+                                data: {
+                                    type: TransactionType.INCOME,
+                                    amount: new Prisma.Decimal(orderTotal),
+                                    currency: 'TOMAN',
+                                    rateSnapshot: new Prisma.Decimal(1),
+                                    amountInToman: new Prisma.Decimal(orderTotal),
+                                    description: `سفارش WooCommerce #${order.number} - تکمیل شده`,
+                                    category: 'Sales',
+                                    accountId: account.id,
+                                    wooId: order.id,
+                                    wooStatus: order.status || 'completed',
+                                    date: new Date(order.date_created || Date.now())
+                                }
+                            });
+
+                            // Update order to completed
+                            await tx.order.update({
+                                where: { id: existingOrder.id },
+                                data: {
+                                    status: 'COMPLETED',
+                                    paymentStatus: 'PAID',
+                                    paidAmount: new Prisma.Decimal(orderTotal),
+                                    transactionId: transaction.id
+                                }
+                            });
+
+                            // Update account balance
+                            await tx.account.update({
+                                where: { id: account.id },
+                                data: {
+                                    balance: {
+                                        increment: new Prisma.Decimal(orderTotal)
+                                    }
+                                }
+                            });
+                        });
+
+                        console.log(`[PROCESS] ✅ سفارش #${order.number} تکمیل شد و تراکنش ایجاد شد`);
+                        updatedCount++;
+                        skippedCount++;
+                        existingOrdersCount++;
+                        continue;
+                    } catch (completionError) {
+                        console.error(`[PROCESS] ❌ خطا در تکمیل سفارش #${order.number}:`, completionError);
+                    }
+                }
+
+                // Check if there are missing items that can now be added
                 let addedMissingItems = false;
 
                 try {
