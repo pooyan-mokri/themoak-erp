@@ -108,6 +108,19 @@ export function OrderList({ orders }: OrderListProps) {
       render: (order) => `${Number(order.paidAmount || 0).toLocaleString('fa-IR')} تومان`,
     },
     {
+      key: 'remainingAmount',
+      label: 'باقیمانده',
+      sortable: true,
+      render: (order) => {
+        const remaining = Number(order.totalAmount) - Number(order.discount || 0) - Number(order.paidAmount || 0);
+        return (
+          <span className={remaining > 0 ? 'text-red-600 font-semibold' : 'text-green-600'}>
+            {remaining.toLocaleString('fa-IR')} تومان
+          </span>
+        );
+      },
+    },
+    {
       key: 'paymentStatus',
       label: 'وضعیت پرداخت',
       sortable: true,

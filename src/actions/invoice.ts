@@ -304,21 +304,10 @@ export async function recordInvoicePayment(invoiceId: string, amount: number, ac
 
 export async function getARAgingReport() {
   try {
-    // Get invoices with unpaid/partial status
-    const invoices = await prisma.invoice.findMany({
+    // Get all orders with unpaid/partial payment status (excluding CANCELLED)
+    // این همان منبع اطلاعات تاریخچه فروش است - باید یکسان باشند
+    const orders = await prisma.order.findMany({
       where: {
-        status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] }
-      },
-      include: {
-        customer: true
-      }
-    });
-
-    // Also get orders without invoices that have unpaid/partial status
-    // BUT exclude CANCELLED orders (refunded, cancelled, failed in WooCommerce)
-    const ordersWithoutInvoice = await prisma.order.findMany({
-      where: {
-        invoiceId: null,
         customerId: { not: null },
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         status: { not: 'CANCELLED' } // سفارشات لغو شده طلبکار نیستند
@@ -333,49 +322,18 @@ export async function getARAgingReport() {
     // Group by customer and calculate buckets
     const customerBuckets: Record<string, any> = {};
 
-    // Process invoices
-    for (const invoice of invoices) {
-      const customerId = invoice.customerId;
-      const balance = Number(invoice.total) - Number(invoice.paidAmount);
-      const daysPastDue = Math.floor((today.getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (!customerBuckets[customerId]) {
-        customerBuckets[customerId] = {
-          customerName: invoice.customer.name,
-          totalDue: 0,
-          current: 0,
-          days1_30: 0,
-          days31_60: 0,
-          days61_90: 0,
-          days90Plus: 0,
-        };
-      }
-
-      customerBuckets[customerId].totalDue += balance;
-
-      if (daysPastDue <= 0) {
-        customerBuckets[customerId].current += balance;
-      } else if (daysPastDue <= 30) {
-        customerBuckets[customerId].days1_30 += balance;
-      } else if (daysPastDue <= 60) {
-        customerBuckets[customerId].days31_60 += balance;
-      } else if (daysPastDue <= 90) {
-        customerBuckets[customerId].days61_90 += balance;
-      } else {
-        customerBuckets[customerId].days90Plus += balance;
-      }
-    }
-
-    // Process orders without invoices
-    for (const order of ordersWithoutInvoice) {
+    // Process all orders
+    for (const order of orders) {
       if (!order.customerId || !order.customer) continue;
 
       const customerId = order.customerId;
-      const balance = Number(order.totalAmount) - Number(order.discount) - Number(order.paidAmount);
+
+      // محاسبه بدهی واقعی: کل مبلغ - تخفیف - مبلغ پرداختی
+      const balance = Number(order.totalAmount) - Number(order.discount || 0) - Number(order.paidAmount || 0);
 
       if (balance <= 0) continue; // Skip if no balance due
 
-      // Use order creation date for aging since there's no due date
+      // Use order creation date for aging
       const daysPastDue = Math.floor((today.getTime() - order.createdAt.getTime()) / (1000 * 60 * 60 * 24));
 
       if (!customerBuckets[customerId]) {
