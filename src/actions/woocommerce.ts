@@ -1363,7 +1363,22 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
     console.log('[FIX-PENDING] شروع تصحیح سفارشات pending قدیمی...');
 
     // Get WooCommerce client
-    const wooCommerce = await getWooCommerceClient();
+    let wooCommerce;
+    try {
+      wooCommerce = await getWooCommerceClient();
+      console.log('[FIX-PENDING] اتصال به WooCommerce برقرار شد');
+    } catch (error: any) {
+      console.error('[FIX-PENDING] خطا در اتصال به WooCommerce:', error);
+      return {
+        success: false,
+        message: `خطا در اتصال به WooCommerce: ${error.message || 'لطفا تنظیمات WooCommerce را بررسی کنید.'}`,
+        data: {
+          fixed: 0,
+          checked: 0,
+          errors: 0,
+        },
+      };
+    }
 
     // Get all orders that came from WooCommerce
     const ordersFromWoo = await prisma.order.findMany({
@@ -1376,6 +1391,18 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
     });
 
     console.log(`[FIX-PENDING] ${ordersFromWoo.length} سفارش از WooCommerce یافت شد`);
+
+    if (ordersFromWoo.length === 0) {
+      return {
+        success: true,
+        message: 'هیچ سفارشی از WooCommerce یافت نشد.',
+        data: {
+          fixed: 0,
+          checked: 0,
+          errors: 0,
+        },
+      };
+    }
 
     let fixedCount = 0;
     let checkedCount = 0;
@@ -1426,7 +1453,7 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
     if (errorCount > 0) {
       return {
         success: true,
-        message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش. ${errorCount} خطا در اتصال به WooCommerce.`,
+        message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش. ${errorCount} خطا در بررسی.`,
         data: {
           fixed: fixedCount,
           checked: checkedCount,
@@ -1446,10 +1473,15 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
     };
   } catch (error: unknown) {
     const errorObj = error as { message?: string };
-    console.error('[FIX-PENDING] خطا در تصحیح سفارشات:', error);
+    console.error('[FIX-PENDING] خطای غیرمنتظره:', error);
     return {
       success: false,
-      message: `خطا در تصحیح سفارشات: ${errorObj.message || 'خطای نامشخص'}. لطفا تنظیمات WooCommerce را بررسی کنید.`,
+      message: `خطای غیرمنتظره: ${errorObj.message || 'خطای نامشخص'}`,
+      data: {
+        fixed: 0,
+        checked: 0,
+        errors: 0,
+      },
     };
   }
 }
