@@ -328,8 +328,9 @@ export async function getARAgingReport() {
 
       const customerId = order.customerId;
 
-      // محاسبه بدهی واقعی: کل مبلغ - تخفیف - مبلغ پرداختی
-      const balance = Number(order.totalAmount) - Number(order.discount || 0) - Number(order.paidAmount || 0);
+      // محاسبه بدهی واقعی: totalAmount قبلاً تخفیف را کم کرده است (در WooCommerce)
+      // پس فقط: totalAmount - paidAmount
+      const balance = Number(order.totalAmount) - Number(order.paidAmount || 0);
 
       if (balance <= 0) continue; // Skip if no balance due
 

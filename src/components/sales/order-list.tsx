@@ -112,7 +112,8 @@ export function OrderList({ orders }: OrderListProps) {
       label: 'باقیمانده',
       sortable: true,
       render: (order) => {
-        const remaining = Number(order.totalAmount) - Number(order.discount || 0) - Number(order.paidAmount || 0);
+        // totalAmount قبلاً تخفیف را کم کرده (در WooCommerce: total = subtotal - discount)
+        const remaining = Number(order.totalAmount) - Number(order.paidAmount || 0);
         return (
           <span className={remaining > 0 ? 'text-red-600 font-semibold' : 'text-green-600'}>
             {remaining.toLocaleString('fa-IR')} تومان
