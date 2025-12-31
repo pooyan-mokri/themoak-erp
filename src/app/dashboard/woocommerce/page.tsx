@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync } from '@/actions/woocommerce';
+import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync, fixOldPendingOrders } from '@/actions/woocommerce';
 import { getAutoSyncSettings, setAutoSyncSettings } from '@/actions/woocommerce-settings';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -21,6 +21,7 @@ export default function WooCommercePage() {
   const [isDebugging, setIsDebugging] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isFixingOrders, setIsFixingOrders] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{
     success: boolean;
     message: string;
@@ -153,6 +154,24 @@ export default function WooCommercePage() {
       toast.error('خطا در ذخیره تنظیمات');
     } finally {
       setIsSavingSettings(false);
+    }
+  };
+
+  const handleFixOldPendingOrders = async () => {
+    setIsFixingOrders(true);
+    try {
+      const result = await fixOldPendingOrders();
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message || 'خطا در تصحیح سفارشات');
+      }
+    } catch (error: any) {
+      console.error('Fix orders error:', error);
+      toast.error(error.message || 'خطا در تصحیح سفارشات');
+    } finally {
+      setIsFixingOrders(false);
     }
   };
 
@@ -312,6 +331,46 @@ export default function WooCommercePage() {
               </AlertDescription>
             </Alert>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Fix Pending Orders */}
+      <Card className="border-orange-200 dark:border-orange-900 bg-orange-50/50 dark:bg-orange-950/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
+            <ShoppingCart className="h-5 w-5" />
+            تصحیح سفارشات Pending قدیمی
+          </CardTitle>
+          <CardDescription>
+            اگر سفارشات pending به اشتباه به عنوان پرداخت شده نمایش داده می‌شوند، از این دکمه استفاده کنید.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="bg-yellow-50 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800">
+            <AlertTitle className="text-yellow-800 dark:text-yellow-200 text-sm">توجه</AlertTitle>
+            <AlertDescription className="text-yellow-700 dark:text-yellow-300 text-xs">
+              این ابزار وضعیت تمام سفارشات از WooCommerce را بررسی می‌کند و paymentStatus آنها را تصحیح می‌کند.
+              این فرآیند ممکن است چند دقیقه طول بکشد.
+            </AlertDescription>
+          </Alert>
+          <Button
+            onClick={handleFixOldPendingOrders}
+            disabled={isFixingOrders}
+            className="w-full"
+            variant="outline"
+          >
+            {isFixingOrders ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                در حال تصحیح...
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                تصحیح سفارشات Pending
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 

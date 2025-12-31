@@ -138,7 +138,7 @@ export function Sidebar() {
               )}
             >
               <div className="flex items-center flex-1">
-                <route.icon className={cn('h-5 w-5 ml-3', route.color)} />
+                <route.icon className={cn('h-5 w-5 mr-3', route.color)} />
                 {route.label}
               </div>
             </Link>
@@ -148,12 +148,12 @@ export function Sidebar() {
 
       {/* Logout button - Fixed at bottom */}
       <div className="px-3 py-4 flex-shrink-0 border-t border-white/10">
-        <Button 
+        <Button
             onClick={() => signOut()}
-            variant="destructive" 
+            variant="destructive"
             className="w-full justify-start"
         >
-            <LogOut className="h-5 w-5 ml-3" />
+            <LogOut className="h-5 w-5 mr-3" />
             خروج
         </Button>
       </div>

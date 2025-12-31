@@ -1348,3 +1348,89 @@ export async function performAutoSync(): Promise<ActionResult<{
     };
   }
 }
+
+/**
+ * تصحیح وضعیت پرداخت سفارشات قدیمی براساس وضعیت آنها در WooCommerce
+ * این تابع سفارشاتی که از WooCommerce آمده‌اند را بررسی می‌کند و
+ * paymentStatus آنها را براساس وضعیت فعلی در WooCommerce به‌روز می‌کند
+ */
+export async function fixOldPendingOrders(): Promise<ActionResult<{
+  fixed: number;
+  checked: number;
+}>> {
+  try {
+    console.log('[FIX-PENDING] شروع تصحیح سفارشات pending قدیمی...');
+
+    // Get WooCommerce client
+    const wooCommerce = await getWooCommerceClient();
+
+    // Get all orders that came from WooCommerce
+    const ordersFromWoo = await prisma.order.findMany({
+      where: {
+        wooId: { not: null },
+      },
+      include: {
+        transaction: true,
+      },
+    });
+
+    console.log(`[FIX-PENDING] ${ordersFromWoo.length} سفارش از WooCommerce یافت شد`);
+
+    let fixedCount = 0;
+    let checkedCount = 0;
+
+    for (const order of ordersFromWoo) {
+      try {
+        checkedCount++;
+
+        // Get current status from WooCommerce
+        const wooOrder = await wooCommerce.get(`orders/${order.wooId}`);
+        const currentStatus = wooOrder.data.status;
+
+        console.log(`[FIX-PENDING] بررسی سفارش #${order.number} (WooCommerce status: ${currentStatus})`);
+
+        // Determine correct payment status
+        const shouldBePaid = currentStatus === 'completed';
+        const correctPaymentStatus = shouldBePaid ? 'PAID' : 'UNPAID';
+        const correctPaidAmount = shouldBePaid ? order.totalAmount : 0;
+
+        // Check if needs fixing
+        if (order.paymentStatus !== correctPaymentStatus || order.paidAmount.toString() !== correctPaidAmount.toString()) {
+          console.log(`[FIX-PENDING] تصحیح سفارش #${order.number}: ${order.paymentStatus} -> ${correctPaymentStatus}`);
+
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: correctPaymentStatus,
+              paidAmount: new Prisma.Decimal(correctPaidAmount),
+              status: shouldBePaid ? 'COMPLETED' : 'PENDING',
+            },
+          });
+
+          fixedCount++;
+        }
+      } catch (error: any) {
+        console.error(`[FIX-PENDING] خطا در بررسی سفارش #${order.number}:`, error.message);
+        // Continue with next order
+      }
+    }
+
+    console.log(`[FIX-PENDING] تصحیح کامل شد: ${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش بررسی شده`);
+
+    return {
+      success: true,
+      message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش بررسی شده`,
+      data: {
+        fixed: fixedCount,
+        checked: checkedCount,
+      },
+    };
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string };
+    console.error('[FIX-PENDING] خطا در تصحیح سفارشات:', error);
+    return {
+      success: false,
+      message: `خطا در تصحیح سفارشات: ${errorObj.message || 'خطای نامشخص'}`,
+    };
+  }
+}
