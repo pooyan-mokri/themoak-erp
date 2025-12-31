@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown } from 'lucide-react';
+import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AccountingPage() {
@@ -191,6 +191,23 @@ export default function AccountingPage() {
               <div className="text-2xl font-bold">Accounts Payable</div>
               <p className="text-xs text-muted-foreground">
                 مشاهده و بازپرداخت بدهی کارمندان
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/accounting/ar-aging">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full border-green-200 dark:border-green-900 bg-green-50/50 dark:bg-green-950/20">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">
+                طلب از مشتریان
+              </CardTitle>
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-900 dark:text-green-100">حساب‌های دریافتنی</div>
+              <p className="text-xs text-green-600 dark:text-green-400">
+                گزارش سنی مطالبات و مشتریان بدهکار
               </p>
             </CardContent>
           </Card>
