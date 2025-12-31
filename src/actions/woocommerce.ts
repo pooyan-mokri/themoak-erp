@@ -1485,3 +1485,116 @@ export async function fixOldPendingOrders(): Promise<ActionResult<{
     };
   }
 }
+
+/**
+ * Force sync: دریافت مجدد تمام سفارشات از WooCommerce و به‌روزرسانی وضعیت پرداخت
+ * این تابع ساده‌تر و مطمئن‌تر است
+ */
+export async function forceSyncOrderStatus(): Promise<ActionResult<{
+  synced: number;
+  pending: number;
+  completed: number;
+}>> {
+  try {
+    console.log('[FORCE-SYNC] شروع force sync وضعیت سفارشات...');
+
+    // Get WooCommerce client
+    const wooCommerce = await getWooCommerceClient();
+    console.log('[FORCE-SYNC] اتصال به WooCommerce برقرار شد');
+
+    // Get all pending orders from WooCommerce (per_page=100 to get more orders)
+    const pendingResponse = await wooCommerce.get('orders', {
+      status: 'pending',
+      per_page: 100,
+    });
+
+    const pendingOrders = pendingResponse.data;
+    console.log(`[FORCE-SYNC] ${pendingOrders.length} سفارش pending در WooCommerce یافت شد`);
+
+    // Get all completed orders from WooCommerce
+    const completedResponse = await wooCommerce.get('orders', {
+      status: 'completed',
+      per_page: 100,
+    });
+
+    const completedOrders = completedResponse.data;
+    console.log(`[FORCE-SYNC] ${completedOrders.length} سفارش completed در WooCommerce یافت شد`);
+
+    let syncedCount = 0;
+    let pendingCount = 0;
+    let completedCount = 0;
+
+    // Update pending orders in database
+    for (const wooOrder of pendingOrders) {
+      const order = await prisma.order.findUnique({
+        where: { wooId: wooOrder.id },
+      });
+
+      if (order) {
+        // Update to UNPAID if it's not already
+        if (order.paymentStatus !== 'UNPAID' || order.status !== 'PENDING') {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'UNPAID',
+              paidAmount: 0,
+              status: 'PENDING',
+            },
+          });
+          console.log(`[FORCE-SYNC] سفارش #${order.number} به UNPAID تغییر کرد`);
+          syncedCount++;
+        }
+        pendingCount++;
+      }
+    }
+
+    // Update completed orders in database
+    for (const wooOrder of completedOrders) {
+      const order = await prisma.order.findUnique({
+        where: { wooId: wooOrder.id },
+      });
+
+      if (order) {
+        // Update to PAID if it's not already
+        if (order.paymentStatus !== 'PAID' || order.status !== 'COMPLETED') {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: 'PAID',
+              paidAmount: order.totalAmount,
+              status: 'COMPLETED',
+            },
+          });
+          console.log(`[FORCE-SYNC] سفارش #${order.number} به PAID تغییر کرد`);
+          syncedCount++;
+        }
+        completedCount++;
+      }
+    }
+
+    console.log(`[FORCE-SYNC] کامل شد: ${syncedCount} سفارش به‌روز شد`);
+
+    return {
+      success: true,
+      message: `${syncedCount} سفارش به‌روزرسانی شد (${pendingCount} pending، ${completedCount} completed)`,
+      data: {
+        synced: syncedCount,
+        pending: pendingCount,
+        completed: completedCount,
+      },
+    };
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string };
+    console.error('[FORCE-SYNC] خطا:', error);
+    return {
+      success: false,
+      message: `خطا در force sync: ${errorObj.message || 'لطفا تنظیمات WooCommerce را بررسی کنید'}`,
+      data: {
+        synced: 0,
+        pending: 0,
+        completed: 0,
+      },
+    };
+  }
+}
+

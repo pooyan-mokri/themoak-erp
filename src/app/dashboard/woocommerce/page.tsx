@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync, fixOldPendingOrders } from '@/actions/woocommerce';
+import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync, forceSyncOrderStatus } from '@/actions/woocommerce';
 import { getAutoSyncSettings, setAutoSyncSettings } from '@/actions/woocommerce-settings';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -168,7 +168,7 @@ export default function WooCommercePage() {
   const handleFixOldPendingOrders = async () => {
     setIsFixingOrders(true);
     try {
-      const result = await fixOldPendingOrders();
+      const result = await forceSyncOrderStatus();
       if (!result) {
         toast.error('خطا: پاسخی از سرور دریافت نشد');
         return;
@@ -180,7 +180,7 @@ export default function WooCommercePage() {
         toast.error(result.message || 'خطا در تصحیح سفارشات');
       }
     } catch (error: any) {
-      console.error('Fix orders error:', error);
+      console.error('Force sync error:', error);
       toast.error(error.message || 'خطا در تصحیح سفارشات');
     } finally {
       setIsFixingOrders(false);
@@ -346,40 +346,41 @@ export default function WooCommercePage() {
         </CardContent>
       </Card>
 
-      {/* Fix Pending Orders */}
+      {/* Force Sync Order Status */}
       <Card className="border-orange-200 dark:border-orange-900 bg-orange-50/50 dark:bg-orange-950/20">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
             <ShoppingCart className="h-5 w-5" />
-            تصحیح سفارشات Pending قدیمی
+            Force Sync وضعیت سفارشات
           </CardTitle>
           <CardDescription>
-            اگر سفارشات pending به اشتباه به عنوان پرداخت شده نمایش داده می‌شوند، از این دکمه استفاده کنید.
+            دریافت مجدد وضعیت تمام سفارشات از WooCommerce و به‌روزرسانی در سیستم
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert className="bg-yellow-50 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800">
-            <AlertTitle className="text-yellow-800 dark:text-yellow-200 text-sm">توجه</AlertTitle>
-            <AlertDescription className="text-yellow-700 dark:text-yellow-300 text-xs">
-              این ابزار وضعیت تمام سفارشات از WooCommerce را بررسی می‌کند و paymentStatus آنها را تصحیح می‌کند.
-              این فرآیند ممکن است چند دقیقه طول بکشد.
+          <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-800">
+            <AlertTitle className="text-blue-800 dark:text-blue-200 text-sm">چه کاری انجام می‌دهد؟</AlertTitle>
+            <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs space-y-1">
+              <p>• تمام سفارشات pending در WooCommerce → UNPAID در سیستم</p>
+              <p>• تمام سفارشات completed در WooCommerce → PAID در سیستم</p>
+              <p className="mt-2 font-medium">این تابع ساده و مطمئن است و فقط با WooCommerce sync می‌کند.</p>
             </AlertDescription>
           </Alert>
           <Button
             onClick={handleFixOldPendingOrders}
             disabled={isFixingOrders}
             className="w-full"
-            variant="outline"
+            variant="default"
           >
             {isFixingOrders ? (
               <>
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                در حال تصحیح...
+                در حال sync...
               </>
             ) : (
               <>
-                <ShoppingCart className="mr-2 h-4 w-4" />
-                تصحیح سفارشات Pending
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Force Sync وضعیت سفارشات
               </>
             )}
           </Button>
