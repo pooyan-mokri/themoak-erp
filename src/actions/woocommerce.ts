@@ -1272,3 +1272,79 @@ export async function debugProductMatching(): Promise<ActionResult<{
         };
     }
 }
+
+/**
+ * سینک خودکار WooCommerce
+ * ابتدا محصولات و سپس سفارشات را سینک می‌کند
+ */
+export async function performAutoSync(): Promise<ActionResult<{
+  productsResult?: any;
+  ordersResult?: any;
+}>> {
+  try {
+    console.log('[AUTO-SYNC] شروع سینک خودکار WooCommerce...');
+
+    // 1. Sync Products First
+    console.log('[AUTO-SYNC] مرحله 1: سینک محصولات...');
+    const productsResult = await syncProducts();
+
+    if (!productsResult.success) {
+      console.error('[AUTO-SYNC] خطا در سینک محصولات:', productsResult.error);
+      return {
+        success: false,
+        message: `خطا در سینک محصولات: ${productsResult.error}`,
+        data: {
+          productsResult,
+        },
+      };
+    }
+
+    console.log('[AUTO-SYNC] سینک محصولات موفق:', {
+      created: productsResult.data?.created,
+      updated: productsResult.data?.updated,
+    });
+
+    // 2. Sync Orders Second
+    console.log('[AUTO-SYNC] مرحله 2: سینک سفارشات...');
+    const ordersResult = await syncOrders();
+
+    if (!ordersResult.success) {
+      console.error('[AUTO-SYNC] خطا در سینک سفارشات:', ordersResult.message);
+      return {
+        success: false,
+        message: `محصولات سینک شدند ولی خطا در سینک سفارشات: ${ordersResult.message}`,
+        data: {
+          productsResult,
+          ordersResult,
+        },
+      };
+    }
+
+    console.log('[AUTO-SYNC] سینک سفارشات موفق:', {
+      created: ordersResult.data?.created,
+      skipped: ordersResult.data?.skipped,
+    });
+
+    // Update last sync time
+    const { updateLastSyncTime } = await import('./woocommerce-settings');
+    await updateLastSyncTime();
+
+    console.log('[AUTO-SYNC] سینک خودکار با موفقیت کامل شد.');
+
+    return {
+      success: true,
+      message: `سینک خودکار موفق: ${productsResult.data?.created || 0} محصول جدید، ${productsResult.data?.updated || 0} محصول به‌روز شده، ${ordersResult.data?.created || 0} سفارش جدید`,
+      data: {
+        productsResult,
+        ordersResult,
+      },
+    };
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string };
+    console.error('[AUTO-SYNC] خطا در سینک خودکار:', error);
+    return {
+      success: false,
+      message: `خطا در سینک خودکار: ${errorObj.message || 'خطای نامشخص'}`,
+    };
+  }
+}
