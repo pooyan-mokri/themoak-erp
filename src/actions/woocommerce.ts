@@ -386,9 +386,87 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             });
 
             if (existingOrder) {
+                // Check if there are missing items that can now be added
+                console.log(`[PROCESS] 🔄 سفارش WooCommerce #${order.number} (ID: ${order.id}) قبلا ثبت شده - بررسی آیتم‌های گمشده...`);
+
+                let addedMissingItems = false;
+
+                try {
+                    // Get existing order items
+                    const existingOrderWithItems = await prisma.order.findUnique({
+                        where: { id: existingOrder.id },
+                        include: { items: { include: { product: true } } }
+                    });
+
+                    if (order.line_items && order.line_items.length > 0 && existingOrderWithItems) {
+                        const existingProductWooIds = new Set(
+                            existingOrderWithItems.items
+                                .map((item: any) => item.product?.wooId)
+                                .filter((id: any) => id != null)
+                        );
+
+                        // Check each WooCommerce line item
+                        for (const item of order.line_items) {
+                            const productIdToSearch = typeof item.product_id === 'string'
+                                ? parseInt(item.product_id)
+                                : Number(item.product_id);
+
+                            // Skip if already in order or invalid
+                            if (isNaN(productIdToSearch) || existingProductWooIds.has(productIdToSearch)) {
+                                continue;
+                            }
+
+                            // Try to find product in database
+                            const orConditions: Array<{ wooId?: number; sku?: string }> = [
+                                { wooId: productIdToSearch }
+                            ];
+                            if (item.sku) {
+                                orConditions.push({ sku: item.sku });
+                            }
+
+                            const product = await prisma.product.findFirst({
+                                where: { OR: orConditions }
+                            });
+
+                            // If product exists now, add it to the order
+                            if (product) {
+                                const itemQuantity = Number(item.quantity) || 0;
+                                let itemPrice = Number(item.price) || 0;
+                                const itemTotal = Number(item.total) || Number(item.subtotal) || 0;
+
+                                if (itemPrice === 0 && itemQuantity > 0) {
+                                    itemPrice = itemTotal / itemQuantity;
+                                }
+
+                                if (itemPrice > 0 && itemQuantity > 0) {
+                                    // Add missing item to order
+                                    await prisma.orderItem.create({
+                                        data: {
+                                            orderId: existingOrder.id,
+                                            productId: product.id,
+                                            quantity: itemQuantity,
+                                            price: new Prisma.Decimal(itemPrice)
+                                        }
+                                    });
+
+                                    console.log(`[PROCESS] ✅ آیتم گمشده اضافه شد: ${product.name} به سفارش #${order.number}`);
+                                    addedMissingItems = true;
+                                }
+                            }
+                        }
+
+                        if (addedMissingItems) {
+                            console.log(`[PROCESS] ✨ سفارش #${order.number} با آیتم‌های جدید به‌روز شد`);
+                        } else {
+                            console.log(`[PROCESS] ⊘ سفارش #${order.number} آیتم گمشده‌ای برای افزودن ندارد`);
+                        }
+                    }
+                } catch (updateError) {
+                    console.error(`[PROCESS] ❌ خطا در به‌روزرسانی سفارش #${order.number}:`, updateError);
+                }
+
                 skippedCount++;
                 existingOrdersCount++;
-                console.log(`[PROCESS] ⊘ سفارش WooCommerce #${order.number} (ID: ${order.id}) قبلا ثبت شده است. (${existingOrdersCount} سفارش تکراری)`);
                 continue;
             }
             
