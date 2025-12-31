@@ -393,12 +393,12 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
             >
               انصراف
             </Button>
-            <Button 
-              onClick={handleCheckout} 
+            <Button
+              onClick={handleCheckout}
               disabled={isSubmitting}
               className="w-full sm:w-auto h-14 md:h-12 text-base md:text-sm font-semibold"
             >
-              {isSubmitting ? 'در حال ثبت...' : 'تایید و پرداخت'}
+              {isSubmitting ? 'در حال ثبت...' : (isCreditSale ? 'ثبت سفارش و بدهی' : 'تایید و پرداخت')}
             </Button>
           </DialogFooter>
         </DialogContent>

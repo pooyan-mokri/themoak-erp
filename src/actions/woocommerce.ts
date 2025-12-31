@@ -657,24 +657,36 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                                 customerName = customer.name;
                             }
                         }
-                        
-                        // Create Transaction
-                        const transaction = await tx.transaction.create({
-                            data: {
-                                type: TransactionType.INCOME,
-                                amount: new Prisma.Decimal(orderTotal),
-                                currency: 'TOMAN',
-                                rateSnapshot: new Prisma.Decimal(1),
-                                amountInToman: new Prisma.Decimal(orderTotal),
-                                description: `سفارش WooCommerce #${order.number} - مشتری: ${customerName}`,
-                                category: 'Sales',
-                                accountId: account.id,
-                                wooId: order.id,
-                                wooStatus: order.status || 'pending',
-                                date: new Date(order.date_created || Date.now())
-                            }
-                        });
-                        console.log(`[DEBUG] تراکنش ایجاد شد: ${transaction.id}`);
+
+                        // Determine payment status based on WooCommerce order status
+                        const isCompleted = order.status === 'completed';
+                        const paidAmount = isCompleted ? orderTotal : 0;
+                        const paymentStatus = isCompleted ? 'PAID' : 'UNPAID';
+
+                        let transactionId = undefined;
+
+                        // Create Transaction ONLY for completed orders
+                        if (isCompleted) {
+                            const transaction = await tx.transaction.create({
+                                data: {
+                                    type: TransactionType.INCOME,
+                                    amount: new Prisma.Decimal(orderTotal),
+                                    currency: 'TOMAN',
+                                    rateSnapshot: new Prisma.Decimal(1),
+                                    amountInToman: new Prisma.Decimal(orderTotal),
+                                    description: `سفارش WooCommerce #${order.number} - مشتری: ${customerName}`,
+                                    category: 'Sales',
+                                    accountId: account.id,
+                                    wooId: order.id,
+                                    wooStatus: order.status || 'completed',
+                                    date: new Date(order.date_created || Date.now())
+                                }
+                            });
+                            transactionId = transaction.id;
+                            console.log(`[DEBUG] تراکنش ایجاد شد: ${transaction.id}`);
+                        } else {
+                            console.log(`[DEBUG] سفارش pending است - تراکنش ایجاد نمی‌شود`);
+                        }
 
                         // Create Order linked to Transaction
                         console.log(`[DEBUG] ایجاد سفارش برای سفارش WooCommerce #${order.number}...`);
@@ -684,10 +696,10 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                                 customerId: customerId,
                                 totalAmount: new Prisma.Decimal(orderTotal),
                                 discount: new Prisma.Decimal(orderDiscount),
-                                paidAmount: new Prisma.Decimal(orderTotal),
-                                paymentStatus: 'PAID', // WooCommerce orders are paid when completed
-                                status: order.status === 'completed' ? 'COMPLETED' : 'PENDING',
-                                transactionId: transaction.id,
+                                paidAmount: new Prisma.Decimal(paidAmount),
+                                paymentStatus: paymentStatus,
+                                status: isCompleted ? 'COMPLETED' : 'PENDING',
+                                transactionId: transactionId,
                                 createdAt: new Date(order.date_created || Date.now()),
                                 items: {
                                     create: orderItemsData.map((item: any) => ({
@@ -699,16 +711,18 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             }
                         });
                         console.log(`[DEBUG] سفارش ایجاد شد: ${createdOrder.id}, number: ${createdOrder.number}`);
-                        
-                        // Update Account Balance
-                        await tx.account.update({
-                            where: { id: account.id },
-                            data: {
-                                balance: {
-                                    increment: new Prisma.Decimal(orderTotal)
+
+                        // Update Account Balance ONLY for completed orders
+                        if (isCompleted) {
+                            await tx.account.update({
+                                where: { id: account.id },
+                                data: {
+                                    balance: {
+                                        increment: new Prisma.Decimal(orderTotal)
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
 
                         // 4. Deduct Inventory for each order item
                         const warehouseId = await getWooWarehouseId();
@@ -1056,6 +1070,34 @@ export async function cancelOrderInWooCommerce(wooOrderId: number): Promise<Acti
             success: false,
             message: `خطا در لغو سفارش در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
             data: { cancelled: false }
+        };
+    }
+}
+
+// Complete order in WooCommerce (mark as completed)
+export async function completeOrderInWooCommerce(wooOrderId: number): Promise<ActionResult<{ completed: boolean }>> {
+    try {
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update order status to completed in WooCommerce
+        await wooCommerce.put(`orders/${wooOrderId}`, {
+            status: 'completed'
+        });
+
+        console.log(`[WooCommerce] سفارش با ID ${wooOrderId} در WooCommerce به تکمیل شده تغییر کرد`);
+
+        return {
+            success: true,
+            message: 'سفارش در WooCommerce به تکمیل شده تغییر کرد.',
+            data: { completed: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error completing order in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در تکمیل سفارش در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { completed: false }
         };
     }
 }
