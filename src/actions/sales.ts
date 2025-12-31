@@ -483,13 +483,8 @@ export async function cancelOrder(orderId: string): Promise<{
     // 3. If order is from WooCommerce, cancel it there too
     if (order.wooId) {
       try {
-        const { getWooCommerceClient } = await import('./woocommerce');
-        const wooCommerce = await getWooCommerceClient();
-
-        await wooCommerce.put(`orders/${order.wooId}`, {
-          status: 'cancelled',
-        });
-
+        const { cancelOrderInWooCommerce } = await import('./woocommerce');
+        await cancelOrderInWooCommerce(order.wooId);
         console.log(`[CANCEL-ORDER] سفارش WooCommerce #${order.wooId} لغو شد`);
       } catch (wooError) {
         console.error('[CANCEL-ORDER] خطا در لغو سفارش در WooCommerce:', wooError);
