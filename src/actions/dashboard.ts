@@ -24,8 +24,10 @@ export async function getDashboardFinancials() {
     const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
     // Total Receivables (actual unpaid amounts from orders)
+    // فقط سفارشات با مشتری - سفارشات Guest (نقدی) طلبکار نیستند
     const allOrders = await prisma.order.findMany({
       where: {
+        customerId: { not: null },  // فقط سفارشات با مشتری
         status: {
           not: 'CANCELLED'
         },
