@@ -355,6 +355,7 @@ interface WooOrder {
 export async function processWooOrders(wooOrders: WooOrder[]) {
     let createdCount = 0;
     let skippedCount = 0;
+    let updatedCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
     const debugLogs: string[] = []; // Store debug logs to return
