@@ -397,7 +397,31 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                     console.log(`[PROCESS] 🎯 سفارش #${order.number} از ${existingOrder.status} به completed تغییر کرد - ایجاد تراکنش...`);
 
                     try {
-                        await prisma.$transaction(async (tx) => {
+                        // Get account from WooCommerce settings
+                        const wooSettings = await getWooSettings();
+                        let account = undefined;
+
+                        if (wooSettings?.accountId) {
+                            account = await prisma.account.findUnique({
+                                where: { id: wooSettings.accountId }
+                            });
+                        }
+
+                        if (!account) {
+                            // Fallback to first account
+                            account = await prisma.account.findFirst({
+                                where: {
+                                    type: {
+                                        in: ['Bank', 'Cash']
+                                    }
+                                }
+                            });
+                        }
+
+                        if (!account) {
+                            console.error(`[PROCESS] ❌ حساب بانکی برای سفارش #${order.number} یافت نشد - skip می‌شود`);
+                        } else {
+                            await prisma.$transaction(async (tx) => {
                             const orderTotal = Number(order.total) || 0;
 
                             // Create transaction
@@ -441,6 +465,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
 
                         console.log(`[PROCESS] ✅ سفارش #${order.number} تکمیل شد و تراکنش ایجاد شد`);
                         updatedCount++;
+                        }
                         skippedCount++;
                         existingOrdersCount++;
                         continue;
