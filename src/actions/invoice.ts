@@ -304,9 +304,13 @@ export async function recordInvoicePayment(invoiceId: string, amount: number, ac
 
 export async function getARAgingReport() {
   try {
-    const invoices = await prisma.invoice.findMany({
+    // Get all orders with unpaid/partial payment status (excluding CANCELLED)
+    // این همان منبع اطلاعات تاریخچه فروش است - باید یکسان باشند
+    const orders = await prisma.order.findMany({
       where: {
-        status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] }
+        customerId: { not: null },
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        status: { not: 'CANCELLED' } // سفارشات لغو شده طلبکار نیستند
       },
       include: {
         customer: true
@@ -314,18 +318,28 @@ export async function getARAgingReport() {
     });
 
     const today = new Date();
-    
+
     // Group by customer and calculate buckets
     const customerBuckets: Record<string, any> = {};
 
-    for (const invoice of invoices) {
-      const customerId = invoice.customerId;
-      const balance = Number(invoice.total) - Number(invoice.paidAmount);
-      const daysPastDue = Math.floor((today.getTime() - invoice.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    // Process all orders
+    for (const order of orders) {
+      if (!order.customerId || !order.customer) continue;
+
+      const customerId = order.customerId;
+
+      // محاسبه بدهی واقعی: totalAmount قبلاً تخفیف را کم کرده است (در WooCommerce)
+      // پس فقط: totalAmount - paidAmount
+      const balance = Number(order.totalAmount) - Number(order.paidAmount || 0);
+
+      if (balance <= 0) continue; // Skip if no balance due
+
+      // Use order creation date for aging
+      const daysPastDue = Math.floor((today.getTime() - order.createdAt.getTime()) / (1000 * 60 * 60 * 24));
 
       if (!customerBuckets[customerId]) {
         customerBuckets[customerId] = {
-          customerName: invoice.customer.name,
+          customerName: order.customer.name,
           totalDue: 0,
           current: 0,
           days1_30: 0,

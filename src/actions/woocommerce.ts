@@ -346,6 +346,7 @@ interface WooOrder {
 export async function processWooOrders(wooOrders: WooOrder[]) {
     let createdCount = 0;
     let skippedCount = 0;
+    let updatedCount = 0;
     let errorCount = 0;
     const errors: string[] = [];
     const debugLogs: string[] = []; // Store debug logs to return
@@ -377,9 +378,173 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             });
 
             if (existingOrder) {
+                console.log(`[PROCESS] 🔄 سفارش WooCommerce #${order.number} (ID: ${order.id}) قبلا ثبت شده - بررسی تغییرات...`);
+
+                // Check if order status changed from pending to completed
+                const wasNotCompleted = existingOrder.status !== 'COMPLETED';
+                const isNowCompleted = order.status === 'completed';
+                const needsCompletion = wasNotCompleted && isNowCompleted;
+
+                if (needsCompletion) {
+                    console.log(`[PROCESS] 🎯 سفارش #${order.number} از ${existingOrder.status} به completed تغییر کرد - ایجاد تراکنش...`);
+
+                    try {
+                        // Get account from WooCommerce settings
+                        const wooSettings = await getWooSettings();
+                        let account = undefined;
+
+                        if (wooSettings?.accountId) {
+                            account = await prisma.account.findUnique({
+                                where: { id: wooSettings.accountId }
+                            });
+                        }
+
+                        if (!account) {
+                            // Fallback to first account
+                            account = await prisma.account.findFirst({
+                                where: {
+                                    type: {
+                                        in: ['Bank', 'Cash']
+                                    }
+                                }
+                            });
+                        }
+
+                        if (!account) {
+                            console.error(`[PROCESS] ❌ حساب بانکی برای سفارش #${order.number} یافت نشد - skip می‌شود`);
+                        } else {
+                            await prisma.$transaction(async (tx) => {
+                            const orderTotal = Number(order.total) || 0;
+
+                            // Create transaction
+                            const transaction = await tx.transaction.create({
+                                data: {
+                                    type: TransactionType.INCOME,
+                                    amount: new Prisma.Decimal(orderTotal),
+                                    currency: 'TOMAN',
+                                    rateSnapshot: new Prisma.Decimal(1),
+                                    amountInToman: new Prisma.Decimal(orderTotal),
+                                    description: `سفارش WooCommerce #${order.number} - تکمیل شده`,
+                                    category: 'Sales',
+                                    accountId: account.id,
+                                    wooId: order.id,
+                                    wooStatus: order.status || 'completed',
+                                    date: new Date(order.date_created || Date.now())
+                                }
+                            });
+
+                            // Update order to completed
+                            await tx.order.update({
+                                where: { id: existingOrder.id },
+                                data: {
+                                    status: 'COMPLETED',
+                                    paymentStatus: 'PAID',
+                                    paidAmount: new Prisma.Decimal(orderTotal),
+                                    transactionId: transaction.id
+                                }
+                            });
+
+                            // Update account balance
+                            await tx.account.update({
+                                where: { id: account.id },
+                                data: {
+                                    balance: {
+                                        increment: new Prisma.Decimal(orderTotal)
+                                    }
+                                }
+                            });
+                        });
+
+                        console.log(`[PROCESS] ✅ سفارش #${order.number} تکمیل شد و تراکنش ایجاد شد`);
+                        updatedCount++;
+                        }
+                        skippedCount++;
+                        existingOrdersCount++;
+                        continue;
+                    } catch (completionError) {
+                        console.error(`[PROCESS] ❌ خطا در تکمیل سفارش #${order.number}:`, completionError);
+                    }
+                }
+
+                // Check if there are missing items that can now be added
+                let addedMissingItems = false;
+
+                try {
+                    // Get existing order items
+                    const existingOrderWithItems = await prisma.order.findUnique({
+                        where: { id: existingOrder.id },
+                        include: { items: { include: { product: true } } }
+                    });
+
+                    if (order.line_items && order.line_items.length > 0 && existingOrderWithItems) {
+                        const existingProductWooIds = new Set(
+                            existingOrderWithItems.items
+                                .map((item: any) => item.product?.wooId)
+                                .filter((id: any) => id != null)
+                        );
+
+                        // Check each WooCommerce line item
+                        for (const item of order.line_items) {
+                            const productIdToSearch = typeof item.product_id === 'string'
+                                ? parseInt(item.product_id)
+                                : Number(item.product_id);
+
+                            // Skip if already in order or invalid
+                            if (isNaN(productIdToSearch) || existingProductWooIds.has(productIdToSearch)) {
+                                continue;
+                            }
+
+                            // Try to find product in database
+                            const orConditions: Array<{ wooId?: number; sku?: string }> = [
+                                { wooId: productIdToSearch }
+                            ];
+                            if (item.sku) {
+                                orConditions.push({ sku: item.sku });
+                            }
+
+                            const product = await prisma.product.findFirst({
+                                where: { OR: orConditions }
+                            });
+
+                            // If product exists now, add it to the order
+                            if (product) {
+                                const itemQuantity = Number(item.quantity) || 0;
+                                let itemPrice = Number(item.price) || 0;
+                                const itemTotal = Number(item.total) || Number(item.subtotal) || 0;
+
+                                if (itemPrice === 0 && itemQuantity > 0) {
+                                    itemPrice = itemTotal / itemQuantity;
+                                }
+
+                                if (itemPrice > 0 && itemQuantity > 0) {
+                                    // Add missing item to order
+                                    await prisma.orderItem.create({
+                                        data: {
+                                            orderId: existingOrder.id,
+                                            productId: product.id,
+                                            quantity: itemQuantity,
+                                            price: new Prisma.Decimal(itemPrice)
+                                        }
+                                    });
+
+                                    console.log(`[PROCESS] ✅ آیتم گمشده اضافه شد: ${product.name} به سفارش #${order.number}`);
+                                    addedMissingItems = true;
+                                }
+                            }
+                        }
+
+                        if (addedMissingItems) {
+                            console.log(`[PROCESS] ✨ سفارش #${order.number} با آیتم‌های جدید به‌روز شد`);
+                        } else {
+                            console.log(`[PROCESS] ⊘ سفارش #${order.number} آیتم گمشده‌ای برای افزودن ندارد`);
+                        }
+                    }
+                } catch (updateError) {
+                    console.error(`[PROCESS] ❌ خطا در به‌روزرسانی سفارش #${order.number}:`, updateError);
+                }
+
                 skippedCount++;
                 existingOrdersCount++;
-                console.log(`[PROCESS] ⊘ سفارش WooCommerce #${order.number} (ID: ${order.id}) قبلا ثبت شده است. (${existingOrdersCount} سفارش تکراری)`);
                 continue;
             }
             
@@ -663,24 +828,36 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                                 customerName = customer.name;
                             }
                         }
-                        
-                        // Create Transaction
-                        const transaction = await tx.transaction.create({
-                            data: {
-                                type: TransactionType.INCOME,
-                                amount: new Prisma.Decimal(orderTotal),
-                                currency: 'TOMAN',
-                                rateSnapshot: new Prisma.Decimal(1),
-                                amountInToman: new Prisma.Decimal(orderTotal),
-                                description: `سفارش WooCommerce #${order.number} - مشتری: ${customerName}`,
-                                category: 'Sales',
-                                accountId: account.id,
-                                wooId: order.id,
-                                wooStatus: order.status || 'pending',
-                                date: new Date(order.date_created || Date.now())
-                            }
-                        });
-                        console.log(`[DEBUG] تراکنش ایجاد شد: ${transaction.id}`);
+
+                        // Determine payment status based on WooCommerce order status
+                        const isCompleted = order.status === 'completed';
+                        const paidAmount = isCompleted ? orderTotal : 0;
+                        const paymentStatus = isCompleted ? 'PAID' : 'UNPAID';
+
+                        let transactionId = undefined;
+
+                        // Create Transaction ONLY for completed orders
+                        if (isCompleted) {
+                            const transaction = await tx.transaction.create({
+                                data: {
+                                    type: TransactionType.INCOME,
+                                    amount: new Prisma.Decimal(orderTotal),
+                                    currency: 'TOMAN',
+                                    rateSnapshot: new Prisma.Decimal(1),
+                                    amountInToman: new Prisma.Decimal(orderTotal),
+                                    description: `سفارش WooCommerce #${order.number} - مشتری: ${customerName}`,
+                                    category: 'Sales',
+                                    accountId: account.id,
+                                    wooId: order.id,
+                                    wooStatus: order.status || 'completed',
+                                    date: new Date(order.date_created || Date.now())
+                                }
+                            });
+                            transactionId = transaction.id;
+                            console.log(`[DEBUG] تراکنش ایجاد شد: ${transaction.id}`);
+                        } else {
+                            console.log(`[DEBUG] سفارش pending است - تراکنش ایجاد نمی‌شود`);
+                        }
 
                         // Create Order linked to Transaction
                         console.log(`[DEBUG] ایجاد سفارش برای سفارش WooCommerce #${order.number}...`);
@@ -690,10 +867,10 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                                 customerId: customerId,
                                 totalAmount: new Prisma.Decimal(orderTotal),
                                 discount: new Prisma.Decimal(orderDiscount),
-                                paidAmount: new Prisma.Decimal(orderTotal),
-                                paymentStatus: 'PAID', // WooCommerce orders are paid when completed
-                                status: order.status === 'completed' ? 'COMPLETED' : 'PENDING',
-                                transactionId: transaction.id,
+                                paidAmount: new Prisma.Decimal(paidAmount),
+                                paymentStatus: paymentStatus,
+                                status: isCompleted ? 'COMPLETED' : 'PENDING',
+                                transactionId: transactionId,
                                 createdAt: new Date(order.date_created || Date.now()),
                                 items: {
                                     create: orderItemsData.map((item: any) => ({
@@ -705,16 +882,18 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             }
                         });
                         console.log(`[DEBUG] سفارش ایجاد شد: ${createdOrder.id}, number: ${createdOrder.number}`);
-                        
-                        // Update Account Balance
-                        await tx.account.update({
-                            where: { id: account.id },
-                            data: {
-                                balance: {
-                                    increment: new Prisma.Decimal(orderTotal)
+
+                        // Update Account Balance ONLY for completed orders
+                        if (isCompleted) {
+                            await tx.account.update({
+                                where: { id: account.id },
+                                data: {
+                                    balance: {
+                                        increment: new Prisma.Decimal(orderTotal)
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
 
                         // 4. Deduct Inventory for each order item
                         const warehouseId = await getWooWarehouseId();
@@ -1038,6 +1217,63 @@ export async function updateProductStockInWooCommerce(productId: string, warehou
     }
 }
 
+// Cancel order in WooCommerce
+export async function cancelOrderInWooCommerce(wooOrderId: number): Promise<ActionResult<{ cancelled: boolean }>> {
+    try {
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update order status to cancelled in WooCommerce
+        await wooCommerce.put(`orders/${wooOrderId}`, {
+            status: 'cancelled'
+        });
+
+        console.log(`[WooCommerce] سفارش با ID ${wooOrderId} در WooCommerce لغو شد`);
+
+        return {
+            success: true,
+            message: 'سفارش در WooCommerce لغو شد.',
+            data: { cancelled: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error cancelling order in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در لغو سفارش در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { cancelled: false }
+        };
+    }
+}
+
+// Complete order in WooCommerce (mark as completed)
+export async function completeOrderInWooCommerce(wooOrderId: number): Promise<ActionResult<{ completed: boolean }>> {
+    try {
+        const wooCommerce = await getWooCommerceClient();
+
+        // Update order status to completed in WooCommerce
+        await wooCommerce.put(`orders/${wooOrderId}`, {
+            status: 'completed'
+        });
+
+        console.log(`[WooCommerce] سفارش با ID ${wooOrderId} در WooCommerce به تکمیل شده تغییر کرد`);
+
+        return {
+            success: true,
+            message: 'سفارش در WooCommerce به تکمیل شده تغییر کرد.',
+            data: { completed: true }
+        };
+    } catch (error: unknown) {
+        const errorObj = error as { message?: string };
+        console.error("Error completing order in WooCommerce:", error);
+        return {
+            success: false,
+            message: `خطا در تکمیل سفارش در WooCommerce: ${errorObj.message || 'خطای نامشخص'}`,
+            data: { completed: false }
+        };
+    }
+}
+
+
 // Debug function to check product matching
 export async function debugProductMatching(): Promise<ActionResult<{
   orderInfo?: {
@@ -1130,3 +1366,412 @@ export async function debugProductMatching(): Promise<ActionResult<{
         };
     }
 }
+
+/**
+ * سینک خودکار WooCommerce
+ * ابتدا محصولات و سپس سفارشات را سینک می‌کند
+ */
+export async function performAutoSync(): Promise<ActionResult<{
+  productsResult?: any;
+  ordersResult?: any;
+}>> {
+  try {
+    console.log('[AUTO-SYNC] شروع سینک خودکار WooCommerce...');
+
+    // 1. Sync Products First
+    console.log('[AUTO-SYNC] مرحله 1: سینک محصولات...');
+    const productsResult = await syncProducts();
+
+    if (!productsResult.success) {
+      console.error('[AUTO-SYNC] خطا در سینک محصولات:', productsResult.error);
+      return {
+        success: false,
+        message: `خطا در سینک محصولات: ${productsResult.error}`,
+        data: {
+          productsResult,
+        },
+      };
+    }
+
+    console.log('[AUTO-SYNC] سینک محصولات موفق:', {
+      created: productsResult.data?.created,
+      updated: productsResult.data?.updated,
+    });
+
+    // 2. Sync Orders Second
+    console.log('[AUTO-SYNC] مرحله 2: سینک سفارشات...');
+    const ordersResult = await syncOrders();
+
+    if (!ordersResult.success) {
+      console.error('[AUTO-SYNC] خطا در سینک سفارشات:', ordersResult.message);
+      return {
+        success: false,
+        message: `محصولات سینک شدند ولی خطا در سینک سفارشات: ${ordersResult.message}`,
+        data: {
+          productsResult,
+          ordersResult,
+        },
+      };
+    }
+
+    console.log('[AUTO-SYNC] سینک سفارشات موفق:', {
+      created: ordersResult.data?.created,
+      skipped: ordersResult.data?.skipped,
+    });
+
+    // Update last sync time
+    const { updateLastSyncTime } = await import('./woocommerce-settings');
+    await updateLastSyncTime();
+
+    console.log('[AUTO-SYNC] سینک خودکار با موفقیت کامل شد.');
+
+    return {
+      success: true,
+      message: `سینک خودکار موفق: ${productsResult.data?.created || 0} محصول جدید، ${productsResult.data?.updated || 0} محصول به‌روز شده، ${ordersResult.data?.created || 0} سفارش جدید`,
+      data: {
+        productsResult,
+        ordersResult,
+      },
+    };
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string };
+    console.error('[AUTO-SYNC] خطا در سینک خودکار:', error);
+    return {
+      success: false,
+      message: `خطا در سینک خودکار: ${errorObj.message || 'خطای نامشخص'}`,
+    };
+  }
+}
+
+/**
+ * تصحیح وضعیت پرداخت سفارشات قدیمی براساس وضعیت آنها در WooCommerce
+ * این تابع سفارشاتی که از WooCommerce آمده‌اند را بررسی می‌کند و
+ * paymentStatus آنها را براساس وضعیت فعلی در WooCommerce به‌روز می‌کند
+ */
+export async function fixOldPendingOrders(): Promise<ActionResult<{
+  fixed: number;
+  checked: number;
+  errors: number;
+}>> {
+  try {
+    console.log('[FIX-PENDING] شروع تصحیح سفارشات pending قدیمی...');
+
+    // Get WooCommerce client
+    let wooCommerce;
+    try {
+      wooCommerce = await getWooCommerceClient();
+      console.log('[FIX-PENDING] اتصال به WooCommerce برقرار شد');
+    } catch (error: any) {
+      console.error('[FIX-PENDING] خطا در اتصال به WooCommerce:', error);
+      return {
+        success: false,
+        message: `خطا در اتصال به WooCommerce: ${error.message || 'لطفا تنظیمات WooCommerce را بررسی کنید.'}`,
+        data: {
+          fixed: 0,
+          checked: 0,
+          errors: 0,
+        },
+      };
+    }
+
+    // Get all orders that came from WooCommerce
+    const ordersFromWoo = await prisma.order.findMany({
+      where: {
+        wooId: { not: null },
+      },
+      include: {
+        transaction: true,
+      },
+    });
+
+    console.log(`[FIX-PENDING] ${ordersFromWoo.length} سفارش از WooCommerce یافت شد`);
+
+    if (ordersFromWoo.length === 0) {
+      return {
+        success: true,
+        message: 'هیچ سفارشی از WooCommerce یافت نشد.',
+        data: {
+          fixed: 0,
+          checked: 0,
+          errors: 0,
+        },
+      };
+    }
+
+    let fixedCount = 0;
+    let checkedCount = 0;
+    let errorCount = 0;
+
+    for (const order of ordersFromWoo) {
+      try {
+        checkedCount++;
+
+        // Get current status from WooCommerce
+        const wooOrder = await wooCommerce.get(`orders/${order.wooId}`);
+        const currentStatus = wooOrder.data.status;
+
+        console.log(`[FIX-PENDING] بررسی سفارش #${order.number} (WooCommerce status: ${currentStatus})`);
+
+        // Determine correct payment status based on WooCommerce status
+        const shouldBePaid = currentStatus === 'completed';
+        const correctPaymentStatus = shouldBePaid ? 'PAID' : 'UNPAID';
+        const correctPaidAmount = shouldBePaid ? order.totalAmount : 0;
+        const correctStatus = shouldBePaid ? 'COMPLETED' : 'PENDING';
+
+        // Check if needs fixing
+        if (order.paymentStatus !== correctPaymentStatus ||
+            order.paidAmount.toString() !== correctPaidAmount.toString() ||
+            order.status !== correctStatus) {
+          console.log(`[FIX-PENDING] تصحیح سفارش #${order.number}: ${order.paymentStatus} -> ${correctPaymentStatus}`);
+
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: correctPaymentStatus,
+              paidAmount: new Prisma.Decimal(correctPaidAmount),
+              status: correctStatus,
+            },
+          });
+
+          fixedCount++;
+        }
+      } catch (error: any) {
+        errorCount++;
+        console.error(`[FIX-PENDING] خطا در بررسی سفارش #${order.number}:`, error.message);
+        // Continue with next order
+      }
+    }
+
+    console.log(`[FIX-PENDING] تصحیح کامل شد: ${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش بررسی شده`);
+
+    if (errorCount > 0) {
+      return {
+        success: true,
+        message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش. ${errorCount} خطا در بررسی.`,
+        data: {
+          fixed: fixedCount,
+          checked: checkedCount,
+          errors: errorCount,
+        },
+      };
+    }
+
+    return {
+      success: true,
+      message: `${fixedCount} سفارش تصحیح شد از ${checkedCount} سفارش بررسی شده`,
+      data: {
+        fixed: fixedCount,
+        checked: checkedCount,
+        errors: 0,
+      },
+    };
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string };
+    console.error('[FIX-PENDING] خطای غیرمنتظره:', error);
+    return {
+      success: false,
+      message: `خطای غیرمنتظره: ${errorObj.message || 'خطای نامشخص'}`,
+      data: {
+        fixed: 0,
+        checked: 0,
+        errors: 0,
+      },
+    };
+  }
+}
+
+/**
+ * Force sync: دریافت مجدد تمام سفارشات از WooCommerce و به‌روزرسانی وضعیت پرداخت
+ * این تابع ساده‌تر و مطمئن‌تر است و همه status ها را پشتیبانی می‌کند
+ * بهینه‌سازی شده با batch fetching برای جلوگیری از timeout
+ */
+export async function forceSyncOrderStatus(): Promise<ActionResult<{
+  synced: number;
+  details: {
+    pending: number;
+    completed: number;
+    cancelled: number;
+    refunded: number;
+    failed: number;
+    other: number;
+  };
+}>> {
+  try {
+    console.log('[FORCE-SYNC] شروع force sync وضعیت سفارشات...');
+
+    // Get WooCommerce client
+    const wooCommerce = await getWooCommerceClient();
+    console.log('[FORCE-SYNC] اتصال به WooCommerce برقرار شد');
+
+    // Get all orders from our database that have wooId
+    const ordersInDb = await prisma.order.findMany({
+      where: {
+        wooId: { not: null },
+      },
+    });
+
+    console.log(`[FORCE-SYNC] ${ordersInDb.length} سفارش از WooCommerce در دیتابیس یافت شد`);
+
+    // Fetch ALL orders from WooCommerce in batches (much faster than individual requests)
+    console.log('[FORCE-SYNC] در حال دریافت تمام سفارشات از WooCommerce...');
+    const allWooOrders: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await wooCommerce.get('orders', {
+        per_page: perPage,
+        page: page,
+      });
+
+      const orders = response.data;
+      if (orders && orders.length > 0) {
+        allWooOrders.push(...orders);
+        console.log(`[FORCE-SYNC] صفحه ${page}: ${orders.length} سفارش دریافت شد`);
+
+        // Check if there are more pages
+        if (orders.length < perPage) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    console.log(`[FORCE-SYNC] مجموع ${allWooOrders.length} سفارش از WooCommerce دریافت شد`);
+
+    // Create a map for fast lookup
+    const wooOrdersMap = new Map<number, any>();
+    for (const wooOrder of allWooOrders) {
+      wooOrdersMap.set(wooOrder.id, wooOrder);
+    }
+
+    let syncedCount = 0;
+    const statusCounts = {
+      pending: 0,
+      completed: 0,
+      cancelled: 0,
+      refunded: 0,
+      failed: 0,
+      other: 0,
+    };
+
+    // Now update database orders based on WooCommerce status
+    for (const order of ordersInDb) {
+      try {
+        const wooOrder = wooOrdersMap.get(order.wooId!);
+
+        if (!wooOrder) {
+          console.log(`[FORCE-SYNC] سفارش #${order.number} (wooId: ${order.wooId}) در WooCommerce یافت نشد - احتمالا حذف شده`);
+          continue;
+        }
+
+        const currentStatus = wooOrder.status;
+        console.log(`[FORCE-SYNC] سفارش #${order.number} - WooCommerce status: ${currentStatus}`);
+
+        // Determine correct status and payment status based on WooCommerce status
+        let newPaymentStatus = order.paymentStatus;
+        let newOrderStatus = order.status;
+        let newPaidAmount = order.paidAmount;
+
+        switch (currentStatus) {
+          case 'completed':
+            newPaymentStatus = 'PAID';
+            newOrderStatus = 'COMPLETED';
+            newPaidAmount = order.totalAmount;
+            statusCounts.completed++;
+            break;
+
+          case 'pending':
+          case 'on-hold':
+            newPaymentStatus = 'UNPAID';
+            newOrderStatus = 'PENDING';
+            newPaidAmount = 0;
+            statusCounts.pending++;
+            break;
+
+          case 'cancelled':
+          case 'failed':
+            newPaymentStatus = 'UNPAID';
+            newOrderStatus = 'CANCELLED';
+            newPaidAmount = 0;
+            if (currentStatus === 'cancelled') {
+              statusCounts.cancelled++;
+            } else {
+              statusCounts.failed++;
+            }
+            break;
+
+          case 'refunded':
+            newPaymentStatus = 'UNPAID';
+            newOrderStatus = 'CANCELLED';
+            newPaidAmount = 0;
+            statusCounts.refunded++;
+            break;
+
+          default:
+            console.log(`[FORCE-SYNC] وضعیت ناشناخته: ${currentStatus} برای سفارش #${order.number}`);
+            statusCounts.other++;
+            continue;
+        }
+
+        // Update if needed
+        if (
+          order.paymentStatus !== newPaymentStatus ||
+          order.status !== newOrderStatus ||
+          order.paidAmount.toString() !== newPaidAmount.toString()
+        ) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: newPaymentStatus,
+              status: newOrderStatus,
+              paidAmount: new Prisma.Decimal(newPaidAmount),
+            },
+          });
+
+          console.log(
+            `[FORCE-SYNC] سفارش #${order.number} به‌روز شد: ${order.paymentStatus} → ${newPaymentStatus}, ${order.status} → ${newOrderStatus}`
+          );
+          syncedCount++;
+        }
+      } catch (error: any) {
+        console.error(`[FORCE-SYNC] خطا در بررسی سفارش #${order.number}:`, error.message);
+        // Continue with next order
+      }
+    }
+
+    console.log(`[FORCE-SYNC] کامل شد: ${syncedCount} سفارش به‌روز شد`);
+
+    return {
+      success: true,
+      message: `${syncedCount} سفارش به‌روزرسانی شد (${statusCounts.pending} pending، ${statusCounts.completed} completed، ${statusCounts.cancelled} cancelled، ${statusCounts.refunded} refunded، ${statusCounts.failed} failed)`,
+      data: {
+        synced: syncedCount,
+        details: statusCounts,
+      },
+    };
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string };
+    console.error('[FORCE-SYNC] خطا:', error);
+    return {
+      success: false,
+      message: `خطا در force sync: ${errorObj.message || 'لطفا تنظیمات WooCommerce را بررسی کنید'}`,
+      data: {
+        synced: 0,
+        details: {
+          pending: 0,
+          completed: 0,
+          cancelled: 0,
+          refunded: 0,
+          failed: 0,
+          other: 0,
+        },
+      },
+    };
+  }
+}
+

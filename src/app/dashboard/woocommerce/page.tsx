@@ -1,12 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching } from '@/actions/woocommerce';
+import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync, forceSyncOrderStatus } from '@/actions/woocommerce';
+import { getAutoSyncSettings, setAutoSyncSettings } from '@/actions/woocommerce-settings';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { RefreshCw, ShoppingCart, Package, CheckCircle2, XCircle, Wifi } from 'lucide-react';
+import { RefreshCw, ShoppingCart, Package, CheckCircle2, XCircle, Wifi, Clock } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function WooCommercePage() {
@@ -15,12 +19,31 @@ export default function WooCommercePage() {
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isDebugging, setIsDebugging] = useState(false);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isFixingOrders, setIsFixingOrders] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{
     success: boolean;
     message: string;
     details?: any;
   } | undefined>(undefined);
   const [debugResult, setDebugResult] = useState<any>(undefined);
+
+  // Auto-sync settings
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [autoSyncInterval, setAutoSyncInterval] = useState(60);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | undefined>(undefined);
+
+  // Load auto-sync settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      const settings = await getAutoSyncSettings();
+      setAutoSyncEnabled(settings.enabled);
+      setAutoSyncInterval(settings.intervalMinutes);
+      setLastSyncAt(settings.lastSyncAt);
+    };
+    loadSettings();
+  }, []);
 
   const handleSyncProducts = async () => {
     setIsSyncingProducts(true);
@@ -90,6 +113,77 @@ export default function WooCommercePage() {
     } finally {
       setIsSyncingOrders(false);
       console.log('[CLIENT] پایان سینک سفارشات');
+    }
+  };
+
+  const handleAutoSync = async () => {
+    setIsAutoSyncing(true);
+    try {
+      const result = await performAutoSync();
+      if (!result) {
+        toast.error('خطا: پاسخی از سرور دریافت نشد');
+        return;
+      }
+      if (result.success) {
+        toast.success(result.message);
+        // Reload settings to get updated lastSyncAt
+        const settings = await getAutoSyncSettings();
+        setLastSyncAt(settings.lastSyncAt);
+        router.refresh();
+      } else {
+        toast.error(result.message || 'خطا در سینک خودکار');
+      }
+    } catch (error: any) {
+      console.error('Auto-sync error:', error);
+      toast.error(error.message || 'خطا در سینک خودکار');
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  };
+
+  const handleSaveAutoSyncSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      const result = await setAutoSyncSettings({
+        enabled: autoSyncEnabled,
+        intervalMinutes: autoSyncInterval,
+      });
+      if (!result) {
+        toast.error('خطا: پاسخی از سرور دریافت نشد');
+        return;
+      }
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error: any) {
+      console.error('Save settings error:', error);
+      toast.error('خطا در ذخیره تنظیمات');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleFixOldPendingOrders = async () => {
+    setIsFixingOrders(true);
+    try {
+      const result = await forceSyncOrderStatus();
+      if (!result) {
+        toast.error('خطا: پاسخی از سرور دریافت نشد');
+        return;
+      }
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message || 'خطا در تصحیح سفارشات');
+      }
+    } catch (error: any) {
+      console.error('Force sync error:', error);
+      toast.error(error.message || 'خطا در تصحیح سفارشات');
+    } finally {
+      setIsFixingOrders(false);
     }
   };
 
@@ -251,7 +345,154 @@ export default function WooCommercePage() {
           )}
         </CardContent>
       </Card>
-      
+
+      {/* Force Sync Order Status */}
+      <Card className="border-orange-200 dark:border-orange-900 bg-orange-50/50 dark:bg-orange-950/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
+            <ShoppingCart className="h-5 w-5" />
+            Force Sync وضعیت سفارشات
+          </CardTitle>
+          <CardDescription>
+            دریافت مجدد وضعیت تمام سفارشات از WooCommerce و به‌روزرسانی در سیستم
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-800">
+            <AlertTitle className="text-blue-800 dark:text-blue-200 text-sm">چه کاری انجام می‌دهد؟</AlertTitle>
+            <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs space-y-1">
+              <p>• تمام سفارشات pending در WooCommerce → UNPAID در سیستم</p>
+              <p>• تمام سفارشات completed در WooCommerce → PAID در سیستم</p>
+              <p className="mt-2 font-medium">این تابع ساده و مطمئن است و فقط با WooCommerce sync می‌کند.</p>
+            </AlertDescription>
+          </Alert>
+          <Button
+            onClick={handleFixOldPendingOrders}
+            disabled={isFixingOrders}
+            className="w-full"
+            variant="default"
+          >
+            {isFixingOrders ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                در حال sync...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Force Sync وضعیت سفارشات
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Auto-Sync Settings */}
+      <Card className="border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+            <Clock className="h-5 w-5" />
+            سینک خودکار
+          </CardTitle>
+          <CardDescription>
+            تنظیم سینک خودکار محصولات و سفارشات از WooCommerce
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Enable/Disable Auto-Sync */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="auto-sync-enabled" className="text-base font-medium">
+                فعال‌سازی سینک خودکار
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                سینک خودکار محصولات و سفارشات در فواصل زمانی مشخص
+              </p>
+            </div>
+            <Switch
+              id="auto-sync-enabled"
+              checked={autoSyncEnabled}
+              onCheckedChange={setAutoSyncEnabled}
+            />
+          </div>
+
+          {/* Interval Setting */}
+          <div className="space-y-2">
+            <Label htmlFor="sync-interval">
+              فاصله زمانی سینک (دقیقه)
+            </Label>
+            <Input
+              id="sync-interval"
+              type="number"
+              min="5"
+              value={autoSyncInterval}
+              onChange={(e) => setAutoSyncInterval(parseInt(e.target.value) || 60)}
+              disabled={!autoSyncEnabled}
+            />
+            <p className="text-xs text-muted-foreground">
+              حداقل: 5 دقیقه
+            </p>
+          </div>
+
+          {/* Last Sync Info */}
+          {lastSyncAt && (
+            <div className="rounded-lg bg-muted p-3">
+              <p className="text-sm text-muted-foreground">
+                آخرین سینک:{' '}
+                <span className="font-medium text-foreground">
+                  {new Date(lastSyncAt).toLocaleString('fa-IR')}
+                </span>
+              </p>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveAutoSyncSettings}
+              disabled={isSavingSettings}
+              className="flex-1"
+            >
+              {isSavingSettings ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
+            </Button>
+            <Button
+              onClick={handleAutoSync}
+              disabled={isAutoSyncing}
+              variant="outline"
+              className="flex-1"
+            >
+              {isAutoSyncing ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  در حال سینک...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  سینک دستی
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Cron URL Info */}
+          <Alert>
+            <AlertTitle className="text-sm">راه‌اندازی Cron Job</AlertTitle>
+            <AlertDescription className="text-xs space-y-2">
+              <p>
+                برای فعال‌سازی سینک خودکار، یک Cron Job با URL زیر راه‌اندازی کنید:
+              </p>
+              <code className="block bg-muted p-2 rounded text-xs break-all">
+                GET {typeof window !== 'undefined' ? window.location.origin : ''}/api/woocommerce/auto-sync?key=YOUR_CRON_SECRET_KEY
+              </code>
+              <p className="text-muted-foreground">
+                توجه: کلید را در متغیر محیطی CRON_SECRET_KEY تنظیم کنید.
+              </p>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>

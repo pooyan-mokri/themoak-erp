@@ -1,5 +1,13 @@
 'use server';
 
+/**
+ * Sales Actions - فروش و سفارشات
+ * - ایجاد سفارش
+ * - مدیریت پرداخت‌ها
+ * - لغو سفارشات
+ * - دریافت لیست سفارشات
+ */
+
 import { TransactionType } from '@/lib/types';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
@@ -216,6 +224,98 @@ export async function getOrders() {
   }
 }
 
+// Record payment for an unpaid or partially paid order
+export async function recordOrderPayment(orderId: string, accountId: string, amount: number) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { customer: true },
+    });
+
+    if (!order) {
+      return { success: false, message: 'سفارش یافت نشد.' };
+    }
+
+    const currentPaid = Number(order.paidAmount);
+    const totalAmount = Number(order.totalAmount) - Number(order.discount);
+    const remainingDebt = totalAmount - currentPaid;
+
+    if (amount <= 0) {
+      return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
+    }
+
+    if (amount > remainingDebt) {
+      return { success: false, message: `مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString()} تومان) باشد.` };
+    }
+
+    await prisma.$transaction(async (tx: any) => {
+      // 1. Create Income Transaction
+      const customerName = order.customer?.name || 'مشتری';
+      const transaction = await tx.transaction.create({
+        data: {
+          amount,
+          currency: 'TOMAN',
+          rateSnapshot: 1,
+          amountInToman: amount,
+          type: TransactionType.INCOME,
+          accountId,
+          description: `دریافت بابت سفارش #${order.number} - مشتری: ${customerName}`,
+          category: 'Sales',
+          date: new Date(),
+        },
+      });
+
+      // 2. Update Account Balance
+      await tx.account.update({
+        where: { id: accountId },
+        data: {
+          balance: {
+            increment: amount,
+          },
+        },
+      });
+
+      // 3. Update Order Payment Status
+      const newPaidAmount = currentPaid + amount;
+      const newPaymentStatus = newPaidAmount >= totalAmount ? 'PAID' : 'PARTIAL';
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidAmount: newPaidAmount,
+          paymentStatus: newPaymentStatus,
+        },
+      });
+    });
+
+    // If order is now fully paid and came from WooCommerce, mark it as completed
+    if (order.wooId) {
+      const finalPaidAmount = currentPaid + amount;
+      if (finalPaidAmount >= totalAmount) {
+        try {
+          const { completeOrderInWooCommerce } = await import('./woocommerce');
+          const result = await completeOrderInWooCommerce(order.wooId);
+          if (result.success) {
+            console.log(`[Payment] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce به تکمیل شده تغییر کرد.`);
+          } else {
+            console.warn(`[Payment] خطا در تکمیل سفارش در WooCommerce: ${result.message}`);
+          }
+        } catch (error) {
+          console.error('[Payment] خطا در تکمیل سفارش در WooCommerce:', error);
+          // Don't fail the payment process if WooCommerce update fails
+        }
+      }
+    }
+
+    revalidatePath('/dashboard/sales/history');
+    revalidatePath(`/dashboard/sales/history/${orderId}`);
+    return { success: true, message: 'پرداخت با موفقیت ثبت شد.' };
+  } catch (error: any) {
+    console.error('Error recording payment:', error);
+    return { success: false, message: error.message || 'خطا در ثبت پرداخت.' };
+  }
+}
+
 export async function getOrder(id: string) {
   try {
     const order = await prisma.order.findUnique({
@@ -302,5 +402,111 @@ export async function getOrder(id: string) {
   } catch (error) {
     console.error('Error fetching order:', error);
     return undefined;
+  }
+}
+
+/**
+ * لغو (حذف) سفارش
+ * - اگر از WooCommerce باشد، در WooCommerce هم لغو می‌شود
+ * - اگر transaction داشته باشد، transaction حذف می‌شود
+ * - موجودی حساب بازگردانده می‌شود
+ */
+export async function cancelOrder(orderId: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  try {
+    // Get order with all relations
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        transaction: {
+          include: {
+            account: true,
+          },
+        },
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return { success: false, message: 'سفارش یافت نشد.' };
+    }
+
+    // Check if already cancelled
+    if (order.status === 'CANCELLED') {
+      return { success: false, message: 'این سفارش قبلاً لغو شده است.' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. If order has transaction, delete it and restore account balance
+      if (order.transactionId && order.transaction) {
+        const transaction = order.transaction;
+
+        // Restore account balance
+        // If transaction was income (type = INCOME), subtract from balance
+        // If transaction was expense (type = EXPENSE), add to balance
+        const balanceChange = transaction.type === 'INCOME'
+          ? -Number(transaction.amount)
+          : Number(transaction.amount);
+
+        await tx.account.update({
+          where: { id: transaction.accountId },
+          data: {
+            balance: {
+              increment: balanceChange,
+            },
+          },
+        });
+
+        // Delete transaction
+        await tx.transaction.delete({
+          where: { id: transaction.id },
+        });
+      }
+
+      // 2. Update order status to CANCELLED
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: 'UNPAID',
+          paidAmount: 0,
+          transactionId: null,
+        },
+      });
+    });
+
+    // 3. If order is from WooCommerce, cancel it there too
+    if (order.wooId) {
+      try {
+        const { cancelOrderInWooCommerce } = await import('./woocommerce');
+        await cancelOrderInWooCommerce(order.wooId);
+        console.log(`[CANCEL-ORDER] سفارش WooCommerce #${order.wooId} لغو شد`);
+      } catch (wooError) {
+        console.error('[CANCEL-ORDER] خطا در لغو سفارش در WooCommerce:', wooError);
+        // Don't fail the whole operation if WooCommerce update fails
+      }
+    }
+
+    // Revalidate relevant paths to update the UI
+    revalidatePath('/dashboard/sales/history');
+    revalidatePath('/dashboard/sales');
+    revalidatePath('/dashboard/reports/ar-aging');
+
+    return {
+      success: true,
+      message: `سفارش #${order.number} با موفقیت لغو شد.`,
+    };
+  } catch (error) {
+    console.error('Error cancelling order:', error);
+    return {
+      success: false,
+      message: 'خطا در لغو سفارش.',
+    };
   }
 }

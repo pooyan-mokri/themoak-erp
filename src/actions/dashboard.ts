@@ -23,23 +23,30 @@ export async function getDashboardFinancials() {
     
     const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
-    // Total Receivables (simplified - sum all non-cancelled orders)
-    // Note: In production, this should track actual unpaid amounts
+    // Total Receivables (actual unpaid amounts from orders)
+    // فقط سفارشات با مشتری - سفارشات Guest (نقدی) طلبکار نیستند
     const allOrders = await prisma.order.findMany({
       where: {
+        customerId: { not: null },  // فقط سفارشات با مشتری
         status: {
           not: 'CANCELLED'
+        },
+        paymentStatus: {
+          in: ['UNPAID', 'PARTIAL']
         }
       },
       select: {
-        totalAmount: true
+        totalAmount: true,
+        paidAmount: true
       }
     });
-    
-    // Estimate 30% of total orders are receivables
+
+    // Calculate actual receivables: totalAmount - paidAmount
+    // توجه: totalAmount در WooCommerce قبلاً تخفیف را کم کرده است، پس نباید دوباره کم کنیم
     const totalReceivables = allOrders.reduce((sum: any, order: any) => {
-      return sum + Number(order.totalAmount);
-    }, 0) * 0.3;
+      const unpaid = Number(order.totalAmount) - Number(order.paidAmount || 0);
+      return sum + (unpaid > 0 ? unpaid : 0);
+    }, 0);
 
     // Total Payables (received purchase orders - simplified)
     const purchaseOrders = await prisma.purchaseOrder.findMany({

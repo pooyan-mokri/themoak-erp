@@ -1,6 +1,10 @@
 import { getOrders } from '@/actions/sales';
 import { OrderList } from '@/components/sales/order-list';
 
+/**
+ * صفحه تاریخچه سفارشات فروش
+ * شامل امکانات: جستجو، فیلتر، ثبت پرداخت، لغو سفارش، دانلود Excel
+ */
 export default async function SalesHistoryPage() {
   const orders = await getOrders();
 
