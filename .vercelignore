@@ -1,0 +1,6 @@
+test_*.ts
+verify_*.ts
+scripts/
+*.md
+!README.md
+!VERCEL_SETUP.md

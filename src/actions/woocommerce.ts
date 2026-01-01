@@ -156,27 +156,22 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
       });
 
       if (existingProduct) {
-        // Download and save product image if available
+        // Use WooCommerce image URL directly (Vercel doesn't support filesystem uploads)
         let imageUrl = existingProduct.image;
         console.log(`[Sync] Product ${wooProduct.name} (ID: ${wooProductId}) - Checking for image...`);
         if (wooProduct.images && Array.isArray(wooProduct.images) && wooProduct.images.length > 0) {
           const imageData = wooProduct.images[0];
           const imageSrc = imageData?.src;
-          console.log(`[Sync] Found image data:`, { 
-            hasImages: !!wooProduct.images, 
+          console.log(`[Sync] Found image data:`, {
+            hasImages: !!wooProduct.images,
             imagesLength: wooProduct.images.length,
-            firstImageSrc: imageSrc 
+            firstImageSrc: imageSrc
           });
-          
+
           if (imageSrc) {
-            console.log(`[Sync] Downloading image from: ${imageSrc}`);
-            const downloadedUrl = await downloadAndSaveProductImage(imageSrc);
-            if (downloadedUrl) {
-              console.log(`[Sync] Image downloaded successfully: ${downloadedUrl}`);
-              imageUrl = downloadedUrl;
-            } else {
-              console.error(`[Sync] Failed to download image for product ${wooProduct.name}`);
-            }
+            console.log(`[Sync] Using WooCommerce image URL: ${imageSrc}`);
+            // Store WooCommerce image URL directly
+            imageUrl = imageSrc;
           }
         } else {
           console.log(`[Sync] No images found for product ${wooProduct.name}`);
@@ -223,26 +218,22 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
         });
 
         if (!existingSku) {
-             // Download and save product image if available
+             // Use WooCommerce image URL directly (Vercel doesn't support filesystem uploads)
              let imageUrl: string | undefined = undefined;
              console.log(`[Sync] Creating new product ${wooProduct.name} (ID: ${wooProductId}) - Checking for image...`);
              if (wooProduct.images && Array.isArray(wooProduct.images) && wooProduct.images.length > 0) {
                const imageData = wooProduct.images[0];
                const imageSrc = imageData?.src;
-               console.log(`[Sync] Found image data for new product:`, { 
-                 hasImages: !!wooProduct.images, 
+               console.log(`[Sync] Found image data for new product:`, {
+                 hasImages: !!wooProduct.images,
                  imagesLength: wooProduct.images.length,
-                 firstImageSrc: imageSrc 
+                 firstImageSrc: imageSrc
                });
-               
+
                if (imageSrc) {
-                 console.log(`[Sync] Downloading image from: ${imageSrc}`);
-                 imageUrl = await downloadAndSaveProductImage(imageSrc);
-                 if (imageUrl) {
-                   console.log(`[Sync] Image downloaded successfully for new product: ${imageUrl}`);
-                 } else {
-                   console.error(`[Sync] Failed to download image for new product ${wooProduct.name}`);
-                 }
+                 console.log(`[Sync] Using WooCommerce image URL for new product: ${imageSrc}`);
+                 // Store WooCommerce image URL directly
+                 imageUrl = imageSrc;
                }
              } else {
                console.log(`[Sync] No images found for new product ${wooProduct.name}`);
@@ -560,15 +551,19 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
             console.log(`[PROCESS] پردازش سفارش جدید WooCommerce #${order.number} (ID: ${order.id})... (${processedCount}/${wooOrders.length})`);
             // 1. Find or Create Customer
             let customerId: string | undefined = undefined;
-            if (order.billing?.email) {
-                const existingCustomer = await prisma.customer.findFirst({
-                    where: { 
-                        OR: [
-                            { email: order.billing.email },
-                            { wooId: order.customer_id && order.customer_id !== 0 ? order.customer_id : undefined }
-                        ]
-                    }
-                });
+            if (order.billing?.email || order.billing?.phone || order.billing?.first_name) {
+                // Try to find existing customer by email or wooId
+                let existingCustomer = undefined;
+                if (order.billing?.email) {
+                    existingCustomer = await prisma.customer.findFirst({
+                        where: {
+                            OR: [
+                                { email: order.billing.email },
+                                { wooId: order.customer_id && order.customer_id !== 0 ? order.customer_id : undefined }
+                            ]
+                        }
+                    });
+                }
 
                 if (existingCustomer) {
                     customerId = existingCustomer.id;
@@ -580,18 +575,29 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             });
                     }
                 } else {
+                    // Generate customer name with priority: full name > email > phone > order number
+                    let customerName = `${order.billing.first_name || ''} ${order.billing.last_name || ''}`.trim();
+
+                    if (!customerName && order.billing.email) {
+                        customerName = order.billing.email;
+                    } else if (!customerName && order.billing.phone) {
+                        customerName = order.billing.phone;
+                    } else if (!customerName) {
+                        customerName = `مشتری سفارش #${order.number || order.id}`;
+                    }
+
                     const newCustomer = await prisma.customer.create({
                         data: {
-                            name: `${order.billing.first_name} ${order.billing.last_name}`.trim() || 'Guest',
-                            email: order.billing.email,
-                            phone: order.billing.phone,
+                            name: customerName,
+                            email: order.billing?.email || undefined,
+                            phone: order.billing?.phone || undefined,
                             address: [
-                                order.billing.address_1,
-                                order.billing.address_2,
-                                order.billing.city,
-                                order.billing.state,
-                                order.billing.postcode
-                            ].filter(Boolean).join(', '),
+                                order.billing?.address_1,
+                                order.billing?.address_2,
+                                order.billing?.city,
+                                order.billing?.state,
+                                order.billing?.postcode
+                            ].filter(Boolean).join(', ') || undefined,
                             wooId: order.customer_id && order.customer_id !== 0 ? order.customer_id : undefined
                         }
                     });
@@ -1266,6 +1272,7 @@ export async function completeOrderInWooCommerce(wooOrderId: number): Promise<Ac
         };
     }
 }
+
 
 // Debug function to check product matching
 export async function debugProductMatching(): Promise<ActionResult<{

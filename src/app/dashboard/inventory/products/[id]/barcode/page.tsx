@@ -1,7 +1,6 @@
 import { getProductDetail } from '@/actions/product-detail';
 import { notFound } from 'next/navigation';
-import { PrintButton } from '@/components/inventory/print-barcode-button';
-import { BarcodeDisplay } from '@/components/inventory/barcode-display';
+import { BarcodePrintWrapper } from '@/components/inventory/barcode-print-wrapper';
 
 export default async function ProductBarcodePrintPage({
   params,
@@ -95,28 +94,12 @@ export default async function ProductBarcodePrintPage({
   }
 
   return (
-    <div className="bg-white min-h-screen p-8 text-black print:p-0">
-        <div className="max-w-4xl mx-auto print:w-full print:max-w-none">
-        {/* Print Button - Hidden when printing */}
-        <div className="mb-8 flex justify-end print:hidden">
-          <PrintButton />
-        </div>
-
-        {/* Barcode Container */}
-        <div className="flex flex-col items-center justify-center min-h-[400px] print:min-h-0">
-          <div className="border-4 border-black p-8 bg-white">
-            <div className="text-center mb-4">
-              <h2 className="text-xl font-bold mb-2">{productData.name}</h2>
-              <p className="text-sm text-gray-600">SKU: {productData.sku}</p>
-            </div>
-            <BarcodeDisplay barcode={formattedBarcode} format={barcodeFormat as 'UPC' | 'EAN13' | 'CODE128'} />
-            <div className="text-center">
-              <p className="font-mono text-lg font-bold">{formattedBarcode}</p>
-            </div>
-          </div>
-        </div>
-        </div>
-      </div>
+    <BarcodePrintWrapper
+      productName={productData.name}
+      sku={productData.sku}
+      barcode={formattedBarcode}
+      format={barcodeFormat as 'UPC' | 'EAN13' | 'CODE128'}
+    />
   );
 }
 

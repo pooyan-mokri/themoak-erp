@@ -241,6 +241,12 @@ export async function updateProduct(id: string, prevState: ActionState, formData
   const { name, sku, productType, costPrice, sellPrice, image: validatedImage, wooId } = validatedFields.data;
 
   try {
+    // Get old product data to check if price changed
+    const oldProduct = await prisma.product.findUnique({
+      where: { id },
+      select: { sellPrice: true, wooId: true }
+    });
+
     await prisma.product.update({
       where: { id },
       data: {
@@ -253,6 +259,16 @@ export async function updateProduct(id: string, prevState: ActionState, formData
         wooId,
       },
     });
+
+    // If sell price changed and product has WooCommerce ID, update WooCommerce
+    if (oldProduct && oldProduct.wooId && Number(oldProduct.sellPrice) !== sellPrice) {
+      const { updateProductPriceInWooCommerce } = await import('./woocommerce');
+      const wooResult = await updateProductPriceInWooCommerce(id, sellPrice);
+
+      if (wooResult.success && wooResult.data?.updated) {
+        console.log(`[Product Update] قیمت در WooCommerce هم به‌روزرسانی شد`);
+      }
+    }
   } catch (error) {
     return {
       message: 'خطا در ویرایش کالا. ممکن است SKU تکراری باشد.',
