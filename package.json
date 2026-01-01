@@ -7,7 +7,9 @@
     "build": "prisma db push --accept-data-loss --skip-generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "reset-data": "tsx scripts/reset-database.ts",
+    "reset-data-full": "tsx scripts/reset-database-full.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -69,6 +71,7 @@
     "eslint-config-next": "14.2.3",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18",
+    "tsx": "^4.7.0",
     "typescript": "^5"
   }
 }
