@@ -1,6 +1,7 @@
 'use server';
 
 import { Client } from 'basic-ftp';
+import { Readable } from 'stream';
 import { getSetting } from '@/actions/settings';
 
 interface FTPCredentials {
@@ -126,7 +127,9 @@ export async function uploadToFTP(
 
     // Upload file
     const remotePath = `${basePath}/${fileName}`;
-    await client.uploadFrom(fileBuffer, remotePath);
+    // Convert Buffer to Readable stream
+    const stream = Readable.from(fileBuffer);
+    await client.uploadFrom(stream, remotePath);
 
     // Construct URL (assuming FTP server is accessible via HTTP)
     // You may need to adjust this based on your FTP server setup
