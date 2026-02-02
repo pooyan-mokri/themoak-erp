@@ -21,22 +21,29 @@ interface GoogleDriveCredentials {
  */
 function getRedirectUri(): string {
   if (process.env.GOOGLE_REDIRECT_URI) {
+    console.log('[Google Drive] Using GOOGLE_REDIRECT_URI:', process.env.GOOGLE_REDIRECT_URI);
     return process.env.GOOGLE_REDIRECT_URI;
   }
   
-  // Vercel automatically provides VERCEL_URL
+  // Vercel automatically provides VERCEL_URL (but it might be the preview URL, not custom domain)
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/google-drive/callback`;
+    const uri = `https://${process.env.VERCEL_URL}/api/google-drive/callback`;
+    console.log('[Google Drive] Using VERCEL_URL:', uri);
+    return uri;
   }
   
   // Use AUTH_URL or NEXTAUTH_URL if available
   const baseUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
   if (baseUrl) {
-    return `${baseUrl}/api/google-drive/callback`;
+    const uri = `${baseUrl}/api/google-drive/callback`;
+    console.log('[Google Drive] Using AUTH_URL/NEXTAUTH_URL:', uri);
+    return uri;
   }
   
   // Fallback to localhost for development
-  return 'http://localhost:3000/api/google-drive/callback';
+  const fallback = 'http://localhost:3000/api/google-drive/callback';
+  console.log('[Google Drive] Using fallback:', fallback);
+  return fallback;
 }
 
 /**
@@ -197,6 +204,9 @@ export async function getGoogleDriveAuthUrl(): Promise<string> {
   const scopes = [
     'https://www.googleapis.com/auth/drive.file', // Access to files created by the app
   ];
+
+  const redirectUri = getRedirectUri();
+  console.log('[Google Drive] Generating auth URL with redirect URI:', redirectUri);
 
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
