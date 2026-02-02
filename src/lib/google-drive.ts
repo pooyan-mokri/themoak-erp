@@ -27,10 +27,21 @@ export async function getGoogleDriveClient() {
     throw new Error('Google Drive not connected. Please connect in settings.');
   }
 
+  // Get OAuth credentials from settings
+  const oauthCreds = (await getSetting('google_drive_oauth_credentials')) as
+    | { clientId: string; clientSecret: string }
+    | undefined;
+
+  if (!oauthCreds?.clientId || !oauthCreds?.clientSecret) {
+    throw new Error(
+      'Google Drive OAuth credentials not configured. Please set Client ID and Client Secret in settings.'
+    );
+  }
+
   const google = await getGoogleAuth();
   const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
+    oauthCreds.clientId,
+    oauthCreds.clientSecret,
     process.env.GOOGLE_REDIRECT_URI ||
       `${
         process.env.AUTH_URL ||
@@ -146,10 +157,21 @@ export async function deleteFromGoogleDrive(fileId: string): Promise<void> {
  * Get Google Drive OAuth URL
  */
 export async function getGoogleDriveAuthUrl(): Promise<string> {
+  // Get OAuth credentials from settings
+  const oauthCreds = (await getSetting('google_drive_oauth_credentials')) as
+    | { clientId: string; clientSecret: string }
+    | undefined;
+
+  if (!oauthCreds?.clientId || !oauthCreds?.clientSecret) {
+    throw new Error(
+      'Google Drive OAuth credentials not configured. Please set Client ID and Client Secret in settings.'
+    );
+  }
+
   const google = await getGoogleAuth();
   const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
+    oauthCreds.clientId,
+    oauthCreds.clientSecret,
     process.env.GOOGLE_REDIRECT_URI ||
       `${
         process.env.AUTH_URL ||

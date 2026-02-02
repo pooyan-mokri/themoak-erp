@@ -30,6 +30,8 @@ import {
   getGoogleDriveAuthUrlAction,
   getGoogleDriveStatus,
   disconnectGoogleDrive,
+  saveGoogleDriveCredentials,
+  getGoogleDriveCredentials,
 } from '@/actions/google-drive';
 import { toast } from 'sonner';
 import { useLogo } from '@/components/providers/logo-provider';
@@ -61,6 +63,11 @@ export function CompanySettingsForm() {
     connected: boolean;
     folderId?: string | null;
   }>({ connected: false });
+  const [googleDriveError, setGoogleDriveError] = useState<string | null>(null);
+  const [googleDriveCredentials, setGoogleDriveCredentials] = useState({
+    clientId: '',
+    clientSecret: '',
+  });
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -84,6 +91,14 @@ export function CompanySettingsForm() {
 
       const gdStatus = await getGoogleDriveStatus();
       setGoogleDriveStatus(gdStatus);
+
+      const gdCreds = await getGoogleDriveCredentials();
+      if (gdCreds) {
+        setGoogleDriveCredentials({
+          clientId: gdCreds.clientId || '',
+          clientSecret: gdCreds.clientSecret || '',
+        });
+      }
     };
     loadSettings();
   }, []);
@@ -317,6 +332,66 @@ export function CompanySettingsForm() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="google-client-id">Google Client ID</Label>
+                <Input
+                  id="google-client-id"
+                  type="text"
+                  placeholder="your-client-id.apps.googleusercontent.com"
+                  value={googleDriveCredentials.clientId}
+                  onChange={(e) =>
+                    setGoogleDriveCredentials({
+                      ...googleDriveCredentials,
+                      clientId: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="google-client-secret">
+                  Google Client Secret
+                </Label>
+                <Input
+                  id="google-client-secret"
+                  type="password"
+                  placeholder="GOCSPX-..."
+                  value={googleDriveCredentials.clientSecret}
+                  onChange={(e) =>
+                    setGoogleDriveCredentials({
+                      ...googleDriveCredentials,
+                      clientSecret: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setLoading(true);
+                const result = await saveGoogleDriveCredentials(
+                  googleDriveCredentials.clientId,
+                  googleDriveCredentials.clientSecret
+                );
+                setLoading(false);
+                if (result.success) {
+                  toast.success('اعتبارنامه‌های Google Drive ذخیره شد');
+                } else {
+                  toast.error(result.error || 'خطا در ذخیره اعتبارنامه‌ها');
+                }
+              }}
+              disabled={
+                loading ||
+                !googleDriveCredentials.clientId ||
+                !googleDriveCredentials.clientSecret
+              }
+              className="w-full"
+            >
+              {loading ? 'در حال ذخیره...' : 'ذخیره اعتبارنامه‌ها'}
+            </Button>
+
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div className="flex items-center gap-3">
                 {googleDriveStatus.connected ? (
@@ -344,20 +419,48 @@ export function CompanySettingsForm() {
             </div>
 
             {!googleDriveStatus.connected ? (
-              <Button
-                onClick={async () => {
-                  const result = await getGoogleDriveAuthUrlAction();
-                  if (result.success && result.url) {
-                    window.location.href = result.url;
-                  } else {
-                    toast.error('خطا در اتصال به Google Drive');
+              <>
+                <Button
+                  onClick={async () => {
+                    setGoogleDriveError(null);
+                    if (
+                      !googleDriveCredentials.clientId ||
+                      !googleDriveCredentials.clientSecret
+                    ) {
+                      toast.error(
+                        'لطفاً ابتدا Client ID و Client Secret را وارد و ذخیره کنید'
+                      );
+                      return;
+                    }
+                    const result = await getGoogleDriveAuthUrlAction();
+                    if (result.success && result.url) {
+                      window.location.href = result.url;
+                    } else {
+                      setGoogleDriveError(
+                        result.error || 'خطا در اتصال به Google Drive'
+                      );
+                      toast.error(
+                        result.error || 'خطا در اتصال به Google Drive'
+                      );
+                    }
+                  }}
+                  className="w-full"
+                  disabled={
+                    !googleDriveCredentials.clientId ||
+                    !googleDriveCredentials.clientSecret
                   }
-                }}
-                className="w-full"
-              >
-                <Link2 className="ml-2 h-4 w-4" />
-                اتصال به Google Drive
-              </Button>
+                >
+                  <Link2 className="ml-2 h-4 w-4" />
+                  اتصال به Google Drive
+                </Button>
+                {googleDriveError && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      ⚠️ {googleDriveError}
+                    </p>
+                  </div>
+                )}
+              </>
             ) : (
               <Button
                 variant="destructive"
@@ -386,8 +489,8 @@ export function CompanySettingsForm() {
                 Drive شما ذخیره می‌شوند.
               </p>
               <p>
-                • متغیرهای محیطی مورد نیاز: GOOGLE_CLIENT_ID,
-                GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
+                • ابتدا Client ID و Client Secret را از Google Cloud Console
+                دریافت کرده و در بالا وارد کنید.
               </p>
             </div>
           </CardContent>

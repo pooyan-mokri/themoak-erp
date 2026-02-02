@@ -18,9 +18,20 @@ export async function getGoogleDriveAuthUrlAction() {
   try {
     const url = await getGoogleDriveAuthUrl();
     return { success: true, url };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating Google Drive auth URL:', error);
-    return { success: false, error: 'Failed to generate auth URL' };
+    const errorMessage = error?.message || 'Failed to generate auth URL';
+
+    // Provide helpful error messages
+    if (errorMessage.includes('OAuth credentials not configured')) {
+      return {
+        success: false,
+        error:
+          'لطفاً ابتدا Client ID و Client Secret را در فرم بالا وارد و ذخیره کنید.',
+      };
+    }
+
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -67,5 +78,43 @@ export async function disconnectGoogleDrive() {
   } catch (error) {
     console.error('Error disconnecting Google Drive:', error);
     return { success: false, error: 'Failed to disconnect' };
+  }
+}
+
+export async function saveGoogleDriveCredentials(
+  clientId: string,
+  clientSecret: string
+) {
+  const session = await auth();
+
+  if (!session?.user || session.user.role !== Role.ADMIN) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  try {
+    await saveSetting('google_drive_oauth_credentials', {
+      clientId,
+      clientSecret,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving Google Drive credentials:', error);
+    return { success: false, error: 'Failed to save credentials' };
+  }
+}
+
+export async function getGoogleDriveCredentials() {
+  const session = await auth();
+
+  if (!session?.user || session.user.role !== Role.ADMIN) {
+    return null;
+  }
+
+  try {
+    const creds = await getSetting('google_drive_oauth_credentials');
+    return creds as { clientId: string; clientSecret: string } | null;
+  } catch (error) {
+    console.error('Error getting Google Drive credentials:', error);
+    return null;
   }
 }

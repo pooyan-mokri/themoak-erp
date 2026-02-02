@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveSetting } from '@/actions/settings';
+import { saveSetting, getSetting } from '@/actions/settings';
 import { auth } from '@/auth';
 import { Role } from '@prisma/client';
 
@@ -30,10 +30,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Get OAuth credentials from settings
+    const oauthCreds = (await getSetting('google_drive_oauth_credentials')) as
+      | { clientId: string; clientSecret: string }
+      | undefined;
+
+    if (!oauthCreds?.clientId || !oauthCreds?.clientSecret) {
+      console.error('Missing Google Drive OAuth credentials in settings');
+      return NextResponse.redirect(
+        new URL('/dashboard/settings?error=missing_oauth_creds', request.url)
+      );
+    }
+
     const { google } = await import('googleapis');
     const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
+      oauthCreds.clientId,
+      oauthCreds.clientSecret,
       process.env.GOOGLE_REDIRECT_URI ||
         `${
           process.env.AUTH_URL ||
