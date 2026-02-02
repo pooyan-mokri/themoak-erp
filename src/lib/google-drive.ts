@@ -16,6 +16,30 @@ interface GoogleDriveCredentials {
 }
 
 /**
+ * Get the redirect URI for OAuth callback
+ * Prioritizes explicit setting, then Vercel URL, then AUTH_URL/NEXTAUTH_URL
+ */
+function getRedirectUri(): string {
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    return process.env.GOOGLE_REDIRECT_URI;
+  }
+  
+  // Vercel automatically provides VERCEL_URL
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/google-drive/callback`;
+  }
+  
+  // Use AUTH_URL or NEXTAUTH_URL if available
+  const baseUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+  if (baseUrl) {
+    return `${baseUrl}/api/google-drive/callback`;
+  }
+  
+  // Fallback to localhost for development
+  return 'http://localhost:3000/api/google-drive/callback';
+}
+
+/**
  * Get Google Drive OAuth2 client
  */
 export async function getGoogleDriveClient() {
@@ -42,12 +66,7 @@ export async function getGoogleDriveClient() {
   const oauth2Client = new google.auth.OAuth2(
     oauthCreds.clientId,
     oauthCreds.clientSecret,
-    process.env.GOOGLE_REDIRECT_URI ||
-      `${
-        process.env.AUTH_URL ||
-        process.env.NEXTAUTH_URL ||
-        'http://localhost:3000'
-      }/api/google-drive/callback`
+    getRedirectUri()
   );
 
   oauth2Client.setCredentials({
@@ -172,12 +191,7 @@ export async function getGoogleDriveAuthUrl(): Promise<string> {
   const oauth2Client = new google.auth.OAuth2(
     oauthCreds.clientId,
     oauthCreds.clientSecret,
-    process.env.GOOGLE_REDIRECT_URI ||
-      `${
-        process.env.AUTH_URL ||
-        process.env.NEXTAUTH_URL ||
-        'http://localhost:3000'
-      }/api/google-drive/callback`
+    getRedirectUri()
   );
 
   const scopes = [

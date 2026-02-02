@@ -43,15 +43,32 @@ export async function GET(request: NextRequest) {
     }
 
     const { google } = await import('googleapis');
+    
+    // Determine redirect URI - prioritize explicit setting, then Vercel URL, then AUTH_URL/NEXTAUTH_URL
+    const getRedirectUri = () => {
+      if (process.env.GOOGLE_REDIRECT_URI) {
+        return process.env.GOOGLE_REDIRECT_URI;
+      }
+      
+      // Vercel automatically provides VERCEL_URL
+      if (process.env.VERCEL_URL) {
+        return `https://${process.env.VERCEL_URL}/api/google-drive/callback`;
+      }
+      
+      // Use AUTH_URL or NEXTAUTH_URL if available
+      const baseUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+      if (baseUrl) {
+        return `${baseUrl}/api/google-drive/callback`;
+      }
+      
+      // Fallback to localhost for development
+      return 'http://localhost:3000/api/google-drive/callback';
+    };
+    
     const oauth2Client = new google.auth.OAuth2(
       oauthCreds.clientId,
       oauthCreds.clientSecret,
-      process.env.GOOGLE_REDIRECT_URI ||
-        `${
-          process.env.AUTH_URL ||
-          process.env.NEXTAUTH_URL ||
-          'http://localhost:3000'
-        }/api/google-drive/callback`
+      getRedirectUri()
     );
 
     const { tokens } = await oauth2Client.getToken(code);
