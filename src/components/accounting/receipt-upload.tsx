@@ -63,10 +63,13 @@ export function ReceiptUpload({
         onUploadComplete(result.url, result.type);
         toast.success('فایل با موفقیت آپلود شد');
       } else {
-        toast.error(result.error || 'خطا در آپلود فایل');
+        const errorMsg = result.error || 'خطا در آپلود فایل';
+        console.error('[ReceiptUpload] Upload failed:', errorMsg);
+        toast.error(errorMsg);
       }
-    } catch (error) {
-      toast.error('خطا در ارتباط با سرور');
+    } catch (error: any) {
+      console.error('[ReceiptUpload] Upload exception:', error);
+      toast.error(error?.message || 'خطا در ارتباط با سرور');
     } finally {
       setIsUploading(false);
       // Reset input

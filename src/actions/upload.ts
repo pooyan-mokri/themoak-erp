@@ -40,11 +40,14 @@ export async function uploadReceipt(formData: FormData) {
         const ext = file.name.split('.').pop();
         const filename = `${randomUUID()}.${ext}`;
 
+        console.log('[Upload] Attempting Google Drive upload:', filename);
         const driveResult = await uploadToGoogleDrive(
           buffer,
           filename,
           file.type
         );
+
+        console.log('[Upload] Google Drive upload successful:', driveResult.fileId);
 
         // Store fileId in URL format for later retrieval
         const url = `gdrive:${driveResult.fileId}`;
@@ -56,13 +59,39 @@ export async function uploadReceipt(formData: FormData) {
           webViewLink: driveResult.webViewLink,
         };
       } catch (error: any) {
-        console.error('Google Drive upload error:', error);
-        // Fall back to local storage if Google Drive fails
-        console.log('Falling back to local storage...');
+        console.error('[Upload] Google Drive upload error:', error);
+        console.error('[Upload] Error details:', {
+          message: error?.message,
+          code: error?.code,
+          errors: error?.errors,
+        });
+        
+        // On Vercel, local storage is not available, so we must fail if Google Drive fails
+        const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
+        
+        if (isVercel) {
+          // On Vercel, we can't use local storage, so return the error
+          const errorMessage = error?.message || 'Failed to upload to Google Drive';
+          return {
+            success: false,
+            error: `خطا در آپلود به Google Drive: ${errorMessage}. لطفاً اتصال Google Drive را بررسی کنید.`,
+          };
+        }
+        
+        // Fall back to local storage only in non-Vercel environments
+        console.log('[Upload] Falling back to local storage...');
       }
     }
 
-    // Fallback to local storage
+    // Fallback to local storage (only works locally, not on Vercel)
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
+    if (isVercel) {
+      return {
+        success: false,
+        error: 'Google Drive متصل نیست. لطفاً در تنظیمات به Google Drive متصل شوید.',
+      };
+    }
+
     const uploadDir = join(process.cwd(), 'public', 'uploads', 'receipts');
     await mkdir(uploadDir, { recursive: true });
 
