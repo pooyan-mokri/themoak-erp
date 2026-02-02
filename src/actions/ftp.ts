@@ -12,6 +12,7 @@ export async function saveFTPCredentials(credentials: {
   password: string;
   secure: boolean;
   basePath?: string;
+  ignoreCertificateErrors?: boolean;
 }) {
   const session = await auth();
 
@@ -45,6 +46,7 @@ export async function getFTPCredentials() {
           password: string;
           secure: boolean;
           basePath?: string;
+          ignoreCertificateErrors?: boolean;
         }
       | null;
   } catch (error) {

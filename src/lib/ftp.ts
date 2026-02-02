@@ -11,6 +11,7 @@ interface FTPCredentials {
   password: string;
   secure: boolean;
   basePath?: string;
+  ignoreCertificateErrors?: boolean;
 }
 
 /**
@@ -56,15 +57,23 @@ export async function testFTPConnection(): Promise<{
     client = new Client();
     client.ftp.verbose = false;
 
-    // Connect with timeout and passive mode (required for most firewalls)
-    // Passive mode is enabled by default in basic-ftp
-    await client.access({
+    // Connect (passive mode is enabled by default in basic-ftp)
+    const accessOptions: any = {
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
       user: ftpCreds.user,
       password: ftpCreds.password,
       secure: ftpCreds.secure || false,
-    });
+    };
+    
+    // If secure and ignoreCertificateErrors is enabled, disable strict SSL verification
+    if (ftpCreds.secure && ftpCreds.ignoreCertificateErrors) {
+      accessOptions.secureOptions = {
+        rejectUnauthorized: false,
+      };
+    }
+    
+    await client.access(accessOptions);
 
     // Test by listing current directory
     await client.list();
@@ -90,6 +99,13 @@ export async function testFTPConnection(): Promise<{
       error?.message?.includes('ENOTFOUND')
     ) {
       errorMessage = 'آدرس سرور پیدا نشد. لطفاً آدرس را بررسی کنید.';
+    } else if (
+      error?.message?.includes('certificate') ||
+      error?.message?.includes('Hostname/IP does not match') ||
+      error?.message?.includes("altnames")
+    ) {
+      errorMessage =
+        'خطای گواهینامه SSL: نام هاست با گواهینامه سرور مطابقت ندارد. لطفاً گزینه "نادیده گرفتن خطاهای گواهینامه SSL" را در تنظیمات فعال کنید.';
     }
 
     console.error('[FTP] Connection test failed:', {
@@ -133,13 +149,22 @@ export async function uploadToFTP(
     client.ftp.verbose = false;
 
     // Connect (passive mode is enabled by default in basic-ftp)
-    await client.access({
+    const accessOptions: any = {
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
       user: ftpCreds.user,
       password: ftpCreds.password,
       secure: ftpCreds.secure || false,
-    });
+    };
+    
+    // If secure and ignoreCertificateErrors is enabled, disable strict SSL verification
+    if (ftpCreds.secure && ftpCreds.ignoreCertificateErrors) {
+      accessOptions.secureOptions = {
+        rejectUnauthorized: false,
+      };
+    }
+    
+    await client.access(accessOptions);
 
     // Navigate to base path if specified
     const basePath = ftpCreds.basePath || '/uploads/receipts';
@@ -197,13 +222,22 @@ export async function deleteFromFTP(filePath: string): Promise<void> {
     client.ftp.verbose = false;
 
     // Connect (passive mode is enabled by default in basic-ftp)
-    await client.access({
+    const accessOptions: any = {
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
       user: ftpCreds.user,
       password: ftpCreds.password,
       secure: ftpCreds.secure || false,
-    });
+    };
+    
+    // If secure and ignoreCertificateErrors is enabled, disable strict SSL verification
+    if (ftpCreds.secure && ftpCreds.ignoreCertificateErrors) {
+      accessOptions.secureOptions = {
+        rejectUnauthorized: false,
+      };
+    }
+    
+    await client.access(accessOptions);
 
     // Remove ftp: prefix if present
     const cleanPath = filePath.startsWith('ftp:')

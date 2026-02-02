@@ -64,6 +64,7 @@ export function CompanySettingsForm() {
     password: '',
     secure: false,
     basePath: '/uploads/receipts',
+    ignoreCertificateErrors: false,
   });
   const [ftpTestResult, setFTPTestResult] = useState<{
     success: boolean;
@@ -100,6 +101,7 @@ export function CompanySettingsForm() {
           password: ftpCreds.password || '',
           secure: ftpCreds.secure || false,
           basePath: ftpCreds.basePath || '/uploads/receipts',
+          ignoreCertificateErrors: ftpCreds.ignoreCertificateErrors || false,
         });
       }
     };
@@ -411,7 +413,7 @@ export function CompanySettingsForm() {
                   }
                 />
               </div>
-              <div className="space-y-2 flex items-end">
+              <div className="space-y-2 md:col-span-2">
                 <div className="flex items-center space-x-2 space-x-reverse">
                   <input
                     type="checkbox"
@@ -429,6 +431,25 @@ export function CompanySettingsForm() {
                     استفاده از FTPS (امن)
                   </Label>
                 </div>
+                {ftpCredentials.secure && (
+                  <div className="flex items-center space-x-2 space-x-reverse mt-2">
+                    <input
+                      type="checkbox"
+                      id="ftp-ignore-cert"
+                      checked={ftpCredentials.ignoreCertificateErrors}
+                      onChange={(e) =>
+                        setFTPCredentials({
+                          ...ftpCredentials,
+                          ignoreCertificateErrors: e.target.checked,
+                        })
+                      }
+                      className="rounded"
+                    />
+                    <Label htmlFor="ftp-ignore-cert" className="cursor-pointer text-sm">
+                      نادیده گرفتن خطاهای گواهینامه SSL (برای سرورهایی که گواهینامه مطابقت ندارد)
+                    </Label>
+                  </div>
+                )}
               </div>
             </div>
 
