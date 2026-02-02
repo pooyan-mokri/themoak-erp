@@ -4,7 +4,7 @@ import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { getSetting } from './settings';
-import { uploadToGoogleDrive, deleteFromGoogleDrive } from '@/lib/google-drive';
+import { uploadToFTP, deleteFromFTP } from '@/lib/ftp';
 
 export async function uploadReceipt(formData: FormData) {
   try {
@@ -31,53 +31,42 @@ export async function uploadReceipt(formData: FormData) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Check if Google Drive is connected
-    const googleDriveCredentials = await getSetting('google_drive_credentials');
+    // Check if FTP is configured
+    const ftpCredentials = await getSetting('ftp_credentials');
 
-    if (googleDriveCredentials) {
+    if (ftpCredentials) {
       try {
-        // Upload to Google Drive
+        // Upload to FTP
         const ext = file.name.split('.').pop();
         const filename = `${randomUUID()}.${ext}`;
 
-        console.log('[Upload] Attempting Google Drive upload:', filename);
-        const driveResult = await uploadToGoogleDrive(
-          buffer,
-          filename,
-          file.type
-        );
+        console.log('[Upload] Attempting FTP upload:', filename);
+        const ftpResult = await uploadToFTP(buffer, filename);
 
-        console.log('[Upload] Google Drive upload successful:', driveResult.fileId);
-
-        // Store fileId in URL format for later retrieval
-        const url = `gdrive:${driveResult.fileId}`;
+        console.log('[Upload] FTP upload successful:', ftpResult.path);
 
         return {
           success: true,
-          url,
+          url: ftpResult.url,
           type: file.type,
-          webViewLink: driveResult.webViewLink,
         };
       } catch (error: any) {
-        console.error('[Upload] Google Drive upload error:', error);
+        console.error('[Upload] FTP upload error:', error);
         console.error('[Upload] Error details:', {
           message: error?.message,
-          code: error?.code,
-          errors: error?.errors,
         });
-        
-        // On Vercel, local storage is not available, so we must fail if Google Drive fails
+
+        // On Vercel, local storage is not available, so we must fail if FTP fails
         const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
-        
+
         if (isVercel) {
-          // On Vercel, we can't use local storage, so return the error
-          const errorMessage = error?.message || 'Failed to upload to Google Drive';
+          const errorMessage = error?.message || 'Failed to upload to FTP server';
           return {
             success: false,
-            error: `خطا در آپلود به Google Drive: ${errorMessage}. لطفاً اتصال Google Drive را بررسی کنید.`,
+            error: `خطا در آپلود به FTP: ${errorMessage}. لطفاً تنظیمات FTP را بررسی کنید.`,
           };
         }
-        
+
         // Fall back to local storage only in non-Vercel environments
         console.log('[Upload] Falling back to local storage...');
       }
@@ -88,7 +77,8 @@ export async function uploadReceipt(formData: FormData) {
     if (isVercel) {
       return {
         success: false,
-        error: 'Google Drive متصل نیست. لطفاً در تنظیمات به Google Drive متصل شوید.',
+        error:
+          'FTP تنظیم نشده است. لطفاً در تنظیمات اطلاعات FTP را وارد کنید.',
       };
     }
 
@@ -118,10 +108,9 @@ export async function uploadReceipt(formData: FormData) {
 
 export async function deleteReceipt(url: string) {
   try {
-    // Check if it's a Google Drive URL
-    if (url.startsWith('gdrive:')) {
-      const fileId = url.replace('gdrive:', '');
-      await deleteFromGoogleDrive(fileId);
+    // Check if it's an FTP URL
+    if (url.startsWith('ftp:')) {
+      await deleteFromFTP(url);
       return { success: true };
     }
 
@@ -147,13 +136,14 @@ export async function deleteReceipt(url: string) {
 }
 
 /**
- * Get viewable URL for a receipt (handles both local and Google Drive)
+ * Get viewable URL for a receipt (handles both local and FTP)
  */
 export async function getReceiptViewUrl(url: string): Promise<string> {
-  if (url.startsWith('gdrive:')) {
-    // For Google Drive, return a view link
-    const fileId = url.replace('gdrive:', '');
-    return `https://drive.google.com/file/d/${fileId}/view`;
+  if (url.startsWith('ftp:')) {
+    // For FTP, you may need to construct a web-accessible URL
+    // This depends on your FTP server setup (e.g., if it's accessible via HTTP)
+    // For now, return the FTP path
+    return url;
   }
   // For local files, return as-is (relative URL)
   return url;

@@ -27,15 +27,13 @@ import {
 import { getAccounts } from '@/actions/accounting';
 import { getWarehouses } from '@/actions/warehouse';
 import {
-  getGoogleDriveAuthUrlAction,
-  getGoogleDriveStatus,
-  disconnectGoogleDrive,
-  saveGoogleDriveCredentials,
-  getGoogleDriveCredentials,
-} from '@/actions/google-drive';
+  saveFTPCredentials,
+  getFTPCredentials,
+  testFTPConnectionAction,
+} from '@/actions/ftp';
 import { toast } from 'sonner';
 import { useLogo } from '@/components/providers/logo-provider';
-import { CheckCircle2, XCircle, Link2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Link2, TestTube } from 'lucide-react';
 
 export function CompanySettingsForm() {
   const { refreshLogo } = useLogo();
@@ -59,15 +57,19 @@ export function CompanySettingsForm() {
   const [warehouses, setWarehouses] = useState<
     Array<{ id: string; name: string }>
   >([]);
-  const [googleDriveStatus, setGoogleDriveStatus] = useState<{
-    connected: boolean;
-    folderId?: string | null;
-  }>({ connected: false });
-  const [googleDriveError, setGoogleDriveError] = useState<string | null>(null);
-  const [googleDriveCredentials, setGoogleDriveCredentials] = useState({
-    clientId: '',
-    clientSecret: '',
+  const [ftpCredentials, setFTPCredentials] = useState({
+    host: '',
+    port: 21,
+    user: '',
+    password: '',
+    secure: false,
+    basePath: '/uploads/receipts',
   });
+  const [ftpTestResult, setFTPTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -89,14 +91,15 @@ export function CompanySettingsForm() {
       const whs = await getWarehouses();
       setWarehouses(whs);
 
-      const gdStatus = await getGoogleDriveStatus();
-      setGoogleDriveStatus(gdStatus);
-
-      const gdCreds = await getGoogleDriveCredentials();
-      if (gdCreds) {
-        setGoogleDriveCredentials({
-          clientId: gdCreds.clientId || '',
-          clientSecret: gdCreds.clientSecret || '',
+      const ftpCreds = await getFTPCredentials();
+      if (ftpCreds) {
+        setFTPCredentials({
+          host: ftpCreds.host || '',
+          port: ftpCreds.port || 21,
+          user: ftpCreds.user || '',
+          password: ftpCreds.password || '',
+          secure: ftpCreds.secure || false,
+          basePath: ftpCreds.basePath || '/uploads/receipts',
         });
       }
     };
@@ -325,172 +328,190 @@ export function CompanySettingsForm() {
 
         <Card>
           <CardHeader>
-            <CardTitle>ذخیره‌سازی Google Drive</CardTitle>
+            <CardTitle>ذخیره‌سازی FTP</CardTitle>
             <CardDescription>
-              اتصال به Google Drive برای ذخیره فایل‌های رسید و فاکتورها. تمام
-              فایل‌ها در پوشه "Themoak ERP Receipts" ذخیره می‌شوند.
+              تنظیمات FTP برای ذخیره فایل‌های رسید و فاکتورها. تمام فایل‌ها در
+              مسیر مشخص شده در سرور FTP ذخیره می‌شوند.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="google-client-id">Google Client ID</Label>
+                <Label htmlFor="ftp-host">آدرس سرور FTP</Label>
                 <Input
-                  id="google-client-id"
+                  id="ftp-host"
                   type="text"
-                  placeholder="your-client-id.apps.googleusercontent.com"
-                  value={googleDriveCredentials.clientId}
+                  placeholder="ftp.example.com"
+                  value={ftpCredentials.host}
                   onChange={(e) =>
-                    setGoogleDriveCredentials({
-                      ...googleDriveCredentials,
-                      clientId: e.target.value,
+                    setFTPCredentials({
+                      ...ftpCredentials,
+                      host: e.target.value,
                     })
                   }
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="google-client-secret">
-                  Google Client Secret
-                </Label>
+                <Label htmlFor="ftp-port">پورت</Label>
                 <Input
-                  id="google-client-secret"
-                  type="password"
-                  placeholder="GOCSPX-..."
-                  value={googleDriveCredentials.clientSecret}
+                  id="ftp-port"
+                  type="number"
+                  placeholder="21"
+                  value={ftpCredentials.port}
                   onChange={(e) =>
-                    setGoogleDriveCredentials({
-                      ...googleDriveCredentials,
-                      clientSecret: e.target.value,
+                    setFTPCredentials({
+                      ...ftpCredentials,
+                      port: parseInt(e.target.value) || 21,
                     })
                   }
                 />
               </div>
-            </div>
-
-            <Button
-              variant="outline"
-              onClick={async () => {
-                setLoading(true);
-                const result = await saveGoogleDriveCredentials(
-                  googleDriveCredentials.clientId,
-                  googleDriveCredentials.clientSecret
-                );
-                setLoading(false);
-                if (result.success) {
-                  toast.success('اعتبارنامه‌های Google Drive ذخیره شد');
-                } else {
-                  toast.error(result.error || 'خطا در ذخیره اعتبارنامه‌ها');
-                }
-              }}
-              disabled={
-                loading ||
-                !googleDriveCredentials.clientId ||
-                !googleDriveCredentials.clientSecret
-              }
-              className="w-full"
-            >
-              {loading ? 'در حال ذخیره...' : 'ذخیره اعتبارنامه‌ها'}
-            </Button>
-
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-3">
-                {googleDriveStatus.connected ? (
-                  <>
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="font-medium">متصل به Google Drive</p>
-                      <p className="text-sm text-muted-foreground">
-                        فایل‌ها به Google Drive شما آپلود می‌شوند
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-5 w-5 text-red-500" />
-                    <div>
-                      <p className="font-medium">متصل نشده</p>
-                      <p className="text-sm text-muted-foreground">
-                        برای ذخیره فایل‌ها، به Google Drive متصل شوید
-                      </p>
-                    </div>
-                  </>
-                )}
+              <div className="space-y-2">
+                <Label htmlFor="ftp-user">نام کاربری</Label>
+                <Input
+                  id="ftp-user"
+                  type="text"
+                  placeholder="username"
+                  value={ftpCredentials.user}
+                  onChange={(e) =>
+                    setFTPCredentials({
+                      ...ftpCredentials,
+                      user: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ftp-password">رمز عبور</Label>
+                <Input
+                  id="ftp-password"
+                  type="password"
+                  placeholder="password"
+                  value={ftpCredentials.password}
+                  onChange={(e) =>
+                    setFTPCredentials({
+                      ...ftpCredentials,
+                      password: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ftp-base-path">مسیر پایه</Label>
+                <Input
+                  id="ftp-base-path"
+                  type="text"
+                  placeholder="/uploads/receipts"
+                  value={ftpCredentials.basePath}
+                  onChange={(e) =>
+                    setFTPCredentials({
+                      ...ftpCredentials,
+                      basePath: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-2 flex items-end">
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <input
+                    type="checkbox"
+                    id="ftp-secure"
+                    checked={ftpCredentials.secure}
+                    onChange={(e) =>
+                      setFTPCredentials({
+                        ...ftpCredentials,
+                        secure: e.target.checked,
+                      })
+                    }
+                    className="rounded"
+                  />
+                  <Label htmlFor="ftp-secure" className="cursor-pointer">
+                    استفاده از FTPS (امن)
+                  </Label>
+                </div>
               </div>
             </div>
 
-            {!googleDriveStatus.connected ? (
-              <>
-                <Button
-                  onClick={async () => {
-                    setGoogleDriveError(null);
-                    if (
-                      !googleDriveCredentials.clientId ||
-                      !googleDriveCredentials.clientSecret
-                    ) {
-                      toast.error(
-                        'لطفاً ابتدا Client ID و Client Secret را وارد و ذخیره کنید'
-                      );
-                      return;
-                    }
-                    const result = await getGoogleDriveAuthUrlAction();
-                    if (result.success && result.url) {
-                      window.location.href = result.url;
-                    } else {
-                      setGoogleDriveError(
-                        result.error || 'خطا در اتصال به Google Drive'
-                      );
-                      toast.error(
-                        result.error || 'خطا در اتصال به Google Drive'
-                      );
-                    }
-                  }}
-                  className="w-full"
-                  disabled={
-                    !googleDriveCredentials.clientId ||
-                    !googleDriveCredentials.clientSecret
-                  }
-                >
-                  <Link2 className="ml-2 h-4 w-4" />
-                  اتصال به Google Drive
-                </Button>
-                {googleDriveError && (
-                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      ⚠️ {googleDriveError}
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
+            <div className="flex gap-2">
               <Button
-                variant="destructive"
+                variant="outline"
                 onClick={async () => {
-                  const result = await disconnectGoogleDrive();
+                  setLoading(true);
+                  const result = await saveFTPCredentials(ftpCredentials);
+                  setLoading(false);
                   if (result.success) {
-                    toast.success('از Google Drive قطع شد');
-                    setGoogleDriveStatus({ connected: false });
+                    toast.success('تنظیمات FTP ذخیره شد');
+                    setFTPTestResult(null);
                   } else {
-                    toast.error(result.error || 'خطا در قطع اتصال');
+                    toast.error(result.error || 'خطا در ذخیره تنظیمات');
                   }
                 }}
-                className="w-full"
+                disabled={loading || !ftpCredentials.host || !ftpCredentials.user}
+                className="flex-1"
               >
-                قطع اتصال از Google Drive
+                {loading ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
               </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setIsTestingConnection(true);
+                  setFTPTestResult(null);
+                  const result = await testFTPConnectionAction();
+                  setIsTestingConnection(false);
+                  setFTPTestResult(result);
+                  if (result.success) {
+                    toast.success('اتصال به FTP موفق بود');
+                  } else {
+                    toast.error(result.error || 'خطا در اتصال به FTP');
+                  }
+                }}
+                disabled={isTestingConnection || !ftpCredentials.host || !ftpCredentials.user}
+                className="flex-1"
+              >
+                <TestTube className="ml-2 h-4 w-4" />
+                {isTestingConnection ? 'در حال تست...' : 'تست اتصال'}
+              </Button>
+            </div>
+
+            {ftpTestResult && (
+              <div
+                className={`p-3 rounded-md border ${
+                  ftpTestResult.success
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {ftpTestResult.success ? (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        اتصال موفق: سرور FTP در دسترس است
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-5 w-5 text-red-500" />
+                      <p className="text-sm text-red-800 dark:text-red-200">
+                        خطا: {ftpTestResult.error || 'اتصال به FTP ناموفق بود'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="text-sm text-muted-foreground space-y-1">
               <p>
-                • برای استفاده از این قابلیت، نیاز به Google Cloud Project و
-                OAuth 2.0 credentials دارید.
+                • فایل‌های آپلود شده در مسیر مشخص شده در سرور FTP ذخیره
+                می‌شوند.
               </p>
               <p>
-                • فایل‌های آپلود شده در پوشه "Themoak ERP Receipts" در Google
-                Drive شما ذخیره می‌شوند.
+                • برای استفاده از FTPS، گزینه "استفاده از FTPS" را فعال کنید.
               </p>
               <p>
-                • ابتدا Client ID و Client Secret را از Google Cloud Console
-                دریافت کرده و در بالا وارد کنید.
+                • پس از وارد کردن اطلاعات، دکمه "تست اتصال" را برای بررسی
+                اتصال استفاده کنید.
               </p>
             </div>
           </CardContent>

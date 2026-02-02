@@ -26,17 +26,19 @@ export function ReceiptUpload({
 }: ReceiptUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [viewUrl, setViewUrl] = useState<string>('');
-  const [isGoogleDrive, setIsGoogleDrive] = useState(false);
+  const [isFTP, setIsFTP] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (currentUrl) {
-      if (currentUrl.startsWith('gdrive:')) {
-        setIsGoogleDrive(true);
-        const fileId = currentUrl.replace('gdrive:', '');
-        setViewUrl(`https://drive.google.com/file/d/${fileId}/view`);
+      if (currentUrl.startsWith('ftp:')) {
+        setIsFTP(true);
+        // For FTP files, you may need to construct a web-accessible URL
+        // This depends on your FTP server setup
+        // For now, we'll just show the path
+        setViewUrl(currentUrl);
       } else {
-        setIsGoogleDrive(false);
+        setIsFTP(false);
         setViewUrl(currentUrl);
       }
     }
@@ -104,7 +106,7 @@ export function ReceiptUpload({
         </Button>
 
         <div className="h-20 w-20 md:h-16 md:w-16 relative rounded overflow-hidden border bg-background flex items-center justify-center flex-shrink-0">
-          {currentType?.startsWith('image/') && !isGoogleDrive ? (
+          {currentType?.startsWith('image/') && !isFTP ? (
             <Image
               src={viewUrl}
               alt="Receipt"
@@ -118,11 +120,11 @@ export function ReceiptUpload({
 
         <div className="flex-1 min-w-0">
           <p className="text-sm md:text-xs font-medium truncate">
-            {isGoogleDrive ? 'فایل Google Drive' : currentUrl.split('/').pop()}
+            {isFTP ? 'فایل FTP' : currentUrl.split('/').pop()}
           </p>
           <p className="text-xs md:text-[10px] text-muted-foreground mt-1">
             {currentType === 'application/pdf' ? 'سند PDF' : 'تصویر'}
-            {isGoogleDrive && ' • Google Drive'}
+            {isFTP && ' • FTP'}
           </p>
           <a
             href={viewUrl}
