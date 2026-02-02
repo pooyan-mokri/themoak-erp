@@ -55,12 +55,9 @@ export async function testFTPConnection(): Promise<{
 
     client = new Client();
     client.ftp.verbose = false;
-    
-    // Set timeout (30 seconds)
-    client.ftp.socketTimeout = 30000;
-    client.ftp.keepalive = 10000;
 
     // Connect with timeout and passive mode (required for most firewalls)
+    // Passive mode is enabled by default in basic-ftp
     await client.access({
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
@@ -68,9 +65,6 @@ export async function testFTPConnection(): Promise<{
       password: ftpCreds.password,
       secure: ftpCreds.secure || false,
     });
-    
-    // Enable passive mode (required for connections through firewalls/NAT)
-    client.ftp.enterPassiveMode();
 
     // Test by listing current directory
     await client.list();
@@ -78,25 +72,31 @@ export async function testFTPConnection(): Promise<{
     return { success: true };
   } catch (error: any) {
     console.error('[FTP] Connection test error:', error);
-    
+
     // Provide more helpful error messages
     let errorMessage = error?.message || 'Failed to connect to FTP server';
-    
+
     if (error?.code === 'ETIMEDOUT' || error?.message?.includes('ETIMEDOUT')) {
-      errorMessage = 'اتصال به سرور FTP زمان‌بر شد. این معمولاً به این معنی است که سرور FTP از IP های Vercel مسدود شده است. لطفاً بررسی کنید: 1) آدرس و پورت صحیح است 2) فایروال سرور اجازه اتصال از IP های Vercel می‌دهد 3) سرور FTP در دسترس است. ممکن است نیاز به whitelist کردن IP های Vercel در فایروال سرور باشد.';
-    } else if (error?.code === 'ECONNREFUSED' || error?.message?.includes('ECONNREFUSED')) {
-      errorMessage = 'اتصال رد شد. لطفاً بررسی کنید: آدرس سرور و پورت صحیح است و سرور FTP در حال اجرا است.';
-    } else if (error?.code === 'ENOTFOUND' || error?.message?.includes('ENOTFOUND')) {
+      errorMessage =
+        'اتصال به سرور FTP زمان‌بر شد. این معمولاً به این معنی است که سرور FTP از IP های Vercel مسدود شده است. لطفاً بررسی کنید: 1) آدرس و پورت صحیح است 2) فایروال سرور اجازه اتصال از IP های Vercel می‌دهد 3) سرور FTP در دسترس است. ممکن است نیاز به whitelist کردن IP های Vercel در فایروال سرور باشد.';
+    } else if (
+      error?.code === 'ECONNREFUSED' ||
+      error?.message?.includes('ECONNREFUSED')
+    ) {
+      errorMessage =
+        'اتصال رد شد. لطفاً بررسی کنید: آدرس سرور و پورت صحیح است و سرور FTP در حال اجرا است.';
+    } else if (
+      error?.code === 'ENOTFOUND' ||
+      error?.message?.includes('ENOTFOUND')
+    ) {
       errorMessage = 'آدرس سرور پیدا نشد. لطفاً آدرس را بررسی کنید.';
     }
-    
+
     console.error('[FTP] Connection test failed:', {
       code: error?.code,
       message: error?.message,
-      host: ftpCreds?.host,
-      port: ftpCreds?.port,
     });
-    
+
     return {
       success: false,
       error: errorMessage,
@@ -131,12 +131,8 @@ export async function uploadToFTP(
 
     client = new Client();
     client.ftp.verbose = false;
-    
-    // Set timeout (30 seconds)
-    client.ftp.socketTimeout = 30000;
-    client.ftp.keepalive = 10000;
 
-    // Connect
+    // Connect (passive mode is enabled by default in basic-ftp)
     await client.access({
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
@@ -144,9 +140,6 @@ export async function uploadToFTP(
       password: ftpCreds.password,
       secure: ftpCreds.secure || false,
     });
-    
-    // Enable passive mode (required for connections through firewalls/NAT)
-    client.ftp.enterPassiveMode();
 
     // Navigate to base path if specified
     const basePath = ftpCreds.basePath || '/uploads/receipts';
@@ -202,12 +195,8 @@ export async function deleteFromFTP(filePath: string): Promise<void> {
 
     client = new Client();
     client.ftp.verbose = false;
-    
-    // Set timeout (30 seconds)
-    client.ftp.socketTimeout = 30000;
-    client.ftp.keepalive = 10000;
 
-    // Connect
+    // Connect (passive mode is enabled by default in basic-ftp)
     await client.access({
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
@@ -215,9 +204,6 @@ export async function deleteFromFTP(filePath: string): Promise<void> {
       password: ftpCreds.password,
       secure: ftpCreds.secure || false,
     });
-    
-    // Enable passive mode (required for connections through firewalls/NAT)
-    client.ftp.enterPassiveMode();
 
     // Remove ftp: prefix if present
     const cleanPath = filePath.startsWith('ftp:')
