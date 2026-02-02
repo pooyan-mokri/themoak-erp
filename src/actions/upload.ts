@@ -3,11 +3,13 @@
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { getSetting } from './settings';
+import { uploadToGoogleDrive, deleteFromGoogleDrive } from '@/lib/google-drive';
 
 export async function uploadReceipt(formData: FormData) {
   try {
     const file = formData.get('file') as File;
-    
+
     if (!file) {
       return { success: false, error: 'No file provided' };
     }
@@ -15,7 +17,10 @@ export async function uploadReceipt(formData: FormData) {
     // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
     if (!validTypes.includes(file.type)) {
-      return { success: false, error: 'Invalid file type. Only JPG, PNG and PDF allowed.' };
+      return {
+        success: false,
+        error: 'Invalid file type. Only JPG, PNG and PDF allowed.',
+      };
     }
 
     // Validate file size (5MB)
@@ -26,7 +31,38 @@ export async function uploadReceipt(formData: FormData) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Create uploads directory if it doesn't exist
+    // Check if Google Drive is connected
+    const googleDriveCredentials = await getSetting('google_drive_credentials');
+
+    if (googleDriveCredentials) {
+      try {
+        // Upload to Google Drive
+        const ext = file.name.split('.').pop();
+        const filename = `${randomUUID()}.${ext}`;
+
+        const driveResult = await uploadToGoogleDrive(
+          buffer,
+          filename,
+          file.type
+        );
+
+        // Store fileId in URL format for later retrieval
+        const url = `gdrive:${driveResult.fileId}`;
+
+        return {
+          success: true,
+          url,
+          type: file.type,
+          webViewLink: driveResult.webViewLink,
+        };
+      } catch (error: any) {
+        console.error('Google Drive upload error:', error);
+        // Fall back to local storage if Google Drive fails
+        console.log('Falling back to local storage...');
+      }
+    }
+
+    // Fallback to local storage
     const uploadDir = join(process.cwd(), 'public', 'uploads', 'receipts');
     await mkdir(uploadDir, { recursive: true });
 
@@ -40,10 +76,10 @@ export async function uploadReceipt(formData: FormData) {
 
     const url = `/uploads/receipts/${filename}`;
 
-    return { 
-      success: true, 
-      url, 
-      type: file.type 
+    return {
+      success: true,
+      url,
+      type: file.type,
     };
   } catch (error) {
     console.error('Upload error:', error);
@@ -53,14 +89,27 @@ export async function uploadReceipt(formData: FormData) {
 
 export async function deleteReceipt(url: string) {
   try {
-    // Extract filename from URL
+    // Check if it's a Google Drive URL
+    if (url.startsWith('gdrive:')) {
+      const fileId = url.replace('gdrive:', '');
+      await deleteFromGoogleDrive(fileId);
+      return { success: true };
+    }
+
+    // Local file deletion
     const filename = url.split('/').pop();
     if (!filename) return { success: false, error: 'Invalid URL' };
 
-    const filepath = join(process.cwd(), 'public', 'uploads', 'receipts', filename);
-    
+    const filepath = join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'receipts',
+      filename
+    );
+
     await unlink(filepath);
-    
+
     return { success: true };
   } catch (error) {
     console.error('Delete error:', error);
@@ -68,10 +117,23 @@ export async function deleteReceipt(url: string) {
   }
 }
 
+/**
+ * Get viewable URL for a receipt (handles both local and Google Drive)
+ */
+export async function getReceiptViewUrl(url: string): Promise<string> {
+  if (url.startsWith('gdrive:')) {
+    // For Google Drive, return a view link
+    const fileId = url.replace('gdrive:', '');
+    return `https://drive.google.com/file/d/${fileId}/view`;
+  }
+  // For local files, return as-is (relative URL)
+  return url;
+}
+
 export async function uploadProductImage(formData: FormData) {
   try {
     const file = formData.get('file') as File;
-    
+
     if (!file) {
       return { success: false, error: 'No file provided' };
     }
@@ -79,12 +141,18 @@ export async function uploadProductImage(formData: FormData) {
     // Validate file type - only images
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      return { success: false, error: 'Invalid file type. Only JPG, PNG and WEBP allowed.' };
+      return {
+        success: false,
+        error: 'Invalid file type. Only JPG, PNG and WEBP allowed.',
+      };
     }
 
     // Validate file size (10MB for product images)
     if (file.size > 10 * 1024 * 1024) {
-      return { success: false, error: 'File size too large. Max 10MB allowed.' };
+      return {
+        success: false,
+        error: 'File size too large. Max 10MB allowed.',
+      };
     }
 
     const bytes = await file.arrayBuffer();
@@ -104,9 +172,9 @@ export async function uploadProductImage(formData: FormData) {
 
     const url = `/uploads/products/${filename}`;
 
-    return { 
-      success: true, 
-      url
+    return {
+      success: true,
+      url,
     };
   } catch (error) {
     console.error('Upload error:', error);
@@ -120,10 +188,16 @@ export async function deleteProductImage(url: string) {
     const filename = url.split('/').pop();
     if (!filename) return { success: false, error: 'Invalid URL' };
 
-    const filepath = join(process.cwd(), 'public', 'uploads', 'products', filename);
-    
+    const filepath = join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'products',
+      filename
+    );
+
     await unlink(filepath);
-    
+
     return { success: true };
   } catch (error) {
     console.error('Delete error:', error);
@@ -134,10 +208,12 @@ export async function deleteProductImage(url: string) {
 /**
  * Download image from URL and save it to products folder
  */
-export async function downloadAndSaveProductImage(imageUrl: string): Promise<string | undefined> {
+export async function downloadAndSaveProductImage(
+  imageUrl: string
+): Promise<string | undefined> {
   try {
     console.log(`[Image Download] Starting download from: ${imageUrl}`);
-    
+
     // Validate URL
     if (!imageUrl || typeof imageUrl !== 'string') {
       console.error('[Image Download] Invalid URL:', imageUrl);
@@ -146,40 +222,57 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
 
     // Normalize URL - handle both http and https
     const normalizedUrl = imageUrl.trim();
-    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
-      console.error('[Image Download] URL does not start with http/https:', normalizedUrl);
+    if (
+      !normalizedUrl.startsWith('http://') &&
+      !normalizedUrl.startsWith('https://')
+    ) {
+      console.error(
+        '[Image Download] URL does not start with http/https:',
+        normalizedUrl
+      );
       return undefined;
     }
 
     console.log(`[Image Download] Fetching image from: ${normalizedUrl}`);
-    
+
     // Fetch image with timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-    
+
     try {
       const response = await fetch(normalizedUrl, {
         signal: controller.signal,
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; ThemoakERP/1.0)',
-        }
+        },
       });
       clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
-        console.error(`[Image Download] HTTP error: ${response.status} ${response.statusText}`);
+        console.error(
+          `[Image Download] HTTP error: ${response.status} ${response.statusText}`
+        );
         return undefined;
       }
 
       const contentType = response.headers.get('content-type') || '';
       console.log(`[Image Download] Content-Type: ${contentType}`);
-      
+
       // Check if it's an image
       if (!contentType.startsWith('image/')) {
         // Try to get extension from URL as fallback
-        const urlExt = normalizedUrl.split('.').pop()?.split('?')[0]?.toLowerCase();
-        if (!urlExt || !['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(urlExt)) {
-          console.error(`[Image Download] Invalid content type: ${contentType}`);
+        const urlExt = normalizedUrl
+          .split('.')
+          .pop()
+          ?.split('?')[0]
+          ?.toLowerCase();
+        if (
+          !urlExt ||
+          !['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(urlExt)
+        ) {
+          console.error(
+            `[Image Download] Invalid content type: ${contentType}`
+          );
           return undefined;
         }
       }
@@ -192,7 +285,11 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
       else if (contentType.includes('jpeg')) ext = 'jpg';
       else {
         // Try to get extension from URL
-        const urlExt = normalizedUrl.split('.').pop()?.split('?')[0]?.toLowerCase();
+        const urlExt = normalizedUrl
+          .split('.')
+          .pop()
+          ?.split('?')[0]
+          ?.toLowerCase();
         if (urlExt && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(urlExt)) {
           ext = urlExt === 'jpeg' ? 'jpg' : urlExt;
         }
@@ -208,7 +305,9 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
 
       // Validate file size (10MB)
       if (buffer.length > 10 * 1024 * 1024) {
-        console.error(`[Image Download] Image file too large: ${buffer.length} bytes`);
+        console.error(
+          `[Image Download] Image file too large: ${buffer.length} bytes`
+        );
         return undefined;
       }
 
@@ -244,7 +343,10 @@ export async function downloadAndSaveProductImage(imageUrl: string): Promise<str
       return undefined;
     }
   } catch (error: any) {
-    console.error('[Image Download] Error downloading and saving product image:', error.message || error);
+    console.error(
+      '[Image Download] Error downloading and saving product image:',
+      error.message || error
+    );
     return undefined;
   }
 }
