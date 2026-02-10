@@ -404,7 +404,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             account = await prisma.account.findFirst({
                                 where: {
                                     type: {
-                                        in: ['Bank', 'Cash']
+                                        in: ['BANK', 'CASH']
                                     }
                                 }
                             });

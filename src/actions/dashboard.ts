@@ -16,7 +16,7 @@ export async function getDashboardFinancials() {
     const accounts = await prisma.account.findMany({
       where: {
         type: {
-          in: ['Bank', 'Cash']
+          in: ['BANK', 'CASH']
         }
       }
     });

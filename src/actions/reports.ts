@@ -98,7 +98,7 @@ export async function getBalanceSheet(date: Date) {
     // Assets
     const cashAccounts = await prisma.account.findMany({
       where: {
-        type: { in: ['Cash', 'Bank'] },
+        type: { in: ['CASH', 'BANK'] },
       },
       select: {
         balance: true,
