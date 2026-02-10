@@ -443,7 +443,18 @@ export async function cancelOrder(orderId: string): Promise<{
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. If order has transaction, delete it and restore account balance
+      // 1. Update order status to CANCELLED and disconnect transaction reference FIRST
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: 'UNPAID',
+          paidAmount: 0,
+          transactionId: null,
+        },
+      });
+
+      // 2. If order had a transaction, restore account balance and delete it
       if (order.transactionId && order.transaction) {
         const transaction = order.transaction;
 
@@ -463,22 +474,11 @@ export async function cancelOrder(orderId: string): Promise<{
           },
         });
 
-        // Delete transaction
+        // Now safe to delete transaction since order no longer references it
         await tx.transaction.delete({
           where: { id: transaction.id },
         });
       }
-
-      // 2. Update order status to CANCELLED
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'CANCELLED',
-          paymentStatus: 'UNPAID',
-          paidAmount: 0,
-          transactionId: null,
-        },
-      });
     });
 
     // 3. If order is from WooCommerce, cancel it there too
