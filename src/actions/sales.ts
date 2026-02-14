@@ -32,10 +32,11 @@ interface OrderData {
   totalAmount: number;
   discount?: number;
   paidAmount?: number;
+  warehouseId?: string; // Which warehouse to deduct stock from
 }
 
 export async function createOrder(data: OrderData) {
-  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount } = data;
+  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId } = data;
 
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };
@@ -133,26 +134,56 @@ export async function createOrder(data: OrderData) {
 
       // 6. Deduct Inventory
       for (const item of items) {
-        // Find inventory
-        const inventory = await tx.inventory.findFirst({
-            where: { productId: item.productId, quantity: { gte: item.quantity } }
-        });
-
-        if (!inventory) {
-            throw new Error(`موجودی کافی برای محصول ${item.productId} وجود ندارد.`);
-        }
-
-        await tx.inventory.update({
+        if (warehouseId) {
+          // Deduct from the specific warehouse selected by the user
+          const inventory = await tx.inventory.findUnique({
             where: {
-                productId_warehouseId: {
-                    productId: item.productId,
-                    warehouseId: inventory.warehouseId
-                }
+              productId_warehouseId: {
+                productId: item.productId,
+                warehouseId: warehouseId,
+              },
+            },
+          });
+
+          if (!inventory || inventory.quantity < item.quantity) {
+            const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+            throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
+          }
+
+          await tx.inventory.update({
+            where: {
+              productId_warehouseId: {
+                productId: item.productId,
+                warehouseId: warehouseId,
+              },
             },
             data: {
-                quantity: { decrement: item.quantity }
-            }
-        });
+              quantity: { decrement: item.quantity },
+            },
+          });
+        } else {
+          // Fallback: find first warehouse with enough stock
+          const inventory = await tx.inventory.findFirst({
+            where: { productId: item.productId, quantity: { gte: item.quantity } },
+          });
+
+          if (!inventory) {
+            const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+            throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" وجود ندارد.`);
+          }
+
+          await tx.inventory.update({
+            where: {
+              productId_warehouseId: {
+                productId: item.productId,
+                warehouseId: inventory.warehouseId,
+              },
+            },
+            data: {
+              quantity: { decrement: item.quantity },
+            },
+          });
+        }
       }
     });
 

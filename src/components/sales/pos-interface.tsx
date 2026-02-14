@@ -51,17 +51,24 @@ interface Account {
   name: string;
 }
 
+interface Warehouse {
+  id: string;
+  name: string;
+}
+
 interface POSInterfaceProps {
   products: Product[];
   customers: Customer[];
   accounts: Account[];
+  warehouses: Warehouse[];
 }
 
-export function POSInterface({ products, customers: initialCustomers, accounts }: POSInterfaceProps) {
+export function POSInterface({ products, customers: initialCustomers, accounts, warehouses }: POSInterfaceProps) {
   const router = useRouter();
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(warehouses.length > 0 ? warehouses[0].id : '');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'ACCOUNT'>('CASH');
@@ -158,6 +165,11 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
       return;
     }
 
+    if (!selectedWarehouse) {
+      toast.error('لطفا انبار فروش را انتخاب کنید.');
+      return;
+    }
+
     setIsSubmitting(true);
     const result = await createOrder({
       customerId: selectedCustomer,
@@ -171,6 +183,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
       totalAmount,
       discount: discountVal,
       paidAmount: paidVal,
+      warehouseId: selectedWarehouse,
     });
 
     setIsSubmitting(false);
@@ -284,6 +297,22 @@ export function POSInterface({ products, customers: initialCustomers, accounts }
             <DialogTitle className="text-right">نهایی کردن سفارش</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 md:space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-base md:text-sm">انبار فروش *</Label>
+              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
+                  <SelectValue placeholder="انتخاب انبار" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((w) => (
+                    <SelectItem key={w.id} value={w.id}>
+                      {w.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Label className="text-base md:text-sm">مشتری *</Label>
