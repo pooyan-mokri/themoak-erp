@@ -76,7 +76,7 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
     return { message: 'خطا در ایجاد همکار امانی.' };
   }
 
-  revalidatePath('/dashboard/consignment/partners');
+  revalidatePath('/dashboard', 'layout');
   return { message: 'همکار امانی با موفقیت ایجاد شد.' };
 }
 
@@ -133,7 +133,7 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
     return { message };
   }
 
-  revalidatePath('/dashboard/consignment/partners');
+  revalidatePath('/dashboard', 'layout');
   return { message: 'همکار امانی با موفقیت بروزرسانی شد.', success: true };
 }
 
@@ -290,6 +290,7 @@ export async function settleSales(prevState: ActionState, formData: FormData): P
               productId,
               quantity,
               price: new Prisma.Decimal(unitPrice),
+              warehouseId: partnerWarehouseId,
             }]
           }
         }

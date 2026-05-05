@@ -143,6 +143,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           productId: exchangeProductId,
           quantity,
           price: new Prisma.Decimal(exchangeProduct.sellPrice),
+          warehouseId: exchangeInventory.warehouseId,
         },
       });
 
