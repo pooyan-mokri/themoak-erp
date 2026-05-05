@@ -518,12 +518,14 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
 
                                 if (itemPrice > 0 && itemQuantity > 0) {
                                     // Add missing item to order
+                                    const wooWhId = await getWooWarehouseId();
                                     await prisma.orderItem.create({
                                         data: {
                                             orderId: existingOrder.id,
                                             productId: product.id,
                                             quantity: itemQuantity,
-                                            price: new Prisma.Decimal(itemPrice)
+                                            price: new Prisma.Decimal(itemPrice),
+                                            warehouseId: wooWhId || undefined,
                                         }
                                     });
 
@@ -859,6 +861,9 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             console.log(`[DEBUG] سفارش pending است - تراکنش ایجاد نمی‌شود`);
                         }
 
+                        // Resolve WooCommerce warehouse ID once; persist it on each OrderItem
+                        const wooWarehouseId = await getWooWarehouseId();
+
                         // Create Order linked to Transaction
                         console.log(`[DEBUG] ایجاد سفارش برای سفارش WooCommerce #${order.number}...`);
                         const createdOrder = await tx.order.create({
@@ -876,7 +881,8 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                                     create: orderItemsData.map((item: any) => ({
                                         productId: item.productId,
                                         quantity: item.quantity,
-                                        price: new Prisma.Decimal(item.price)
+                                        price: new Prisma.Decimal(item.price),
+                                        warehouseId: wooWarehouseId || undefined,
                                     }))
                                 }
                             }
@@ -896,7 +902,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                         }
 
                         // 4. Deduct Inventory for each order item
-                        const warehouseId = await getWooWarehouseId();
+                        const warehouseId = wooWarehouseId;
                         if (warehouseId) {
                             for (const item of orderItemsData) {
                                 // Find inventory for this product in the WooCommerce warehouse

@@ -41,7 +41,7 @@ export async function createWarehouse(prevState: any, formData: FormData) {
     };
   }
 
-  revalidatePath('/dashboard/inventory/warehouses');
+  revalidatePath('/dashboard', 'layout');
   return { message: 'انبار با موفقیت ثبت شد.' };
 }
 
@@ -103,7 +103,7 @@ export async function updateWarehouse(id: string, prevState: any, formData: Form
     };
   }
 
-  revalidatePath('/dashboard/inventory/warehouses');
+  revalidatePath('/dashboard', 'layout');
   return { message: 'انبار با موفقیت ویرایش شد.', success: true };
 }
 
@@ -122,7 +122,7 @@ export async function deleteWarehouse(id: string) {
       where: { id },
     });
     
-    revalidatePath('/dashboard/inventory/warehouses');
+    revalidatePath('/dashboard', 'layout');
     return { message: 'انبار با موفقیت حذف شد.', success: true };
   } catch (error) {
     return { message: 'خطا در حذف انبار.', success: false };

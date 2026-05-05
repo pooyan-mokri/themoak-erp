@@ -166,6 +166,7 @@ model Warehouse {
   audits     InventoryAudit[]
   snapshots  InventoryAuditSnapshot[]
   customer   Customer?                @relation(fields: [customerId], references: [id])
+  orderItems OrderItem[]
 }
 
 model Inventory {
@@ -366,6 +367,7 @@ model OrderItem {
   id            String          @id @default(cuid())
   orderId       String
   productId     String
+  warehouseId   String?
   quantity      Int
   price         Decimal
   status        String          @default("PENDING")
@@ -373,6 +375,7 @@ model OrderItem {
   exchanges     OrderExchange[] @relation("OriginalItem")
   order         Order           @relation(fields: [orderId], references: [id])
   product       Product         @relation(fields: [productId], references: [id])
+  warehouse     Warehouse?      @relation(fields: [warehouseId], references: [id])
   returns       OrderReturn[]
 }
 

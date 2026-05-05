@@ -142,12 +142,15 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
         throw new Error('حساب یافت نشد.');
       }
 
-      // Check if account has sufficient balance
-      const accountBalance = Number(account.balance);
-      if (accountBalance < totalCost) {
-        throw new Error(
-          `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalCost.toLocaleString('fa-IR')} تومان`
-        );
+      // Check balance only for BANK/CASH accounts. EXPENSE accounts track
+      // accumulated spend and don't require pre-existing balance.
+      if (account.type === 'BANK' || account.type === 'CASH') {
+        const accountBalance = Number(account.balance);
+        if (accountBalance < totalCost) {
+          throw new Error(
+            `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalCost.toLocaleString('fa-IR')} تومان`
+          );
+        }
       }
 
       // 3. Create transaction for marketing expense

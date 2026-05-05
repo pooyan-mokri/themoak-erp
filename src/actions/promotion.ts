@@ -283,6 +283,7 @@ export async function giftProductToCustomer(customerId: string, productId: strin
             productId,
             quantity,
             price: 0, // Gift price
+            warehouseId,
           }]
         }
       }

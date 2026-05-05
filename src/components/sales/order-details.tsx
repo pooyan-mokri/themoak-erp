@@ -50,10 +50,12 @@ type OrderItem = {
   id: string;
   orderId: string;
   productId: string;
+  warehouseId?: string;
   quantity: number;
   price: number;
   status: string;
   product: Product;
+  warehouse?: { id: string; name: string; isVirtual: boolean };
 };
 
 type Account = {
@@ -94,6 +96,14 @@ type OrderWithDetails = {
   items: OrderItem[];
   transaction?: Transaction;
   invoice?: any;
+  isConsignmentSale?: boolean;
+  commissions?: Array<{
+    id: string;
+    commissionRate: number;
+    orderAmount: number;
+    commissionAmount: number;
+    isPaid: boolean;
+  }>;
 };
 
 interface OrderDetailsProps {
@@ -134,6 +144,11 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
           <Badge variant={order.status === 'COMPLETED' ? 'default' : 'secondary'} className="mr-2">
             {order.status === 'COMPLETED' ? 'تکمیل شده' : order.status}
           </Badge>
+          {order.isConsignmentSale && (
+            <Badge variant="outline" className="mr-2 border-amber-500 text-amber-700">
+              فروش امانی
+            </Badge>
+          )}
         </div>
         <div className="flex gap-2">
           {order.invoice ? (
@@ -171,6 +186,9 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
                       <div className="flex-1">
                         <div className="font-medium">{item.product.name}</div>
                         <div className="text-sm text-muted-foreground">کد: {item.product.sku}</div>
+                        <div className="text-sm text-muted-foreground">
+                          انبار: {item.warehouse?.name || '—'}
+                        </div>
                       </div>
                     </div>
                     <div className="text-left ml-4">

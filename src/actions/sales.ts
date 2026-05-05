@@ -33,10 +33,12 @@ interface OrderData {
   discount?: number;
   paidAmount?: number;
   warehouseId?: string; // Which warehouse to deduct stock from
+  saleDate?: string; // ISO date string for the sale; defaults to now
 }
 
 export async function createOrder(data: OrderData) {
-  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId } = data;
+  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate } = data;
+  const orderDate = saleDate ? new Date(saleDate) : new Date();
 
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };
@@ -76,7 +78,7 @@ export async function createOrder(data: OrderData) {
             accountId: accountId,
             description: `سفارش فروش - مشتری: ${customerName}`,
             category: 'Sales',
-            date: new Date(),
+            date: orderDate,
           },
         });
         transactionId = transaction.id;
@@ -92,7 +94,25 @@ export async function createOrder(data: OrderData) {
         });
       }
 
-      // 4. Create Order
+      // 4. Resolve which warehouse each item is deducted from BEFORE creating
+      // OrderItems so we can persist warehouseId per item.
+      const itemWarehouses: string[] = [];
+      for (const item of items) {
+        if (warehouseId) {
+          itemWarehouses.push(warehouseId);
+        } else {
+          const inv = await tx.inventory.findFirst({
+            where: { productId: item.productId, quantity: { gte: item.quantity } },
+          });
+          if (!inv) {
+            const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+            throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" وجود ندارد.`);
+          }
+          itemWarehouses.push(inv.warehouseId);
+        }
+      }
+
+      // 5. Create Order
       const order = await tx.order.create({
         data: {
           customerId,
@@ -102,11 +122,13 @@ export async function createOrder(data: OrderData) {
           paymentStatus: debtAmount > 0 ? (finalPaidAmount > 0 ? 'PARTIAL' : 'UNPAID') : 'PAID',
           status: 'COMPLETED',
           transactionId: transactionId,
+          createdAt: orderDate,
           items: {
-            create: items.map((item: any) => ({
+            create: items.map((item: any, idx: number) => ({
               productId: item.productId,
               quantity: item.quantity,
               price: item.price,
+              warehouseId: itemWarehouses[idx],
             })),
           },
         },
@@ -132,58 +154,29 @@ export async function createOrder(data: OrderData) {
         }
       }
 
-      // 6. Deduct Inventory
-      for (const item of items) {
-        if (warehouseId) {
-          // Deduct from the specific warehouse selected by the user
-          const inventory = await tx.inventory.findUnique({
-            where: {
-              productId_warehouseId: {
-                productId: item.productId,
-                warehouseId: warehouseId,
-              },
-            },
-          });
+      // 7. Deduct inventory from the resolved warehouse for each item.
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const whId = itemWarehouses[i];
+        const inventory = await tx.inventory.findUnique({
+          where: {
+            productId_warehouseId: { productId: item.productId, warehouseId: whId },
+          },
+        });
 
-          if (!inventory || inventory.quantity < item.quantity) {
-            const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
-            throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
-          }
-
-          await tx.inventory.update({
-            where: {
-              productId_warehouseId: {
-                productId: item.productId,
-                warehouseId: warehouseId,
-              },
-            },
-            data: {
-              quantity: { decrement: item.quantity },
-            },
-          });
-        } else {
-          // Fallback: find first warehouse with enough stock
-          const inventory = await tx.inventory.findFirst({
-            where: { productId: item.productId, quantity: { gte: item.quantity } },
-          });
-
-          if (!inventory) {
-            const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
-            throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" وجود ندارد.`);
-          }
-
-          await tx.inventory.update({
-            where: {
-              productId_warehouseId: {
-                productId: item.productId,
-                warehouseId: inventory.warehouseId,
-              },
-            },
-            data: {
-              quantity: { decrement: item.quantity },
-            },
-          });
+        if (!inventory || inventory.quantity < item.quantity) {
+          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+          throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
         }
+
+        await tx.inventory.update({
+          where: {
+            productId_warehouseId: { productId: item.productId, warehouseId: whId },
+          },
+          data: {
+            quantity: { decrement: item.quantity },
+          },
+        });
       }
     });
 
@@ -352,10 +345,15 @@ export async function getOrder(id: string) {
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        customer: true,
+        customer: {
+          include: {
+            warehouses: { where: { isVirtual: true } },
+          },
+        },
         items: {
           include: {
             product: true,
+            warehouse: true,
           },
         },
         transaction: {
@@ -364,6 +362,7 @@ export async function getOrder(id: string) {
             }
         },
         invoice: true,
+        commissions: true,
       },
     });
     if (!order) return undefined;
@@ -389,9 +388,23 @@ export async function getOrder(id: string) {
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
         type: order.customer.customerType,
       } : undefined,
+      isConsignmentSale: !!(order.commissions && order.commissions.length > 0)
+        || !!(order.customer && (order.customer as any).warehouses && (order.customer as any).warehouses.length > 0),
+      commissions: order.commissions
+        ? order.commissions.map((c: any) => ({
+            ...c,
+            commissionRate: Number(c.commissionRate),
+            orderAmount: Number(c.orderAmount),
+            commissionAmount: Number(c.commissionAmount),
+          }))
+        : [],
       items: order.items.map((item: any) => ({
         ...item,
         price: Number(item.price),
+        warehouseId: item.warehouseId ?? undefined,
+        warehouse: item.warehouse
+          ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
+          : undefined,
         product: item.product ? {
           ...item.product,
           costPrice: Number(item.product.costPrice),
