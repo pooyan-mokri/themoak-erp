@@ -109,27 +109,56 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       const exchangePrice = Number(exchangeProduct.sellPrice) * quantity;
       const priceDifference = exchangePrice - originalPrice;
 
-      // 5. Get account
-      const account = await tx.account.findUnique({
-        where: { id: accountId },
-      });
+      // 5. Recompute order totals.
+      //    - priceDifference > 0  → cashier collects the extra at the till
+      //      (matches existing UX where account is mandatory).
+      //    - priceDifference < 0  → only refund the portion the customer
+      //      actually overpaid relative to the new total. The rest is
+      //      absorbed by reducing the outstanding debt on the order.
+      const oldTotal = Number(order.totalAmount);
+      const oldDiscount = Number(order.discount);
+      const oldPaid = Number(order.paidAmount);
 
-      if (!account) {
-        throw new Error('حساب یافت نشد.');
+      const newTotal = Math.max(0, oldTotal + priceDifference);
+      const newNetOwed = Math.max(0, newTotal - oldDiscount);
+
+      let txType: TransactionType | null = null;
+      let txAmount = 0;
+      let newPaid = oldPaid;
+
+      if (priceDifference > 0) {
+        txType = TransactionType.INCOME;
+        txAmount = priceDifference;
+        newPaid = oldPaid + priceDifference;
+      } else if (priceDifference < 0) {
+        if (oldPaid > newNetOwed) {
+          txType = TransactionType.EXPENSE;
+          txAmount = oldPaid - newNetOwed;
+          newPaid = newNetOwed;
+        }
       }
 
-      // 6. Create transaction if there's a price difference
-      let transactionId = undefined;
-      if (priceDifference !== 0) {
-        const transactionType = priceDifference > 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
+      const newDebt = newNetOwed - newPaid;
+      const newPaymentStatus = newDebt > 0
+        ? (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
+        : 'PAID';
+
+      // 6. Cash leg (skipped when no money actually changes hands)
+      let transactionId: string | undefined;
+      if (txType !== null && txAmount > 0) {
+        const account = await tx.account.findUnique({ where: { id: accountId } });
+        if (!account) {
+          throw new Error('حساب یافت نشد.');
+        }
+
         const transaction = await tx.transaction.create({
           data: {
-            type: transactionType,
-            amount: Math.abs(priceDifference),
+            type: txType,
+            amount: txAmount,
             currency: 'TOMAN',
             rateSnapshot: 1,
-            amountInToman: Math.abs(priceDifference),
-            accountId: accountId,
+            amountInToman: txAmount,
+            accountId,
             description: `تعویض کالا - سفارش #${order.number} - ${originalItem.product.name} → ${exchangeProduct.name}`,
             category: 'Exchange',
             date: new Date(),
@@ -137,31 +166,25 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         });
         transactionId = transaction.id;
 
-        // Update account balance
-        if (priceDifference > 0) {
-          // Customer owes us
-          await tx.account.update({
-            where: { id: accountId },
-            data: {
-              balance: {
-                increment: priceDifference,
-              },
-            },
-          });
-        } else {
-          // We owe customer
-          await tx.account.update({
-            where: { id: accountId },
-            data: {
-              balance: {
-                decrement: Math.abs(priceDifference),
-              },
-            },
-          });
-        }
+        await tx.account.update({
+          where: { id: accountId },
+          data: txType === TransactionType.INCOME
+            ? { balance: { increment: txAmount } }
+            : { balance: { decrement: txAmount } },
+        });
       }
 
-      // 7. Create exchange item in order (for record keeping)
+      // 7. Persist new order totals
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          totalAmount: new Prisma.Decimal(newTotal),
+          paidAmount: new Prisma.Decimal(newPaid),
+          paymentStatus: newPaymentStatus,
+        },
+      });
+
+      // 8. Create exchange item in order (for record keeping)
       const exchangeItem = await tx.orderItem.create({
         data: {
           orderId,

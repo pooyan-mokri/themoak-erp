@@ -79,44 +79,70 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         throw new Error(`تعداد عودت بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
       }
 
-      // 2. Calculate refund amount
+      // 2. Calculate refund value of returned goods
       const refundAmount = Number(orderItem.price) * quantity;
 
-      // 3. Get account
-      const account = await tx.account.findUnique({
-        where: { id: accountId },
-      });
+      // 3. Recompute order totals. Cash leaves the account ONLY for the
+      //    portion the customer actually overpaid relative to the new total
+      //    (i.e. only what's owed back). The rest just cancels customer debt.
+      const oldTotal = Number(order.totalAmount);
+      const oldDiscount = Number(order.discount);
+      const oldPaid = Number(order.paidAmount);
 
-      if (!account) {
-        throw new Error('حساب یافت نشد.');
+      const newTotal = Math.max(0, oldTotal - refundAmount);
+      const newNetOwed = Math.max(0, newTotal - oldDiscount);
+      let cashRefund = 0;
+      let newPaid = oldPaid;
+      if (oldPaid > newNetOwed) {
+        cashRefund = oldPaid - newNetOwed;
+        newPaid = newNetOwed;
+      }
+      const newDebt = newNetOwed - newPaid;
+      const newPaymentStatus = newDebt > 0
+        ? (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
+        : 'PAID';
+
+      // 4. Cash refund leg (skipped entirely when nothing leaves the account)
+      let transactionId: string | undefined;
+      if (cashRefund > 0) {
+        const account = await tx.account.findUnique({ where: { id: accountId } });
+        if (!account) {
+          throw new Error('حساب یافت نشد.');
+        }
+
+        const transaction = await tx.transaction.create({
+          data: {
+            type: TransactionType.EXPENSE,
+            amount: cashRefund,
+            currency: 'TOMAN',
+            rateSnapshot: 1,
+            amountInToman: cashRefund,
+            accountId,
+            description: `عودت کالا - سفارش #${order.number} - ${orderItem.product.name}`,
+            category: 'Return',
+            date: new Date(),
+          },
+        });
+        transactionId = transaction.id;
+
+        await tx.account.update({
+          where: { id: accountId },
+          data: { balance: { decrement: cashRefund } },
+        });
       }
 
-      // 4. Create EXPENSE transaction (refund to customer)
-      const transaction = await tx.transaction.create({
+      // 5. Persist the order totals so debt/LTV/reports stay consistent
+      await tx.order.update({
+        where: { id: orderId },
         data: {
-          type: TransactionType.EXPENSE,
-          amount: refundAmount,
-          currency: 'TOMAN',
-          rateSnapshot: 1,
-          amountInToman: refundAmount,
-          accountId: accountId,
-          description: `عودت کالا - سفارش #${order.number} - ${orderItem.product.name}`,
-          category: 'Return',
-          date: new Date(),
+          totalAmount: new Prisma.Decimal(newTotal),
+          paidAmount: new Prisma.Decimal(newPaid),
+          paymentStatus: newPaymentStatus,
         },
       });
 
-      // 5. Update account balance
-      await tx.account.update({
-        where: { id: accountId },
-        data: {
-          balance: {
-            decrement: refundAmount,
-          },
-        },
-      });
-
-      // 6. Create OrderReturn record
+      // 6. Create OrderReturn record (refundAmount = goods value;
+      //    transactionId only set when cash actually moved)
       await tx.orderReturn.create({
         data: {
           orderId,
@@ -125,7 +151,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           reason: reason || undefined,
           refundAmount: new Prisma.Decimal(refundAmount),
           accountId,
-          transactionId: transaction.id,
+          transactionId,
         },
       });
 
