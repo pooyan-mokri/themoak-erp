@@ -57,6 +57,9 @@ type OrderItem = {
   product: Product;
   warehouse?: { id: string; name: string; isVirtual: boolean };
   isExchangeDerived?: boolean;
+  remainingQuantity?: number;
+  returnedQuantity?: number;
+  exchangedQuantity?: number;
 };
 
 type Account = {
@@ -118,9 +121,11 @@ interface OrderDetailsProps {
     id: string;
     name: string;
   }>;
+  returns?: Array<any>;
+  exchanges?: Array<any>;
 }
 
-export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps) {
+export function OrderDetails({ order, accounts, warehouses, returns = [], exchanges = [] }: OrderDetailsProps) {
   const router = useRouter();
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
@@ -210,11 +215,20 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
                       {item.isExchangeDerived && (
                         <Badge variant="outline" className="ml-2 border-blue-500 text-blue-700">حاصل تعویض</Badge>
                       )}
+                      {(item.remainingQuantity !== undefined && item.remainingQuantity < item.quantity) && (
+                        <Badge variant="outline" className="ml-2">
+                          باقی‌مانده: {item.remainingQuantity} از {item.quantity}
+                        </Badge>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleReturnClick(item)}
-                        disabled={(item.status || 'PENDING') === 'RETURNED' || (item.status || 'PENDING') === 'EXCHANGED'}
+                        disabled={
+                          (item.status || 'PENDING') === 'RETURNED' ||
+                          (item.status || 'PENDING') === 'EXCHANGED' ||
+                          (item.remainingQuantity !== undefined && item.remainingQuantity <= 0)
+                        }
                       >
                         <RotateCcw className="w-4 h-4 ml-1" />
                         عودت
@@ -226,7 +240,8 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
                         disabled={
                           (item.status || 'PENDING') === 'RETURNED' ||
                           (item.status || 'PENDING') === 'EXCHANGED' ||
-                          !!item.isExchangeDerived
+                          !!item.isExchangeDerived ||
+                          (item.remainingQuantity !== undefined && item.remainingQuantity <= 0)
                         }
                         title={item.isExchangeDerived ? 'این آیتم حاصل یک تعویض است و دوباره قابل تعویض نیست.' : undefined}
                       >
@@ -244,6 +259,62 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
               </div>
             </CardContent>
           </Card>
+
+          {(returns.length > 0 || exchanges.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>تاریخچه عودت‌ها و تعویض‌ها</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {returns.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-muted-foreground">عودت‌ها</div>
+                    {returns.map((ret: any) => (
+                      <div key={ret.id} className="flex flex-col gap-1 border-b pb-2 last:border-0 last:pb-0">
+                        <div className="flex justify-between">
+                          <span className="font-medium">
+                            {ret.orderItem?.product?.name || '—'}
+                          </span>
+                          <span className="text-sm">{formatJalaliDateTime(ret.createdAt)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>تعداد: {ret.quantity}</span>
+                          <span>مبلغ: {Number(ret.refundAmount).toLocaleString()} تومان</span>
+                        </div>
+                        {ret.reason && (
+                          <div className="text-sm text-muted-foreground">دلیل: {ret.reason}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {exchanges.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-muted-foreground">تعویض‌ها</div>
+                    {exchanges.map((ex: any) => (
+                      <div key={ex.id} className="flex flex-col gap-1 border-b pb-2 last:border-0 last:pb-0">
+                        <div className="flex justify-between">
+                          <span className="font-medium">
+                            {ex.originalItem?.product?.name || '—'} ← {ex.exchangeItem?.product?.name || '—'}
+                          </span>
+                          <span className="text-sm">{formatJalaliDateTime(ex.createdAt)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>تعداد: {ex.quantity}</span>
+                          <span>
+                            {ex.priceDifference > 0 && `مابه‌التفاوت دریافتی: ${Number(ex.priceDifference).toLocaleString()} تومان`}
+                            {ex.priceDifference < 0 && `مابه‌التفاوت پرداختی: ${Math.abs(Number(ex.priceDifference)).toLocaleString()} تومان`}
+                            {ex.priceDifference === 0 && 'بدون مابه‌التفاوت'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -308,6 +379,7 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
                 name: selectedItem.product.name,
               },
               quantity: selectedItem.quantity,
+              remainingQuantity: selectedItem.remainingQuantity ?? selectedItem.quantity,
               price: Number(selectedItem.price),
             }}
             accounts={accounts}
@@ -328,6 +400,7 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
                 sku: selectedItem.product.sku || '',
               },
               quantity: selectedItem.quantity,
+              remainingQuantity: selectedItem.remainingQuantity ?? selectedItem.quantity,
               price: Number(selectedItem.price),
             }}
             accounts={accounts}

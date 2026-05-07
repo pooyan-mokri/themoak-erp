@@ -356,6 +356,8 @@ export async function getOrder(id: string) {
             product: true,
             warehouse: true,
             exchangeItems: { select: { id: true } },
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
           },
         },
         transaction: {
@@ -400,23 +402,39 @@ export async function getOrder(id: string) {
             commissionAmount: Number(c.commissionAmount),
           }))
         : [],
-      items: order.items.map((item: any) => ({
-        ...item,
-        price: Number(item.price),
-        warehouseId: item.warehouseId ?? undefined,
-        warehouse: item.warehouse
-          ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
-          : undefined,
-        isExchangeDerived: !!(item.exchangeItems && item.exchangeItems.length > 0),
-        product: item.product ? {
-          ...item.product,
-          costPrice: Number(item.product.costPrice),
-          sellPrice: Number(item.product.sellPrice),
-          image: item.product.image ?? undefined,
-          wooId: item.product.wooId ?? undefined,
-          barcode: item.product.barcode ?? undefined,
-        } : undefined,
-      })),
+      items: order.items.map((item: any) => {
+        const returnedQty = (item.returns || []).reduce(
+          (s: number, r: any) => s + (r.quantity || 0), 0
+        );
+        const exchangedQty = (item.exchanges || []).reduce(
+          (s: number, e: any) => s + (e.quantity || 0), 0
+        );
+        const remainingQuantity = Math.max(0, item.quantity - returnedQty - exchangedQty);
+        return {
+          ...item,
+          price: Number(item.price),
+          warehouseId: item.warehouseId ?? undefined,
+          warehouse: item.warehouse
+            ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
+            : undefined,
+          isExchangeDerived: !!(item.exchangeItems && item.exchangeItems.length > 0),
+          remainingQuantity,
+          returnedQuantity: returnedQty,
+          exchangedQuantity: exchangedQty,
+          // Strip the raw relations we only used for aggregation
+          returns: undefined,
+          exchanges: undefined,
+          exchangeItems: undefined,
+          product: item.product ? {
+            ...item.product,
+            costPrice: Number(item.product.costPrice),
+            sellPrice: Number(item.product.sellPrice),
+            image: item.product.image ?? undefined,
+            wooId: item.product.wooId ?? undefined,
+            barcode: item.product.barcode ?? undefined,
+          } : undefined,
+        };
+      }),
       transaction: order.transaction ? {
         ...order.transaction,
         amount: Number(order.transaction.amount),
