@@ -32,6 +32,7 @@ import { QuickCustomerForm } from './quick-customer-form';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ShoppingCart } from 'lucide-react';
+import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 
 interface Product {
   id: string;
@@ -78,8 +79,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const [paidAmount, setPaidAmount] = useState<string>('');
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
   const [isCreditSale, setIsCreditSale] = useState(false);
-  const todayIso = () => new Date().toISOString().slice(0, 10);
-  const [saleDate, setSaleDate] = useState<string>(todayIso());
+  const [saleDate, setSaleDate] = useState<Date>(new Date());
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -124,7 +124,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     setDiscount('0');
     setPaidAmount(totalAmount.toString());
     setIsCreditSale(false);
-    setSaleDate(todayIso());
+    setSaleDate(new Date());
     setIsCheckoutOpen(true);
   };
 
@@ -187,7 +187,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       discount: discountVal,
       paidAmount: paidVal,
       warehouseId: selectedWarehouse,
-      saleDate,
+      saleDate: saleDate.toISOString(),
     });
 
     setIsSubmitting(false);
@@ -301,16 +301,13 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
             <DialogTitle className="text-right">نهایی کردن سفارش</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 md:space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="saleDate" className="text-base md:text-sm">تاریخ فروش *</Label>
-              <Input
-                id="saleDate"
-                type="date"
-                value={saleDate}
-                onChange={(e) => setSaleDate(e.target.value)}
-                className="h-12 md:h-10 text-base md:text-sm"
-              />
-            </div>
+            <JalaliDatePicker
+              name="saleDate"
+              label="تاریخ فروش"
+              defaultValue={saleDate}
+              onChange={(date) => setSaleDate(date)}
+              required
+            />
 
             <div className="space-y-2">
               <Label className="text-base md:text-sm">انبار فروش *</Label>
