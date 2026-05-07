@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
+import { syncInvoiceWithOrder } from './invoice';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -228,6 +229,9 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           paymentStatus: newPaymentStatus,
         },
       });
+
+      // 7a. Keep an issued invoice in sync with the new order totals.
+      await syncInvoiceWithOrder(orderId, tx);
 
       // 7b. For consignment sales, rescale commission records proportional
       //     to the new net order amount.

@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
+import { syncInvoiceWithOrder } from './invoice';
 
 const OrderReturnSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -166,6 +167,10 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           paymentStatus: newPaymentStatus,
         },
       });
+
+      // 5a. Keep the (already-issued) invoice in sync with the order so it
+      //     doesn't keep displaying the pre-return total / paid amounts.
+      await syncInvoiceWithOrder(orderId, tx);
 
       // 5b. For consignment sales, scale each commission record on this
       //     order in proportion to the new net order amount so the partner
