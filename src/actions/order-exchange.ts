@@ -67,6 +67,17 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error('این آیتم قبلاً عودت یا تعویض شده است.');
       }
 
+      // Block re-exchanging an item that was itself created by a previous
+      // exchange — that would chain A→B→C and make accounting (and history)
+      // a tangle. Returns on such an item remain allowed.
+      const isExchangeDerived = await tx.orderExchange.findFirst({
+        where: { exchangeItemId: originalItemId },
+        select: { id: true },
+      });
+      if (isExchangeDerived) {
+        throw new Error('این آیتم خود حاصل یک تعویض است و دوباره قابل تعویض نیست. در صورت نیاز می‌توانید آن را عودت کنید.');
+      }
+
       // باقی‌ماندهٔ مجاز برای تعویض = تعداد اولیه − عودت‌های قبلی − تعویض‌های قبلی
       const [returnedAgg, exchangedAgg] = await Promise.all([
         tx.orderReturn.aggregate({

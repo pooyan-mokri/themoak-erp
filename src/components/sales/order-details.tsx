@@ -56,6 +56,7 @@ type OrderItem = {
   status: string;
   product: Product;
   warehouse?: { id: string; name: string; isVirtual: boolean };
+  isExchangeDerived?: boolean;
 };
 
 type Account = {
@@ -206,6 +207,9 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
                       {(item.status || 'PENDING') === 'EXCHANGED' && (
                         <Badge variant="secondary" className="ml-2">تعویض شده</Badge>
                       )}
+                      {item.isExchangeDerived && (
+                        <Badge variant="outline" className="ml-2 border-blue-500 text-blue-700">حاصل تعویض</Badge>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -219,7 +223,12 @@ export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps)
                         variant="outline"
                         size="sm"
                         onClick={() => handleExchangeClick(item)}
-                        disabled={(item.status || 'PENDING') === 'RETURNED' || (item.status || 'PENDING') === 'EXCHANGED'}
+                        disabled={
+                          (item.status || 'PENDING') === 'RETURNED' ||
+                          (item.status || 'PENDING') === 'EXCHANGED' ||
+                          !!item.isExchangeDerived
+                        }
+                        title={item.isExchangeDerived ? 'این آیتم حاصل یک تعویض است و دوباره قابل تعویض نیست.' : undefined}
                       >
                         <RefreshCw className="w-4 h-4 ml-1" />
                         تعویض

@@ -355,6 +355,7 @@ export async function getOrder(id: string) {
           include: {
             product: true,
             warehouse: true,
+            exchangeItems: { select: { id: true } },
           },
         },
         transaction: {
@@ -406,6 +407,7 @@ export async function getOrder(id: string) {
         warehouse: item.warehouse
           ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
           : undefined,
+        isExchangeDerived: !!(item.exchangeItems && item.exchangeItems.length > 0),
         product: item.product ? {
           ...item.product,
           costPrice: Number(item.product.costPrice),
