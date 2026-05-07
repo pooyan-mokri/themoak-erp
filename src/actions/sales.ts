@@ -68,12 +68,32 @@ export async function createOrder(data: OrderData) {
       // 2. Create Transaction (Income) ONLY if there is a payment
       if (finalPaidAmount > 0) {
         const customerName = customer?.name || 'مشتری عمومی';
+
+        // POS prices are in TOMAN — convert to the account's currency
+        // when the cashier collects to a foreign-currency account.
+        const account = await tx.account.findUnique({ where: { id: accountId } });
+        if (!account) {
+          throw new Error('حساب دریافت وجه یافت نشد.');
+        }
+        let rate = 1;
+        if (account.currency !== 'TOMAN') {
+          const latestRate = await tx.exchangeRate.findFirst({
+            where: { currency: account.currency },
+            orderBy: { date: 'desc' },
+          });
+          if (!latestRate) {
+            throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+          }
+          rate = Number(latestRate.rateToToman);
+        }
+        const amountInAccountCurrency = finalPaidAmount / rate;
+
         const transaction = await tx.transaction.create({
           data: {
-            amount: finalPaidAmount,
-            currency: 'TOMAN', // Assuming POS is Toman for now
-            rateSnapshot: 1,
-            amountInToman: finalPaidAmount,
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(finalPaidAmount),
             type: TransactionType.INCOME,
             accountId: accountId,
             customerId: customerId || undefined,
@@ -84,13 +104,11 @@ export async function createOrder(data: OrderData) {
         });
         transactionId = transaction.id;
 
-        // 3. Update Account Balance
+        // 3. Update Account Balance in the account's own currency
         await tx.account.update({
           where: { id: accountId },
           data: {
-            balance: {
-              increment: finalPaidAmount,
-            },
+            balance: { increment: new Prisma.Decimal(amountInAccountCurrency) },
           },
         });
       }

@@ -135,14 +135,29 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           throw new Error('برای بازگرداندن وجه، حساب باید از نوع بانک یا صندوق باشد.');
         }
 
+        // Order amounts are in TOMAN; convert to the account's currency
+        // when needed so foreign-currency accounts stay consistent.
+        let rate = 1;
+        if (account.currency !== 'TOMAN') {
+          const latestRate = await tx.exchangeRate.findFirst({
+            where: { currency: account.currency },
+            orderBy: { date: 'desc' },
+          });
+          if (!latestRate) {
+            throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+          }
+          rate = Number(latestRate.rateToToman);
+        }
+        const amountInAccountCurrency = cashRefund / rate;
+
         const customerLabel = order.customer?.name ?? 'مشتری عمومی';
         const transaction = await tx.transaction.create({
           data: {
             type: TransactionType.EXPENSE,
-            amount: cashRefund,
-            currency: 'TOMAN',
-            rateSnapshot: 1,
-            amountInToman: cashRefund,
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(cashRefund),
             accountId,
             customerId: order.customerId ?? undefined,
             description: `عودت کالا - سفارش #${order.number} - ${customerLabel} - ${orderItem.product.name}`,
@@ -154,7 +169,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
 
         await tx.account.update({
           where: { id: accountId },
-          data: { balance: { decrement: cashRefund } },
+          data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
         });
       }
 

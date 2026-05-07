@@ -195,14 +195,29 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           throw new Error('برای تراکنش نقدی تعویض، حساب باید از نوع بانک یا صندوق باشد.');
         }
 
+        // Order amounts are in TOMAN; convert to the account's currency
+        // when needed.
+        let rate = 1;
+        if (account.currency !== 'TOMAN') {
+          const latestRate = await tx.exchangeRate.findFirst({
+            where: { currency: account.currency },
+            orderBy: { date: 'desc' },
+          });
+          if (!latestRate) {
+            throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+          }
+          rate = Number(latestRate.rateToToman);
+        }
+        const amountInAccountCurrency = txAmount / rate;
+
         const customerLabel = order.customer?.name ?? 'مشتری عمومی';
         const transaction = await tx.transaction.create({
           data: {
             type: txType,
-            amount: txAmount,
-            currency: 'TOMAN',
-            rateSnapshot: 1,
-            amountInToman: txAmount,
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(txAmount),
             accountId,
             customerId: order.customerId ?? undefined,
             description: `تعویض کالا - سفارش #${order.number} - ${customerLabel} - ${originalItem.product.name} → ${exchangeProduct.name}`,
@@ -215,8 +230,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         await tx.account.update({
           where: { id: accountId },
           data: txType === TransactionType.INCOME
-            ? { balance: { increment: txAmount } }
-            : { balance: { decrement: txAmount } },
+            ? { balance: { increment: new Prisma.Decimal(amountInAccountCurrency) } }
+            : { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
         });
       }
 
