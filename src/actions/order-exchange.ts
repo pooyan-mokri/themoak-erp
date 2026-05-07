@@ -89,6 +89,25 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error(`تعداد تعویض بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
       }
 
+      // Virtual warehouses are only valid in this flow when the sale was
+      // consignment AND the warehouse belongs to the order's customer.
+      const [returnWarehouse, exchangeWarehouseRecord] = await Promise.all([
+        tx.warehouse.findUnique({ where: { id: returnWarehouseId } }),
+        tx.warehouse.findUnique({ where: { id: exchangeWarehouseId } }),
+      ]);
+      if (!returnWarehouse) {
+        throw new Error('انبار برگشت کالا یافت نشد.');
+      }
+      if (!exchangeWarehouseRecord) {
+        throw new Error('انبار تحویل کالا یافت نشد.');
+      }
+      if (returnWarehouse.isVirtual && returnWarehouse.customerId !== order.customerId) {
+        throw new Error('انبار برگشت مجازی متعلق به مشتری این سفارش نیست.');
+      }
+      if (exchangeWarehouseRecord.isVirtual && exchangeWarehouseRecord.customerId !== order.customerId) {
+        throw new Error('انبار تحویل مجازی متعلق به مشتری این سفارش نیست.');
+      }
+
       // 2. Get exchange product
       const exchangeProduct = await tx.product.findUnique({
         where: { id: exchangeProductId },
@@ -195,6 +214,31 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           paymentStatus: newPaymentStatus,
         },
       });
+
+      // 7b. For consignment sales, rescale commission records proportional
+      //     to the new net order amount.
+      const orderCommissions = await tx.consignmentCommission.findMany({
+        where: { orderId },
+      });
+      if (orderCommissions.length > 0) {
+        const oldCommissionBase = orderCommissions.reduce(
+          (sum: number, c: any) => sum + Number(c.orderAmount),
+          0
+        );
+        const ratio = oldCommissionBase > 0 ? newNetOwed / oldCommissionBase : 0;
+        for (const commission of orderCommissions) {
+          const rate = Number(commission.commissionRate);
+          const newOrderAmount = Number(commission.orderAmount) * ratio;
+          const newCommissionAmount = (newOrderAmount * rate) / 100;
+          await tx.consignmentCommission.update({
+            where: { id: commission.id },
+            data: {
+              orderAmount: new Prisma.Decimal(newOrderAmount),
+              commissionAmount: new Prisma.Decimal(newCommissionAmount),
+            },
+          });
+        }
+      }
 
       // 8. Create exchange item in order (for record keeping)
       const exchangeItem = await tx.orderItem.create({

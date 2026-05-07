@@ -19,7 +19,16 @@ export default async function OrderDetailsPage({ params }: { params: { id: strin
   // Refund / exchange cash legs must hit a real cash source, not an
   // expense bucket — match the server-side guard.
   const accounts = allAccounts.filter((a: any) => a.type === 'BANK' || a.type === 'CASH');
-  const warehouses = allWarehouses.filter((w: any) => !w.isVirtual);
+
+  // For consignment sales, also allow the partner's own virtual warehouse
+  // as a return/exchange destination — the goods physically went back to
+  // the partner. Other partners' virtual warehouses must stay hidden.
+  const partnerWarehouseIds = new Set(
+    ((order.customer as any)?.warehouses || []).map((w: any) => w.id)
+  );
+  const warehouses = allWarehouses.filter(
+    (w: any) => !w.isVirtual || partnerWarehouseIds.has(w.id)
+  );
 
   return (
     <div className="space-y-6">

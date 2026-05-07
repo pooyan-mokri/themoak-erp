@@ -87,6 +87,17 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         throw new Error(`تعداد عودت بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
       }
 
+      // Virtual warehouses are only valid as a return destination when the
+      // sale was consignment AND the warehouse belongs to the same partner
+      // (the customer on the order).
+      const warehouse = await tx.warehouse.findUnique({ where: { id: warehouseId } });
+      if (!warehouse) {
+        throw new Error('انبار یافت نشد.');
+      }
+      if (warehouse.isVirtual && warehouse.customerId !== order.customerId) {
+        throw new Error('این انبار مجازی متعلق به مشتری این سفارش نیست.');
+      }
+
       // 2. Calculate refund value of returned goods
       const refundAmount = Number(orderItem.price) * quantity;
 
@@ -152,6 +163,32 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           paymentStatus: newPaymentStatus,
         },
       });
+
+      // 5b. For consignment sales, scale each commission record on this
+      //     order in proportion to the new net order amount so the partner
+      //     isn't paid commission on goods that came back.
+      const orderCommissions = await tx.consignmentCommission.findMany({
+        where: { orderId },
+      });
+      if (orderCommissions.length > 0) {
+        const oldCommissionBase = orderCommissions.reduce(
+          (sum: number, c: any) => sum + Number(c.orderAmount),
+          0
+        );
+        const ratio = oldCommissionBase > 0 ? newNetOwed / oldCommissionBase : 0;
+        for (const commission of orderCommissions) {
+          const rate = Number(commission.commissionRate);
+          const newOrderAmount = Number(commission.orderAmount) * ratio;
+          const newCommissionAmount = (newOrderAmount * rate) / 100;
+          await tx.consignmentCommission.update({
+            where: { id: commission.id },
+            data: {
+              orderAmount: new Prisma.Decimal(newOrderAmount),
+              commissionAmount: new Prisma.Decimal(newCommissionAmount),
+            },
+          });
+        }
+      }
 
       // 6. Create OrderReturn record (refundAmount = goods value;
       //    transactionId only set when cash actually moved)
