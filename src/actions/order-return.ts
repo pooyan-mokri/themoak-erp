@@ -12,6 +12,7 @@ const OrderReturnSchema = z.object({
   quantity: z.coerce.number().int().positive('تعداد باید بیشتر از صفر باشد'),
   reason: z.string().optional(),
   accountId: z.string().min(1, 'حساب الزامی است'),
+  warehouseId: z.string().min(1, 'انبار الزامی است'),
 });
 
 export async function returnOrderItem(prevState: any, formData: FormData) {
@@ -21,6 +22,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
     quantity: formData.get('quantity'),
     reason: formData.get('reason') || undefined,
     accountId: formData.get('accountId'),
+    warehouseId: formData.get('warehouseId'),
   });
 
   if (!validatedFields.success) {
@@ -31,7 +33,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
     };
   }
 
-  const { orderId, orderItemId, quantity, reason, accountId } = validatedFields.data;
+  const { orderId, orderItemId, quantity, reason, accountId, warehouseId } = validatedFields.data;
 
   try {
     await prisma.$transaction(async (tx: any) => {
@@ -124,47 +126,34 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         });
       }
 
-      // 7. Restore inventory (find warehouse from original order transaction or use default warehouse)
-      // For simplicity, we'll use the first warehouse with stock, or create inventory entry
-      const warehouses = await tx.warehouse.findMany({
-        where: { isVirtual: false },
-        take: 1,
+      // 7. Restore inventory to the warehouse selected by the user
+      const existingInventory = await tx.inventory.findUnique({
+        where: {
+          productId_warehouseId: {
+            productId: orderItem.productId,
+            warehouseId,
+          },
+        },
       });
 
-      if (warehouses.length > 0) {
-        const warehouse = warehouses[0];
-        const existingInventory = await tx.inventory.findUnique({
+      if (existingInventory) {
+        await tx.inventory.update({
           where: {
             productId_warehouseId: {
               productId: orderItem.productId,
-              warehouseId: warehouse.id,
+              warehouseId,
             },
           },
+          data: { quantity: { increment: quantity } },
         });
-
-        if (existingInventory) {
-          await tx.inventory.update({
-            where: {
-              productId_warehouseId: {
-                productId: orderItem.productId,
-                warehouseId: warehouse.id,
-              },
-            },
-            data: {
-              quantity: {
-                increment: quantity,
-              },
-            },
-          });
-        } else {
-          await tx.inventory.create({
-            data: {
-              productId: orderItem.productId,
-              warehouseId: warehouse.id,
-              quantity,
-            },
-          });
-        }
+      } else {
+        await tx.inventory.create({
+          data: {
+            productId: orderItem.productId,
+            warehouseId,
+            quantity,
+          },
+        });
       }
     });
 

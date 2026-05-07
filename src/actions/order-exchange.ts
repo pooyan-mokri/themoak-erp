@@ -12,6 +12,8 @@ const OrderExchangeSchema = z.object({
   exchangeProductId: z.string().min(1, 'کالای تعویضی الزامی است'),
   quantity: z.coerce.number().int().positive('تعداد باید بیشتر از صفر باشد'),
   accountId: z.string().min(1, 'حساب الزامی است'),
+  returnWarehouseId: z.string().min(1, 'انبار برگشت کالا الزامی است'),
+  exchangeWarehouseId: z.string().min(1, 'انبار تحویل کالا الزامی است'),
 });
 
 export async function exchangeOrderItem(prevState: any, formData: FormData) {
@@ -21,6 +23,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     exchangeProductId: formData.get('exchangeProductId'),
     quantity: formData.get('quantity'),
     accountId: formData.get('accountId'),
+    returnWarehouseId: formData.get('returnWarehouseId'),
+    exchangeWarehouseId: formData.get('exchangeWarehouseId'),
   });
 
   if (!validatedFields.success) {
@@ -31,7 +35,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     };
   }
 
-  const { orderId, originalItemId, exchangeProductId, quantity, accountId } = validatedFields.data;
+  const { orderId, originalItemId, exchangeProductId, quantity, accountId, returnWarehouseId, exchangeWarehouseId } = validatedFields.data;
 
   try {
     await prisma.$transaction(async (tx: any) => {
@@ -67,16 +71,18 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error('کالای تعویضی یافت نشد.');
       }
 
-      // 3. Check inventory for exchange product
-      const exchangeInventory = await tx.inventory.findFirst({
+      // 3. Check inventory for exchange product in the selected warehouse
+      const exchangeInventory = await tx.inventory.findUnique({
         where: {
-          productId: exchangeProductId,
-          quantity: { gte: quantity },
+          productId_warehouseId: {
+            productId: exchangeProductId,
+            warehouseId: exchangeWarehouseId,
+          },
         },
       });
 
-      if (!exchangeInventory) {
-        throw new Error(`موجودی کافی برای کالای تعویضی "${exchangeProduct.name}" وجود ندارد.`);
+      if (!exchangeInventory || exchangeInventory.quantity < quantity) {
+        throw new Error(`موجودی کافی برای کالای تعویضی "${exchangeProduct.name}" در انبار انتخابی وجود ندارد.`);
       }
 
       // 4. Calculate price difference
@@ -143,7 +149,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           productId: exchangeProductId,
           quantity,
           price: new Prisma.Decimal(exchangeProduct.sellPrice),
-          warehouseId: exchangeInventory.warehouseId,
+          warehouseId: exchangeWarehouseId,
         },
       });
 
@@ -176,61 +182,45 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         });
       }
 
-      // 10. Update inventory: remove from exchange product, add to original product
-      // Remove exchange product from inventory
+      // 10. Update inventory: deduct exchange product from selected warehouse,
+      //     restore original product to the warehouse chosen by the user.
       await tx.inventory.update({
         where: {
           productId_warehouseId: {
             productId: exchangeProductId,
-            warehouseId: exchangeInventory.warehouseId,
+            warehouseId: exchangeWarehouseId,
           },
         },
-        data: {
-          quantity: {
-            decrement: quantity,
+        data: { quantity: { decrement: quantity } },
+      });
+
+      const existingReturnInventory = await tx.inventory.findUnique({
+        where: {
+          productId_warehouseId: {
+            productId: originalItem.productId,
+            warehouseId: returnWarehouseId,
           },
         },
       });
 
-      // Add original product back to inventory
-      const originalWarehouse = await tx.warehouse.findFirst({
-        where: { isVirtual: false },
-        take: 1,
-      });
-
-      if (originalWarehouse) {
-        const existingOriginalInventory = await tx.inventory.findUnique({
+      if (existingReturnInventory) {
+        await tx.inventory.update({
           where: {
             productId_warehouseId: {
               productId: originalItem.productId,
-              warehouseId: originalWarehouse.id,
+              warehouseId: returnWarehouseId,
             },
           },
+          data: { quantity: { increment: quantity } },
         });
-
-        if (existingOriginalInventory) {
-          await tx.inventory.update({
-            where: {
-              productId_warehouseId: {
-                productId: originalItem.productId,
-                warehouseId: originalWarehouse.id,
-              },
-            },
-            data: {
-              quantity: {
-                increment: quantity,
-              },
-            },
-          });
-        } else {
-          await tx.inventory.create({
-            data: {
-              productId: originalItem.productId,
-              warehouseId: originalWarehouse.id,
-              quantity,
-            },
-          });
-        }
+      } else {
+        await tx.inventory.create({
+          data: {
+            productId: originalItem.productId,
+            warehouseId: returnWarehouseId,
+            quantity,
+          },
+        });
       }
     });
 
