@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
+import { syncInvoiceWithOrder } from './invoice';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -43,6 +44,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
+          customer: true,
           items: {
             include: { product: true },
           },
@@ -53,13 +55,70 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error('سفارش یافت نشد.');
       }
 
+      if (order.status === 'CANCELLED') {
+        throw new Error('این سفارش لغو شده و امکان تعویض ندارد.');
+      }
+
       const originalItem = order.items.find((item: any) => item.id === originalItemId);
       if (!originalItem) {
         throw new Error('آیتم اصلی یافت نشد.');
       }
 
-      if (quantity > originalItem.quantity) {
-        throw new Error(`تعداد تعویض شده نمی‌تواند بیشتر از تعداد خریداری شده باشد (${originalItem.quantity}).`);
+      if (originalItem.status === 'RETURNED' || originalItem.status === 'EXCHANGED') {
+        throw new Error('این آیتم قبلاً عودت یا تعویض شده است.');
+      }
+
+      // Block re-exchanging an item that was itself created by a previous
+      // exchange — that would chain A→B→C and make accounting (and history)
+      // a tangle. Returns on such an item remain allowed.
+      const isExchangeDerived = await tx.orderExchange.findFirst({
+        where: { exchangeItemId: originalItemId },
+        select: { id: true },
+      });
+      if (isExchangeDerived) {
+        throw new Error('این آیتم خود حاصل یک تعویض است و دوباره قابل تعویض نیست. در صورت نیاز می‌توانید آن را عودت کنید.');
+      }
+
+      // باقی‌ماندهٔ مجاز برای تعویض = تعداد اولیه − عودت‌های قبلی − تعویض‌های قبلی
+      const [returnedAgg, exchangedAgg] = await Promise.all([
+        tx.orderReturn.aggregate({
+          where: { orderItemId: originalItemId },
+          _sum: { quantity: true },
+        }),
+        tx.orderExchange.aggregate({
+          where: { originalItemId },
+          _sum: { quantity: true },
+        }),
+      ]);
+      const alreadyReturned = returnedAgg._sum.quantity || 0;
+      const alreadyExchanged = exchangedAgg._sum.quantity || 0;
+      const remaining = originalItem.quantity - alreadyReturned - alreadyExchanged;
+
+      if (remaining <= 0) {
+        throw new Error('این آیتم قبلاً به‌طور کامل عودت یا تعویض شده است.');
+      }
+
+      if (quantity > remaining) {
+        throw new Error(`تعداد تعویض بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
+      }
+
+      // Virtual warehouses are only valid in this flow when the sale was
+      // consignment AND the warehouse belongs to the order's customer.
+      const [returnWarehouse, exchangeWarehouseRecord] = await Promise.all([
+        tx.warehouse.findUnique({ where: { id: returnWarehouseId } }),
+        tx.warehouse.findUnique({ where: { id: exchangeWarehouseId } }),
+      ]);
+      if (!returnWarehouse) {
+        throw new Error('انبار برگشت کالا یافت نشد.');
+      }
+      if (!exchangeWarehouseRecord) {
+        throw new Error('انبار تحویل کالا یافت نشد.');
+      }
+      if (returnWarehouse.isVirtual && returnWarehouse.customerId !== order.customerId) {
+        throw new Error('انبار برگشت مجازی متعلق به مشتری این سفارش نیست.');
+      }
+      if (exchangeWarehouseRecord.isVirtual && exchangeWarehouseRecord.customerId !== order.customerId) {
+        throw new Error('انبار تحویل مجازی متعلق به مشتری این سفارش نیست.');
       }
 
       // 2. Get exchange product
@@ -90,59 +149,131 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       const exchangePrice = Number(exchangeProduct.sellPrice) * quantity;
       const priceDifference = exchangePrice - originalPrice;
 
-      // 5. Get account
-      const account = await tx.account.findUnique({
-        where: { id: accountId },
-      });
+      // 5. Recompute order totals.
+      //    - priceDifference > 0  → cashier collects the extra at the till
+      //      (matches existing UX where account is mandatory).
+      //    - priceDifference < 0  → only refund the portion the customer
+      //      actually overpaid relative to the new total. The rest is
+      //      absorbed by reducing the outstanding debt on the order.
+      const oldTotal = Number(order.totalAmount);
+      const oldDiscount = Number(order.discount);
+      const oldPaid = Number(order.paidAmount);
 
-      if (!account) {
-        throw new Error('حساب یافت نشد.');
+      const newTotal = Math.max(0, oldTotal + priceDifference);
+      const newNetOwed = Math.max(0, newTotal - oldDiscount);
+
+      let txType: TransactionType | null = null;
+      let txAmount = 0;
+      let newPaid = oldPaid;
+
+      if (priceDifference > 0) {
+        txType = TransactionType.INCOME;
+        txAmount = priceDifference;
+        newPaid = oldPaid + priceDifference;
+      } else if (priceDifference < 0) {
+        if (oldPaid > newNetOwed) {
+          txType = TransactionType.EXPENSE;
+          txAmount = oldPaid - newNetOwed;
+          newPaid = newNetOwed;
+        }
       }
 
-      // 6. Create transaction if there's a price difference
-      let transactionId = undefined;
-      if (priceDifference !== 0) {
-        const transactionType = priceDifference > 0 ? TransactionType.INCOME : TransactionType.EXPENSE;
+      const newDebt = newNetOwed - newPaid;
+      const newPaymentStatus = newDebt > 0
+        ? (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
+        : 'PAID';
+
+      // 6. Cash leg (skipped when no money actually changes hands)
+      let transactionId: string | undefined;
+      if (txType !== null && txAmount > 0) {
+        const account = await tx.account.findUnique({ where: { id: accountId } });
+        if (!account) {
+          throw new Error('حساب یافت نشد.');
+        }
+
+        if (account.type !== 'BANK' && account.type !== 'CASH') {
+          throw new Error('برای تراکنش نقدی تعویض، حساب باید از نوع بانک یا صندوق باشد.');
+        }
+
+        // Order amounts are in TOMAN; convert to the account's currency
+        // when needed.
+        let rate = 1;
+        if (account.currency !== 'TOMAN') {
+          const latestRate = await tx.exchangeRate.findFirst({
+            where: { currency: account.currency },
+            orderBy: { date: 'desc' },
+          });
+          if (!latestRate) {
+            throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+          }
+          rate = Number(latestRate.rateToToman);
+        }
+        const amountInAccountCurrency = txAmount / rate;
+
+        const customerLabel = order.customer?.name ?? 'مشتری عمومی';
         const transaction = await tx.transaction.create({
           data: {
-            type: transactionType,
-            amount: Math.abs(priceDifference),
-            currency: 'TOMAN',
-            rateSnapshot: 1,
-            amountInToman: Math.abs(priceDifference),
-            accountId: accountId,
-            description: `تعویض کالا - سفارش #${order.number} - ${originalItem.product.name} → ${exchangeProduct.name}`,
+            type: txType,
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(txAmount),
+            accountId,
+            customerId: order.customerId ?? undefined,
+            description: `تعویض کالا - سفارش #${order.number} - ${customerLabel} - ${originalItem.product.name} → ${exchangeProduct.name}`,
             category: 'Exchange',
             date: new Date(),
           },
         });
         transactionId = transaction.id;
 
-        // Update account balance
-        if (priceDifference > 0) {
-          // Customer owes us
-          await tx.account.update({
-            where: { id: accountId },
+        await tx.account.update({
+          where: { id: accountId },
+          data: txType === TransactionType.INCOME
+            ? { balance: { increment: new Prisma.Decimal(amountInAccountCurrency) } }
+            : { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
+        });
+      }
+
+      // 7. Persist new order totals
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          totalAmount: new Prisma.Decimal(newTotal),
+          paidAmount: new Prisma.Decimal(newPaid),
+          paymentStatus: newPaymentStatus,
+        },
+      });
+
+      // 7a. Keep an issued invoice in sync with the new order totals.
+      await syncInvoiceWithOrder(orderId, tx);
+
+      // 7b. For consignment sales, rescale commission records proportional
+      //     to the new net order amount.
+      const orderCommissions = await tx.consignmentCommission.findMany({
+        where: { orderId },
+      });
+      if (orderCommissions.length > 0) {
+        const oldCommissionBase = orderCommissions.reduce(
+          (sum: number, c: any) => sum + Number(c.orderAmount),
+          0
+        );
+        const ratio = oldCommissionBase > 0 ? newNetOwed / oldCommissionBase : 0;
+        for (const commission of orderCommissions) {
+          const rate = Number(commission.commissionRate);
+          const newOrderAmount = Number(commission.orderAmount) * ratio;
+          const newCommissionAmount = (newOrderAmount * rate) / 100;
+          await tx.consignmentCommission.update({
+            where: { id: commission.id },
             data: {
-              balance: {
-                increment: priceDifference,
-              },
-            },
-          });
-        } else {
-          // We owe customer
-          await tx.account.update({
-            where: { id: accountId },
-            data: {
-              balance: {
-                decrement: Math.abs(priceDifference),
-              },
+              orderAmount: new Prisma.Decimal(newOrderAmount),
+              commissionAmount: new Prisma.Decimal(newCommissionAmount),
             },
           });
         }
       }
 
-      // 7. Create exchange item in order (for record keeping)
+      // 8. Create exchange item in order (for record keeping)
       const exchangeItem = await tx.orderItem.create({
         data: {
           orderId,
@@ -224,30 +355,16 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       }
     });
 
-    // 11. Cancel order in WooCommerce if it came from WooCommerce
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { wooId: true, number: true },
-    });
+    // Note: we intentionally do NOT cancel the WooCommerce order on
+    // exchange. The customer received goods (the replacement product), so
+    // the Woo order remains a real fulfilled order. Cancelling it here was
+    // incorrect — it wiped the entire Woo order even for a single-line
+    // swap.
 
-    if (order?.wooId) {
-      try {
-        const { cancelOrderInWooCommerce } = await import('./woocommerce');
-        const result = await cancelOrderInWooCommerce(order.wooId);
-        if (result.success) {
-          console.log(`[Exchange] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
-        } else {
-          console.warn(`[Exchange] خطا در لغو سفارش در WooCommerce: ${result.message}`);
-        }
-      } catch (error) {
-        console.error('[Exchange] خطا در لغو سفارش در WooCommerce:', error);
-        // Don't fail the exchange process if WooCommerce cancellation fails
-      }
-    }
-
-    revalidatePath('/dashboard/sales/history');
-    revalidatePath(`/dashboard/sales/history/${orderId}`);
-    revalidatePath('/dashboard/inventory');
+    // Inventory, POS, customer debt list, accounting reports all derive
+    // from this order's data — revalidate the whole dashboard so none of
+    // them keep serving the pre-exchange snapshot.
+    revalidatePath('/dashboard', 'layout');
     return {
       message: 'تعویض کالا با موفقیت ثبت شد.',
       success: true,
@@ -258,6 +375,37 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       message: error.message || 'خطا در ثبت تعویض کالا.',
       success: false,
     };
+  }
+}
+
+export async function getAllOrderExchanges(limit = 200) {
+  try {
+    const exchanges = await prisma.orderExchange.findMany({
+      include: {
+        order: { include: { customer: true } },
+        originalItem: { include: { product: true } },
+        exchangeItem: { include: { product: true } },
+        account: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return exchanges.map((ex: any) => ({
+      id: ex.id,
+      orderId: ex.orderId,
+      orderNumber: ex.order?.number,
+      customerName: ex.order?.customer?.name ?? 'مشتری عمومی',
+      originalProductName: ex.originalItem?.product?.name ?? '—',
+      exchangeProductName: ex.exchangeItem?.product?.name ?? '—',
+      quantity: ex.quantity,
+      priceDifference: Number(ex.priceDifference),
+      accountName: ex.account?.name ?? '—',
+      createdAt: ex.createdAt,
+    }));
+  } catch (error) {
+    console.error('Error fetching all order exchanges:', error);
+    return [];
   }
 }
 

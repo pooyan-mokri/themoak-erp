@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShoppingCart, Users, History, BarChart3 } from 'lucide-react';
+import { ShoppingCart, Users, History, BarChart3, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SalesPage() {
@@ -71,6 +71,23 @@ export default function SalesPage() {
               <div className="text-2xl font-bold">آمار و نمودارها</div>
               <p className="text-xs text-muted-foreground">
                 تحلیل فروش، نمودار و پیش‌بینی
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/sales/returns">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                عودت‌ها و تعویض‌ها
+              </CardTitle>
+              <RotateCcw className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">تاریخچه برگشتی‌ها</div>
+              <p className="text-xs text-muted-foreground">
+                لیست همه عودت‌ها و تعویض‌های ثبت‌شده
               </p>
             </CardContent>
           </Card>

@@ -68,14 +68,35 @@ export async function createOrder(data: OrderData) {
       // 2. Create Transaction (Income) ONLY if there is a payment
       if (finalPaidAmount > 0) {
         const customerName = customer?.name || 'مشتری عمومی';
+
+        // POS prices are in TOMAN — convert to the account's currency
+        // when the cashier collects to a foreign-currency account.
+        const account = await tx.account.findUnique({ where: { id: accountId } });
+        if (!account) {
+          throw new Error('حساب دریافت وجه یافت نشد.');
+        }
+        let rate = 1;
+        if (account.currency !== 'TOMAN') {
+          const latestRate = await tx.exchangeRate.findFirst({
+            where: { currency: account.currency },
+            orderBy: { date: 'desc' },
+          });
+          if (!latestRate) {
+            throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+          }
+          rate = Number(latestRate.rateToToman);
+        }
+        const amountInAccountCurrency = finalPaidAmount / rate;
+
         const transaction = await tx.transaction.create({
           data: {
-            amount: finalPaidAmount,
-            currency: 'TOMAN', // Assuming POS is Toman for now
-            rateSnapshot: 1,
-            amountInToman: finalPaidAmount,
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(finalPaidAmount),
             type: TransactionType.INCOME,
             accountId: accountId,
+            customerId: customerId || undefined,
             description: `سفارش فروش - مشتری: ${customerName}`,
             category: 'Sales',
             date: orderDate,
@@ -83,13 +104,11 @@ export async function createOrder(data: OrderData) {
         });
         transactionId = transaction.id;
 
-        // 3. Update Account Balance
+        // 3. Update Account Balance in the account's own currency
         await tx.account.update({
           where: { id: accountId },
           data: {
-            balance: {
-              increment: finalPaidAmount,
-            },
+            balance: { increment: new Prisma.Decimal(amountInAccountCurrency) },
           },
         });
       }
@@ -354,6 +373,9 @@ export async function getOrder(id: string) {
           include: {
             product: true,
             warehouse: true,
+            exchangeItems: { select: { id: true } },
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
           },
         },
         transaction: {
@@ -398,22 +420,39 @@ export async function getOrder(id: string) {
             commissionAmount: Number(c.commissionAmount),
           }))
         : [],
-      items: order.items.map((item: any) => ({
-        ...item,
-        price: Number(item.price),
-        warehouseId: item.warehouseId ?? undefined,
-        warehouse: item.warehouse
-          ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
-          : undefined,
-        product: item.product ? {
-          ...item.product,
-          costPrice: Number(item.product.costPrice),
-          sellPrice: Number(item.product.sellPrice),
-          image: item.product.image ?? undefined,
-          wooId: item.product.wooId ?? undefined,
-          barcode: item.product.barcode ?? undefined,
-        } : undefined,
-      })),
+      items: order.items.map((item: any) => {
+        const returnedQty = (item.returns || []).reduce(
+          (s: number, r: any) => s + (r.quantity || 0), 0
+        );
+        const exchangedQty = (item.exchanges || []).reduce(
+          (s: number, e: any) => s + (e.quantity || 0), 0
+        );
+        const remainingQuantity = Math.max(0, item.quantity - returnedQty - exchangedQty);
+        return {
+          ...item,
+          price: Number(item.price),
+          warehouseId: item.warehouseId ?? undefined,
+          warehouse: item.warehouse
+            ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
+            : undefined,
+          isExchangeDerived: !!(item.exchangeItems && item.exchangeItems.length > 0),
+          remainingQuantity,
+          returnedQuantity: returnedQty,
+          exchangedQuantity: exchangedQty,
+          // Strip the raw relations we only used for aggregation
+          returns: undefined,
+          exchanges: undefined,
+          exchangeItems: undefined,
+          product: item.product ? {
+            ...item.product,
+            costPrice: Number(item.product.costPrice),
+            sellPrice: Number(item.product.sellPrice),
+            image: item.product.image ?? undefined,
+            wooId: item.product.wooId ?? undefined,
+            barcode: item.product.barcode ?? undefined,
+          } : undefined,
+        };
+      }),
       transaction: order.transaction ? {
         ...order.transaction,
         amount: Number(order.transaction.amount),

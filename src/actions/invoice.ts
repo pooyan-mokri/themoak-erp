@@ -7,6 +7,46 @@ import { prisma } from '@/lib/prisma';
 
 // const prisma = new PrismaClient();
 
+/**
+ * Resync an existing invoice to its order's current totals.
+ * Used after a return / exchange has changed Order.totalAmount or
+ * Order.paidAmount so the invoice doesn't keep showing pre-return values.
+ *
+ * Pass a Prisma transaction client (`tx`) to run inside an existing
+ * transaction; otherwise it runs against the global prisma client.
+ *
+ * Silently no-ops when the order has no invoice.
+ */
+export async function syncInvoiceWithOrder(orderId: string, client: any = prisma) {
+  const invoice = await client.invoice.findUnique({ where: { orderId } });
+  if (!invoice) return;
+
+  const order = await client.order.findUnique({
+    where: { id: orderId },
+    select: { totalAmount: true, discount: true, paidAmount: true },
+  });
+  if (!order) return;
+
+  const subtotal = Number(order.totalAmount);
+  const discount = Number(order.discount);
+  const tax = Number(invoice.tax);
+  const total = subtotal - discount + tax;
+  const paidAmount = Number(order.paidAmount);
+
+  let status: string = 'PAID';
+  if (paidAmount < total) {
+    status = paidAmount > 0 ? 'PARTIAL' : 'UNPAID';
+  }
+  if (status !== 'PAID' && new Date(invoice.dueDate) < new Date()) {
+    status = 'OVERDUE';
+  }
+
+  await client.invoice.update({
+    where: { id: invoice.id },
+    data: { subtotal, discount, total, paidAmount, status },
+  });
+}
+
 // Generate unique invoice number in format: INV-{YEAR}-{SEQUENTIAL}
 async function generateInvoiceNumber(): Promise<string> {
   const year = new Date().getFullYear();

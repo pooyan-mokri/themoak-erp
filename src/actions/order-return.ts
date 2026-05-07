@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
+import { syncInvoiceWithOrder } from './invoice';
 
 const OrderReturnSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -41,6 +42,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
+          customer: true,
           items: {
             include: { product: true },
           },
@@ -51,53 +53,168 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         throw new Error('سفارش یافت نشد.');
       }
 
+      if (order.status === 'CANCELLED') {
+        throw new Error('این سفارش لغو شده و امکان عودت ندارد.');
+      }
+
       const orderItem = order.items.find((item: any) => item.id === orderItemId);
       if (!orderItem) {
         throw new Error('آیتم سفارش یافت نشد.');
       }
 
-      if (quantity > orderItem.quantity) {
-        throw new Error(`تعداد عودت شده نمی‌تواند بیشتر از تعداد خریداری شده باشد (${orderItem.quantity}).`);
+      if (orderItem.status === 'RETURNED' || orderItem.status === 'EXCHANGED') {
+        throw new Error('این آیتم قبلاً عودت یا تعویض شده است.');
       }
 
-      // 2. Calculate refund amount
+      // باقی‌ماندهٔ مجاز برای عودت = تعداد اولیه − عودت‌های قبلی − تعویض‌های قبلی
+      const [returnedAgg, exchangedAgg] = await Promise.all([
+        tx.orderReturn.aggregate({
+          where: { orderItemId },
+          _sum: { quantity: true },
+        }),
+        tx.orderExchange.aggregate({
+          where: { originalItemId: orderItemId },
+          _sum: { quantity: true },
+        }),
+      ]);
+      const alreadyReturned = returnedAgg._sum.quantity || 0;
+      const alreadyExchanged = exchangedAgg._sum.quantity || 0;
+      const remaining = orderItem.quantity - alreadyReturned - alreadyExchanged;
+
+      if (remaining <= 0) {
+        throw new Error('این آیتم قبلاً به‌طور کامل عودت یا تعویض شده است.');
+      }
+
+      if (quantity > remaining) {
+        throw new Error(`تعداد عودت بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
+      }
+
+      // Virtual warehouses are only valid as a return destination when the
+      // sale was consignment AND the warehouse belongs to the same partner
+      // (the customer on the order).
+      const warehouse = await tx.warehouse.findUnique({ where: { id: warehouseId } });
+      if (!warehouse) {
+        throw new Error('انبار یافت نشد.');
+      }
+      if (warehouse.isVirtual && warehouse.customerId !== order.customerId) {
+        throw new Error('این انبار مجازی متعلق به مشتری این سفارش نیست.');
+      }
+
+      // 2. Calculate refund value of returned goods
       const refundAmount = Number(orderItem.price) * quantity;
 
-      // 3. Get account
-      const account = await tx.account.findUnique({
-        where: { id: accountId },
-      });
+      // 3. Recompute order totals. Cash leaves the account ONLY for the
+      //    portion the customer actually overpaid relative to the new total
+      //    (i.e. only what's owed back). The rest just cancels customer debt.
+      const oldTotal = Number(order.totalAmount);
+      const oldDiscount = Number(order.discount);
+      const oldPaid = Number(order.paidAmount);
 
-      if (!account) {
-        throw new Error('حساب یافت نشد.');
+      const newTotal = Math.max(0, oldTotal - refundAmount);
+      const newNetOwed = Math.max(0, newTotal - oldDiscount);
+      let cashRefund = 0;
+      let newPaid = oldPaid;
+      if (oldPaid > newNetOwed) {
+        cashRefund = oldPaid - newNetOwed;
+        newPaid = newNetOwed;
+      }
+      const newDebt = newNetOwed - newPaid;
+      const newPaymentStatus = newDebt > 0
+        ? (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
+        : 'PAID';
+
+      // 4. Cash refund leg (skipped entirely when nothing leaves the account)
+      let transactionId: string | undefined;
+      if (cashRefund > 0) {
+        const account = await tx.account.findUnique({ where: { id: accountId } });
+        if (!account) {
+          throw new Error('حساب یافت نشد.');
+        }
+
+        if (account.type !== 'BANK' && account.type !== 'CASH') {
+          throw new Error('برای بازگرداندن وجه، حساب باید از نوع بانک یا صندوق باشد.');
+        }
+
+        // Order amounts are in TOMAN; convert to the account's currency
+        // when needed so foreign-currency accounts stay consistent.
+        let rate = 1;
+        if (account.currency !== 'TOMAN') {
+          const latestRate = await tx.exchangeRate.findFirst({
+            where: { currency: account.currency },
+            orderBy: { date: 'desc' },
+          });
+          if (!latestRate) {
+            throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+          }
+          rate = Number(latestRate.rateToToman);
+        }
+        const amountInAccountCurrency = cashRefund / rate;
+
+        const customerLabel = order.customer?.name ?? 'مشتری عمومی';
+        const transaction = await tx.transaction.create({
+          data: {
+            type: TransactionType.EXPENSE,
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(cashRefund),
+            accountId,
+            customerId: order.customerId ?? undefined,
+            description: `عودت کالا - سفارش #${order.number} - ${customerLabel} - ${orderItem.product.name}`,
+            category: 'Return',
+            date: new Date(),
+          },
+        });
+        transactionId = transaction.id;
+
+        await tx.account.update({
+          where: { id: accountId },
+          data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
+        });
       }
 
-      // 4. Create EXPENSE transaction (refund to customer)
-      const transaction = await tx.transaction.create({
+      // 5. Persist the order totals so debt/LTV/reports stay consistent
+      await tx.order.update({
+        where: { id: orderId },
         data: {
-          type: TransactionType.EXPENSE,
-          amount: refundAmount,
-          currency: 'TOMAN',
-          rateSnapshot: 1,
-          amountInToman: refundAmount,
-          accountId: accountId,
-          description: `عودت کالا - سفارش #${order.number} - ${orderItem.product.name}`,
-          category: 'Return',
-          date: new Date(),
+          totalAmount: new Prisma.Decimal(newTotal),
+          paidAmount: new Prisma.Decimal(newPaid),
+          paymentStatus: newPaymentStatus,
         },
       });
 
-      // 5. Update account balance
-      await tx.account.update({
-        where: { id: accountId },
-        data: {
-          balance: {
-            decrement: refundAmount,
-          },
-        },
-      });
+      // 5a. Keep the (already-issued) invoice in sync with the order so it
+      //     doesn't keep displaying the pre-return total / paid amounts.
+      await syncInvoiceWithOrder(orderId, tx);
 
-      // 6. Create OrderReturn record
+      // 5b. For consignment sales, scale each commission record on this
+      //     order in proportion to the new net order amount so the partner
+      //     isn't paid commission on goods that came back.
+      const orderCommissions = await tx.consignmentCommission.findMany({
+        where: { orderId },
+      });
+      if (orderCommissions.length > 0) {
+        const oldCommissionBase = orderCommissions.reduce(
+          (sum: number, c: any) => sum + Number(c.orderAmount),
+          0
+        );
+        const ratio = oldCommissionBase > 0 ? newNetOwed / oldCommissionBase : 0;
+        for (const commission of orderCommissions) {
+          const rate = Number(commission.commissionRate);
+          const newOrderAmount = Number(commission.orderAmount) * ratio;
+          const newCommissionAmount = (newOrderAmount * rate) / 100;
+          await tx.consignmentCommission.update({
+            where: { id: commission.id },
+            data: {
+              orderAmount: new Prisma.Decimal(newOrderAmount),
+              commissionAmount: new Prisma.Decimal(newCommissionAmount),
+            },
+          });
+        }
+      }
+
+      // 6. Create OrderReturn record (refundAmount = goods value;
+      //    transactionId only set when cash actually moved)
       await tx.orderReturn.create({
         data: {
           orderId,
@@ -106,7 +223,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           reason: reason || undefined,
           refundAmount: new Prisma.Decimal(refundAmount),
           accountId,
-          transactionId: transaction.id,
+          transactionId,
         },
       });
 
@@ -157,29 +274,57 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       }
     });
 
-    // 8. Cancel order in WooCommerce if it came from WooCommerce
+    // 8. Cancel order in WooCommerce ONLY when every original item has been
+    //    fully returned and nothing was exchanged. A partial return (or any
+    //    exchange) leaves the customer with goods, so the Woo order should
+    //    stay live.
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { wooId: true, number: true },
+      select: {
+        wooId: true,
+        number: true,
+        items: {
+          where: { exchangeItems: { none: {} } },
+          select: {
+            quantity: true,
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
+          },
+        },
+      },
     });
 
     if (order?.wooId) {
-      try {
-        const { cancelOrderInWooCommerce } = await import('./woocommerce');
-        const result = await cancelOrderInWooCommerce(order.wooId);
-        if (result.success) {
-          console.log(`[Return] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
-        } else {
-          console.warn(`[Return] خطا در لغو سفارش در WooCommerce: ${result.message}`);
+      const everythingReturned =
+        order.items.length > 0 &&
+        order.items.every((item: any) => {
+          const returnedQty = item.returns.reduce((s: number, r: any) => s + r.quantity, 0);
+          const exchangedQty = item.exchanges.reduce((s: number, e: any) => s + e.quantity, 0);
+          return exchangedQty === 0 && returnedQty >= item.quantity;
+        });
+
+      if (everythingReturned) {
+        try {
+          const { cancelOrderInWooCommerce } = await import('./woocommerce');
+          const result = await cancelOrderInWooCommerce(order.wooId);
+          if (result.success) {
+            console.log(`[Return] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
+          } else {
+            console.warn(`[Return] خطا در لغو سفارش در WooCommerce: ${result.message}`);
+          }
+        } catch (error) {
+          console.error('[Return] خطا در لغو سفارش در WooCommerce:', error);
+          // Don't fail the return process if WooCommerce cancellation fails
         }
-      } catch (error) {
-        console.error('[Return] خطا در لغو سفارش در WooCommerce:', error);
-        // Don't fail the return process if WooCommerce cancellation fails
+      } else {
+        console.log(`[Return] عودت جزئی برای سفارش WooCommerce #${order.number} - سفارش در WooCommerce دست‌نخورده باقی می‌ماند.`);
       }
     }
 
-    revalidatePath('/dashboard/sales/history');
-    revalidatePath(`/dashboard/sales/history/${orderId}`);
+    // Inventory, POS, customer debt list, accounting reports all derive
+    // from this order's data — revalidate the whole dashboard so none of
+    // them keep serving the pre-return snapshot.
+    revalidatePath('/dashboard', 'layout');
     return {
       message: 'عودت کالا با موفقیت ثبت شد.',
       success: true,
@@ -190,6 +335,36 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       message: error.message || 'خطا در ثبت عودت کالا.',
       success: false,
     };
+  }
+}
+
+export async function getAllOrderReturns(limit = 200) {
+  try {
+    const returns = await prisma.orderReturn.findMany({
+      include: {
+        order: { include: { customer: true } },
+        orderItem: { include: { product: true } },
+        account: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return returns.map((ret: any) => ({
+      id: ret.id,
+      orderId: ret.orderId,
+      orderNumber: ret.order?.number,
+      customerName: ret.order?.customer?.name ?? 'مشتری عمومی',
+      productName: ret.orderItem?.product?.name ?? '—',
+      quantity: ret.quantity,
+      refundAmount: Number(ret.refundAmount),
+      reason: ret.reason ?? undefined,
+      accountName: ret.account?.name ?? '—',
+      createdAt: ret.createdAt,
+    }));
+  } catch (error) {
+    console.error('Error fetching all order returns:', error);
+    return [];
   }
 }
 

@@ -116,6 +116,7 @@ model Transaction {
   receiptUrl            String?
   shareholderId         String?
   employeeId            String?
+  customerId            String?
   LoanPayment           LoanPayment?
   marketingGift         MarketingGift?
   orders                Order[]
@@ -126,9 +127,12 @@ model Transaction {
   arrivalCosts          PurchaseOrderArrivalCost[] @relation("ArrivalCost")
   ShareholderWithdrawal ShareholderWithdrawal?
   account               Account?                   @relation(fields: [accountId], references: [id])
+  customer              Customer?                  @relation(fields: [customerId], references: [id])
   employee              Employee?                  @relation(fields: [employeeId], references: [id])
   project               Project?                   @relation(fields: [projectId], references: [id])
   shareholder           Shareholder?               @relation(fields: [shareholderId], references: [id])
+
+  @@index([customerId])
 }
 
 model Product {
@@ -337,6 +341,7 @@ model Customer {
   MarketingGift  MarketingGift[]
   orders         Order[]
   tickets        SupportTicket[]
+  transactions   Transaction[]
   warehouses     Warehouse[]
 }
 

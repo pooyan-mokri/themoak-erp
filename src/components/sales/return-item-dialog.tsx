@@ -40,6 +40,7 @@ interface ReturnItemDialogProps {
       name: string;
     };
     quantity: number;
+    remainingQuantity: number;
     price: number;
   };
   accounts: Array<{
@@ -117,13 +118,13 @@ export function ReturnItemDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="quantity">تعداد (حداکثر: {orderItem.quantity})</Label>
+              <Label htmlFor="quantity">تعداد (باقی‌مانده: {orderItem.remainingQuantity})</Label>
               <Input
                 id="quantity"
                 name="quantity"
                 type="number"
                 min="1"
-                max={orderItem.quantity}
+                max={orderItem.remainingQuantity}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 required
