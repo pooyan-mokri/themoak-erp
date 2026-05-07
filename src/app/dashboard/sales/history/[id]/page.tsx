@@ -6,7 +6,7 @@ import { BackButton } from '@/components/ui/back-button';
 import { notFound } from 'next/navigation';
 
 export default async function OrderDetailsPage({ params }: { params: { id: string } }) {
-  const [order, accounts, allWarehouses] = await Promise.all([
+  const [order, allAccounts, allWarehouses] = await Promise.all([
     getOrder(params.id),
     getAccounts(),
     getWarehouses(),
@@ -16,6 +16,9 @@ export default async function OrderDetailsPage({ params }: { params: { id: strin
     notFound();
   }
 
+  // Refund / exchange cash legs must hit a real cash source, not an
+  // expense bucket — match the server-side guard.
+  const accounts = allAccounts.filter((a: any) => a.type === 'BANK' || a.type === 'CASH');
   const warehouses = allWarehouses.filter((w: any) => !w.isVirtual);
 
   return (

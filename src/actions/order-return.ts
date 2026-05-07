@@ -51,9 +51,17 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         throw new Error('سفارش یافت نشد.');
       }
 
+      if (order.status === 'CANCELLED') {
+        throw new Error('این سفارش لغو شده و امکان عودت ندارد.');
+      }
+
       const orderItem = order.items.find((item: any) => item.id === orderItemId);
       if (!orderItem) {
         throw new Error('آیتم سفارش یافت نشد.');
+      }
+
+      if (orderItem.status === 'RETURNED' || orderItem.status === 'EXCHANGED') {
+        throw new Error('این آیتم قبلاً عودت یا تعویض شده است.');
       }
 
       // باقی‌ماندهٔ مجاز برای عودت = تعداد اولیه − عودت‌های قبلی − تعویض‌های قبلی
@@ -108,6 +116,10 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         const account = await tx.account.findUnique({ where: { id: accountId } });
         if (!account) {
           throw new Error('حساب یافت نشد.');
+        }
+
+        if (account.type !== 'BANK' && account.type !== 'CASH') {
+          throw new Error('برای بازگرداندن وجه، حساب باید از نوع بانک یا صندوق باشد.');
         }
 
         const transaction = await tx.transaction.create({
