@@ -47,6 +47,10 @@ interface ReturnItemDialogProps {
     name: string;
     currency: string;
   }>;
+  warehouses: Array<{
+    id: string;
+    name: string;
+  }>;
   onSuccess?: () => void;
 }
 
@@ -56,11 +60,13 @@ export function ReturnItemDialog({
   orderId,
   orderItem,
   accounts,
+  warehouses,
   onSuccess,
 }: ReturnItemDialogProps) {
   const [state, dispatch] = useFormState(returnOrderItem, initialState);
   const [quantity, setQuantity] = useState<string>('1');
   const [accountId, setAccountId] = useState<string>('');
+  const [warehouseId, setWarehouseId] = useState<string>(warehouses[0]?.id || '');
 
   const refundAmount = (Number(quantity) || 0) * Number(orderItem.price);
   const lastMessageRef = useRef<string>('');
@@ -74,6 +80,7 @@ export function ReturnItemDialog({
         toast.success(state.message);
         setQuantity('1');
         setAccountId('');
+        setWarehouseId(warehouses[0]?.id || '');
         onOpenChange(false);
         if (onSuccess) {
           onSuccess();
@@ -101,6 +108,7 @@ export function ReturnItemDialog({
         >
           <input type="hidden" name="orderId" value={orderId} />
           <input type="hidden" name="orderItemId" value={orderItem.id} />
+          <input type="hidden" name="warehouseId" value={warehouseId} />
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -122,6 +130,25 @@ export function ReturnItemDialog({
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.quantity && (
                 <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="warehouseId">انبار برگشت کالا *</Label>
+              <Select name="warehouseId" required value={warehouseId} onValueChange={setWarehouseId}>
+                <SelectTrigger id="warehouseId">
+                  <SelectValue placeholder="انتخاب انبار" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((wh) => (
+                    <SelectItem key={wh.id} value={wh.id}>
+                      {wh.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.warehouseId && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.warehouseId?.[0]}</p>
               )}
             </div>
 

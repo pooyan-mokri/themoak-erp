@@ -48,6 +48,10 @@ interface ExchangeItemDialogProps {
     name: string;
     currency: string;
   }>;
+  warehouses: Array<{
+    id: string;
+    name: string;
+  }>;
   onSuccess?: () => void;
 }
 
@@ -57,12 +61,15 @@ export function ExchangeItemDialog({
   orderId,
   originalItem,
   accounts,
+  warehouses,
   onSuccess,
 }: ExchangeItemDialogProps) {
   const [state, dispatch] = useFormState(exchangeOrderItem, initialState);
   const [quantity, setQuantity] = useState<string>('1');
   const [accountId, setAccountId] = useState<string>('');
   const [exchangeProductId, setExchangeProductId] = useState<string>('');
+  const [returnWarehouseId, setReturnWarehouseId] = useState<string>(warehouses[0]?.id || '');
+  const [exchangeWarehouseId, setExchangeWarehouseId] = useState<string>(warehouses[0]?.id || '');
   const [products, setProducts] = useState<Array<{ id: string; name: string; sellPrice: number }>>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -100,6 +107,8 @@ export function ExchangeItemDialog({
         setQuantity('1');
         setAccountId('');
         setExchangeProductId('');
+        setReturnWarehouseId(warehouses[0]?.id || '');
+        setExchangeWarehouseId(warehouses[0]?.id || '');
         onOpenChange(false);
         if (onSuccess) {
           onSuccess();
@@ -127,6 +136,8 @@ export function ExchangeItemDialog({
         >
           <input type="hidden" name="orderId" value={orderId} />
           <input type="hidden" name="originalItemId" value={originalItem.id} />
+          <input type="hidden" name="returnWarehouseId" value={returnWarehouseId} />
+          <input type="hidden" name="exchangeWarehouseId" value={exchangeWarehouseId} />
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -176,6 +187,44 @@ export function ExchangeItemDialog({
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.quantity && (
                 <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="returnWarehouseId">انبار برگشت کالای پس‌داده‌شده *</Label>
+              <Select name="returnWarehouseId" required value={returnWarehouseId} onValueChange={setReturnWarehouseId}>
+                <SelectTrigger id="returnWarehouseId">
+                  <SelectValue placeholder="انتخاب انبار" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((wh) => (
+                    <SelectItem key={wh.id} value={wh.id}>
+                      {wh.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.returnWarehouseId && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.returnWarehouseId?.[0]}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="exchangeWarehouseId">انبار تحویل کالای جدید *</Label>
+              <Select name="exchangeWarehouseId" required value={exchangeWarehouseId} onValueChange={setExchangeWarehouseId}>
+                <SelectTrigger id="exchangeWarehouseId">
+                  <SelectValue placeholder="انتخاب انبار" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((wh) => (
+                    <SelectItem key={wh.id} value={wh.id}>
+                      {wh.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeWarehouseId && (
+                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeWarehouseId?.[0]}</p>
               )}
             </div>
 

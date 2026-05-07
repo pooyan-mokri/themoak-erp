@@ -113,9 +113,13 @@ interface OrderDetailsProps {
     name: string;
     currency: string;
   }>;
+  warehouses: Array<{
+    id: string;
+    name: string;
+  }>;
 }
 
-export function OrderDetails({ order, accounts }: OrderDetailsProps) {
+export function OrderDetails({ order, accounts, warehouses }: OrderDetailsProps) {
   const router = useRouter();
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
@@ -298,6 +302,7 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
               price: Number(selectedItem.price),
             }}
             accounts={accounts}
+            warehouses={warehouses}
             onSuccess={() => {
               router.refresh();
             }}
@@ -317,6 +322,7 @@ export function OrderDetails({ order, accounts }: OrderDetailsProps) {
               price: Number(selectedItem.price),
             }}
             accounts={accounts}
+            warehouses={warehouses}
             onSuccess={() => {
               router.refresh();
             }}
