@@ -56,8 +56,27 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         throw new Error('آیتم سفارش یافت نشد.');
       }
 
-      if (quantity > orderItem.quantity) {
-        throw new Error(`تعداد عودت شده نمی‌تواند بیشتر از تعداد خریداری شده باشد (${orderItem.quantity}).`);
+      // باقی‌ماندهٔ مجاز برای عودت = تعداد اولیه − عودت‌های قبلی − تعویض‌های قبلی
+      const [returnedAgg, exchangedAgg] = await Promise.all([
+        tx.orderReturn.aggregate({
+          where: { orderItemId },
+          _sum: { quantity: true },
+        }),
+        tx.orderExchange.aggregate({
+          where: { originalItemId: orderItemId },
+          _sum: { quantity: true },
+        }),
+      ]);
+      const alreadyReturned = returnedAgg._sum.quantity || 0;
+      const alreadyExchanged = exchangedAgg._sum.quantity || 0;
+      const remaining = orderItem.quantity - alreadyReturned - alreadyExchanged;
+
+      if (remaining <= 0) {
+        throw new Error('این آیتم قبلاً به‌طور کامل عودت یا تعویض شده است.');
+      }
+
+      if (quantity > remaining) {
+        throw new Error(`تعداد عودت بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
       }
 
       // 2. Calculate refund amount

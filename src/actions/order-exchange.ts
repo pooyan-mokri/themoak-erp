@@ -58,8 +58,27 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error('آیتم اصلی یافت نشد.');
       }
 
-      if (quantity > originalItem.quantity) {
-        throw new Error(`تعداد تعویض شده نمی‌تواند بیشتر از تعداد خریداری شده باشد (${originalItem.quantity}).`);
+      // باقی‌ماندهٔ مجاز برای تعویض = تعداد اولیه − عودت‌های قبلی − تعویض‌های قبلی
+      const [returnedAgg, exchangedAgg] = await Promise.all([
+        tx.orderReturn.aggregate({
+          where: { orderItemId: originalItemId },
+          _sum: { quantity: true },
+        }),
+        tx.orderExchange.aggregate({
+          where: { originalItemId },
+          _sum: { quantity: true },
+        }),
+      ]);
+      const alreadyReturned = returnedAgg._sum.quantity || 0;
+      const alreadyExchanged = exchangedAgg._sum.quantity || 0;
+      const remaining = originalItem.quantity - alreadyReturned - alreadyExchanged;
+
+      if (remaining <= 0) {
+        throw new Error('این آیتم قبلاً به‌طور کامل عودت یا تعویض شده است.');
+      }
+
+      if (quantity > remaining) {
+        throw new Error(`تعداد تعویض بیش از باقی‌ماندهٔ مجاز است (باقی‌مانده: ${remaining}).`);
       }
 
       // 2. Get exchange product
