@@ -214,24 +214,50 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       }
     });
 
-    // 8. Cancel order in WooCommerce if it came from WooCommerce
+    // 8. Cancel order in WooCommerce ONLY when every original item has been
+    //    fully returned and nothing was exchanged. A partial return (or any
+    //    exchange) leaves the customer with goods, so the Woo order should
+    //    stay live.
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { wooId: true, number: true },
+      select: {
+        wooId: true,
+        number: true,
+        items: {
+          where: { exchangeItems: { none: {} } },
+          select: {
+            quantity: true,
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
+          },
+        },
+      },
     });
 
     if (order?.wooId) {
-      try {
-        const { cancelOrderInWooCommerce } = await import('./woocommerce');
-        const result = await cancelOrderInWooCommerce(order.wooId);
-        if (result.success) {
-          console.log(`[Return] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
-        } else {
-          console.warn(`[Return] خطا در لغو سفارش در WooCommerce: ${result.message}`);
+      const everythingReturned =
+        order.items.length > 0 &&
+        order.items.every((item: any) => {
+          const returnedQty = item.returns.reduce((s: number, r: any) => s + r.quantity, 0);
+          const exchangedQty = item.exchanges.reduce((s: number, e: any) => s + e.quantity, 0);
+          return exchangedQty === 0 && returnedQty >= item.quantity;
+        });
+
+      if (everythingReturned) {
+        try {
+          const { cancelOrderInWooCommerce } = await import('./woocommerce');
+          const result = await cancelOrderInWooCommerce(order.wooId);
+          if (result.success) {
+            console.log(`[Return] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
+          } else {
+            console.warn(`[Return] خطا در لغو سفارش در WooCommerce: ${result.message}`);
+          }
+        } catch (error) {
+          console.error('[Return] خطا در لغو سفارش در WooCommerce:', error);
+          // Don't fail the return process if WooCommerce cancellation fails
         }
-      } catch (error) {
-        console.error('[Return] خطا در لغو سفارش در WooCommerce:', error);
-        // Don't fail the return process if WooCommerce cancellation fails
+      } else {
+        console.log(`[Return] عودت جزئی برای سفارش WooCommerce #${order.number} - سفارش در WooCommerce دست‌نخورده باقی می‌ماند.`);
       }
     }
 

@@ -278,26 +278,11 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       }
     });
 
-    // 11. Cancel order in WooCommerce if it came from WooCommerce
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      select: { wooId: true, number: true },
-    });
-
-    if (order?.wooId) {
-      try {
-        const { cancelOrderInWooCommerce } = await import('./woocommerce');
-        const result = await cancelOrderInWooCommerce(order.wooId);
-        if (result.success) {
-          console.log(`[Exchange] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce لغو شد.`);
-        } else {
-          console.warn(`[Exchange] خطا در لغو سفارش در WooCommerce: ${result.message}`);
-        }
-      } catch (error) {
-        console.error('[Exchange] خطا در لغو سفارش در WooCommerce:', error);
-        // Don't fail the exchange process if WooCommerce cancellation fails
-      }
-    }
+    // Note: we intentionally do NOT cancel the WooCommerce order on
+    // exchange. The customer received goods (the replacement product), so
+    // the Woo order remains a real fulfilled order. Cancelling it here was
+    // incorrect — it wiped the entire Woo order even for a single-line
+    // swap.
 
     revalidatePath('/dashboard/sales/history');
     revalidatePath(`/dashboard/sales/history/${orderId}`);
