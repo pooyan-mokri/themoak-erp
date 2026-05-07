@@ -359,6 +359,37 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
   }
 }
 
+export async function getAllOrderExchanges(limit = 200) {
+  try {
+    const exchanges = await prisma.orderExchange.findMany({
+      include: {
+        order: { include: { customer: true } },
+        originalItem: { include: { product: true } },
+        exchangeItem: { include: { product: true } },
+        account: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return exchanges.map((ex: any) => ({
+      id: ex.id,
+      orderId: ex.orderId,
+      orderNumber: ex.order?.number,
+      customerName: ex.order?.customer?.name ?? 'مشتری عمومی',
+      originalProductName: ex.originalItem?.product?.name ?? '—',
+      exchangeProductName: ex.exchangeItem?.product?.name ?? '—',
+      quantity: ex.quantity,
+      priceDifference: Number(ex.priceDifference),
+      accountName: ex.account?.name ?? '—',
+      createdAt: ex.createdAt,
+    }));
+  } catch (error) {
+    console.error('Error fetching all order exchanges:', error);
+    return [];
+  }
+}
+
 export async function getOrderExchanges(orderId: string) {
   try {
     const exchanges = await prisma.orderExchange.findMany({

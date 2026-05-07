@@ -318,6 +318,36 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
   }
 }
 
+export async function getAllOrderReturns(limit = 200) {
+  try {
+    const returns = await prisma.orderReturn.findMany({
+      include: {
+        order: { include: { customer: true } },
+        orderItem: { include: { product: true } },
+        account: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return returns.map((ret: any) => ({
+      id: ret.id,
+      orderId: ret.orderId,
+      orderNumber: ret.order?.number,
+      customerName: ret.order?.customer?.name ?? 'مشتری عمومی',
+      productName: ret.orderItem?.product?.name ?? '—',
+      quantity: ret.quantity,
+      refundAmount: Number(ret.refundAmount),
+      reason: ret.reason ?? undefined,
+      accountName: ret.account?.name ?? '—',
+      createdAt: ret.createdAt,
+    }));
+  } catch (error) {
+    console.error('Error fetching all order returns:', error);
+    return [];
+  }
+}
+
 export async function getOrderReturns(orderId: string) {
   try {
     const returns = await prisma.orderReturn.findMany({
