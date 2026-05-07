@@ -331,9 +331,10 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     // incorrect — it wiped the entire Woo order even for a single-line
     // swap.
 
-    revalidatePath('/dashboard/sales/history');
-    revalidatePath(`/dashboard/sales/history/${orderId}`);
-    revalidatePath('/dashboard/inventory');
+    // Inventory, POS, customer debt list, accounting reports all derive
+    // from this order's data — revalidate the whole dashboard so none of
+    // them keep serving the pre-exchange snapshot.
+    revalidatePath('/dashboard', 'layout');
     return {
       message: 'تعویض کالا با موفقیت ثبت شد.',
       success: true,

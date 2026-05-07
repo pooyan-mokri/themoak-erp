@@ -301,8 +301,10 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       }
     }
 
-    revalidatePath('/dashboard/sales/history');
-    revalidatePath(`/dashboard/sales/history/${orderId}`);
+    // Inventory, POS, customer debt list, accounting reports all derive
+    // from this order's data — revalidate the whole dashboard so none of
+    // them keep serving the pre-return snapshot.
+    revalidatePath('/dashboard', 'layout');
     return {
       message: 'عودت کالا با موفقیت ثبت شد.',
       success: true,
