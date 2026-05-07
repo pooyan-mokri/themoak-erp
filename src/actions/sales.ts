@@ -76,6 +76,7 @@ export async function createOrder(data: OrderData) {
             amountInToman: finalPaidAmount,
             type: TransactionType.INCOME,
             accountId: accountId,
+            customerId: customerId || undefined,
             description: `سفارش فروش - مشتری: ${customerName}`,
             category: 'Sales',
             date: orderDate,

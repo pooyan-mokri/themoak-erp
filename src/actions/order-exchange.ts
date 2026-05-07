@@ -43,6 +43,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
+          customer: true,
           items: {
             include: { product: true },
           },
@@ -182,6 +183,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           throw new Error('برای تراکنش نقدی تعویض، حساب باید از نوع بانک یا صندوق باشد.');
         }
 
+        const customerLabel = order.customer?.name ?? 'مشتری عمومی';
         const transaction = await tx.transaction.create({
           data: {
             type: txType,
@@ -190,7 +192,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
             rateSnapshot: 1,
             amountInToman: txAmount,
             accountId,
-            description: `تعویض کالا - سفارش #${order.number} - ${originalItem.product.name} → ${exchangeProduct.name}`,
+            customerId: order.customerId ?? undefined,
+            description: `تعویض کالا - سفارش #${order.number} - ${customerLabel} - ${originalItem.product.name} → ${exchangeProduct.name}`,
             category: 'Exchange',
             date: new Date(),
           },

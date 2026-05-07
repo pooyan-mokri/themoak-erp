@@ -41,6 +41,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
+          customer: true,
           items: {
             include: { product: true },
           },
@@ -133,6 +134,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           throw new Error('برای بازگرداندن وجه، حساب باید از نوع بانک یا صندوق باشد.');
         }
 
+        const customerLabel = order.customer?.name ?? 'مشتری عمومی';
         const transaction = await tx.transaction.create({
           data: {
             type: TransactionType.EXPENSE,
@@ -141,7 +143,8 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
             rateSnapshot: 1,
             amountInToman: cashRefund,
             accountId,
-            description: `عودت کالا - سفارش #${order.number} - ${orderItem.product.name}`,
+            customerId: order.customerId ?? undefined,
+            description: `عودت کالا - سفارش #${order.number} - ${customerLabel} - ${orderItem.product.name}`,
             category: 'Return',
             date: new Date(),
           },
