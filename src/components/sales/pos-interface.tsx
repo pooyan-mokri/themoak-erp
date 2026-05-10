@@ -305,7 +305,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               name="saleDate"
               label="تاریخ فروش"
               defaultValue={saleDate}
-              onChange={(date) => setSaleDate(date)}
+              onChange={(date) => date && setSaleDate(date)}
               required
             />
 
