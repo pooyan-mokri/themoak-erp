@@ -3,6 +3,8 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { LogoProvider } from '@/components/providers/logo-provider';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
 
+export const dynamic = 'force-dynamic';
+
 export default function DashboardLayout({
   children,
 }: {
