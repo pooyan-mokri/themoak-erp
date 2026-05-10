@@ -133,7 +133,7 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
       orderBy: { name: 'asc' },
     });
 
-    const inventoryMap = new Map(inventoryItems.map((i: any) => [i.productId, i]));
+    const inventoryMap = new Map<string, { quantity: number }>(inventoryItems.map((i: any) => [i.productId, i]));
 
     // Snapshots only for products that actually have inventory in this warehouse
     const snapshots = inventoryItems.map((item: any) => ({
