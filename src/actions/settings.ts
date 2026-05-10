@@ -60,15 +60,21 @@ export async function getWooSettings() {
   return await getSetting('woo_settings');
 }
 
+function normalizeWooUrl(raw: string): string {
+  if (!raw) return raw;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `http://${raw}`;
+}
+
 export async function saveWooSettings(settings: {
   url: string;
   consumerKey: string;
   consumerSecret: string;
-  warehouseId?: string; // Warehouse ID for WooCommerce inventory sync
-  accountId?: string; // Account ID for WooCommerce sales income
+  warehouseId?: string;
+  accountId?: string;
 }) {
   const session = await auth();
-  
+
   if (!session?.user) {
     return { success: false, error: 'لطفاً وارد سیستم شوید.' };
   }
@@ -77,5 +83,8 @@ export async function saveWooSettings(settings: {
     return { success: false, error: 'شما مجوز دسترسی به تنظیمات ووکامرس را ندارید.' };
   }
 
-  return await saveSetting('woo_settings', settings);
+  return await saveSetting('woo_settings', {
+    ...settings,
+    url: normalizeWooUrl(settings.url),
+  });
 }
