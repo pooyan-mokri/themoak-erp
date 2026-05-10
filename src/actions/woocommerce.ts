@@ -158,56 +158,45 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
       if (existingProduct) {
         // Use WooCommerce image URL directly (Vercel doesn't support filesystem uploads)
         let imageUrl = existingProduct.image;
-        console.log(`[Sync] Product ${wooProduct.name} (ID: ${wooProductId}) - Checking for image...`);
         if (wooProduct.images && Array.isArray(wooProduct.images) && wooProduct.images.length > 0) {
-          const imageData = wooProduct.images[0];
-          const imageSrc = imageData?.src;
-          console.log(`[Sync] Found image data:`, {
-            hasImages: !!wooProduct.images,
-            imagesLength: wooProduct.images.length,
-            firstImageSrc: imageSrc
-          });
-
-          if (imageSrc) {
-            console.log(`[Sync] Using WooCommerce image URL: ${imageSrc}`);
-            // Store WooCommerce image URL directly
-            imageUrl = imageSrc;
-          }
-        } else {
-          console.log(`[Sync] No images found for product ${wooProduct.name}`);
+          const imageSrc = wooProduct.images[0]?.src;
+          if (imageSrc) imageUrl = imageSrc;
         }
 
-        // Update existing product
+        // Update name and image from WooCommerce, but keep system price
         await prisma.product.update({
           where: { id: existingProduct.id },
           data: {
             name: wooProduct.name || existingProduct.name,
-            sellPrice: Number(wooProduct.price) || existingProduct.sellPrice,
             image: imageUrl,
-            // Only update fields that should be synced
+            // sellPrice intentionally NOT updated - system is the source of truth for price
           },
         });
         updatedCount++;
 
-        // Sync Inventory for existing product
-        if (wooProduct.stock_quantity !== undefined && wooProduct.stock_quantity !== null) {
-            const stockQuantity = Number(wooProduct.stock_quantity) || 0;
-            await prisma.inventory.upsert({
-                where: {
-                    productId_warehouseId: {
-                        productId: existingProduct.id,
-                        warehouseId: warehouseId
-                    }
-                },
-                update: {
-                    quantity: stockQuantity
-                },
-                create: {
-                    productId: existingProduct.id,
-                    warehouseId: warehouseId,
-                    quantity: stockQuantity
-                }
-            });
+        // Push system price and inventory TO WooCommerce (system → Woo, not Woo → system)
+        const systemInventory = await prisma.inventory.findUnique({
+          where: { productId_warehouseId: { productId: existingProduct.id, warehouseId } },
+        });
+        try {
+          await wooCommerce.put(`products/${wooProductId}`, {
+            regular_price: Number(existingProduct.sellPrice).toString(),
+            stock_quantity: systemInventory?.quantity ?? 0,
+            manage_stock: true,
+          });
+        } catch (e) {
+          console.error(`[Sync] Failed to push price/stock to WooCommerce for ${wooProduct.name}:`, e);
+        }
+
+        // If no inventory record yet in system, create it from WooCommerce data
+        if (!systemInventory && wooProduct.stock_quantity != null) {
+          await prisma.inventory.create({
+            data: {
+              productId: existingProduct.id,
+              warehouseId,
+              quantity: Number(wooProduct.stock_quantity) || 0,
+            },
+          });
         }
       } else {
         // Create new product

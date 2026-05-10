@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, ShoppingCart, ShoppingBag, ClipboardCheck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Package, ShoppingCart, ShoppingBag, ClipboardCheck, FileSpreadsheet, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
 
@@ -56,6 +57,7 @@ interface Audit {
 }
 
 interface WarehouseDetailViewProps {
+  warehouseName?: string;
   inventory: InventoryItem[];
   recentOrderItems: OrderItem[];
   recentPurchaseItems: PurchaseItem[];
@@ -64,7 +66,56 @@ interface WarehouseDetailViewProps {
   topProductsByValue: InventoryItem[];
 }
 
+function exportToExcel(inventory: InventoryItem[], warehouseName: string) {
+  import('xlsx').then((XLSX) => {
+    const rows = inventory.map((item) => ({
+      'نام محصول': item.productName,
+      'کد کالا (SKU)': item.sku,
+      'نوع': item.productType === 'SALEABLE' ? 'قابل فروش' : item.productType === 'FIXED_ASSET' ? 'دارایی ثابت' : 'کالای مصرفی',
+      'تعداد موجود': item.quantity,
+      'قیمت تمام شده': item.costPrice,
+      'ارزش کل': item.totalValue,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'موجودی');
+    XLSX.writeFile(wb, `موجودی-${warehouseName}.xlsx`);
+  });
+}
+
+function exportToPdf(inventory: InventoryItem[], warehouseName: string) {
+  const rows = inventory
+    .map(
+      (item, i) =>
+        `<tr>
+          <td>${i + 1}</td>
+          <td>${item.productName}</td>
+          <td>${item.sku}</td>
+          <td>${item.quantity.toLocaleString('fa-IR')}</td>
+          <td>${item.costPrice.toLocaleString('fa-IR')}</td>
+          <td>${item.totalValue.toLocaleString('fa-IR')}</td>
+        </tr>`
+    )
+    .join('');
+  const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"/>
+    <title>موجودی انبار ${warehouseName}</title>
+    <style>body{font-family:Tahoma,sans-serif;font-size:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}
+    th{background:#f0f0f0}h2{text-align:center}</style></head>
+    <body><h2>موجودی انبار: ${warehouseName}</h2>
+    <table><thead><tr><th>#</th><th>نام محصول</th><th>SKU</th><th>تعداد</th><th>قیمت تمام شده</th><th>ارزش کل</th></tr></thead>
+    <tbody>${rows}</tbody></table></body></html>`;
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.print();
+  }
+}
+
 export function WarehouseDetailView({
+  warehouseName = 'انبار',
   inventory,
   recentOrderItems,
   recentPurchaseItems,
@@ -96,8 +147,28 @@ export function WarehouseDetailView({
       {/* Inventory Tab */}
       <TabsContent value="inventory" className="space-y-4">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>لیست موجودی انبار</CardTitle>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToExcel(inventory, warehouseName)}
+                disabled={inventory.length === 0}
+              >
+                <FileSpreadsheet className="h-4 w-4 ml-2" />
+                خروجی اکسل
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToPdf(inventory, warehouseName)}
+                disabled={inventory.length === 0}
+              >
+                <FileText className="h-4 w-4 ml-2" />
+                خروجی PDF
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {inventory.length === 0 ? (

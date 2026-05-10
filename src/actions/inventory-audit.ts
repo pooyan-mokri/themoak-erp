@@ -128,7 +128,14 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
       include: { product: true },
     });
 
-    // Create snapshots
+    // Get ALL products in the system so they can be counted even if not yet in this warehouse
+    const allProducts = await prisma.product.findMany({
+      orderBy: { name: 'asc' },
+    });
+
+    const inventoryMap = new Map(inventoryItems.map((i: any) => [i.productId, i]));
+
+    // Snapshots only for products that actually have inventory in this warehouse
     const snapshots = inventoryItems.map((item: any) => ({
       auditId,
       productId: item.productId,
@@ -143,15 +150,16 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
         data: snapshots,
       });
 
-      // Create audit items for each product
-      const auditItems = inventoryItems.map((item: any) => ({
+      // Create audit items for ALL products (quantity 0 for those not in this warehouse)
+      const auditItems = allProducts.map((product: any) => ({
         auditId,
-        productId: item.productId,
-        systemQuantity: item.quantity,
+        productId: product.id,
+        systemQuantity: inventoryMap.get(product.id)?.quantity ?? 0,
       }));
 
       await tx.inventoryAuditItem.createMany({
         data: auditItems,
+        skipDuplicates: true,
       });
 
       // Update audit status

@@ -126,6 +126,7 @@ export default async function WarehouseDetailPage({
         {/* Left Column - Inventory List */}
         <div className="lg:col-span-2 space-y-6">
           <WarehouseDetailView
+            warehouseName={warehouse.name}
             inventory={inventory}
             recentOrderItems={recentOrderItems}
             recentPurchaseItems={recentPurchaseItems}
