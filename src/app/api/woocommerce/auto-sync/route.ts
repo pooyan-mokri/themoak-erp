@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAutoSyncSettings } from '@/actions/woocommerce-settings';
 import { performAutoSync } from '@/actions/woocommerce';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * API Route برای سینک خودکار WooCommerce
  * این route توسط cron job صدا زده می‌شود
