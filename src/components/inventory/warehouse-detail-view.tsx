@@ -56,12 +56,23 @@ interface Audit {
   createdAt: string;
 }
 
+interface Movement {
+  id: string;
+  type: 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTMENT';
+  productName: string;
+  quantity: number;
+  date: string;
+  reference: string;
+  counterpart: string;
+}
+
 interface WarehouseDetailViewProps {
   warehouseName?: string;
   inventory: InventoryItem[];
   recentOrderItems: OrderItem[];
   recentPurchaseItems: PurchaseItem[];
   recentAudits: Audit[];
+  movements: Movement[];
   lowStockItems: InventoryItem[];
   topProductsByValue: InventoryItem[];
 }
@@ -120,23 +131,27 @@ export function WarehouseDetailView({
   recentOrderItems,
   recentPurchaseItems,
   recentAudits,
+  movements,
   lowStockItems,
   topProductsByValue,
 }: WarehouseDetailViewProps) {
   return (
     <Tabs defaultValue="inventory" className="w-full">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="grid w-full grid-cols-5">
         <TabsTrigger value="inventory">
           <Package className="h-4 w-4 ml-2" />
           موجودی ({inventory.length})
         </TabsTrigger>
+        <TabsTrigger value="movements">
+          جابجایی‌ها
+        </TabsTrigger>
         <TabsTrigger value="sales">
           <ShoppingCart className="h-4 w-4 ml-2" />
-          فروش‌های اخیر
+          فروش‌ها
         </TabsTrigger>
         <TabsTrigger value="purchases">
           <ShoppingBag className="h-4 w-4 ml-2" />
-          خریدهای اخیر
+          خریدها
         </TabsTrigger>
         <TabsTrigger value="audits">
           <ClipboardCheck className="h-4 w-4 ml-2" />
@@ -228,6 +243,63 @@ export function WarehouseDetailView({
                         <TableCell className="font-medium">
                           {formatCurrency(item.totalValue)}
                         </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Movements Tab */}
+      <TabsContent value="movements" className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>تاریخچه جابجایی‌های انبار</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {movements.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                هیچ جابجایی‌ای ثبت نشده است
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">نوع</TableHead>
+                      <TableHead className="text-right">محصول</TableHead>
+                      <TableHead className="text-right">تعداد</TableHead>
+                      <TableHead className="text-right">مرجع</TableHead>
+                      <TableHead className="text-right">طرف حساب</TableHead>
+                      <TableHead className="text-right">تاریخ</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {movements.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell>
+                          <Badge
+                            variant={m.type === 'SALE' ? 'destructive' : m.type === 'PURCHASE' ? 'default' : 'secondary'}
+                            className="text-xs"
+                          >
+                            {m.type === 'SALE' && 'فروش'}
+                            {m.type === 'PURCHASE' && 'خرید'}
+                            {m.type === 'RETURN' && 'مرجوعی'}
+                            {m.type === 'ADJUSTMENT' && 'تعدیل'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{m.productName}</TableCell>
+                        <TableCell>
+                          <span className={m.quantity < 0 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>
+                            {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{m.reference}</TableCell>
+                        <TableCell>{m.counterpart}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{m.date}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

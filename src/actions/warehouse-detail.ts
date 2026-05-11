@@ -57,6 +57,7 @@ export async function getWarehouseDetail(warehouseId: string) {
     try {
       recentOrderItems = await prisma.orderItem.findMany({
         where: {
+          warehouseId: warehouseId,
           order: {
             status: { in: ['COMPLETED', 'PENDING'] },
           },
@@ -69,25 +70,15 @@ export async function getWarehouseDetail(warehouseId: string) {
             },
           },
         },
-        take: 50,
+        orderBy: { order: { createdAt: 'desc' } },
+        take: 20,
       });
-      // Sort manually by order createdAt
-      recentOrderItems.sort((a: any, b: any) => 
-        new Date(b.order.createdAt).getTime() - new Date(a.order.createdAt).getTime()
-      );
     } catch (err: any) {
       console.error('Error fetching order items:', err);
       recentOrderItems = [];
     }
 
-    // Filter order items that might be from this warehouse
-    // (We can't directly link order items to warehouses, but we can show recent sales)
-    const relevantOrderItems = recentOrderItems
-      .filter((item: any) => {
-        // Check if product exists in this warehouse inventory
-        return inventory.some((inv: any) => inv.productId === item.productId);
-      })
-      .slice(0, 20);
+    const relevantOrderItems = recentOrderItems;
 
     // Get recent purchase order items (purchases)
     type PurchaseOrderItemWithRelations = Prisma.PurchaseOrderItemGetPayload<{
@@ -242,6 +233,30 @@ export async function getWarehouseDetail(warehouseId: string) {
       })
       .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
+    // Build movement history: sales + purchases merged and sorted by date
+    const movements = [
+      ...formattedOrderItems.map((item: any) => ({
+        id: `sale-${item.id}`,
+        type: 'SALE' as const,
+        productName: item.productName,
+        quantity: -item.quantity, // negative = out
+        date: item.orderDate,
+        dateRaw: item.orderDateRaw,
+        reference: `فروش #${item.orderNumber}`,
+        counterpart: item.customerName,
+      })),
+      ...formattedPurchaseItems.map((item: any) => ({
+        id: `purchase-${item.id}`,
+        type: 'PURCHASE' as const,
+        productName: item.productName,
+        quantity: item.quantity, // positive = in
+        date: item.orderDate,
+        dateRaw: item.orderDateRaw,
+        reference: `خرید #${item.orderNumber}`,
+        counterpart: item.supplierName,
+      })),
+    ].sort((a: any, b: any) => new Date(b.dateRaw).getTime() - new Date(a.dateRaw).getTime());
+
     // Get low stock items
     const lowStockItems = formattedInventory.filter((item: any) => {
       // Items with quantity less than 10 or items that have been in stock for a while
@@ -278,6 +293,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       recentOrderItems: formattedOrderItems,
       recentPurchaseItems: formattedPurchaseItems,
       recentAudits: formattedAudits,
+      movements,
       lowStockItems,
       topProductsByValue,
     };

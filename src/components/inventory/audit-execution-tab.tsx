@@ -179,8 +179,8 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
       return;
     }
 
-    if (!count.trim() || isNaN(Number(count)) || Number(count) <= 0) {
-      toast.error('لطفاً تعداد را به درستی وارد کنید.');
+    if (!count.trim() || isNaN(Number(count)) || Number(count) < 0) {
+      toast.error('لطفاً تعداد را به درستی وارد کنید (صفر یا بیشتر).');
       return;
     }
 
@@ -263,7 +263,7 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
       const targetCount = entry.count;
       const targetNotes = entry.notes;
 
-      if (!targetProductId || !targetCount.trim() || isNaN(Number(targetCount))) {
+      if (!targetProductId || !targetCount.trim() || isNaN(Number(targetCount)) || Number(targetCount) < 0) {
         errorCount++;
         errors.push('داده‌های نامعتبر');
         continue;

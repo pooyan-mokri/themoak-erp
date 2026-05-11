@@ -26,7 +26,7 @@ export default async function WarehouseDetailPage({
     }
 
     // TypeScript-safe: data is guaranteed to exist after notFound() check
-    const { warehouse, statistics, inventory, recentOrderItems, recentPurchaseItems, recentAudits, lowStockItems, topProductsByValue } = warehouseData;
+    const { warehouse, statistics, inventory, recentOrderItems, recentPurchaseItems, recentAudits, movements, lowStockItems, topProductsByValue } = warehouseData;
 
     return (
     <div className="space-y-6">
@@ -131,6 +131,7 @@ export default async function WarehouseDetailPage({
             recentOrderItems={recentOrderItems}
             recentPurchaseItems={recentPurchaseItems}
             recentAudits={recentAudits}
+            movements={movements}
             lowStockItems={lowStockItems}
             topProductsByValue={topProductsByValue}
           />

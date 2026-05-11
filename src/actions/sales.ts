@@ -511,8 +511,10 @@ export async function cancelOrder(orderId: string): Promise<{
         items: {
           include: {
             product: true,
+            warehouse: true,
           },
         },
+        invoice: true,
       },
     });
 
@@ -537,31 +539,58 @@ export async function cancelOrder(orderId: string): Promise<{
         },
       });
 
-      // 2. If order had a transaction, restore account balance and delete it
+      // 2. Restore inventory for each order item back to its original warehouse
+      for (const item of order.items) {
+        if (!item.warehouseId) continue;
+        await tx.inventory.upsert({
+          where: {
+            productId_warehouseId: {
+              productId: item.productId,
+              warehouseId: item.warehouseId,
+            },
+          },
+          update: { quantity: { increment: item.quantity } },
+          create: {
+            productId: item.productId,
+            warehouseId: item.warehouseId,
+            quantity: item.quantity,
+          },
+        });
+      }
+
+      // 3. If order had a transaction, restore account balance and delete it
       if (order.transactionId && order.transaction) {
         const transaction = order.transaction;
 
-        // Restore account balance
-        // If transaction was income (type = INCOME), subtract from balance
-        // If transaction was expense (type = EXPENSE), add to balance
+        // INCOME transaction means money came in — reverse it by subtracting
         const balanceChange = transaction.type === 'INCOME'
-          ? -Number(transaction.amount)
-          : Number(transaction.amount);
+          ? -Number(transaction.amountInToman || transaction.amount)
+          : Number(transaction.amountInToman || transaction.amount);
 
-        await tx.account.update({
-          where: { id: transaction.accountId },
-          data: {
-            balance: {
-              increment: balanceChange,
-            },
-          },
-        });
+        if (transaction.accountId) {
+          await tx.account.update({
+            where: { id: transaction.accountId },
+            data: { balance: { increment: balanceChange } },
+          });
+        }
 
-        // Now safe to delete transaction since order no longer references it
-        await tx.transaction.delete({
-          where: { id: transaction.id },
+        // Delete transaction (order no longer references it)
+        await tx.transaction.delete({ where: { id: transaction.id } });
+      }
+
+      // 4. Cancel the linked invoice (if any)
+      if (order.invoice) {
+        await tx.invoice.update({
+          where: { id: order.invoice.id },
+          data: { status: 'CANCELLED' },
         });
       }
+
+      // 5. Mark order items as CANCELLED
+      await tx.orderItem.updateMany({
+        where: { orderId },
+        data: { status: 'CANCELLED' },
+      });
     });
 
     // 3. If order is from WooCommerce, cancel it there too
