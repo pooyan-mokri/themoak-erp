@@ -155,22 +155,25 @@ model Product {
   MarketingGift      MarketingGift[]
   orderItems         OrderItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  movements          InventoryMovement[]
 
   @@index([barcode])
 }
 
 model Warehouse {
-  id         String                   @id @default(cuid())
-  name       String
-  isVirtual  Boolean                  @default(false)
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
-  customerId String?
-  inventory  Inventory[]
-  audits     InventoryAudit[]
-  snapshots  InventoryAuditSnapshot[]
-  customer   Customer?                @relation(fields: [customerId], references: [id])
-  orderItems OrderItem[]
+  id              String                   @id @default(cuid())
+  name            String
+  isVirtual       Boolean                  @default(false)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  customerId      String?
+  inventory       Inventory[]
+  audits          InventoryAudit[]
+  snapshots       InventoryAuditSnapshot[]
+  customer        Customer?                @relation(fields: [customerId], references: [id])
+  orderItems      OrderItem[]
+  movementsFrom   InventoryMovement[]      @relation("MovementFrom")
+  movementsTo     InventoryMovement[]      @relation("MovementTo")
 }
 
 model Inventory {
@@ -182,6 +185,34 @@ model Inventory {
   audits      InventoryAuditSnapshot[]
 
   @@id([productId, warehouseId])
+}
+
+model InventoryMovement {
+  id              String    @id @default(cuid())
+  productId       String
+  fromWarehouseId String?
+  toWarehouseId   String?
+  quantity        Int
+  type            MovementType
+  referenceId     String?
+  note            String?
+  createdAt       DateTime  @default(now())
+  product         Product   @relation(fields: [productId], references: [id])
+  fromWarehouse   Warehouse? @relation("MovementFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse     Warehouse? @relation("MovementTo", fields: [toWarehouseId], references: [id])
+
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+enum MovementType {
+  TRANSFER
+  ADJUSTMENT
+  SALE
+  RETURN
+  PURCHASE
 }
 
 model InventoryAudit {

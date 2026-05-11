@@ -82,24 +82,34 @@ export async function updateStock(productId: string, warehouseId: string, quanti
   }
 }
 
-export async function adjustStock(productId: string, warehouseId: string, adjustment: number) {
+export async function adjustStock(
+  productId: string,
+  warehouseId: string,
+  adjustment: number,
+  note?: string,
+  referenceId?: string,
+) {
   try {
-    await prisma.inventory.upsert({
-      where: {
-        productId_warehouseId: {
+    await prisma.$transaction(async (tx: any) => {
+      await tx.inventory.upsert({
+        where: { productId_warehouseId: { productId, warehouseId } },
+        update: { quantity: { increment: adjustment } },
+        create: { productId, warehouseId, quantity: adjustment },
+      });
+
+      await tx.inventoryMovement.create({
+        data: {
           productId,
-          warehouseId,
+          fromWarehouseId: adjustment < 0 ? warehouseId : null,
+          toWarehouseId: adjustment >= 0 ? warehouseId : null,
+          quantity: Math.abs(adjustment),
+          type: 'ADJUSTMENT',
+          note: note ?? (adjustment >= 0 ? 'افزایش موجودی' : 'کاهش موجودی'),
+          referenceId: referenceId ?? null,
         },
-      },
-      update: {
-        quantity: { increment: adjustment },
-      },
-      create: {
-        productId,
-        warehouseId,
-        quantity: adjustment,
-      },
+      });
     });
+
     revalidatePath('/dashboard/inventory');
     return { success: true, message: 'Stock adjusted successfully' };
   } catch (error) {
@@ -108,57 +118,54 @@ export async function adjustStock(productId: string, warehouseId: string, adjust
   }
 }
 
-export async function transferStock(productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number) {
+export async function transferStock(
+  productId: string,
+  fromWarehouseId: string,
+  toWarehouseId: string,
+  quantity: number,
+  note?: string,
+  referenceId?: string,
+) {
   try {
     await prisma.$transaction(async (tx: any) => {
       // 1. Check source stock
       const sourceStock = await tx.inventory.findUnique({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: fromWarehouseId,
-          },
-        },
+        where: { productId_warehouseId: { productId, warehouseId: fromWarehouseId } },
       });
 
       if (!sourceStock || sourceStock.quantity < quantity) {
-        throw new Error('Insufficient stock in source warehouse');
+        throw new Error('موجودی انبار مبدا کافی نیست');
       }
 
       // 2. Decrement source
       await tx.inventory.update({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: fromWarehouseId,
-          },
-        },
-        data: {
-          quantity: { decrement: quantity },
-        },
+        where: { productId_warehouseId: { productId, warehouseId: fromWarehouseId } },
+        data: { quantity: { decrement: quantity } },
       });
 
       // 3. Increment target
       await tx.inventory.upsert({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: toWarehouseId,
-          },
-        },
-        update: {
-          quantity: { increment: quantity },
-        },
-        create: {
+        where: { productId_warehouseId: { productId, warehouseId: toWarehouseId } },
+        update: { quantity: { increment: quantity } },
+        create: { productId, warehouseId: toWarehouseId, quantity },
+      });
+
+      // 4. Record movement
+      await tx.inventoryMovement.create({
+        data: {
           productId,
-          warehouseId: toWarehouseId,
+          fromWarehouseId,
+          toWarehouseId,
           quantity,
+          type: 'TRANSFER',
+          note: note ?? null,
+          referenceId: referenceId ?? null,
         },
       });
     });
 
     revalidatePath('/dashboard/inventory');
-    return { success: true, message: 'Stock transferred successfully' };
+    return { success: true, message: 'جابجایی موجودی با موفقیت انجام شد' };
   } catch (error: any) {
     console.error('Error transferring stock:', error);
     return { success: false, error: error.message || 'Failed to transfer stock' };

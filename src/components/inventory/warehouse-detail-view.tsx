@@ -58,12 +58,13 @@ interface Audit {
 
 interface Movement {
   id: string;
-  type: 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTMENT';
+  type: 'SALE' | 'PURCHASE' | 'RETURN' | 'ADJUSTMENT' | 'TRANSFER';
   productName: string;
   quantity: number;
   date: string;
   reference: string;
   counterpart: string;
+  note?: string;
 }
 
 interface WarehouseDetailViewProps {
@@ -282,13 +283,14 @@ export function WarehouseDetailView({
                       <TableRow key={m.id}>
                         <TableCell>
                           <Badge
-                            variant={m.type === 'SALE' ? 'destructive' : m.type === 'PURCHASE' ? 'default' : 'secondary'}
+                            variant={m.type === 'SALE' ? 'destructive' : m.type === 'PURCHASE' || m.type === 'RETURN' ? 'default' : 'secondary'}
                             className="text-xs"
                           >
                             {m.type === 'SALE' && 'فروش'}
                             {m.type === 'PURCHASE' && 'خرید'}
                             {m.type === 'RETURN' && 'مرجوعی'}
                             {m.type === 'ADJUSTMENT' && 'تعدیل'}
+                            {m.type === 'TRANSFER' && 'انتقال'}
                           </Badge>
                         </TableCell>
                         <TableCell className="font-medium">{m.productName}</TableCell>

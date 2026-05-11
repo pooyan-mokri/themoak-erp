@@ -233,29 +233,48 @@ export async function getWarehouseDetail(warehouseId: string) {
       })
       .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
-    // Build movement history: sales + purchases merged and sorted by date
-    const movements = [
-      ...formattedOrderItems.map((item: any) => ({
-        id: `sale-${item.id}`,
-        type: 'SALE' as const,
-        productName: item.productName,
-        quantity: -item.quantity, // negative = out
-        date: item.orderDate,
-        dateRaw: item.orderDateRaw,
-        reference: `فروش #${item.orderNumber}`,
-        counterpart: item.customerName,
-      })),
-      ...formattedPurchaseItems.map((item: any) => ({
-        id: `purchase-${item.id}`,
-        type: 'PURCHASE' as const,
-        productName: item.productName,
-        quantity: item.quantity, // positive = in
-        date: item.orderDate,
-        dateRaw: item.orderDateRaw,
-        reference: `خرید #${item.orderNumber}`,
-        counterpart: item.supplierName,
-      })),
-    ].sort((a: any, b: any) => new Date(b.dateRaw).getTime() - new Date(a.dateRaw).getTime());
+    // Build movement history from InventoryMovement table
+    const rawMovements = await prisma.inventoryMovement.findMany({
+      where: {
+        OR: [
+          { fromWarehouseId: warehouseId },
+          { toWarehouseId: warehouseId },
+        ],
+      },
+      include: {
+        product: { select: { name: true, sku: true } },
+        fromWarehouse: { select: { name: true } },
+        toWarehouse: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }).catch(() => []);
+
+    const movements = rawMovements.map((m: any) => {
+      const isOutgoing = m.fromWarehouseId === warehouseId;
+      const counterpart = isOutgoing
+        ? (m.toWarehouse?.name ?? '—')
+        : (m.fromWarehouse?.name ?? '—');
+
+      const typeLabel: Record<string, string> = {
+        TRANSFER: 'انتقال',
+        ADJUSTMENT: 'تعدیل',
+        SALE: 'فروش',
+        RETURN: 'مرجوعی',
+        PURCHASE: 'خرید',
+      };
+
+      return {
+        id: m.id,
+        type: m.type as 'TRANSFER' | 'ADJUSTMENT' | 'SALE' | 'RETURN' | 'PURCHASE',
+        productName: m.product?.name ?? '—',
+        quantity: isOutgoing ? -m.quantity : m.quantity,
+        date: formatJalaliDateTime(m.createdAt),
+        reference: m.referenceId ?? typeLabel[m.type] ?? m.type,
+        counterpart,
+        note: m.note ?? '',
+      };
+    });
 
     // Get low stock items
     const lowStockItems = formattedInventory.filter((item: any) => {
