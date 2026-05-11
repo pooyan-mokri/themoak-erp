@@ -267,25 +267,29 @@ export function PostAuditTab({ audit }: PostAuditTabProps) {
         </Card>
       )}
 
-      {/* Issue Adjustment Documents */}
-      {hasDiscrepancies && audit.status === 'IN_PROGRESS' && (
+      {/* Issue Adjustment Documents / Complete Audit */}
+      {discrepancyReport && audit.status === 'IN_PROGRESS' && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              صدور اسناد اصلاحی
+              {hasDiscrepancies ? 'صدور اسناد اصلاحی' : 'تکمیل انبارگردانی'}
             </CardTitle>
             <CardDescription>
-              اسناد اصلاحی (رسید و حواله تعدیلی) برای همسان‌سازی موجودی سیستم و فیزیکی صادر کنید.
+              {hasDiscrepancies
+                ? 'اسناد اصلاحی (رسید و حواله تعدیلی) برای همسان‌سازی موجودی سیستم و فیزیکی صادر کنید.'
+                : 'هیچ مغایرتی وجود ندارد. می‌توانید انبارگردانی را بدون صدور سند اصلاحی تکمیل کنید.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={handleIssueAdjustments} variant="default">
               <FileText className="h-4 w-4 mr-2" />
-              صدور اسناد اصلاحی
+              {hasDiscrepancies ? 'صدور اسناد اصلاحی' : 'تکمیل انبارگردانی'}
             </Button>
             <p className="text-sm text-muted-foreground mt-2">
-              با صدور اسناد، موجودی سیستم به‌روزرسانی می‌شود و انبارگردانی به‌صورت خودکار تکمیل می‌شود.
+              {hasDiscrepancies
+                ? 'با صدور اسناد، موجودی سیستم به‌روزرسانی می‌شود و انبارگردانی به‌صورت خودکار تکمیل می‌شود.'
+                : 'با تکمیل، وضعیت انبارگردانی به «تکمیل شده» تغییر می‌کند و موجودی فریز آزاد می‌شود.'}
             </p>
           </CardContent>
         </Card>
