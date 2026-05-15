@@ -656,3 +656,240 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   revalidatePath('/dashboard/accounting');
   return { message: 'پرداخت با موفقیت ثبت شد.', success: true };
 }
+
+const ReturnSchema = z.object({
+  partnerWarehouseId: z.string().min(1, 'انبار همکار الزامی است'),
+  targetWarehouseId: z.string().min(1, 'انبار مقصد الزامی است'),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        quantity: z.coerce.number().int().min(1),
+      }),
+    )
+    .min(1, 'حداقل یک قلم کالا باید انتخاب شود'),
+});
+
+/**
+ * Return UNSOLD consignment goods from a partner's virtual warehouse back to a
+ * real warehouse. Pure inventory move, no financial impact (the goods were
+ * never sold, so no revenue/commission is involved).
+ */
+export async function returnConsignmentStock(input: {
+  partnerWarehouseId: string;
+  targetWarehouseId: string;
+  items: Array<{ productId: string; quantity: number }>;
+}): Promise<ActionResult> {
+  const validated = ReturnSchema.safeParse(input);
+  if (!validated.success) {
+    return {
+      errors: validated.error.flatten().fieldErrors as any,
+      message: 'لطفا فیلدها را به درستی پر کنید.',
+    };
+  }
+
+  const { partnerWarehouseId, targetWarehouseId, items } = validated.data;
+
+  if (partnerWarehouseId === targetWarehouseId) {
+    return { message: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند.' };
+  }
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const partner = await tx.warehouse.findUnique({
+        where: { id: partnerWarehouseId },
+      });
+      if (!partner || !partner.isVirtual) {
+        throw new Error('انبار مبدا یک انبار امانی معتبر نیست.');
+      }
+
+      for (const item of items) {
+        const stock = await tx.inventory.findUnique({
+          where: {
+            productId_warehouseId: {
+              productId: item.productId,
+              warehouseId: partnerWarehouseId,
+            },
+          },
+          include: { product: { select: { name: true } } },
+        });
+        if (!stock || stock.quantity < item.quantity) {
+          throw new Error(
+            `موجودی کافی نیست برای ${stock?.product?.name ?? item.productId} (موجودی: ${stock?.quantity ?? 0}، درخواست: ${item.quantity})`,
+          );
+        }
+
+        await tx.inventory.update({
+          where: {
+            productId_warehouseId: {
+              productId: item.productId,
+              warehouseId: partnerWarehouseId,
+            },
+          },
+          data: { quantity: { decrement: item.quantity } },
+        });
+
+        await tx.inventory.upsert({
+          where: {
+            productId_warehouseId: {
+              productId: item.productId,
+              warehouseId: targetWarehouseId,
+            },
+          },
+          update: { quantity: { increment: item.quantity } },
+          create: {
+            productId: item.productId,
+            warehouseId: targetWarehouseId,
+            quantity: item.quantity,
+          },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            fromWarehouseId: partnerWarehouseId,
+            toWarehouseId: targetWarehouseId,
+            quantity: item.quantity,
+            type: 'RETURN',
+            note: 'برگشت کالای فروش‌نرفته امانی',
+          },
+        });
+      }
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در ثبت برگشت کالا.';
+    return { message };
+  }
+
+  revalidatePath('/dashboard/consignment/return');
+  revalidatePath('/dashboard/consignment/reports');
+  revalidatePath('/dashboard/inventory');
+  return { message: 'برگشت کالای امانی با موفقیت ثبت شد.', success: true };
+}
+
+/**
+ * Full account statement for a single consignment partner: goods sent /
+ * returned / sold, current stock at partner, and the financial split
+ * (gross sales, partner commission, our net share, received, balance).
+ */
+export async function getPartnerStatement(partnerWarehouseId: string) {
+  try {
+    const warehouse = await prisma.warehouse.findUnique({
+      where: { id: partnerWarehouseId },
+      include: {
+        customer: true,
+        inventory: { include: { product: true } },
+      },
+    });
+    if (!warehouse || !warehouse.customerId || !warehouse.customer) {
+      return undefined;
+    }
+
+    const [movements, orders] = await Promise.all([
+      prisma.inventoryMovement.findMany({
+        where: {
+          OR: [
+            { toWarehouseId: partnerWarehouseId },
+            { fromWarehouseId: partnerWarehouseId },
+          ],
+        },
+        include: { product: { select: { name: true, sku: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }),
+      prisma.order.findMany({
+        where: {
+          customerId: warehouse.customerId,
+          items: { some: { warehouseId: partnerWarehouseId } },
+        },
+        include: { items: true, commissions: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const sentQty = movements
+      .filter((m: any) => m.toWarehouseId === partnerWarehouseId && m.type === 'TRANSFER')
+      .reduce((s: number, m: any) => s + m.quantity, 0);
+    const returnedQty = movements
+      .filter((m: any) => m.fromWarehouseId === partnerWarehouseId && m.type === 'RETURN')
+      .reduce((s: number, m: any) => s + m.quantity, 0);
+    const soldQty = movements
+      .filter((m: any) => m.fromWarehouseId === partnerWarehouseId && m.type === 'SALE')
+      .reduce((s: number, m: any) => s + m.quantity, 0);
+
+    const currentStockQty = warehouse.inventory.reduce(
+      (s: number, inv: any) => s + inv.quantity,
+      0,
+    );
+    const currentStockValue = warehouse.inventory.reduce(
+      (s: number, inv: any) => s + inv.quantity * Number(inv.product.costPrice || 0),
+      0,
+    );
+
+    let grossSales = 0;
+    let commissionTotal = 0;
+    let receivedTotal = 0;
+    for (const order of orders) {
+      const gross = order.items.reduce(
+        (s: number, it: any) => s + it.quantity * Number(it.price),
+        0,
+      );
+      grossSales += gross;
+      commissionTotal += order.commissions?.[0]
+        ? Number(order.commissions[0].commissionAmount)
+        : 0;
+      receivedTotal += Number(order.paidAmount || 0);
+    }
+    const ourShare = grossSales - commissionTotal;
+    const balance = ourShare - receivedTotal;
+
+    return {
+      partner: {
+        warehouseId: warehouse.id,
+        name: warehouse.customer.name,
+        phone: warehouse.customer.phone ?? undefined,
+        commissionRate: warehouse.customer.commissionRate
+          ? Number(warehouse.customer.commissionRate)
+          : 0,
+      },
+      logistics: { sentQty, returnedQty, soldQty, currentStockQty, currentStockValue },
+      financials: {
+        grossSales,
+        commissionTotal,
+        ourShare,
+        receivedTotal,
+        balance,
+      },
+      currentStock: warehouse.inventory
+        .filter((inv: any) => inv.quantity !== 0)
+        .map((inv: any) => ({
+          productName: inv.product.name,
+          sku: inv.product.sku,
+          quantity: inv.quantity,
+        })),
+      orders: orders.map((o: any) => {
+        const gross = o.items.reduce(
+          (s: number, it: any) => s + it.quantity * Number(it.price),
+          0,
+        );
+        const commission = o.commissions?.[0]
+          ? Number(o.commissions[0].commissionAmount)
+          : 0;
+        return {
+          id: o.id,
+          number: o.number,
+          createdAt: o.createdAt,
+          itemCount: o.items.length,
+          gross,
+          commission,
+          net: gross - commission,
+          paid: Number(o.paidAmount || 0),
+          paymentStatus: o.paymentStatus,
+        };
+      }),
+    };
+  } catch (error) {
+    console.error('Error building partner statement:', error);
+    return undefined;
+  }
+}
