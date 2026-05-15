@@ -366,7 +366,7 @@ export async function consolidateConsignmentOrders(): Promise<
             deletedOrders++;
           }
           mergedGroups++;
-        });
+        }, { maxWait: 20000, timeout: 60000 });
       }
     }
 
