@@ -25,13 +25,6 @@ const TransferSchema = z.object({
   quantity: z.coerce.number().min(1, 'تعداد باید بیشتر از صفر باشد'),
 });
 
-const SettlementSchema = z.object({
-  partnerWarehouseId: z.string().min(1, 'انبار همکار الزامی است'),
-  productId: z.string().min(1, 'محصول الزامی است'),
-  quantity: z.coerce.number().min(1, 'تعداد فروخته شده الزامی است'),
-  unitPrice: z.coerce.number().min(0, 'قیمت واحد الزامی است'),
-});
-
 const BatchSettlementItemSchema = z.object({
   productId: z.string().min(1),
   quantity: z.coerce.number().min(1),
@@ -212,9 +205,18 @@ export async function transferStock(prevState: ActionState, formData: FormData):
           quantity,
         },
       });
-      
-      // Record Transfer Transaction (Optional: usually no financial impact yet, but good to log)
-      // For now, we just move stock.
+
+      // Record the movement so it shows up in the warehouse movements tab
+      await tx.inventoryMovement.create({
+        data: {
+          productId,
+          fromWarehouseId: sourceWarehouseId,
+          toWarehouseId: targetWarehouseId,
+          quantity,
+          type: 'TRANSFER',
+          note: 'انتقال امانی به همکار',
+        },
+      });
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'خطا در انتقال موجودی.';
@@ -224,121 +226,6 @@ export async function transferStock(prevState: ActionState, formData: FormData):
   revalidatePath('/dashboard/consignment/transfer');
   revalidatePath('/dashboard/inventory');
   return { message: 'انتقال موجودی با موفقیت انجام شد.' };
-}
-
-export async function settleSales(prevState: ActionState, formData: FormData): Promise<ActionResult> {
-  const validatedFields = SettlementSchema.safeParse({
-    partnerWarehouseId: formData.get('partnerWarehouseId'),
-    productId: formData.get('productId'),
-    quantity: formData.get('quantity'),
-    unitPrice: formData.get('unitPrice'),
-  });
-
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: 'لطفا فیلدهای الزامی را پر کنید.',
-    };
-  }
-
-  const { partnerWarehouseId, productId, quantity, unitPrice } = validatedFields.data;
-  const totalAmount = quantity * unitPrice;
-
-  try {
-    await prisma.$transaction(async (tx: any) => {
-      // 1. Deduct from Partner Warehouse
-      const stock = await tx.inventory.findUnique({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: partnerWarehouseId,
-          },
-        },
-      });
-
-      if (!stock || stock.quantity < quantity) {
-        throw new Error('موجودی انبار همکار کافی نیست.');
-      }
-
-      await tx.inventory.update({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: partnerWarehouseId,
-          },
-        },
-        data: {
-          quantity: { decrement: quantity },
-        },
-      });
-
-      // 2. Find Partner Customer
-      const warehouse = await tx.warehouse.findUnique({
-        where: { id: partnerWarehouseId },
-        include: { customer: true },
-      });
-
-      if (!warehouse || !warehouse.customerId) {
-        throw new Error('این انبار متعلق به هیچ همکاری نیست.');
-      }
-
-      // 3. Create Financial Transaction (Receivable)
-      // We need an account to track this. For now, let's assume we have a "Accounts Receivable" logic.
-      // Or we just record it as INCOME but unpaid?
-      // Let's record it as a Transaction linked to the Customer (via Order or direct).
-      // Since we don't have "Accounts Receivable" account type explicitly yet, 
-      // let's create a Transaction of type INCOME, but maybe we need a "Pending Settlement" status?
-      // For simplicity in this MVP: We will create an Order for this customer.
-      
-      // 3. Create Order
-      const order = await tx.order.create({
-        data: {
-          customerId: warehouse.customerId,
-          totalAmount: new Prisma.Decimal(totalAmount),
-          status: 'PENDING_PAYMENT',
-          paymentStatus: 'UNPAID',
-          items: {
-            create: [{
-              productId,
-              quantity,
-              price: new Prisma.Decimal(unitPrice),
-              warehouseId: partnerWarehouseId,
-            }]
-          }
-        }
-      });
-
-      // 4. Calculate and record commission if customer has commission rate
-      if (warehouse.customer && warehouse.customer.commissionRate) {
-        const commissionRate = Number(warehouse.customer.commissionRate);
-        const commissionAmount = (totalAmount * commissionRate) / 100;
-
-        if (commissionAmount > 0) {
-          await tx.consignmentCommission.create({
-            data: {
-              customerId: warehouse.customerId,
-              orderId: order.id,
-              commissionRate: new Prisma.Decimal(commissionRate),
-              orderAmount: new Prisma.Decimal(totalAmount),
-              commissionAmount: new Prisma.Decimal(commissionAmount),
-              isPaid: false,
-            },
-          });
-        }
-      }
-
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'خطا در ثبت فروش امانی.';
-    return { message };
-  }
-
-  revalidatePath('/dashboard/consignment/settlement');
-  revalidatePath('/dashboard/consignment/reports');
-  revalidatePath('/dashboard/consignment/commissions');
-  revalidatePath('/dashboard/sales');
-  revalidatePath('/dashboard/inventory');
-  return { message: 'فروش امانی ثبت شد و فاکتور صادر گردید.' };
 }
 
 /**
@@ -400,7 +287,7 @@ export async function consolidateConsignmentOrders(): Promise<
         if (group.length <= 1) continue; // nothing to merge
         // Skip if mixing already-paid with unpaid in same day — too risky to merge automatically
         const allUnpaid = group.every(
-          (o) => o.paymentStatus !== 'PAID' && o.status !== 'COMPLETED',
+          (o: any) => o.paymentStatus !== 'PAID' && o.status !== 'COMPLETED',
         );
         if (!allUnpaid) continue;
 
@@ -429,7 +316,7 @@ export async function consolidateConsignmentOrders(): Promise<
 
           // Sum existing paidAmount from all merged orders (in case any had partial payments)
           const totalPaid = group.reduce(
-            (sum, o) => sum + Number(o.paidAmount || 0),
+            (sum: number, o: any) => sum + Number(o.paidAmount || 0),
             0,
           );
           const fullyPaid = totalPaid >= newNet - 0.01;
