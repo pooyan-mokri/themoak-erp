@@ -665,17 +665,23 @@ export async function getPendingSettlements() {
       orderBy: { createdAt: 'desc' },
     });
     return orders.map((order: any) => {
-      const totalAmount = Number(order.totalAmount);
       const paidAmount = order.paidAmount ? Number(order.paidAmount) : 0;
       const commission = order.commissions?.[0];
-      const grossAmount = commission ? Number(commission.orderAmount) : totalAmount;
       const commissionAmount = commission ? Number(commission.commissionAmount) : 0;
       const commissionRate = commission ? Number(commission.commissionRate) : 0;
+      // Gross is always the sum of item prices (reliable for old & new orders).
+      const grossAmount = order.items.reduce(
+        (sum: number, it: any) => sum + it.quantity * Number(it.price),
+        0,
+      );
+      // Our share = gross − partner commission. Derive it instead of trusting
+      // order.totalAmount, which is gross for legacy single-item orders.
+      const netShare = grossAmount - commissionAmount;
       return {
         ...order,
-        totalAmount,
+        totalAmount: netShare,
         paidAmount,
-        remainingAmount: totalAmount - paidAmount,
+        remainingAmount: netShare - paidAmount,
         grossAmount,
         commissionAmount,
         commissionRate,
@@ -722,9 +728,10 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      // 1. Get Order with current paid amount
+      // 1. Get Order with items + commission so we can derive the net payable
       const order = await tx.order.findUnique({
         where: { id: orderId },
+        include: { items: true, commissions: true },
       });
 
       if (!order) {
@@ -734,9 +741,18 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
         throw new Error('این سفارش قبلاً به طور کامل پرداخت شده است.');
       }
 
-      const totalAmount = Number(order.totalAmount);
+      // Net payable = gross (sum of items) − partner commission. Derived so it
+      // is correct for both legacy (gross-stored) and new (net-stored) orders.
+      const grossAmount = order.items.reduce(
+        (sum: number, it: any) => sum + it.quantity * Number(it.price),
+        0,
+      );
+      const commissionAmount = order.commissions?.[0]
+        ? Number(order.commissions[0].commissionAmount)
+        : 0;
+      const netPayable = grossAmount - commissionAmount;
       const currentPaid = Number(order.paidAmount || 0);
-      const remaining = totalAmount - currentPaid;
+      const remaining = netPayable - currentPaid;
       const payAmount = amount ?? remaining;
 
       if (payAmount <= 0) {
@@ -769,13 +785,15 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
         data: { balance: { increment: payAmount } },
       });
 
-      // 4. Update order paid status
+      // 4. Update order paid status against the NET payable
       const newPaid = currentPaid + payAmount;
-      const fullyPaid = newPaid >= totalAmount - 0.01;
+      const fullyPaid = newPaid >= netPayable - 0.01;
 
       await tx.order.update({
         where: { id: orderId },
         data: {
+          // Normalise legacy orders: store the net as totalAmount going forward
+          totalAmount: new Prisma.Decimal(netPayable),
           paidAmount: new Prisma.Decimal(newPaid),
           paymentStatus: fullyPaid ? 'PAID' : 'PARTIAL',
           status: fullyPaid ? 'COMPLETED' : 'PENDING_PAYMENT',
