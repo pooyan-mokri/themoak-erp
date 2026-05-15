@@ -5,6 +5,7 @@ import { recordConsignmentSales } from '@/actions/consignment';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import {
   Select,
   SelectContent,
@@ -48,9 +49,7 @@ interface RowItem {
 
 export function SettlementForm({ partners, products }: SettlementFormProps) {
   const [partnerWarehouseId, setPartnerWarehouseId] = useState('');
-  const [saleDate, setSaleDate] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
+  const [saleDate, setSaleDate] = useState<Date>(new Date());
   const [items, setItems] = useState<RowItem[]>([
     { productId: '', quantity: '1', unitPrice: '' },
   ]);
@@ -93,7 +92,7 @@ export function SettlementForm({ partners, products }: SettlementFormProps) {
     startTransition(async () => {
       const result = await recordConsignmentSales({
         partnerWarehouseId,
-        saleDate,
+        saleDate: saleDate.toISOString().slice(0, 10),
         items: cleaned,
       });
       if (result.success) {
@@ -134,14 +133,13 @@ export function SettlementForm({ partners, products }: SettlementFormProps) {
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>تاریخ گزارش فروش</Label>
-            <Input
-              type="date"
-              value={saleDate}
-              onChange={(e) => setSaleDate(e.target.value)}
-            />
-          </div>
+          <JalaliDatePicker
+            name="saleDate"
+            label="تاریخ گزارش فروش"
+            defaultValue={saleDate}
+            onChange={(d) => d && setSaleDate(d)}
+            required
+          />
         </div>
 
         <div className="space-y-2">
