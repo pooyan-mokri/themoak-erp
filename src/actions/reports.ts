@@ -107,21 +107,21 @@ export async function getBalanceSheet(date: Date) {
 
     const totalCash = cashAccounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
 
-    // Inventory Value (cost price * quantity)
+    // Inventory Value (cost price * quantity) — split own vs. consignment
     const inventory = await prisma.inventory.findMany({
       include: {
-        product: {
-          select: {
-            costPrice: true,
-          },
-        },
+        product: { select: { costPrice: true } },
+        warehouse: { select: { isVirtual: true } },
       },
     });
 
-    const inventoryValue = inventory.reduce(
-  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
-      0
-    );
+    let inventoryValue = 0;
+    let consignmentInventoryValue = 0;
+    inventory.forEach((item: any) => {
+      const v = item.quantity * Number(item.product.costPrice);
+      if (item.warehouse?.isVirtual) consignmentInventoryValue += v;
+      else inventoryValue += v;
+    });
 
     // Accounts Receivable (unpaid invoices)
     const unpaidInvoices = await prisma.invoice.findMany({
@@ -139,7 +139,8 @@ export async function getBalanceSheet(date: Date) {
       0
     );
 
-    const totalAssets = totalCash + inventoryValue + accountsReceivable;
+    const totalAssets =
+      totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable;
 
     // Liabilities (for now, simplified - we don't track AP yet)
     const accountsPayable = 0; // TODO: implement when we add bills/payables
@@ -153,6 +154,7 @@ export async function getBalanceSheet(date: Date) {
       assets: {
         cash: totalCash,
         inventory: inventoryValue,
+        consignmentInventory: consignmentInventoryValue,
         accountsReceivable,
         total: totalAssets,
       },

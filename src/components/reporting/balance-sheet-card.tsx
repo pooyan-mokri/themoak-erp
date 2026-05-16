@@ -6,6 +6,7 @@ interface BalanceSheetCardProps {
     assets: {
       cashAndBank: number;
       inventory: number;
+      consignmentInventory?: number;
       accountsReceivable: number;
       total: number;
     };
@@ -34,8 +35,12 @@ export function BalanceSheetCard({ data }: BalanceSheetCardProps) {
                 <span>{data.assets.cashAndBank.toLocaleString()}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span>ارزش موجودی کالا:</span>
+                <span>ارزش موجودی کالا (انبار خودی):</span>
                 <span>{data.assets.inventory.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
+                <span>کالای امانی نزد همکاران:</span>
+                <span>{(data.assets.consignmentInventory ?? 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
                 <span>حساب‌های دریافتنی (امانی):</span>

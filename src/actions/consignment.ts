@@ -9,6 +9,17 @@ import { prisma } from '@/lib/prisma';
 
 // const prisma = new PrismaClient();
 
+// Ensure a non-cash EXPENSE account exists (balance kept at 0 so it never
+// pollutes the balance-sheet cash total; only feeds P&L which sums by type).
+async function ensureExpenseAccount(tx: any, name: string): Promise<string> {
+  const existing = await tx.account.findFirst({ where: { name } });
+  if (existing) return existing.id;
+  const created = await tx.account.create({
+    data: { name, type: 'EXPENSE', currency: 'TOMAN', balance: 0 },
+  });
+  return created.id;
+}
+
 // --- Schemas ---
 
 const PartnerSchema = z.object({
@@ -271,7 +282,8 @@ export async function recordConsignmentSales(input: {
         throw new Error('انبار همکار یا مشتری مرتبط یافت نشد.');
       }
 
-      // 2. Check inventory for each item BEFORE doing anything
+      // 2. Check inventory for each item BEFORE doing anything, and total COGS
+      let cogsTotal = 0;
       for (const item of items) {
         const stock = await tx.inventory.findUnique({
           where: {
@@ -280,13 +292,14 @@ export async function recordConsignmentSales(input: {
               warehouseId: partnerWarehouseId,
             },
           },
-          include: { product: { select: { name: true } } },
+          include: { product: { select: { name: true, costPrice: true } } },
         });
         if (!stock || stock.quantity < item.quantity) {
           throw new Error(
             `موجودی کافی نیست برای محصول ${stock?.product?.name ?? item.productId} (موجودی: ${stock?.quantity ?? 0}, درخواست: ${item.quantity})`,
           );
         }
+        cogsTotal += item.quantity * Number(stock.product.costPrice || 0);
       }
 
       // 3. Calculate totals
@@ -299,12 +312,16 @@ export async function recordConsignmentSales(input: {
       );
       const commissionAmount = (grossTotal * commissionRate) / 100;
       const netAmount = grossTotal - commissionAmount;
+      // Commission newly incurred in THIS call (for the expense entry)
+      let commissionExpenseAmount = 0;
 
-      // 4. Find existing unpaid order for this (partner, date), or create one
+      // 4. Find existing not-fully-paid order for this (partner, date).
+      // Keyed off paymentStatus so it works for legacy PENDING_PAYMENT orders
+      // and new COMPLETED+UNPAID ones alike.
       let order = await tx.order.findFirst({
         where: {
           customerId: warehouse.customerId,
-          status: { in: ['PENDING_PAYMENT'] },
+          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
           createdAt: { gte: dayStart, lte: dayEnd },
           items: { some: { warehouseId: partnerWarehouseId } },
         },
@@ -346,6 +363,9 @@ export async function recordConsignmentSales(input: {
           where: { orderId: order.id },
         });
         if (existingCommission) {
+          // Only the incremental commission is a new expense
+          commissionExpenseAmount =
+            newCommission - Number(existingCommission.commissionAmount || 0);
           await tx.consignmentCommission.update({
             where: { id: existingCommission.id },
             data: {
@@ -355,6 +375,7 @@ export async function recordConsignmentSales(input: {
             },
           });
         } else if (commissionRate > 0) {
+          commissionExpenseAmount = newCommission;
           await tx.consignmentCommission.create({
             data: {
               customerId: warehouse.customerId,
@@ -373,7 +394,8 @@ export async function recordConsignmentSales(input: {
           data: {
             customerId: warehouse.customerId,
             totalAmount: new Prisma.Decimal(netAmount),
-            status: 'PENDING_PAYMENT',
+            // Standard status (sale happened); settlement tracked via paymentStatus
+            status: 'COMPLETED',
             paymentStatus: 'UNPAID',
             paidAmount: new Prisma.Decimal(0),
             createdAt: day,
@@ -390,6 +412,7 @@ export async function recordConsignmentSales(input: {
         });
 
         if (commissionRate > 0) {
+          commissionExpenseAmount = commissionAmount;
           await tx.consignmentCommission.create({
             data: {
               customerId: warehouse.customerId,
@@ -423,6 +446,50 @@ export async function recordConsignmentSales(input: {
             type: 'SALE',
             referenceId: order.id,
             note: 'فروش امانی',
+          },
+        });
+      }
+
+      // 6. Record P&L expenses (non-cash): COGS + partner commission.
+      // Booked against dedicated EXPENSE accounts whose balance stays 0, so
+      // they reduce net profit (P&L sums by type) without touching cash.
+      if (cogsTotal > 0) {
+        const cogsAccountId = await ensureExpenseAccount(
+          tx,
+          'بهای تمام‌شده کالای فروش‌رفته',
+        );
+        await tx.transaction.create({
+          data: {
+            type: TransactionType.EXPENSE,
+            currency: Currency.TOMAN,
+            amount: new Prisma.Decimal(cogsTotal),
+            amountInToman: new Prisma.Decimal(cogsTotal),
+            rateSnapshot: 1,
+            accountId: cogsAccountId,
+            category: 'COGS',
+            description: `بهای تمام‌شده کالای فروش امانی - سفارش #${order.number}`,
+            customerId: warehouse.customerId,
+            date: day,
+          },
+        });
+      }
+      if (commissionExpenseAmount > 0) {
+        const commAccountId = await ensureExpenseAccount(
+          tx,
+          'کمیسیون همکاران امانی',
+        );
+        await tx.transaction.create({
+          data: {
+            type: TransactionType.EXPENSE,
+            currency: Currency.TOMAN,
+            amount: new Prisma.Decimal(commissionExpenseAmount),
+            amountInToman: new Prisma.Decimal(commissionExpenseAmount),
+            rateSnapshot: 1,
+            accountId: commAccountId,
+            category: 'CONSIGNMENT_COMMISSION',
+            description: `کمیسیون همکار امانی - سفارش #${order.number}`,
+            customerId: warehouse.customerId,
+            date: day,
           },
         });
       }
@@ -495,7 +562,7 @@ export async function getPendingSettlements() {
   try {
     const orders = await prisma.order.findMany({
       where: {
-        status: { in: ['PENDING_PAYMENT'] },
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         customer: {
           warehouses: { some: { isVirtual: true } },
         },
@@ -580,7 +647,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
       if (!order) {
         throw new Error('سفارش یافت نشد.');
       }
-      if (order.status === 'COMPLETED' || order.paymentStatus === 'PAID') {
+      if (order.paymentStatus === 'PAID') {
         throw new Error('این سفارش قبلاً به طور کامل پرداخت شده است.');
       }
 
@@ -639,7 +706,8 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
           totalAmount: new Prisma.Decimal(netPayable),
           paidAmount: new Prisma.Decimal(newPaid),
           paymentStatus: fullyPaid ? 'PAID' : 'PARTIAL',
-          status: fullyPaid ? 'COMPLETED' : 'PENDING_PAYMENT',
+          // Always standard COMPLETED (also normalises legacy PENDING_PAYMENT)
+          status: 'COMPLETED',
           // Only set transactionId for full payment (preserves last-payment ref)
           transactionId: fullyPaid ? transaction.id : order.transactionId,
         },

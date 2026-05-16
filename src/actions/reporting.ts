@@ -59,42 +59,66 @@ export async function getBalanceSheet() {
         totalCashBank += Number(acc.balance);
     });
 
-    // 2. Inventory Value
+    // 2. Inventory Value — split own warehouses vs. consignment (virtual)
     const inventory = await prisma.inventory.findMany({
-      include: { product: true }
+      include: { product: true, warehouse: true }
     });
-    let inventoryValue = 0;
+    let inventoryValue = 0;          // goods in our own warehouses
+    let consignmentInventoryValue = 0; // goods at partners (still our asset)
     inventory.forEach((item: any) => {
-      inventoryValue += item.quantity * Number(item.product.costPrice);
+      const value = item.quantity * Number(item.product.costPrice);
+      if (item.warehouse?.isVirtual) {
+        consignmentInventoryValue += value;
+      } else {
+        inventoryValue += value;
+      }
     });
 
-    // 3. Accounts Receivable (Pending Settlements)
+    // 3. Accounts Receivable (unpaid settlements) — NET of partner commission.
+    // Derived from items & commission so legacy gross-stored orders are correct.
     const pendingOrders = await prisma.order.findMany({
-      where: { status: 'PENDING_PAYMENT' }
+      where: {
+        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        customer: { warehouses: { some: { isVirtual: true } } },
+      },
+      include: { items: true, commissions: true },
     });
     let accountsReceivable = 0;
     pendingOrders.forEach((order: any) => {
-      accountsReceivable += Number(order.totalAmount);
+      const gross = order.items.reduce(
+        (s: number, it: any) => s + it.quantity * Number(it.price),
+        0,
+      );
+      const commission = order.commissions?.[0]
+        ? Number(order.commissions[0].commissionAmount)
+        : 0;
+      const net = gross - commission;
+      const paid = Number(order.paidAmount || 0);
+      accountsReceivable += Math.max(net - paid, 0);
     });
+
+    const totalAssets =
+      totalCashBank + inventoryValue + consignmentInventoryValue + accountsReceivable;
 
     return {
       assets: {
         cashAndBank: totalCashBank,
         inventory: inventoryValue,
+        consignmentInventory: consignmentInventoryValue,
         accountsReceivable: accountsReceivable,
-        total: totalCashBank + inventoryValue + accountsReceivable
+        total: totalAssets
       },
       liabilities: {
         total: 0 // We don't track Accounts Payable yet
       },
       equity: {
-        total: totalCashBank + inventoryValue + accountsReceivable // Assets - Liabilities
+        total: totalAssets // Assets - Liabilities
       }
     };
   } catch (error) {
     console.error('Error calculating Balance Sheet:', error);
     return {
-      assets: { cashAndBank: 0, inventory: 0, accountsReceivable: 0, total: 0 },
+      assets: { cashAndBank: 0, inventory: 0, consignmentInventory: 0, accountsReceivable: 0, total: 0 },
       liabilities: { total: 0 },
       equity: { total: 0 }
     };
@@ -185,17 +209,25 @@ export async function getInventoryValuation() {
     });
 
     let totalValue = 0;
-    const warehouseValuation: Record<string, { name: string, value: number, itemCount: number }> = {};
+    let ownValue = 0;
+    let consignmentValue = 0;
+    const warehouseValuation: Record<string, { name: string, value: number, itemCount: number, isVirtual: boolean }> = {};
 
     inventory.forEach((item: any) => {
       const itemValue = item.quantity * Number(item.product.costPrice);
       totalValue += itemValue;
+      if (item.warehouse?.isVirtual) {
+        consignmentValue += itemValue;
+      } else {
+        ownValue += itemValue;
+      }
 
       if (!warehouseValuation[item.warehouseId]) {
         warehouseValuation[item.warehouseId] = {
           name: item.warehouse.name,
           value: 0,
-          itemCount: 0
+          itemCount: 0,
+          isVirtual: !!item.warehouse?.isVirtual
         };
       }
       warehouseValuation[item.warehouseId].value += itemValue;
@@ -204,10 +236,12 @@ export async function getInventoryValuation() {
 
     return {
       totalValue,
+      ownValue,
+      consignmentValue,
       byWarehouse: Object.values(warehouseValuation)
     };
   } catch (error) {
     console.error('Error calculating Inventory Valuation:', error);
-    return { totalValue: 0, byWarehouse: [] };
+    return { totalValue: 0, ownValue: 0, consignmentValue: 0, byWarehouse: [] };
   }
 }

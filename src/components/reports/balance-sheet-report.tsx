@@ -7,6 +7,7 @@ interface BalanceSheetData {
   assets: {
     cash: number;
     inventory: number;
+    consignmentInventory?: number;
     accountsReceivable: number;
     total: number;
   };
@@ -34,7 +35,8 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
 
   const assetBreakdown = [
     { name: 'نقدینگی', value: assets.cash },
-    { name: 'موجودی کالا', value: assets.inventory },
+    { name: 'موجودی کالا (خودی)', value: assets.inventory },
+    { name: 'کالای امانی نزد همکاران', value: assets.consignmentInventory ?? 0 },
     { name: 'حساب‌های دریافتنی', value: assets.accountsReceivable },
   ];
 
@@ -56,8 +58,12 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
                 <span>{formatCurrency(assets.cash)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">موجودی کالا:</span>
+                <span className="text-muted-foreground">موجودی کالا (خودی):</span>
                 <span>{formatCurrency(assets.inventory)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">کالای امانی نزد همکاران:</span>
+                <span>{formatCurrency(assets.consignmentInventory ?? 0)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">حساب‌های دریافتنی:</span>
