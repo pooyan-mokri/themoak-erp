@@ -10,7 +10,13 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
+import { useTransition } from 'react';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 import { PaymentModal } from './payment-modal';
+import { deleteConsignmentOrder } from '@/actions/consignment';
 import { formatJalaliDate } from '@/lib/date-utils';
 
 interface SettlementListProps {
@@ -19,6 +25,27 @@ interface SettlementListProps {
 }
 
 export function SettlementList({ settlements, accounts }: SettlementListProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const handleDelete = (orderId: string, orderNumber: number) => {
+    if (
+      !confirm(
+        `فاکتور #${orderNumber} حذف شود؟ کالاها به انبار همکار برمی‌گردد و پرداخت‌ها و هزینه‌های ثبت‌شده بازگردانده می‌شود. این عمل غیرقابل بازگشت است.`,
+      )
+    )
+      return;
+    startTransition(async () => {
+      const result = await deleteConsignmentOrder(orderId);
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message || 'خطا در حذف فاکتور');
+      }
+    });
+  };
+
   return (
     <Card className="mt-6">
       <CardHeader>
@@ -94,15 +121,27 @@ export function SettlementList({ settlements, accounts }: SettlementListProps) {
                       )}
                     </TableCell>
                     <TableCell>
-                      {!fullyPaid && (
-                        <PaymentModal
-                          orderId={s.id}
-                          totalAmount={Number(s.totalAmount)}
-                          paidAmount={Number(s.paidAmount)}
-                          remainingAmount={Number(s.remainingAmount)}
-                          accounts={accounts}
-                        />
-                      )}
+                      <div className="flex items-center gap-1">
+                        {!fullyPaid && (
+                          <PaymentModal
+                            orderId={s.id}
+                            totalAmount={Number(s.totalAmount)}
+                            paidAmount={Number(s.paidAmount)}
+                            remainingAmount={Number(s.remainingAmount)}
+                            accounts={accounts}
+                          />
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={isPending}
+                          onClick={() => handleDelete(s.id, s.number)}
+                          title="حذف فاکتور"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

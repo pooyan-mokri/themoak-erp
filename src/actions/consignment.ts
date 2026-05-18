@@ -563,6 +563,7 @@ export async function getPendingSettlements() {
     const orders = await prisma.order.findMany({
       where: {
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        status: { not: 'CANCELLED' },
         customer: {
           warehouses: { some: { isVirtual: true } },
         },
@@ -725,6 +726,113 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   return { message: 'پرداخت با موفقیت ثبت شد.', success: true };
 }
 
+/**
+ * Fully delete a consignment settlement order and reverse everything it
+ * caused:
+ *  - sold goods go back to the partner's virtual warehouse (unless the order
+ *    was already CANCELLED via sales history, which already restored stock)
+ *  - settlement payment (INCOME) transactions are deleted and their account
+ *    balance decremented
+ *  - non-cash COGS / commission EXPENSE transactions are deleted
+ *  - commission rows, SALE movements, items and the order itself are removed
+ * Removing the order also removes it from sales history (same table).
+ */
+export async function deleteConsignmentOrder(
+  orderId: string,
+): Promise<ActionResult> {
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: true,
+          commissions: true,
+          customer: { include: { warehouses: { where: { isVirtual: true } } } },
+        },
+      });
+      if (!order) throw new Error('سفارش یافت نشد.');
+      if (!order.customer?.warehouses?.length) {
+        throw new Error('این سفارش یک فاکتور امانی نیست.');
+      }
+
+      const alreadyCancelled = order.status === 'CANCELLED';
+
+      // 1. Return sold goods to the partner warehouse (skip if a prior
+      //    cancellation already restored them).
+      if (!alreadyCancelled) {
+        for (const item of order.items) {
+          if (!item.warehouseId) continue;
+          await tx.inventory.upsert({
+            where: {
+              productId_warehouseId: {
+                productId: item.productId,
+                warehouseId: item.warehouseId,
+              },
+            },
+            update: { quantity: { increment: item.quantity } },
+            create: {
+              productId: item.productId,
+              warehouseId: item.warehouseId,
+              quantity: item.quantity,
+            },
+          });
+          await tx.inventoryMovement.create({
+            data: {
+              productId: item.productId,
+              toWarehouseId: item.warehouseId,
+              quantity: item.quantity,
+              type: 'RETURN',
+              note: 'حذف فاکتور امانی',
+            },
+          });
+        }
+      }
+
+      // 2. Reverse all related transactions. Match by description containing
+      //    the exact order number (guard against #19 vs #197 with a regex).
+      const candidates = await tx.transaction.findMany({
+        where: {
+          customerId: order.customerId ?? undefined,
+          description: { contains: `سفارش #${order.number}` },
+        },
+      });
+      const numRe = new RegExp(`#${order.number}(?!\\d)`);
+      for (const trx of candidates) {
+        if (!trx.description || !numRe.test(trx.description)) continue;
+        // Settlement income moved real cash → reverse the account balance.
+        if (trx.type === TransactionType.INCOME && trx.accountId) {
+          await tx.account.update({
+            where: { id: trx.accountId },
+            data: { balance: { decrement: Number(trx.amount) } },
+          });
+        }
+        await tx.transaction.delete({ where: { id: trx.id } });
+      }
+
+      // 3. Remove SALE movements created for this order.
+      await tx.inventoryMovement.deleteMany({ where: { referenceId: orderId } });
+
+      // 4. Remove commissions, items, and the order itself.
+      await tx.consignmentCommission.deleteMany({ where: { orderId } });
+      await tx.orderItem.deleteMany({ where: { orderId } });
+      await tx.order.delete({ where: { id: orderId } });
+    });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'خطا در حذف فاکتور امانی.';
+    return { message };
+  }
+
+  revalidatePath('/dashboard/consignment/settlement');
+  revalidatePath('/dashboard/consignment/reports');
+  revalidatePath('/dashboard/consignment/commissions');
+  revalidatePath('/dashboard/consignment/statement');
+  revalidatePath('/dashboard/sales/history');
+  revalidatePath('/dashboard/accounting');
+  revalidatePath('/dashboard/inventory');
+  return { message: 'فاکتور امانی با موفقیت حذف شد.', success: true };
+}
+
 const ReturnSchema = z.object({
   partnerWarehouseId: z.string().min(1, 'انبار همکار الزامی است'),
   targetWarehouseId: z.string().min(1, 'انبار مقصد الزامی است'),
@@ -868,6 +976,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
       prisma.order.findMany({
         where: {
           customerId: warehouse.customerId,
+          status: { not: 'CANCELLED' },
           items: { some: { warehouseId: partnerWarehouseId } },
         },
         include: { items: true, commissions: true },
@@ -875,20 +984,29 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
       }),
     ]);
 
-    const sentQty = movements
-      .filter((m: any) => m.toWarehouseId === partnerWarehouseId && m.type === 'TRANSFER')
-      .reduce((s: number, m: any) => s + m.quantity, 0);
+    // Sold = sum of item quantities across non-cancelled orders (reliable,
+    // unlike SALE movements which only exist for sales recorded after the
+    // movement table was introduced).
+    const soldQty = orders.reduce(
+      (s: number, o: any) =>
+        s +
+        o.items
+          .filter((it: any) => it.warehouseId === partnerWarehouseId)
+          .reduce((q: number, it: any) => q + it.quantity, 0),
+      0,
+    );
     const returnedQty = movements
       .filter((m: any) => m.fromWarehouseId === partnerWarehouseId && m.type === 'RETURN')
-      .reduce((s: number, m: any) => s + m.quantity, 0);
-    const soldQty = movements
-      .filter((m: any) => m.fromWarehouseId === partnerWarehouseId && m.type === 'SALE')
       .reduce((s: number, m: any) => s + m.quantity, 0);
 
     const currentStockQty = warehouse.inventory.reduce(
       (s: number, inv: any) => s + inv.quantity,
       0,
     );
+    // Conservation identity: everything ever sent to the partner is either
+    // still in stock, sold, or returned. Robust even when historical TRANSFER
+    // movements were never recorded.
+    const sentQty = currentStockQty + soldQty + returnedQty;
     const currentStockValue = warehouse.inventory.reduce(
       (s: number, inv: any) => s + inv.quantity * Number(inv.product.costPrice || 0),
       0,

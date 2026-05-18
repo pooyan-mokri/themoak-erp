@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 
 interface Account {
@@ -47,9 +48,7 @@ export function PaymentModal({
   const [open, setOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState(remainingAmount.toString());
-  const [paymentDate, setPaymentDate] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
+  const [paymentDate, setPaymentDate] = useState<Date>(new Date());
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = () => {
@@ -71,7 +70,7 @@ export function PaymentModal({
       fd.set('orderId', orderId);
       fd.set('accountId', accountId);
       fd.set('amount', String(amt));
-      fd.set('paymentDate', paymentDate);
+      fd.set('paymentDate', paymentDate.toISOString().slice(0, 10));
       const result = await paySettlement(undefined as any, fd);
       if (result.success) {
         toast.success(result.message);
@@ -162,14 +161,12 @@ export function PaymentModal({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>تاریخ پرداخت</Label>
-            <Input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-            />
-          </div>
+          <JalaliDatePicker
+            name="paymentDate"
+            label="تاریخ پرداخت"
+            defaultValue={paymentDate}
+            onChange={(d) => d && setPaymentDate(d)}
+          />
         </div>
 
         <DialogFooter>
