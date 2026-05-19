@@ -23,19 +23,27 @@ interface Employee {
   name: string;
 }
 
-interface LoanFormProps {
-  employees: Employee[];
+interface Account {
+  id: string;
+  name: string;
+  currency: string;
 }
 
-export function LoanForm({ employees }: LoanFormProps) {
+interface LoanFormProps {
+  employees: Employee[];
+  accounts: Account[];
+}
+
+export function LoanForm({ employees, accounts }: LoanFormProps) {
   const [state, dispatch] = useFormState(createLoan, initialState);
   const [dueDate, setDueDate] = useState<string>('');
+  const [accountId, setAccountId] = useState<string>('');
 
   useEffect(() => {
     if (state.message && state.success) {
       toast.success(state.message);
-      // Reset form
       setDueDate('');
+      setAccountId('');
     } else if (state.message && !state.success) {
       toast.error(state.message);
     }
@@ -64,6 +72,25 @@ export function LoanForm({ employees }: LoanFormProps) {
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId && (
               <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId?.[0]}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="accountId">حساب پرداخت‌کننده *</Label>
+            <Select name="accountId" required value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger id="accountId">
+                <SelectValue placeholder="از کدام حساب پرداخت شود؟" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name} ({account.currency})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
+              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
             )}
           </div>
 

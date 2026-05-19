@@ -707,6 +707,84 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   }
 }
 
+const DepositSchema = z.object({
+  amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
+  currency: z.nativeEnum(Currency),
+  accountId: z.string().min(1, 'حساب واریز الزامی است'),
+  description: z.string().min(1, 'بابت چی الزامی است'),
+  category: z.string().optional(),
+  date: z.string().optional(),
+});
+
+export async function recordDeposit(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const validatedFields = DepositSchema.safeParse({
+    amount: formData.get('amount'),
+    currency: formData.get('currency'),
+    accountId: formData.get('accountId'),
+    description: formData.get('description'),
+    category: formData.get('category') || undefined,
+    date: formData.get('date') || undefined,
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'لطفا فیلدهای الزامی را پر کنید.',
+      success: false,
+    };
+  }
+
+  const { amount, currency, accountId, description, category, date } = validatedFields.data;
+
+  try {
+    let rate = 1;
+    if (currency !== 'TOMAN') {
+      const latestRate = await prisma.exchangeRate.findFirst({
+        where: { currency },
+        orderBy: { date: 'desc' },
+      });
+      if (!latestRate) {
+        return { message: `نرخ تبدیل برای ارز ${currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`, success: false };
+      }
+      rate = Number(latestRate.rateToToman);
+    }
+
+    const amountInToman = amount * rate;
+
+    await prisma.$transaction(async (tx: any) => {
+      const account = await tx.account.findUnique({ where: { id: accountId } });
+      if (!account) throw new Error('حساب یافت نشد');
+
+      await tx.transaction.create({
+        data: {
+          amount: new Prisma.Decimal(amount),
+          currency,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: new Prisma.Decimal(amountInToman),
+          type: TransactionType.INCOME,
+          accountId,
+          category: category || 'واریز',
+          description,
+          date: date ? new Date(date) : new Date(),
+        },
+      });
+
+      await tx.account.update({
+        where: { id: accountId },
+        data: { balance: { increment: new Prisma.Decimal(amountInToman) } },
+      });
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در ثبت واریز.';
+    return { message, success: false };
+  }
+
+  revalidatePath('/dashboard/accounting/transactions');
+  revalidatePath('/dashboard/accounting/accounts');
+  revalidatePath('/dashboard/accounting/deposits');
+  return { message: 'واریز با موفقیت ثبت شد.', success: true };
+}
+
 export async function getTransactions() {
   try {
     const transactions = await prisma.transaction.findMany({

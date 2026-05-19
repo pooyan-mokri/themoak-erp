@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 const LoanSchema = z.object({
   borrowerId: z.string().min(1, 'گیرنده قرض الزامی است'),
   amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
+  accountId: z.string().min(1, 'حساب پرداخت‌کننده الزامی است'),
   interestRate: z.coerce.number().min(0).max(100, 'نرخ بهره باید بین 0 تا 100 باشد').optional(),
   description: z.string().optional(),
   dueDate: z.string().optional(),
@@ -32,6 +33,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
   const validatedFields = LoanSchema.safeParse({
     borrowerId: formData.get('borrowerId'),
     amount: formData.get('amount'),
+    accountId: formData.get('accountId'),
     interestRate: formData.get('interestRate') || undefined,
     description: formData.get('description') || undefined,
     dueDate: formData.get('dueDate') || undefined,
@@ -45,34 +47,59 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
     };
   }
 
-  const { borrowerId, amount, interestRate, description, dueDate } = validatedFields.data;
+  const { borrowerId, amount, accountId, interestRate, description, dueDate } = validatedFields.data;
 
   try {
-    // Verify employee exists (loans are only to employees)
-    const employee = await prisma.employee.findUnique({
-      where: { id: borrowerId },
-    });
+    const employee = await prisma.employee.findUnique({ where: { id: borrowerId } });
+    if (!employee) return { message: 'کارمند یافت نشد.', success: false };
 
-    if (!employee) {
+    const account = await prisma.account.findUnique({ where: { id: accountId } });
+    if (!account) return { message: 'حساب یافت نشد.', success: false };
+
+    const accountBalance = Number(account.balance);
+    if (accountBalance < amount) {
       return {
-        message: 'کارمند یافت نشد.',
+        message: `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان`,
         success: false,
       };
     }
 
-    await prisma.loan.create({
-      data: {
-        employeeId: borrowerId,
-        amount: new Prisma.Decimal(amount),
-        remaining: new Prisma.Decimal(amount),
-        interestRate: interestRate ? new Prisma.Decimal(interestRate) : new Prisma.Decimal(0),
-        description: description || undefined,
-        dueDate: dueDate ? new Date(dueDate) : undefined,
-        status: 'ACTIVE',
-      },
+    await prisma.$transaction(async (tx: any) => {
+      await tx.loan.create({
+        data: {
+          employeeId: borrowerId,
+          amount: new Prisma.Decimal(amount),
+          remaining: new Prisma.Decimal(amount),
+          interestRate: interestRate ? new Prisma.Decimal(interestRate) : new Prisma.Decimal(0),
+          description: description || undefined,
+          dueDate: dueDate ? new Date(dueDate) : undefined,
+          status: 'ACTIVE',
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          amount: new Prisma.Decimal(amount),
+          currency: Currency.TOMAN,
+          rateSnapshot: new Prisma.Decimal(1),
+          amountInToman: new Prisma.Decimal(amount),
+          type: TransactionType.EXPENSE,
+          accountId,
+          employeeId: borrowerId,
+          category: 'قرض به کارمند',
+          description: description ? `قرض - ${employee.name}: ${description}` : `قرض به ${employee.name}`,
+          date: new Date(),
+        },
+      });
+
+      await tx.account.update({
+        where: { id: accountId },
+        data: { balance: { decrement: new Prisma.Decimal(amount) } },
+      });
     });
 
     revalidatePath('/dashboard/accounting/loans');
+    revalidatePath('/dashboard/accounting/accounts');
     return { message: 'قرض با موفقیت ثبت شد.', success: true };
   } catch (error: unknown) {
     console.error('Error creating loan:', error);
