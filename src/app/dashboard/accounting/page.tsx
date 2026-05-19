@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown, TrendingUp } from 'lucide-react';
+import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown, TrendingUp, ArrowDownToLine } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AccountingPage() {
@@ -38,6 +38,23 @@ export default function AccountingPage() {
               <div className="text-2xl font-bold text-red-900 dark:text-red-100">هزینه جدید</div>
               <p className="text-xs text-red-700 dark:text-red-300">
                 ثبت هزینه‌های جاری و پروژه‌ای
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/accounting/deposits/new">
+          <Card className="hover:bg-green-100/50 dark:hover:bg-green-950/20 transition-colors cursor-pointer h-full border-green-300 dark:border-green-900 bg-green-50/50 dark:bg-green-950/10 shadow-md hover:shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">
+                ثبت واریز
+              </CardTitle>
+              <ArrowDownToLine className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-900 dark:text-green-100">واریز جدید</div>
+              <p className="text-xs text-green-700 dark:text-green-300">
+                ثبت واریز پول به حساب‌ها
               </p>
             </CardContent>
           </Card>

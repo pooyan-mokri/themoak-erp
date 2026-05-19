@@ -14,7 +14,7 @@ export default async function LoansPage() {
       <h1 className="text-3xl font-bold tracking-tight">مدیریت قرض‌های کارمندان</h1>
       
       <div className="grid gap-6 md:grid-cols-2">
-        <LoanForm employees={employees} />
+        <LoanForm employees={employees} accounts={accounts} />
         <LoanList loans={loans} accounts={accounts} />
       </div>
     </div>
