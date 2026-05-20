@@ -16,6 +16,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { TagInput } from '@/components/ui/tag-input';
 import { toast } from 'sonner';
 
 const initialState = { message: '', errors: {}, success: false };
@@ -164,6 +165,9 @@ export function DepositForm({ accounts }: DepositFormProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Tags */}
+          <TagInput name="tags" label="تگ‌ها" placeholder="مثال: ماهانه، پروژه‌الف..." />
 
           {/* Date */}
           <JalaliDatePicker

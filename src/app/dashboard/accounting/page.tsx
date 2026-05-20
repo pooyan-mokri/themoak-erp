@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown, TrendingUp, ArrowDownToLine } from 'lucide-react';
+import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown, TrendingUp, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AccountingPage() {
@@ -55,6 +55,40 @@ export default function AccountingPage() {
               <div className="text-2xl font-bold text-green-900 dark:text-green-100">واریز جدید</div>
               <p className="text-xs text-green-700 dark:text-green-300">
                 ثبت واریز پول به حساب‌ها
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/accounting/withdrawals/new">
+          <Card className="hover:bg-orange-100/50 dark:hover:bg-orange-950/20 transition-colors cursor-pointer h-full border-orange-300 dark:border-orange-900 bg-orange-50/50 dark:bg-orange-950/10 shadow-md hover:shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300">
+                ثبت پرداخت
+              </CardTitle>
+              <ArrowUpFromLine className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-900 dark:text-orange-100">پرداخت جدید</div>
+              <p className="text-xs text-orange-700 dark:text-orange-300">
+                برداشت / پرداخت به اشخاص
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/accounting/transfers/new">
+          <Card className="hover:bg-blue-100/50 dark:hover:bg-blue-950/20 transition-colors cursor-pointer h-full border-blue-300 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/10 shadow-md hover:shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                انتقال وجه
+              </CardTitle>
+              <ArrowLeftRight className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">انتقال داخلی</div>
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                جابجایی بین حساب‌های خودمان
               </p>
             </CardContent>
           </Card>

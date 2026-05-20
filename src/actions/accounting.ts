@@ -15,6 +15,8 @@ const AccountSchema = z.object({
   type: z.string().min(1, 'نوع حساب الزامی است'),
   currency: z.nativeEnum(Currency),
   initialBalance: z.coerce.number().optional(),
+  cardNumber: z.string().optional(),
+  sheba: z.string().optional(),
 });
 
 const ExpenseSchema = z.object({
@@ -45,6 +47,8 @@ export async function createAccount(prevState: ActionState, formData: FormData):
     type: formData.get('type'),
     currency: formData.get('currency'),
     initialBalance: formData.get('initialBalance') || undefined,
+    cardNumber: formData.get('cardNumber') || undefined,
+    sheba: formData.get('sheba') || undefined,
   });
 
   if (!validatedFields.success) {
@@ -54,7 +58,7 @@ export async function createAccount(prevState: ActionState, formData: FormData):
     };
   }
 
-  const { name, type, currency, initialBalance } = validatedFields.data;
+  const { name, type, currency, initialBalance, cardNumber, sheba } = validatedFields.data;
 
   try {
     await prisma.account.create({
@@ -63,6 +67,8 @@ export async function createAccount(prevState: ActionState, formData: FormData):
         type,
         currency,
         balance: initialBalance || 0,
+        cardNumber: cardNumber || undefined,
+        sheba: sheba || undefined,
       },
     });
   } catch (error) {
@@ -138,6 +144,8 @@ export async function updateAccount(id: string, prevState: ActionState, formData
     type: formData.get('type'),
     currency: formData.get('currency'),
     initialBalance: formData.get('initialBalance') || undefined,
+    cardNumber: formData.get('cardNumber') || undefined,
+    sheba: formData.get('sheba') || undefined,
   });
 
   if (!validatedFields.success) {
@@ -147,7 +155,7 @@ export async function updateAccount(id: string, prevState: ActionState, formData
     };
   }
 
-  const { name, type, currency, initialBalance } = validatedFields.data;
+  const { name, type, currency, initialBalance, cardNumber, sheba } = validatedFields.data;
 
   try {
     await prisma.account.update({
@@ -157,6 +165,8 @@ export async function updateAccount(id: string, prevState: ActionState, formData
         type,
         currency,
         balance: initialBalance !== undefined ? initialBalance : undefined,
+        cardNumber: cardNumber ?? null,
+        sheba: sheba ?? null,
       },
     });
   } catch (error) {
@@ -665,7 +675,8 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
         throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${amount.toLocaleString('fa-IR')} تومان`);
       }
 
-      // Create INCOME transaction (repayment to employee)
+      // Repayment: recorded as INCOME with employeeId so it offsets the employee's EXPENSE debt
+      // (getEmployeeDebts: totalDebt = EXPENSE - INCOME for each employee)
       await tx.transaction.create({
         data: {
           amount: new Prisma.Decimal(amount),
@@ -675,8 +686,8 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
           type: TransactionType.INCOME,
           accountId,
           employeeId,
-          category: 'Employee Debt Payment',
-          description: description || `بازپرداخت بدهی به ${employee.name}`,
+          category: 'تسویه بدهی کارمند',
+          description: description || `تسویه بدهی به ${employee.name}`,
           date: date ? new Date(date) : new Date(),
         },
       });
@@ -707,12 +718,190 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   }
 }
 
+// ─── Withdrawal ───────────────────────────────────────────────────────────────
+
+const WithdrawalSchema = z.object({
+  amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
+  currency: z.nativeEnum(Currency),
+  accountId: z.string().min(1, 'حساب مبدأ الزامی است'),
+  payee: z.string().min(1, 'نام گیرنده الزامی است'),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  tags: z.string().optional(), // comma-separated
+  date: z.string().optional(),
+  receiptUrl: z.string().optional(),
+});
+
+export async function recordWithdrawal(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const validatedFields = WithdrawalSchema.safeParse({
+    amount: formData.get('amount'),
+    currency: formData.get('currency'),
+    accountId: formData.get('accountId'),
+    payee: formData.get('payee'),
+    description: formData.get('description') || undefined,
+    category: formData.get('category') || undefined,
+    tags: formData.get('tags') || undefined,
+    date: formData.get('date') || undefined,
+    receiptUrl: formData.get('receiptUrl') || undefined,
+  });
+
+  if (!validatedFields.success) {
+    return { errors: validatedFields.error.flatten().fieldErrors, message: 'لطفا فیلدهای الزامی را پر کنید.', success: false };
+  }
+
+  const { amount, currency, accountId, payee, description, category, tags, date, receiptUrl } = validatedFields.data;
+
+  try {
+    let rate = 1;
+    if (currency !== 'TOMAN') {
+      const latestRate = await prisma.exchangeRate.findFirst({ where: { currency }, orderBy: { date: 'desc' } });
+      if (!latestRate) return { message: `نرخ تبدیل برای ارز ${currency} یافت نشد.`, success: false };
+      rate = Number(latestRate.rateToToman);
+    }
+    const amountInToman = amount * rate;
+    const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+
+    await prisma.$transaction(async (tx: any) => {
+      const account = await tx.account.findUnique({ where: { id: accountId } });
+      if (!account) throw new Error('حساب یافت نشد');
+      if (Number(account.balance) < amountInToman) {
+        throw new Error(`موجودی حساب "${account.name}" کافی نیست.`);
+      }
+      await tx.transaction.create({
+        data: {
+          amount: new Prisma.Decimal(amount),
+          currency,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: new Prisma.Decimal(amountInToman),
+          type: TransactionType.EXPENSE,
+          accountId,
+          payee,
+          category: category || 'برداشت/پرداخت',
+          description: description || `پرداخت به: ${payee}`,
+          tags: tagsArr,
+          date: date ? new Date(date) : new Date(),
+          receiptUrl: receiptUrl || undefined,
+        },
+      });
+      await tx.account.update({
+        where: { id: accountId },
+        data: { balance: { decrement: new Prisma.Decimal(amountInToman) } },
+      });
+    });
+  } catch (error: unknown) {
+    return { message: error instanceof Error ? error.message : 'خطا در ثبت برداشت.', success: false };
+  }
+
+  revalidatePath('/dashboard/accounting/transactions');
+  revalidatePath('/dashboard/accounting/accounts');
+  return { message: 'پرداخت با موفقیت ثبت شد.', success: true };
+}
+
+// ─── Internal Transfer ────────────────────────────────────────────────────────
+
+const TransferSchema = z.object({
+  amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
+  fromAccountId: z.string().min(1, 'حساب مبدأ الزامی است'),
+  toAccountId: z.string().min(1, 'حساب مقصد الزامی است'),
+  description: z.string().optional(),
+  tags: z.string().optional(),
+  date: z.string().optional(),
+  receiptUrl: z.string().optional(),
+});
+
+export async function recordInternalTransfer(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const validatedFields = TransferSchema.safeParse({
+    amount: formData.get('amount'),
+    fromAccountId: formData.get('fromAccountId'),
+    toAccountId: formData.get('toAccountId'),
+    description: formData.get('description') || undefined,
+    tags: formData.get('tags') || undefined,
+    date: formData.get('date') || undefined,
+    receiptUrl: formData.get('receiptUrl') || undefined,
+  });
+
+  if (!validatedFields.success) {
+    return { errors: validatedFields.error.flatten().fieldErrors, message: 'لطفا فیلدهای الزامی را پر کنید.', success: false };
+  }
+
+  const { amount, fromAccountId, toAccountId, description, tags, date, receiptUrl } = validatedFields.data;
+
+  if (fromAccountId === toAccountId) {
+    return { message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.', success: false };
+  }
+
+  try {
+    const [fromAccount, toAccount] = await Promise.all([
+      prisma.account.findUnique({ where: { id: fromAccountId } }),
+      prisma.account.findUnique({ where: { id: toAccountId } }),
+    ]);
+
+    if (!fromAccount || !toAccount) return { message: 'حساب یافت نشد.', success: false };
+    if (fromAccount.currency !== toAccount.currency) {
+      return { message: `ارز دو حساب باید یکسان باشد (${fromAccount.currency} ≠ ${toAccount.currency}). برای تبدیل ارز از بخش "خرید و فروش ارز" استفاده کنید.`, success: false };
+    }
+    if (Number(fromAccount.balance) < amount) {
+      return { message: `موجودی حساب "${fromAccount.name}" کافی نیست.`, success: false };
+    }
+
+    const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+    const txDate = date ? new Date(date) : new Date();
+    const desc = description || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
+
+    await prisma.$transaction(async (tx: any) => {
+      // Debit source
+      await tx.transaction.create({
+        data: {
+          amount: new Prisma.Decimal(amount),
+          currency: fromAccount.currency,
+          rateSnapshot: new Prisma.Decimal(1),
+          amountInToman: new Prisma.Decimal(amount),
+          type: TransactionType.TRANSFER,
+          accountId: fromAccountId,
+          category: 'انتقال وجه',
+          description: `[خروج] ${desc}`,
+          tags: tagsArr,
+          date: txDate,
+          receiptUrl: receiptUrl || undefined,
+        },
+      });
+      // Credit destination
+      await tx.transaction.create({
+        data: {
+          amount: new Prisma.Decimal(amount),
+          currency: toAccount.currency,
+          rateSnapshot: new Prisma.Decimal(1),
+          amountInToman: new Prisma.Decimal(amount),
+          type: TransactionType.TRANSFER,
+          accountId: toAccountId,
+          category: 'انتقال وجه',
+          description: `[ورود] ${desc}`,
+          tags: tagsArr,
+          date: txDate,
+          receiptUrl: receiptUrl || undefined,
+        },
+      });
+      await tx.account.update({ where: { id: fromAccountId }, data: { balance: { decrement: new Prisma.Decimal(amount) } } });
+      await tx.account.update({ where: { id: toAccountId }, data: { balance: { increment: new Prisma.Decimal(amount) } } });
+    });
+  } catch (error: unknown) {
+    return { message: error instanceof Error ? error.message : 'خطا در انتقال وجه.', success: false };
+  }
+
+  revalidatePath('/dashboard/accounting/transactions');
+  revalidatePath('/dashboard/accounting/accounts');
+  return { message: 'انتقال وجه با موفقیت ثبت شد.', success: true };
+}
+
+// ─── Deposit ──────────────────────────────────────────────────────────────────
+
 const DepositSchema = z.object({
   amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
   currency: z.nativeEnum(Currency),
   accountId: z.string().min(1, 'حساب واریز الزامی است'),
   description: z.string().min(1, 'بابت چی الزامی است'),
   category: z.string().optional(),
+  tags: z.string().optional(),
   date: z.string().optional(),
 });
 
@@ -723,6 +912,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
     accountId: formData.get('accountId'),
     description: formData.get('description'),
     category: formData.get('category') || undefined,
+    tags: formData.get('tags') || undefined,
     date: formData.get('date') || undefined,
   });
 
@@ -734,7 +924,8 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
     };
   }
 
-  const { amount, currency, accountId, description, category, date } = validatedFields.data;
+  const { amount, currency, accountId, description, category, tags, date } = validatedFields.data;
+  const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
 
   try {
     let rate = 1;
@@ -765,6 +956,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
           accountId,
           category: category || 'واریز',
           description,
+          tags: tagsArr,
           date: date ? new Date(date) : new Date(),
         },
       });

@@ -50,6 +50,8 @@ interface Customer {
 interface Account {
   id: string;
   name: string;
+  cardNumber?: string;
+  sheba?: string;
 }
 
 interface Warehouse {
@@ -365,6 +367,27 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                   ))}
                 </SelectContent>
               </Select>
+              {/* Show card/IBAN for selected bank account */}
+              {(() => {
+                const acc = accounts.find((a) => a.id === selectedAccount);
+                if (!acc || (!acc.cardNumber && !acc.sheba)) return null;
+                return (
+                  <div className="text-xs bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded p-2 space-y-1" dir="ltr">
+                    {acc.cardNumber && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-blue-600 dark:text-blue-400 font-mono tracking-widest">{acc.cardNumber}</span>
+                        <span className="text-blue-500 text-[10px] mr-2">شماره کارت</span>
+                      </div>
+                    )}
+                    {acc.sheba && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-blue-600 dark:text-blue-400 font-mono text-[11px]">{acc.sheba}</span>
+                        <span className="text-blue-500 text-[10px] mr-2">شبا</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex items-center space-x-2 space-x-reverse bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-900">

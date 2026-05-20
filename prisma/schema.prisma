@@ -47,6 +47,8 @@ model Account {
   type                   String
   currency               Currency
   balance                Decimal                 @default(0)
+  cardNumber             String?
+  sheba                  String?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   loanPayments           LoanPayment[]
@@ -114,6 +116,8 @@ model Transaction {
   currency              Currency                   @default(TOMAN)
   rateSnapshot          Decimal                    @default(1)
   receiptUrl            String?
+  tags                  String[]
+  payee                 String?
   shareholderId         String?
   employeeId            String?
   customerId            String?
