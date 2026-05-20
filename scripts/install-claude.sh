@@ -206,11 +206,11 @@ mkdir -p "$CONFIG_DIR"
 [ -f "$CONFIG_FILE" ] && cp "$CONFIG_FILE" "$CONFIG_FILE.bak" && ok "پشتیبان: $CONFIG_FILE.bak"
 
 # Merge or create config using node
-node --input-type=module << NODESCRIPT
-import fs from 'fs';
-const file = ${JSON_CONFIG_FILE@Q:-"'$CONFIG_FILE'"};
-const cfg = fs.existsSync('$CONFIG_FILE')
-  ? JSON.parse(fs.readFileSync('$CONFIG_FILE', 'utf8'))
+node -e "
+const fs = require('fs');
+const configFile = '$CONFIG_FILE';
+const cfg = fs.existsSync(configFile)
+  ? (() => { try { return JSON.parse(fs.readFileSync(configFile, 'utf8')); } catch(e) { return {}; } })()
   : {};
 cfg.mcpServers = cfg.mcpServers || {};
 cfg.mcpServers['themoak-erp'] = {
@@ -218,8 +218,9 @@ cfg.mcpServers['themoak-erp'] = {
   args: ['$ENTRY'],
   env: { ERP_API_URL: '$ERP_URL', ERP_API_SECRET: '$ERP_SECRET' }
 };
-fs.writeFileSync('$CONFIG_FILE', JSON.stringify(cfg, null, 2));
-NODESCRIPT
+fs.writeFileSync(configFile, JSON.stringify(cfg, null, 2));
+console.log('done');
+"
 
 ok "Claude Desktop config آپدیت شد"
 
