@@ -1,158 +1,93 @@
 # TheMoak ERP — AI Connector
 
-Connect your ERP to **Claude** (Desktop & claude.ai) and **ChatGPT** so you can query financial data and record transactions using natural language.
+اتصال ERP به **Claude Desktop** و **ChatGPT** با زبان طبیعی.
 
 ---
 
-## Architecture
+## اتصال به Claude Desktop — یه دستور
 
-```
-Claude Desktop ──► MCP Server (local Node.js) ──► /api/erp (Vercel) ──► PostgreSQL
-ChatGPT         ──────────────────────────────────► /api/erp (Vercel) ──► PostgreSQL
-```
+### مرحله ۱ — Secret در Vercel تنظیم کن
 
----
-
-## Step 1 — Set the API Secret on Vercel
-
-Generate a strong secret and add it to your Vercel project:
-
+یه کلید امن بساز:
 ```bash
 openssl rand -base64 32
-# Example output: x3kP9mQs7rLz...
 ```
 
-In **Vercel Dashboard → Your Project → Settings → Environment Variables**:
+در **Vercel Dashboard → Settings → Environment Variables** اضافه کن:
 
 | Name | Value |
 |------|-------|
-| `ERP_API_SECRET` | `<the value you generated>` |
+| `ERP_API_SECRET` | مقدار بالا |
 
-Redeploy once so the variable takes effect.
+یک بار Redeploy کن.
 
----
-
-## Step 2A — Connect to Claude Desktop (MCP)
-
-### Install the MCP server
+### مرحله ۲ — نصب خودکار
 
 ```bash
-# Clone or go to your ERP repo
-cd /path/to/themoak-erp/mcp-server
-
-# Install dependencies
-npm install
-
-# Build
-npm run build
+bash <(curl -fsSL https://raw.githubusercontent.com/pooyan-mokri/themoak-erp/main/scripts/install-claude.sh)
 ```
 
-### Configure Claude Desktop
+این script:
+- Node.js رو چک می‌کنه
+- MCP server رو دانلود و نصب می‌کنه
+- آدرس ERP و Secret رو ازت می‌پرسه
+- فایل config کلود رو خودکار آپدیت می‌کنه
 
-Open (or create) your Claude Desktop config file:
+### مرحله ۳ — Claude Desktop رو restart کن
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+آیکون 🔧 ظاهر میشه. تست کن:
 
-Add the following (replace paths and values):
-
-```json
-{
-  "mcpServers": {
-    "themoak-erp": {
-      "command": "node",
-      "args": ["/FULL/PATH/TO/themoak-erp/mcp-server/dist/index.js"],
-      "env": {
-        "ERP_API_URL": "https://themoak-erp.vercel.app",
-        "ERP_API_SECRET": "YOUR_SECRET_HERE"
-      }
-    }
-  }
-}
-```
-
-Restart Claude Desktop. You should see **TheMoak ERP** in the tools panel (🔧 icon).
-
-### Test it in Claude
-
-Try saying:
-- **"موجودی همه حساب‌هایم رو نشونم بده"**
+- **"موجودی همه حساب‌هام رو نشونم بده"**
 - **"گزارش مالی ۳۰ روز گذشته"**
 - **"تسویه‌های در انتظار پرداخت"**
-- **"۵ میلیون تومان از حساب بانک ملت به صندوق نقد منتقل کن"**
-- **"یه هزینه ۲ میلیونی بابت اجاره دفتر ثبت کن"**
+- **"۵ میلیون از بانک ملت به صندوق منتقل کن"**
+- **"یه هزینه ۲ میلیونی بابت اجاره ثبت کن"**
 
 ---
 
-## Step 2B — Connect to ChatGPT (GPT Actions)
+## اتصال به ChatGPT
 
-### Create a Custom GPT
-
-1. Go to [chat.openai.com](https://chat.openai.com) → **Explore GPTs** → **Create a GPT**
-2. Name it: **TheMoak ERP Assistant**
-3. In the system prompt, paste:
-
+1. برو [chat.openai.com](https://chat.openai.com) → **Explore GPTs** → **Create a GPT**
+2. نام: **TheMoak ERP Assistant**
+3. System prompt:
 ```
-You are a financial assistant connected to TheMoak ERP system.
-You can query accounts, transactions, orders, consignment settlements, and employee loans.
-You can also record deposits, expenses, and internal transfers.
-Always confirm write operations with the user before executing them.
-When showing amounts, format numbers with Persian numerals and add "تومان" for Toman amounts.
+You are a financial assistant for TheMoak ERP.
+Query accounts, transactions, orders, settlements, loans.
+Record deposits, expenses, and transfers.
+Confirm write operations before executing. Show amounts in Persian format with تومان.
 ```
-
-4. Go to **Configure** → **Actions** → **Create new action**
-
-5. In the schema field, paste the URL:
+4. **Configure → Actions → Create new action**
+5. Schema URL:
 ```
 https://themoak-erp.vercel.app/openapi.json
 ```
-(Or paste the contents of `public/openapi.json` directly.)
-
-6. Under **Authentication**, choose **API Key** → **Bearer** and enter your `ERP_API_SECRET`.
-
-7. Save and test.
-
-### Test in ChatGPT
-
-Try:
-- "What's my current financial summary?"
-- "Show me all bank accounts and their balances"
-- "List pending consignment settlements"
-- "Record a 5,000,000 Toman deposit to account [ID] for office rent"
+6. Authentication: **API Key → Bearer** → مقدار `ERP_API_SECRET`
+7. Save و تست.
 
 ---
 
-## Available Tools / Actions
+## ابزارهای در دسترس
 
-| Tool | Description |
-|------|-------------|
-| `erp_summary` | Financial overview: balances, 30-day P&L, pending count |
-| `erp_accounts` | All accounts with balance, card number, IBAN |
-| `erp_transactions` | Recent transactions (filterable by type) |
-| `erp_orders` | Recent sales orders |
-| `erp_settlements` | Pending consignment settlements |
-| `erp_loans` | Employee loans |
-| `erp_search` | Search across all entities |
-| `erp_deposit` | Record a deposit into an account |
-| `erp_expense` | Record an expense/payment from an account |
-| `erp_transfer` | Transfer between two same-currency accounts |
-
----
-
-## Security Notes
-
-- The `ERP_API_SECRET` is a Bearer token — treat it like a password.
-- All write operations (deposit, expense, transfer) go through the same validation as the web UI.
-- The API does **not** expose passwords, auth tokens, or user credentials.
-- For extra safety, you can create a **read-only secret** by adding a second env var `ERP_API_SECRET_READONLY` and restricting POST routes to the full secret only.
+| ابزار | توضیح |
+|-------|-------|
+| `erp_summary` | خلاصه مالی: موجودی‌ها، سود/زیان ۳۰ روز |
+| `erp_accounts` | لیست حساب‌ها با موجودی، شماره کارت، شبا |
+| `erp_transactions` | تراکنش‌های اخیر (فیلتر بر نوع) |
+| `erp_orders` | سفارش‌های فروش اخیر |
+| `erp_settlements` | تسویه‌های امانت در انتظار |
+| `erp_loans` | قرض‌های کارمندان |
+| `erp_search` | جستجوی کلی در همه بخش‌ها |
+| `erp_deposit` | ثبت واریز |
+| `erp_expense` | ثبت هزینه/پرداخت |
+| `erp_transfer` | انتقال وجه بین حساب‌های هم‌ارز |
 
 ---
 
-## Troubleshooting
+## عیب‌یابی
 
-| Problem | Fix |
-|---------|-----|
-| Claude shows no ERP tools | Restart Claude Desktop after editing config |
-| `401 Unauthorized` | Check `ERP_API_SECRET` matches in Vercel and config |
-| `No exchange rate for USD` | Add today's exchange rate in ERP → حسابداری → نرخ ارز |
-| MCP server won't start | Run `npm run build` first; check Node ≥ 18 |
+| مشکل | راه‌حل |
+|------|--------|
+| Claude ابزار ERP نشون نمیده | Restart کن Claude Desktop |
+| خطای `401 Unauthorized` | مطمئن شو Secret در Vercel و config یکیه |
+| خطای `No exchange rate for USD` | نرخ ارز رو در ERP → نرخ ارز اضافه کن |
+| نصب مجدد | دوباره همون script رو اجرا کن |
