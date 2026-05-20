@@ -18,7 +18,8 @@ import {
   Store,
   UserCircle,
   Wallet,
-  Bot
+  Bot,
+  Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -103,6 +104,12 @@ const routes = [
     icon: Bot,
     href: '/dashboard/assistant',
     color: 'text-cyan-500',
+  },
+  {
+    label: 'جستجو',
+    icon: Search,
+    href: '/dashboard/search',
+    color: 'text-yellow-500',
   },
   {
     label: 'تنظیمات',

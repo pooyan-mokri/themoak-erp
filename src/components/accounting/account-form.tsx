@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Currency } from '@/lib/types';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 const initialState = {
@@ -25,9 +25,10 @@ interface AccountFormProps {
 export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
   const updateAccountWithId = initialData ? updateAccount.bind(null, initialData.id) : undefined;
   const action = initialData ? updateAccountWithId : createAccount;
-  
+
   // @ts-ignore
   const [state, dispatch] = useFormState(action, initialState);
+  const [accountType, setAccountType] = useState<string>(initialData?.type || '');
 
   useEffect(() => {
     if (state.message && state.success) {
@@ -66,7 +67,7 @@ export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type">نوع حساب</Label>
-              <Select name="type" required defaultValue={initialData?.type}>
+              <Select name="type" required defaultValue={initialData?.type} onValueChange={setAccountType}>
                 <SelectTrigger>
                   <SelectValue placeholder="انتخاب کنید" />
                 </SelectTrigger>
@@ -97,14 +98,41 @@ export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="initialBalance">{initialData ? 'موجودی فعلی' : 'موجودی اولیه'}</Label>
-            <Input 
-              id="initialBalance" 
-              name="initialBalance" 
-              type="number" 
-              defaultValue={initialData?.balance || "0"} 
+            <Input
+              id="initialBalance"
+              name="initialBalance"
+              type="number"
+              defaultValue={initialData?.balance || "0"}
             />
             {initialData && <p className="text-xs text-muted-foreground text-yellow-600">توجه: تغییر دستی موجودی پیشنهاد نمی‌شود.</p>}
           </div>
+
+          {accountType === 'BANK' && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="cardNumber">شماره کارت</Label>
+                <Input
+                  id="cardNumber"
+                  name="cardNumber"
+                  placeholder="1234-5678-9012-3456"
+                  maxLength={19}
+                  defaultValue={initialData?.cardNumber || ''}
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sheba">شماره شبا (IBAN)</Label>
+                <Input
+                  id="sheba"
+                  name="sheba"
+                  placeholder="IR123456789012345678901234"
+                  maxLength={26}
+                  defaultValue={initialData?.sheba || ''}
+                  dir="ltr"
+                />
+              </div>
+            </>
+          )}
 
           {state.message && !state.success && (
             <div className="text-sm p-2 rounded bg-red-100 text-red-700">
