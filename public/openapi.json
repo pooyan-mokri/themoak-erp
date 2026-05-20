@@ -1,0 +1,223 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TheMoak ERP API",
+    "description": "Connect to TheMoak ERP system to query financial data, accounts, orders, and record transactions.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://themoak-erp.vercel.app",
+      "description": "Production server"
+    }
+  ],
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "paths": {
+    "/api/erp": {
+      "get": {
+        "operationId": "erpQuery",
+        "summary": "Query ERP data",
+        "description": "Fetch financial summaries, accounts, transactions, orders, settlements, loans, or search.",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "required": true,
+            "description": "The data to fetch: summary | accounts | transactions | orders | settlements | loans | search",
+            "schema": {
+              "type": "string",
+              "enum": ["summary", "accounts", "transactions", "orders", "settlements", "loans", "search"]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search query (required when action=search)",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Max results (for transactions/orders, default 50)",
+            "schema": { "type": "integer", "default": 50 }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "Filter transactions by type: INCOME | EXPENSE | TRANSFER",
+            "schema": { "type": "string", "enum": ["INCOME", "EXPENSE", "TRANSFER"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/SummaryResponse" },
+                    { "$ref": "#/components/schemas/AccountsResponse" },
+                    { "$ref": "#/components/schemas/TransactionsResponse" },
+                    { "$ref": "#/components/schemas/SearchResponse" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized — check your API key" }
+        }
+      },
+      "post": {
+        "operationId": "erpWrite",
+        "summary": "Write to ERP (record transactions)",
+        "description": "Record a deposit, expense/payment, or internal transfer between accounts.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  { "$ref": "#/components/schemas/DepositRequest" },
+                  { "$ref": "#/components/schemas/ExpenseRequest" },
+                  { "$ref": "#/components/schemas/TransferRequest" }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad request — missing fields or currency mismatch" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Set ERP_API_SECRET in Vercel env and use it as Bearer token here."
+      }
+    },
+    "schemas": {
+      "SummaryResponse": {
+        "type": "object",
+        "properties": {
+          "totalBalanceToman": { "type": "number" },
+          "accounts": { "type": "integer" },
+          "last30Days": {
+            "type": "object",
+            "properties": {
+              "income": { "type": "number" },
+              "expense": { "type": "number" },
+              "profit": { "type": "number" }
+            }
+          },
+          "pendingSettlements": { "type": "integer" }
+        }
+      },
+      "AccountsResponse": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "type": { "type": "string" },
+            "currency": { "type": "string" },
+            "balance": { "type": "number" },
+            "cardNumber": { "type": "string", "nullable": true },
+            "sheba": { "type": "string", "nullable": true }
+          }
+        }
+      },
+      "TransactionsResponse": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "date": { "type": "string", "format": "date-time" },
+            "type": { "type": "string" },
+            "amount": { "type": "number" },
+            "currency": { "type": "string" },
+            "amountInToman": { "type": "number" },
+            "description": { "type": "string" },
+            "category": { "type": "string" },
+            "account": { "type": "string" },
+            "payee": { "type": "string", "nullable": true },
+            "tags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "customers": { "type": "array", "items": { "type": "object" } },
+          "products": { "type": "array", "items": { "type": "object" } },
+          "transactions": { "type": "array", "items": { "type": "object" } },
+          "orders": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "DepositRequest": {
+        "type": "object",
+        "required": ["action", "accountId", "amount", "description"],
+        "properties": {
+          "action": { "type": "string", "enum": ["deposit"] },
+          "accountId": { "type": "string", "description": "Target account ID" },
+          "amount": { "type": "number", "description": "Amount in the given currency" },
+          "currency": { "type": "string", "enum": ["TOMAN", "USD", "EUR", "CNY"], "default": "TOMAN" },
+          "description": { "type": "string", "description": "What is this deposit for?" },
+          "category": { "type": "string" },
+          "date": { "type": "string", "format": "date", "description": "YYYY-MM-DD, defaults to today" }
+        }
+      },
+      "ExpenseRequest": {
+        "type": "object",
+        "required": ["action", "accountId", "amount", "description"],
+        "properties": {
+          "action": { "type": "string", "enum": ["expense"] },
+          "accountId": { "type": "string", "description": "Source account ID" },
+          "amount": { "type": "number" },
+          "currency": { "type": "string", "enum": ["TOMAN", "USD", "EUR", "CNY"], "default": "TOMAN" },
+          "description": { "type": "string" },
+          "category": { "type": "string" },
+          "payee": { "type": "string", "description": "Who received the payment" },
+          "date": { "type": "string", "format": "date" }
+        }
+      },
+      "TransferRequest": {
+        "type": "object",
+        "required": ["action", "fromAccountId", "toAccountId", "amount"],
+        "properties": {
+          "action": { "type": "string", "enum": ["transfer"] },
+          "fromAccountId": { "type": "string" },
+          "toAccountId": { "type": "string" },
+          "amount": { "type": "number" },
+          "description": { "type": "string" },
+          "date": { "type": "string", "format": "date" }
+        }
+      }
+    }
+  }
+}
