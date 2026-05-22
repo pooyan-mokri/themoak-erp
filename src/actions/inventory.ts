@@ -88,6 +88,7 @@ export async function adjustStock(
   adjustment: number,
   note?: string,
   referenceId?: string,
+  tags: string[] = [],
 ) {
   try {
     await prisma.$transaction(async (tx: any) => {
@@ -106,6 +107,7 @@ export async function adjustStock(
           type: 'ADJUSTMENT',
           note: note ?? (adjustment >= 0 ? 'افزایش موجودی' : 'کاهش موجودی'),
           referenceId: referenceId ?? null,
+          tags,
         },
       });
     });
@@ -125,6 +127,7 @@ export async function transferStock(
   quantity: number,
   note?: string,
   referenceId?: string,
+  tags: string[] = [],
 ) {
   try {
     await prisma.$transaction(async (tx: any) => {
@@ -160,6 +163,7 @@ export async function transferStock(
           type: 'TRANSFER',
           note: note ?? null,
           referenceId: referenceId ?? null,
+          tags,
         },
       });
     });

@@ -5,6 +5,7 @@ import { transferStock } from '@/actions/inventory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { TagInput } from '@/components/ui/tag-input';
 import {
   Select,
   SelectContent,
@@ -33,6 +34,8 @@ export function TransferForm({ warehouses, products }: TransferFormProps) {
     const fromWarehouseId = formData.get('fromWarehouseId') as string;
     const toWarehouseId = formData.get('toWarehouseId') as string;
     const quantity = Number(formData.get('quantity'));
+    const tagsRaw = formData.get('tags') as string;
+    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
 
     if (!productId || !fromWarehouseId || !toWarehouseId || !quantity) {
       return { success: false, error: 'لطفا تمام فیلدها را پر کنید', message: '' };
@@ -42,7 +45,7 @@ export function TransferForm({ warehouses, products }: TransferFormProps) {
       return { success: false, error: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند', message: '' };
     }
 
-    const result = await transferStock(productId, fromWarehouseId, toWarehouseId, quantity);
+    const result = await transferStock(productId, fromWarehouseId, toWarehouseId, quantity, undefined, undefined, tags);
     return {
         success: result.success,
         message: result.message || '',
@@ -128,6 +131,8 @@ export function TransferForm({ warehouses, products }: TransferFormProps) {
               required
             />
           </div>
+
+          <TagInput name="tags" label="تگ‌ها (اختیاری)" placeholder="مثلا: انتقال فصلی، اضطراری..." />
 
           <SubmitButton />
         </form>

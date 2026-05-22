@@ -28,6 +28,7 @@ const createPurchaseOrderSchema = z.object({
     amount: z.number().min(0, 'مبلغ باید بیشتر از ۰ باشد'),
     currency: z.enum(['TOMAN', 'USD', 'EUR', 'CNY']),
   })).optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 // --- Actions ---
@@ -242,6 +243,7 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
         totalAmount: new Prisma.Decimal(totalAmount),
         totalAmountInToman: new Prisma.Decimal(totalAmountInToman + additionalCostsInToman),
         status: 'DRAFT',
+        tags: validatedData.tags ?? [],
         items: {
           create: itemsData
         },

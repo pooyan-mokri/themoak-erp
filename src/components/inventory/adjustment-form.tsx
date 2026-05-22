@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { TagInput } from '@/components/ui/tag-input';
 
 interface Product {
   id: string;
@@ -40,12 +41,14 @@ async function adjustStockAction(prevState: any, formData: FormData) {
   const productId = formData.get('productId') as string;
   const warehouseId = formData.get('warehouseId') as string;
   const adjustment = Number(formData.get('adjustment'));
+  const tagsRaw = formData.get('tags') as string;
+  const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
 
   if (!productId || !warehouseId || isNaN(adjustment)) {
     return { success: false, error: 'لطفا تمام فیلدها را پر کنید.' };
   }
 
-  const result = await adjustStock(productId, warehouseId, adjustment);
+  const result = await adjustStock(productId, warehouseId, adjustment, undefined, undefined, tags);
   if (result.success) {
     return { success: true, message: result.message || 'Stock adjusted successfully' };
   } else {
@@ -105,6 +108,8 @@ export function AdjustmentForm({ products, warehouses }: AdjustmentFormProps) {
               required 
             />
           </div>
+
+          <TagInput name="tags" label="تگ‌ها (اختیاری)" placeholder="مثلا: ورودی فصلی، اصلاح موجودی..." />
 
           {state.success && (
             <div className="text-sm p-2 rounded bg-green-100 text-green-700">

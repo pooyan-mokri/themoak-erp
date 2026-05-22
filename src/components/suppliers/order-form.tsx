@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { TagInput } from '@/components/ui/tag-input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Plus, Trash2 } from 'lucide-react';
@@ -46,6 +47,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
   const [newSupplierEmail, setNewSupplierEmail] = useState('');
   const [newSupplierAddress, setNewSupplierAddress] = useState('');
   const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [orderTags, setOrderTags] = useState<string[]>([]);
 
   useEffect(() => {
     // Load exchange rates
@@ -173,6 +175,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
             amount: Number(cost.amount),
             currency: cost.currency || 'TOMAN',
           })) : undefined,
+        tags: orderTags,
       };
 
       console.log('Submitting order data:', JSON.stringify(orderData, null, 2));
@@ -511,6 +514,13 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
               )}
             </div>
           </div>
+
+          <TagInput
+            label="تگ‌ها (اختیاری)"
+            placeholder="مثلا: وارداتی، فوری، فصل بهار..."
+            value={orderTags}
+            onChange={setOrderTags}
+          />
 
           <div className="flex justify-end pt-4 border-t">
             <Button type="submit" disabled={loading}>

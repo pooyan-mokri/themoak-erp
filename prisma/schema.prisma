@@ -200,6 +200,7 @@ model InventoryMovement {
   type            MovementType
   referenceId     String?
   note            String?
+  tags            String[]
   createdAt       DateTime  @default(now())
   product         Product   @relation(fields: [productId], references: [id])
   fromWarehouse   Warehouse? @relation("MovementFrom", fields: [fromWarehouseId], references: [id])
@@ -488,6 +489,7 @@ model PurchaseOrder {
   supplierId             String
   totalAmount            Decimal
   status                 String                        @default("DRAFT")
+  tags                   String[]
   createdAt              DateTime                      @default(now())
   updatedAt              DateTime                      @updatedAt
   totalAmountInToman     Decimal?

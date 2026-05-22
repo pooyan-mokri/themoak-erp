@@ -49,6 +49,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
         OR: [
           ...(isNaN(Number(q)) ? [] : [{ number: { equals: Number(q) } }]),
           { customer: { name: { contains: q, mode: 'insensitive' } } },
+          { tags: { has: q } },
         ],
       },
       include: { customer: true },
@@ -76,7 +77,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
       where: {
         OR: [
           { supplier: { name: { contains: q, mode: 'insensitive' } } },
-          { notes: { contains: q, mode: 'insensitive' } },
+          { tags: { has: q } },
         ],
       },
       include: { supplier: true },

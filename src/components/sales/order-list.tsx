@@ -69,6 +69,7 @@ type OrderWithDetails = {
   paidAmount?: number;
   paymentStatus: string;
   invoiceId?: string;
+  tags?: string[];
   customer?: Customer;
   items: OrderItem[];
 };
@@ -245,6 +246,21 @@ export function OrderList({ orders }: OrderListProps) {
           </Badge>
         );
       },
+    },
+    {
+      key: 'tags',
+      label: 'تگ‌ها',
+      sortable: false,
+      render: (order) =>
+        order.tags && order.tags.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {order.tags.map((tag, i) => (
+              <Badge key={i} variant="outline" className="text-xs px-1.5 py-0">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        ) : null,
     },
     {
       key: 'createdAt',
