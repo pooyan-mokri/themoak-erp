@@ -7,15 +7,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 interface TagInputProps {
-  name: string;
+  name?: string;
   label?: string;
   placeholder?: string;
   defaultTags?: string[];
+  // Controlled mode
+  value?: string[];
+  onChange?: (tags: string[]) => void;
 }
 
-export function TagInput({ name, label, placeholder = 'تگ جدید...', defaultTags = [] }: TagInputProps) {
-  const [tags, setTags] = useState<string[]>(defaultTags);
+export function TagInput({ name, label, placeholder = 'تگ جدید...', defaultTags = [], value, onChange }: TagInputProps) {
+  const isControlled = value !== undefined;
+  const [internalTags, setInternalTags] = useState<string[]>(defaultTags);
+  const tags = isControlled ? value : internalTags;
   const [inputValue, setInputValue] = useState('');
+
+  const setTags = (next: string[]) => {
+    if (!isControlled) setInternalTags(next);
+    onChange?.(next);
+  };
 
   const addTag = (tag: string) => {
     const t = tag.trim();
@@ -41,7 +51,7 @@ export function TagInput({ name, label, placeholder = 'تگ جدید...', defaul
   return (
     <div className="space-y-2">
       {label && <Label>{label}</Label>}
-      <input type="hidden" name={name} value={tags.join(',')} />
+      {name && <input type="hidden" name={name} value={tags.join(',')} />}
       <div className="flex flex-wrap gap-1.5 p-2 border rounded-md min-h-[42px] bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
         {tags.map((tag, i) => (
           <Badge key={i} variant="secondary" className="flex items-center gap-1 h-6">

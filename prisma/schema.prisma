@@ -394,6 +394,7 @@ model Order {
   paidAmount    Decimal                 @default(0)
   paymentStatus String                  @default("PAID")
   invoiceId     String?                 @unique
+  tags          String[]
   commissions   ConsignmentCommission[]
   invoice       Invoice?
   customer      Customer?               @relation(fields: [customerId], references: [id])

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { TagInput } from '@/components/ui/tag-input';
 import { QuickCustomerForm } from './quick-customer-form';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -82,6 +83,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
   const [isCreditSale, setIsCreditSale] = useState(false);
   const [saleDate, setSaleDate] = useState<Date>(new Date());
+  const [orderTags, setOrderTags] = useState<string[]>([]);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -127,6 +129,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     setPaidAmount(totalAmount.toString());
     setIsCreditSale(false);
     setSaleDate(new Date());
+    setOrderTags([]);
     setIsCheckoutOpen(true);
   };
 
@@ -190,6 +193,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       paidAmount: paidVal,
       warehouseId: selectedWarehouse,
       saleDate: saleDate.toISOString(),
+      tags: orderTags,
     });
 
     setIsSubmitting(false);
@@ -427,6 +431,13 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                 />
               </div>
             </div>
+
+            <TagInput
+              label="تگ‌ها (اختیاری)"
+              placeholder="مثلا: عمده، تخفیف ویژه..."
+              value={orderTags}
+              onChange={setOrderTags}
+            />
 
             <div className="pt-4 border-t space-y-3 md:space-y-2">
               <div className="flex justify-between text-base md:text-sm">

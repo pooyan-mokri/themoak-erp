@@ -34,10 +34,11 @@ interface OrderData {
   paidAmount?: number;
   warehouseId?: string; // Which warehouse to deduct stock from
   saleDate?: string; // ISO date string for the sale; defaults to now
+  tags?: string[];
 }
 
 export async function createOrder(data: OrderData) {
-  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate } = data;
+  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate, tags = [] } = data;
   const orderDate = saleDate ? new Date(saleDate) : new Date();
 
   if (!items.length) {
@@ -142,6 +143,7 @@ export async function createOrder(data: OrderData) {
           status: 'COMPLETED',
           transactionId: transactionId,
           createdAt: orderDate,
+          tags,
           items: {
             create: items.map((item: any, idx: number) => ({
               productId: item.productId,
