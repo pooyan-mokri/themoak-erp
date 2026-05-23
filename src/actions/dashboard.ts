@@ -52,7 +52,8 @@ export async function getDashboardFinancials() {
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where: {
         status: 'RECEIVED'
-      }
+      },
+      select: { totalAmount: true },
     });
     
     const totalPayables = purchaseOrders.reduce((sum: any, po: any) => sum + Number(po.totalAmount), 0);
