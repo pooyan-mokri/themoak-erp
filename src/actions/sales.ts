@@ -35,10 +35,11 @@ interface OrderData {
   warehouseId?: string; // Which warehouse to deduct stock from
   saleDate?: string; // ISO date string for the sale; defaults to now
   tags?: string[];
+  invoiceAccountId?: string; // Account whose card/IBAN to show on credit invoice
 }
 
 export async function createOrder(data: OrderData) {
-  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate, tags = [] } = data;
+  const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate, tags = [], invoiceAccountId } = data;
   const orderDate = saleDate ? new Date(saleDate) : new Date();
 
   if (!items.length) {
@@ -144,6 +145,7 @@ export async function createOrder(data: OrderData) {
           transactionId: transactionId,
           createdAt: orderDate,
           tags,
+          invoiceAccountId: invoiceAccountId ?? null,
           items: {
             create: items.map((item: any, idx: number) => ({
               productId: item.productId,

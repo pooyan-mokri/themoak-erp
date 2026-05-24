@@ -18,6 +18,7 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
         },
       },
       transaction: true,
+      invoiceAccount: true,
     },
   });
 
@@ -171,6 +172,34 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
             </tr>
           </tfoot>
         </table>
+
+        {/* Bank account info for credit sales */}
+        {(order as any).invoiceAccount && ((order as any).invoiceAccount.cardNumber || (order as any).invoiceAccount.sheba) && (
+          <div className="mb-6 p-4 border border-blue-200 rounded-lg bg-blue-50 print:bg-blue-50">
+            <h4 className="font-bold text-sm text-blue-800 mb-2">اطلاعات واریز (فروش نسیه)</h4>
+            <div className="space-y-1 text-sm" dir="ltr">
+              {(order as any).invoiceAccount.cardNumber && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">شماره کارت:</span>
+                  <span className="font-mono tracking-widest text-blue-900 font-bold">
+                    {(order as any).invoiceAccount.cardNumber}
+                  </span>
+                </div>
+              )}
+              {(order as any).invoiceAccount.sheba && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">شبا:</span>
+                  <span className="font-mono text-[12px] text-blue-900">
+                    {(order as any).invoiceAccount.sheba}
+                  </span>
+                </div>
+              )}
+              <div className="text-xs text-gray-500 mt-1">
+                به نام: {(order as any).invoiceAccount.name}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="border-t pt-6 text-center text-sm text-gray-500">

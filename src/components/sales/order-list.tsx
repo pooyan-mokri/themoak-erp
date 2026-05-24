@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, DollarSign, XCircle, Download } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Eye, DollarSign, XCircle, Download, SlidersHorizontal, X } from 'lucide-react';
 import Link from 'next/link';
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
@@ -12,6 +14,9 @@ import { cancelOrder } from '@/actions/sales';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
+import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
 
 type Customer = {
   id: string;
@@ -82,6 +87,49 @@ export function OrderList({ orders }: OrderListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const router = useRouter();
+
+  // Advanced filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterFromDate, setFilterFromDate] = useState<Date | undefined>();
+  const [filterToDate, setFilterToDate] = useState<Date | undefined>();
+  const [filterCustomer, setFilterCustomer] = useState('');
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState('all');
+  const [filterMinAmount, setFilterMinAmount] = useState('');
+  const [filterMaxAmount, setFilterMaxAmount] = useState('');
+
+  const hasActiveFilters = filterFromDate || filterToDate || filterCustomer || filterPaymentStatus !== 'all' || filterMinAmount || filterMaxAmount;
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      // Date range
+      if (filterFromDate) {
+        const from = new Date(filterFromDate); from.setHours(0, 0, 0, 0);
+        if (new Date(order.createdAt) < from) return false;
+      }
+      if (filterToDate) {
+        const to = new Date(filterToDate); to.setHours(23, 59, 59, 999);
+        if (new Date(order.createdAt) > to) return false;
+      }
+      // Customer name
+      if (filterCustomer && !order.customer?.name?.toLowerCase().includes(filterCustomer.toLowerCase())) return false;
+      // Payment status
+      if (filterPaymentStatus !== 'all' && order.paymentStatus !== filterPaymentStatus) return false;
+      // Amount range (final price = totalAmount - discount)
+      const finalAmount = Number(order.totalAmount) - Number(order.discount || 0);
+      if (filterMinAmount && finalAmount < Number(filterMinAmount)) return false;
+      if (filterMaxAmount && finalAmount > Number(filterMaxAmount)) return false;
+      return true;
+    });
+  }, [orders, filterFromDate, filterToDate, filterCustomer, filterPaymentStatus, filterMinAmount, filterMaxAmount]);
+
+  const resetFilters = () => {
+    setFilterFromDate(undefined);
+    setFilterToDate(undefined);
+    setFilterCustomer('');
+    setFilterPaymentStatus('all');
+    setFilterMinAmount('');
+    setFilterMaxAmount('');
+  };
 
   const handlePaymentClick = (order: OrderWithDetails) => {
     setSelectedOrder(order);
@@ -176,9 +224,21 @@ export function OrderList({ orders }: OrderListProps) {
     },
     {
       key: 'totalAmount',
-      label: 'مبلغ کل',
+      label: 'قیمت نهایی',
       sortable: true,
-      render: (order) => `${Number(order.totalAmount).toLocaleString('fa-IR')} تومان`,
+      render: (order) => {
+        const final = Number(order.totalAmount) - Number(order.discount || 0);
+        return (
+          <span>
+            {final.toLocaleString('fa-IR')} تومان
+            {Number(order.discount || 0) > 0 && (
+              <span className="text-xs text-gray-400 line-through mr-1">
+                {Number(order.totalAmount).toLocaleString('fa-IR')}
+              </span>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: 'paidAmount',
@@ -191,8 +251,8 @@ export function OrderList({ orders }: OrderListProps) {
       label: 'باقیمانده',
       sortable: true,
       render: (order) => {
-        // totalAmount قبلاً تخفیف را کم کرده (در WooCommerce: total = subtotal - discount)
-        const remaining = Number(order.totalAmount) - Number(order.paidAmount || 0);
+        const finalAmount = Number(order.totalAmount) - Number(order.discount || 0);
+        const remaining = finalAmount - Number(order.paidAmount || 0);
         return (
           <span className={remaining > 0 ? 'text-red-600 font-semibold' : 'text-green-600'}>
             {remaining.toLocaleString('fa-IR')} تومان
@@ -313,7 +373,34 @@ export function OrderList({ orders }: OrderListProps) {
 
   return (
     <>
-      <div className="flex justify-end mb-4">
+      {/* Toolbar */}
+      <div className="flex justify-between items-center mb-4 gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={showFilters ? 'default' : 'outline'}
+            onClick={() => setShowFilters(!showFilters)}
+            className="gap-2"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            فیلتر پیشرفته
+            {hasActiveFilters && (
+              <Badge variant="destructive" className="h-5 w-5 p-0 flex items-center justify-center text-xs">
+                !
+              </Badge>
+            )}
+          </Button>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={resetFilters} className="gap-1 text-muted-foreground">
+              <X className="h-3 w-3" />
+              پاک‌کردن فیلترها
+            </Button>
+          )}
+          {hasActiveFilters && (
+            <span className="text-sm text-muted-foreground">
+              {filteredOrders.length} از {orders.length} سفارش
+            </span>
+          )}
+        </div>
         <Button
           onClick={handleExportToExcel}
           variant="outline"
@@ -324,8 +411,72 @@ export function OrderList({ orders }: OrderListProps) {
         </Button>
       </div>
 
+      {/* Advanced Filter Panel */}
+      {showFilters && (
+        <Card className="mb-4 border-blue-200 bg-blue-50/30">
+          <CardContent className="pt-4 pb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <JalaliDatePicker
+                name="filterFrom"
+                label="از تاریخ"
+                onChange={(d) => setFilterFromDate(d)}
+                defaultValue={filterFromDate}
+                placeholder="انتخاب تاریخ شروع"
+              />
+              <JalaliDatePicker
+                name="filterTo"
+                label="تا تاریخ"
+                onChange={(d) => setFilterToDate(d)}
+                defaultValue={filterToDate}
+                placeholder="انتخاب تاریخ پایان"
+              />
+              <div className="space-y-1.5">
+                <Label className="text-sm">نام مشتری</Label>
+                <Input
+                  placeholder="جستجو در مشتریان..."
+                  value={filterCustomer}
+                  onChange={(e) => setFilterCustomer(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">وضعیت پرداخت</Label>
+                <Select value={filterPaymentStatus} onValueChange={setFilterPaymentStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">همه</SelectItem>
+                    <SelectItem value="PAID">پرداخت شده</SelectItem>
+                    <SelectItem value="PARTIAL">پرداخت جزئی</SelectItem>
+                    <SelectItem value="UNPAID">پرداخت نشده</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">حداقل مبلغ (تومان)</Label>
+                <Input
+                  type="number"
+                  placeholder="مثلاً ۵۰۰۰۰۰"
+                  value={filterMinAmount}
+                  onChange={(e) => setFilterMinAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">حداکثر مبلغ (تومان)</Label>
+                <Input
+                  type="number"
+                  placeholder="مثلاً ۱۰۰۰۰۰۰"
+                  value={filterMaxAmount}
+                  onChange={(e) => setFilterMaxAmount(e.target.value)}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <DataTable
-        data={orders}
+        data={filteredOrders}
         columns={columns}
         searchable={true}
         searchPlaceholder="جستجو در سفارشات (شماره، مشتری)..."

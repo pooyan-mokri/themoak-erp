@@ -84,6 +84,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const [isCreditSale, setIsCreditSale] = useState(false);
   const [saleDate, setSaleDate] = useState<Date>(new Date());
   const [orderTags, setOrderTags] = useState<string[]>([]);
+  const [invoiceAccountId, setInvoiceAccountId] = useState<string>('');
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -130,6 +131,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     setIsCreditSale(false);
     setSaleDate(new Date());
     setOrderTags([]);
+    setInvoiceAccountId('');
     setIsCheckoutOpen(true);
   };
 
@@ -194,6 +196,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       warehouseId: selectedWarehouse,
       saleDate: saleDate.toISOString(),
       tags: orderTags,
+      invoiceAccountId: invoiceAccountId || undefined,
     });
 
     setIsSubmitting(false);
@@ -408,6 +411,38 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                 فروش نسیه (بدهکار کردن مشتری)
               </label>
             </div>
+
+            {isCreditSale && (
+              <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900">
+                <Label className="text-base md:text-sm text-blue-800 dark:text-blue-200">
+                  حساب بانکی برای درج در فاکتور
+                </Label>
+                <p className="text-xs text-blue-600 dark:text-blue-400">شماره کارت و شبا این حساب در فاکتور چاپ میشه</p>
+                <Select value={invoiceAccountId} onValueChange={setInvoiceAccountId}>
+                  <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
+                    <SelectValue placeholder="انتخاب حساب (اختیاری)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.filter((a) => a.cardNumber || a.sheba).map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                        {a.cardNumber && ` — ${a.cardNumber.slice(-4)}...`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {invoiceAccountId && (() => {
+                  const acc = accounts.find((a) => a.id === invoiceAccountId);
+                  if (!acc) return null;
+                  return (
+                    <div className="text-xs bg-white dark:bg-blue-900/20 border border-blue-200 rounded p-2 space-y-1" dir="ltr">
+                      {acc.cardNumber && <div className="font-mono tracking-widest text-blue-700">{acc.cardNumber}</div>}
+                      {acc.sheba && <div className="font-mono text-[11px] text-blue-600">{acc.sheba}</div>}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-4">
               <div className="space-y-2">
