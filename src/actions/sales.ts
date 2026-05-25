@@ -225,6 +225,7 @@ export async function getOrders() {
         items: {
           include: {
             product: true,
+            warehouse: { select: { id: true, name: true } },
           },
         },
       },

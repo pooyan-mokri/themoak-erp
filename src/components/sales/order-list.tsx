@@ -58,6 +58,7 @@ type OrderItem = {
   price: number;
   status: string;
   product: Product;
+  warehouse?: { id: string; name: string } | null;
 };
 
 type OrderWithDetails = {
@@ -96,12 +97,21 @@ export function OrderList({ orders }: OrderListProps) {
   const [filterPaymentStatus, setFilterPaymentStatus] = useState('all');
   const [filterMinAmount, setFilterMinAmount] = useState('');
   const [filterMaxAmount, setFilterMaxAmount] = useState('');
+  const [filterWarehouse, setFilterWarehouse] = useState('all');
 
-  const hasActiveFilters = filterFromDate || filterToDate || filterCustomer || filterPaymentStatus !== 'all' || filterMinAmount || filterMaxAmount;
+  // Derive unique warehouses from orders
+  const warehouses = useMemo(() => {
+    const map = new Map<string, string>();
+    orders.forEach((o) => o.items.forEach((item) => {
+      if (item.warehouse) map.set(item.warehouse.id, item.warehouse.name);
+    }));
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [orders]);
+
+  const hasActiveFilters = filterFromDate || filterToDate || filterCustomer || filterPaymentStatus !== 'all' || filterMinAmount || filterMaxAmount || filterWarehouse !== 'all';
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      // Date range
       if (filterFromDate) {
         const from = new Date(filterFromDate); from.setHours(0, 0, 0, 0);
         if (new Date(order.createdAt) < from) return false;
@@ -110,17 +120,15 @@ export function OrderList({ orders }: OrderListProps) {
         const to = new Date(filterToDate); to.setHours(23, 59, 59, 999);
         if (new Date(order.createdAt) > to) return false;
       }
-      // Customer name
       if (filterCustomer && !order.customer?.name?.toLowerCase().includes(filterCustomer.toLowerCase())) return false;
-      // Payment status
       if (filterPaymentStatus !== 'all' && order.paymentStatus !== filterPaymentStatus) return false;
-      // Amount range (final price = totalAmount - discount)
       const finalAmount = Number(order.totalAmount) - Number(order.discount || 0);
       if (filterMinAmount && finalAmount < Number(filterMinAmount)) return false;
       if (filterMaxAmount && finalAmount > Number(filterMaxAmount)) return false;
+      if (filterWarehouse !== 'all' && !order.items.some((item) => item.warehouse?.id === filterWarehouse)) return false;
       return true;
     });
-  }, [orders, filterFromDate, filterToDate, filterCustomer, filterPaymentStatus, filterMinAmount, filterMaxAmount]);
+  }, [orders, filterFromDate, filterToDate, filterCustomer, filterPaymentStatus, filterMinAmount, filterMaxAmount, filterWarehouse]);
 
   const resetFilters = () => {
     setFilterFromDate(undefined);
@@ -129,6 +137,7 @@ export function OrderList({ orders }: OrderListProps) {
     setFilterPaymentStatus('all');
     setFilterMinAmount('');
     setFilterMaxAmount('');
+    setFilterWarehouse('all');
   };
 
   const handlePaymentClick = (order: OrderWithDetails) => {
@@ -470,6 +479,22 @@ export function OrderList({ orders }: OrderListProps) {
                   onChange={(e) => setFilterMaxAmount(e.target.value)}
                 />
               </div>
+              {warehouses.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm">انبار</Label>
+                  <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">همه انبارها</SelectItem>
+                      {warehouses.map((w) => (
+                        <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
