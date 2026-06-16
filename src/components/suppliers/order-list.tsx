@@ -12,6 +12,7 @@ interface PurchaseOrder {
   number: number;
   supplier: { name: string };
   totalAmount: any;
+  totalAmountInToman?: any;
   status: string;
   createdAt: Date;
   items: any[];
@@ -37,10 +38,10 @@ export function OrderList({ orders, warehouses }: OrderListProps) {
       render: (order) => <span className="font-medium">{order.supplier.name}</span>,
     },
     {
-      key: 'totalAmount',
+      key: 'totalAmountInToman',
       label: 'مبلغ کل',
       sortable: true,
-      render: (order) => `${Number(order.totalAmount).toLocaleString('fa-IR')} تومان`,
+      render: (order) => `${Number(order.totalAmountInToman ?? order.totalAmount).toLocaleString('fa-IR')} تومان`,
     },
     {
       key: 'status',
