@@ -368,10 +368,10 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
                 </div>
                 <div className="col-span-6 md:col-span-2 space-y-2">
                   <Label>قیمت واحد</Label>
-                  <Input 
-                    type="number" 
+                  <Input
+                    type="number"
                     min="0"
-                    step="0.01"
+                    step="any"
                     value={item.unitCost}
                     onChange={(e) => updateItem(index, 'unitCost', e.target.value)}
                     required
@@ -442,7 +442,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
                   <Input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="any"
                     value={cost.amount}
                     onChange={(e) => updateAdditionalCost(index, 'amount', Number(e.target.value))}
                     placeholder="0"
