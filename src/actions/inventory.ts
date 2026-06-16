@@ -176,6 +176,75 @@ export async function transferStock(
   }
 }
 
+/**
+ * Transfer several products between two warehouses in a single atomic operation.
+ * Either every line moves or none does.
+ */
+export async function transferStockBatch(input: {
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  items: Array<{ productId: string; quantity: number }>;
+  tags?: string[];
+  note?: string;
+}) {
+  const { fromWarehouseId, toWarehouseId, items, tags = [], note } = input;
+
+  if (!fromWarehouseId || !toWarehouseId) {
+    return { success: false, error: 'انبار مبدا و مقصد را انتخاب کنید' };
+  }
+  if (fromWarehouseId === toWarehouseId) {
+    return { success: false, error: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند' };
+  }
+  const validItems = items.filter((i) => i.productId && i.quantity > 0);
+  if (validItems.length === 0) {
+    return { success: false, error: 'حداقل یک کالا به لیست اضافه کنید' };
+  }
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      for (const item of validItems) {
+        const sourceStock = await tx.inventory.findUnique({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId: fromWarehouseId } },
+        });
+
+        if (!sourceStock || sourceStock.quantity < item.quantity) {
+          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+          throw new Error(`موجودی انبار مبدا برای «${product?.name ?? item.productId}» کافی نیست`);
+        }
+
+        await tx.inventory.update({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId: fromWarehouseId } },
+          data: { quantity: { decrement: item.quantity } },
+        });
+
+        await tx.inventory.upsert({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId: toWarehouseId } },
+          update: { quantity: { increment: item.quantity } },
+          create: { productId: item.productId, warehouseId: toWarehouseId, quantity: item.quantity },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            fromWarehouseId,
+            toWarehouseId,
+            quantity: item.quantity,
+            type: 'TRANSFER',
+            note: note ?? null,
+            tags,
+          },
+        });
+      }
+    });
+
+    revalidatePath('/dashboard/inventory');
+    return { success: true, message: `جابجایی ${validItems.length} کالا با موفقیت انجام شد` };
+  } catch (error: any) {
+    console.error('Error in batch transfer:', error);
+    return { success: false, error: error.message || 'خطا در جابجایی موجودی' };
+  }
+}
+
 export async function getWarehouseDashboardStats() {
   try {
     const [

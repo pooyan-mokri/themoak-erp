@@ -240,6 +240,72 @@ export async function transferStock(prevState: ActionState, formData: FormData):
 }
 
 /**
+ * Send several products to a consignment partner warehouse in one atomic batch.
+ */
+export async function transferStockBatch(input: {
+  sourceWarehouseId: string;
+  targetWarehouseId: string;
+  items: Array<{ productId: string; quantity: number }>;
+}): Promise<ActionResult> {
+  const { sourceWarehouseId, targetWarehouseId, items } = input;
+
+  if (!sourceWarehouseId || !targetWarehouseId) {
+    return { success: false, message: 'انبار مبدا و مقصد را انتخاب کنید.' };
+  }
+  if (sourceWarehouseId === targetWarehouseId) {
+    return { success: false, message: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند.' };
+  }
+  const validItems = items.filter((i) => i.productId && i.quantity > 0);
+  if (validItems.length === 0) {
+    return { success: false, message: 'حداقل یک کالا به لیست اضافه کنید.' };
+  }
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      for (const item of validItems) {
+        const sourceStock = await tx.inventory.findUnique({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId: sourceWarehouseId } },
+        });
+
+        if (!sourceStock || sourceStock.quantity < item.quantity) {
+          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+          throw new Error(`موجودی انبار مبدا برای «${product?.name ?? item.productId}» کافی نیست.`);
+        }
+
+        await tx.inventory.update({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId: sourceWarehouseId } },
+          data: { quantity: { decrement: item.quantity } },
+        });
+
+        await tx.inventory.upsert({
+          where: { productId_warehouseId: { productId: item.productId, warehouseId: targetWarehouseId } },
+          update: { quantity: { increment: item.quantity } },
+          create: { productId: item.productId, warehouseId: targetWarehouseId, quantity: item.quantity },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            fromWarehouseId: sourceWarehouseId,
+            toWarehouseId: targetWarehouseId,
+            quantity: item.quantity,
+            type: 'TRANSFER',
+            note: 'انتقال امانی به همکار',
+          },
+        });
+      }
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در انتقال موجودی.';
+    return { success: false, message };
+  }
+
+  revalidatePath('/dashboard/consignment/transfer');
+  revalidatePath('/dashboard/inventory');
+  return { success: true, message: `انتقال ${validItems.length} کالا با موفقیت انجام شد.` };
+}
+
+/**
  * Record a batch of consignment sales reported by a partner for a specific date.
  * Groups ALL items into ONE Order. If an unpaid order already exists for this
  * (partner, date), items are appended to it instead of creating a new one.

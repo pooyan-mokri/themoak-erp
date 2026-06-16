@@ -6,8 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, X, Trash2 } from 'lucide-react';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { ExpenseEditDialog } from './expense-edit-dialog';
+import { deleteExpense } from '@/actions/accounting';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 interface Expense {
   id: string;
@@ -16,11 +31,19 @@ interface Expense {
   amount: any;
   currency: string;
   category?: string;
+  accountId?: string;
+  employeeId?: string;
   account?: { name: string };
   employee?: { name: string };
 }
 
-export function ExpenseList({ expenses }: { expenses: Expense[] }) {
+interface Account {
+  id: string;
+  name: string;
+}
+
+export function ExpenseList({ expenses, isAdmin = false, accounts = [] }: { expenses: Expense[]; isAdmin?: boolean; accounts?: Account[] }) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'description'>('date');
@@ -75,6 +98,16 @@ export function ExpenseList({ expenses }: { expenses: Expense[] }) {
     } else {
       setSortBy(field);
       setSortOrder('desc');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const result = await deleteExpense(id);
+    if (result.success) {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
     }
   };
 
@@ -163,14 +196,15 @@ export function ExpenseList({ expenses }: { expenses: Expense[] }) {
                 {categories.length > 0 && (
                   <TableHead className="w-[120px]">دسته‌بندی</TableHead>
                 )}
+                {isAdmin && <TableHead className="w-[100px] text-left">عملیات</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredAndSortedExpenses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={categories.length > 0 ? 6 : 5} className="text-center text-muted-foreground py-8">
-                    {searchQuery || categoryFilter !== 'all' 
-                      ? 'هزینه‌ای با فیلترهای انتخابی یافت نشد.' 
+                  <TableCell colSpan={(categories.length > 0 ? 6 : 5) + (isAdmin ? 1 : 0)} className="text-center text-muted-foreground py-8">
+                    {searchQuery || categoryFilter !== 'all'
+                      ? 'هزینه‌ای با فیلترهای انتخابی یافت نشد.'
                       : 'هیچ هزینه‌ای ثبت نشده است.'}
                   </TableCell>
                 </TableRow>
@@ -199,6 +233,37 @@ export function ExpenseList({ expenses }: { expenses: Expense[] }) {
                         <span className="text-xs px-2 py-1 bg-muted rounded-full">
                           {expense.category || '-'}
                         </span>
+                      </TableCell>
+                    )}
+                    {isAdmin && (
+                      <TableCell className="text-left">
+                        <div className="flex justify-end gap-1">
+                          <ExpenseEditDialog expense={expense} accounts={accounts} />
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>حذف هزینه</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  آیا از حذف این هزینه اطمینان دارید؟ موجودی حساب مربوطه به‌صورت خودکار اصلاح می‌شود. این عملیات قابل بازگشت نیست.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>انصراف</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(expense.id)}
+                                  className="bg-red-600 hover:bg-red-700"
+                                >
+                                  حذف
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>

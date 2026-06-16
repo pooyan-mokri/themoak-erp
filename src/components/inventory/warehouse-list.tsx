@@ -24,9 +24,11 @@ interface Warehouse {
 
 interface WarehouseListProps {
   warehouses: Warehouse[];
+  isAdmin?: boolean;
+  stockByWarehouse?: Record<string, number>;
 }
 
-export function WarehouseList({ warehouses }: WarehouseListProps) {
+export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = {} }: WarehouseListProps) {
   const handleDelete = async (id: string) => {
     if (confirm('آیا از حذف این انبار اطمینان دارید؟')) {
       const result = await deleteWarehouse(id);
@@ -45,15 +47,18 @@ export function WarehouseList({ warehouses }: WarehouseListProps) {
           <TableRow>
             <TableHead className="text-right">نام انبار</TableHead>
             <TableHead className="text-right">نوع</TableHead>
-            <TableHead className="text-right">شناسه</TableHead>
+            <TableHead className="text-right">موجودی</TableHead>
             <TableHead className="text-left">عملیات</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {warehouses.map((warehouse) => (
+          {warehouses.map((warehouse) => {
+            const stock = stockByWarehouse[warehouse.id] ?? 0;
+            const canDelete = isAdmin && stock === 0;
+            return (
             <TableRow key={warehouse.id}>
               <TableCell className="font-medium">
-                <Link 
+                <Link
                   href={`/dashboard/inventory/warehouses/${warehouse.id}`}
                   className="hover:underline text-primary"
                 >
@@ -67,22 +72,33 @@ export function WarehouseList({ warehouses }: WarehouseListProps) {
                   <Badge variant="outline">فیزیکی</Badge>
                 )}
               </TableCell>
-              <TableCell className="text-xs text-muted-foreground">{warehouse.id}</TableCell>
+              <TableCell>
+                {stock === 0 ? (
+                  <span className="text-muted-foreground">۰</span>
+                ) : (
+                  <span className="font-medium">{stock.toLocaleString('fa-IR')}</span>
+                )}
+              </TableCell>
               <TableCell className="text-left">
                 <div className="flex justify-end gap-2">
                   <WarehouseEditDialog warehouse={warehouse} />
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => handleDelete(warehouse.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-red-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30"
+                      onClick={() => handleDelete(warehouse.id)}
+                      disabled={!canDelete}
+                      title={canDelete ? 'حذف انبار' : 'فقط انبارهای با موجودی صفر قابل حذف هستند'}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </div>

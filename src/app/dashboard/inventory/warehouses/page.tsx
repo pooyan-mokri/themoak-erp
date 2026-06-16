@@ -1,9 +1,23 @@
 import { getWarehouses } from '@/actions/warehouse';
 import { WarehouseForm } from '@/components/inventory/warehouse-form';
 import { WarehouseList } from '@/components/inventory/warehouse-list';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 export default async function WarehousesPage() {
   const warehouses = await getWarehouses();
+  const session = await auth();
+  const isAdmin = session?.user?.role === 'ADMIN';
+
+  // Total stock per warehouse (sum of inventory quantities)
+  const stockGroups = await prisma.inventory.groupBy({
+    by: ['warehouseId'],
+    _sum: { quantity: true },
+  });
+  const stockByWarehouse: Record<string, number> = {};
+  stockGroups.forEach((g: any) => {
+    stockByWarehouse[g.warehouseId] = g._sum.quantity ?? 0;
+  });
 
   return (
     <div className="space-y-6">
@@ -13,7 +27,7 @@ export default async function WarehousesPage() {
           <WarehouseForm />
         </div>
         <div className="md:col-span-2">
-          <WarehouseList warehouses={warehouses} />
+          <WarehouseList warehouses={warehouses} isAdmin={isAdmin} stockByWarehouse={stockByWarehouse} />
         </div>
       </div>
     </div>

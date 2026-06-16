@@ -1,7 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
-import { transferStock } from '@/actions/inventory';
+import { useState, useMemo } from 'react';
+import { transferStockBatch } from '@/actions/inventory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,139 +13,225 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useEffect } from 'react';
-
-const initialState = {
-  success: false,
-  error: undefined as string | undefined,
-  message: '',
-};
 
 interface TransferFormProps {
   warehouses: { id: string; name: string }[];
   products: { id: string; name: string; sku: string }[];
 }
 
+interface LineItem {
+  productId: string;
+  quantity: number;
+}
+
 export function TransferForm({ warehouses, products }: TransferFormProps) {
-  const transferAction = async (prevState: any, formData: FormData) => {
-    const productId = formData.get('productId') as string;
-    const fromWarehouseId = formData.get('fromWarehouseId') as string;
-    const toWarehouseId = formData.get('toWarehouseId') as string;
-    const quantity = Number(formData.get('quantity'));
-    const tagsRaw = formData.get('tags') as string;
-    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : [];
+  const [fromWarehouseId, setFromWarehouseId] = useState('');
+  const [toWarehouseId, setToWarehouseId] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [items, setItems] = useState<LineItem[]>([]);
+  const [pickProduct, setPickProduct] = useState('');
+  const [pickQty, setPickQty] = useState('1');
+  const [submitting, setSubmitting] = useState(false);
 
-    if (!productId || !fromWarehouseId || !toWarehouseId || !quantity) {
-      return { success: false, error: 'لطفا تمام فیلدها را پر کنید', message: '' };
+  const productMap = useMemo(() => {
+    const m = new Map<string, { name: string; sku: string }>();
+    products.forEach((p) => m.set(p.id, { name: p.name, sku: p.sku }));
+    return m;
+  }, [products]);
+
+  const addItem = () => {
+    const qty = Number(pickQty);
+    if (!pickProduct) {
+      toast.error('یک محصول انتخاب کنید.');
+      return;
     }
-
-    if (fromWarehouseId === toWarehouseId) {
-      return { success: false, error: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند', message: '' };
+    if (!qty || qty <= 0) {
+      toast.error('تعداد باید بیشتر از صفر باشد.');
+      return;
     }
-
-    const result = await transferStock(productId, fromWarehouseId, toWarehouseId, quantity, undefined, undefined, tags);
-    return {
-        success: result.success,
-        message: result.message || '',
-        error: result.error
-    };
+    setItems((prev) => {
+      const existing = prev.find((i) => i.productId === pickProduct);
+      if (existing) {
+        return prev.map((i) => (i.productId === pickProduct ? { ...i, quantity: i.quantity + qty } : i));
+      }
+      return [...prev, { productId: pickProduct, quantity: qty }];
+    });
+    setPickProduct('');
+    setPickQty('1');
   };
 
-  const [state, dispatch] = useFormState(transferAction, initialState);
+  const updateQty = (productId: string, qty: number) => {
+    setItems((prev) => prev.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i)));
+  };
 
-  useEffect(() => {
-    if (state.success) {
-      toast.success(state.message);
-    } else if (state.error) {
-      toast.error(state.error);
+  const removeItem = (productId: string) => {
+    setItems((prev) => prev.filter((i) => i.productId !== productId));
+  };
+
+  const handleTransfer = async () => {
+    if (!fromWarehouseId || !toWarehouseId) {
+      toast.error('انبار مبدا و مقصد را انتخاب کنید.');
+      return;
     }
-  }, [state]);
+    if (fromWarehouseId === toWarehouseId) {
+      toast.error('انبار مبدا و مقصد نمی‌توانند یکسان باشند.');
+      return;
+    }
+    if (items.length === 0) {
+      toast.error('حداقل یک کالا به لیست اضافه کنید.');
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await transferStockBatch({
+      fromWarehouseId,
+      toWarehouseId,
+      items,
+      tags,
+    });
+    setSubmitting(false);
+
+    if (result.success) {
+      toast.success(result.message);
+      setItems([]);
+      setTags([]);
+    } else {
+      toast.error(result.error || 'خطا در جابجایی موجودی');
+    }
+  };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>انتقال موجودی بین انبارها</CardTitle>
       </CardHeader>
-      <CardContent>
-        <form action={dispatch} className="space-y-4">
+      <CardContent className="space-y-4">
+        {/* Source / destination */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="productId">محصول</Label>
-            <Select name="productId" required>
+            <Label>انبار مبدا</Label>
+            <Select value={fromWarehouseId} onValueChange={setFromWarehouseId}>
               <SelectTrigger>
-                <SelectValue placeholder="انتخاب محصول" />
+                <SelectValue placeholder="انتخاب مبدا" />
               </SelectTrigger>
               <SelectContent>
-                {products.map((product) => (
-                  <SelectItem key={product.id} value={product.id}>
-                    {product.name} ({product.sku})
-                  </SelectItem>
+                {warehouses.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="fromWarehouseId">انبار مبدا</Label>
-              <Select name="fromWarehouseId" required>
-                <SelectTrigger>
-                  <SelectValue placeholder="انتخاب مبدا" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((warehouse) => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="toWarehouseId">انبار مقصد</Label>
-              <Select name="toWarehouseId" required>
-                <SelectTrigger>
-                  <SelectValue placeholder="انتخاب مقصد" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((warehouse) => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
           <div className="space-y-2">
-            <Label htmlFor="quantity">تعداد</Label>
+            <Label>انبار مقصد</Label>
+            <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
+              <SelectTrigger>
+                <SelectValue placeholder="انتخاب مقصد" />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Add a line */}
+        <div className="flex flex-col sm:flex-row gap-2 items-end border-t pt-4">
+          <div className="flex-1 space-y-2 w-full">
+            <Label>محصول</Label>
+            <Select value={pickProduct} onValueChange={setPickProduct}>
+              <SelectTrigger>
+                <SelectValue placeholder="انتخاب محصول" />
+              </SelectTrigger>
+              <SelectContent>
+                {products.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-full sm:w-28 space-y-2">
+            <Label>تعداد</Label>
             <Input
-              id="quantity"
-              name="quantity"
               type="number"
               min="1"
-              placeholder="0"
-              required
+              value={pickQty}
+              onChange={(e) => setPickQty(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } }}
             />
           </div>
+          <Button type="button" variant="secondary" onClick={addItem} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 ml-1" /> افزودن
+          </Button>
+        </div>
 
-          <TagInput name="tags" label="تگ‌ها (اختیاری)" placeholder="مثلا: انتقال فصلی، اضطراری..." />
+        {/* Items list */}
+        {items.length > 0 && (
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-right">محصول</TableHead>
+                  <TableHead className="text-right w-[120px]">تعداد</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => (
+                  <TableRow key={item.productId}>
+                    <TableCell className="font-medium">
+                      {productMap.get(item.productId)?.name ?? item.productId}
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateQty(item.productId, Number(e.target.value))}
+                        className="h-8 w-24"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => removeItem(item.productId)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-          <SubmitButton />
-        </form>
+        <TagInput label="تگ‌ها (اختیاری)" placeholder="مثلا: انتقال فصلی، اضطراری..." value={tags} onChange={setTags} />
+
+        <Button
+          type="button"
+          className="w-full"
+          onClick={handleTransfer}
+          disabled={submitting || items.length === 0}
+        >
+          {submitting ? 'در حال انتقال...' : `انتقال موجودی${items.length > 0 ? ` (${items.length} کالا)` : ''}`}
+        </Button>
       </CardContent>
     </Card>
-  );
-}
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" className="w-full" disabled={pending}>
-      {pending ? 'در حال انتقال...' : 'انتقال موجودی'}
-    </Button>
   );
 }

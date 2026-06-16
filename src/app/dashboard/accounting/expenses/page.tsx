@@ -3,6 +3,7 @@ import { getAccounts } from '@/actions/accounting';
 import { ExpenseForm } from '@/components/accounting/expense-form';
 import { ExpenseList } from '@/components/accounting/expense-list';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 async function getExpenses() {
   try {
@@ -67,13 +68,15 @@ async function getExpenses() {
 export default async function ExpensesPage() {
   const accounts = await getAccounts();
   const expenses = await getExpenses();
+  const session = await auth();
+  const isAdmin = session?.user?.role === 'ADMIN';
 
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">مدیریت هزینه‌ها</h1>
       <div className="grid gap-6 md:grid-cols-2">
         <ExpenseForm accounts={accounts} />
-        <ExpenseList expenses={expenses} />
+        <ExpenseList expenses={expenses} isAdmin={isAdmin} accounts={accounts} />
       </div>
     </div>
   );

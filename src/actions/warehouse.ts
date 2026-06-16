@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 // const prisma = new PrismaClient();
 
@@ -108,23 +109,40 @@ export async function updateWarehouse(id: string, prevState: any, formData: Form
 }
 
 export async function deleteWarehouse(id: string) {
-  try {
-    // Check if warehouse has inventory
-    const inventoryCount = await prisma.inventory.count({
-      where: { warehouseId: id },
-    });
+  // Admin only
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return { message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند انبار را حذف کند.', success: false };
+  }
 
-    if (inventoryCount > 0) {
-      return { message: 'این انبار دارای موجودی است و قابل حذف نیست.', success: false };
+  try {
+    // Only allow deletion when the warehouse holds zero stock.
+    // We sum quantities (not record count) so a warehouse with leftover
+    // zero-quantity inventory rows can still be removed.
+    const agg = await prisma.inventory.aggregate({
+      where: { warehouseId: id },
+      _sum: { quantity: true },
+    });
+    const totalStock = agg._sum.quantity ?? 0;
+
+    if (totalStock > 0) {
+      return { message: `این انبار دارای ${totalStock.toLocaleString('fa-IR')} عدد موجودی است و قابل حذف نیست.`, success: false };
     }
 
-    await prisma.warehouse.delete({
-      where: { id },
+    await prisma.$transaction(async (tx: any) => {
+      // Remove the zero-quantity inventory rows first, then the warehouse.
+      await tx.inventory.deleteMany({ where: { warehouseId: id } });
+      await tx.warehouse.delete({ where: { id } });
     });
-    
+
     revalidatePath('/dashboard', 'layout');
     return { message: 'انبار با موفقیت حذف شد.', success: true };
-  } catch (error) {
+  } catch (error: any) {
+    // Foreign-key violation: warehouse still referenced by movements / orders / audits
+    if (error?.code === 'P2003') {
+      return { message: 'این انبار دارای سابقه جابجایی یا فروش است و قابل حذف نیست.', success: false };
+    }
+    console.error('Error deleting warehouse:', error);
     return { message: 'خطا در حذف انبار.', success: false };
   }
 }

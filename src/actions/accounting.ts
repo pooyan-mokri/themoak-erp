@@ -5,6 +5,7 @@ import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { auth } from '@/auth';
 
 // const prisma = new PrismaClient(); // Removed local instance
 
@@ -416,6 +417,160 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
     // Ignore revalidatePath error outside of Next.js context
   }
   return { message: 'هزینه با موفقیت ثبت شد.' };
+}
+
+// --- Admin-only: edit / delete a recorded expense ---
+
+async function requireAdmin(): Promise<ActionResult | null> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند این عملیات را انجام دهد.' };
+  }
+  return null;
+}
+
+/**
+ * Delete an expense transaction (admin only).
+ * Reverses the account balance change that was applied when the expense was recorded.
+ */
+export async function deleteExpense(id: string): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  try {
+    const expense = await prisma.transaction.findUnique({ where: { id } });
+    if (!expense || expense.type !== TransactionType.EXPENSE) {
+      return { success: false, message: 'هزینه یافت نشد.' };
+    }
+
+    await prisma.$transaction(async (tx: any) => {
+      // Reverse the balance decrement for account-paid expenses
+      if (expense.accountId) {
+        await tx.account.update({
+          where: { id: expense.accountId },
+          data: { balance: { increment: expense.amountInToman } },
+        });
+      }
+      await tx.transaction.delete({ where: { id } });
+    });
+
+    revalidatePath('/dashboard/accounting/expenses');
+    return { success: true, message: 'هزینه با موفقیت حذف شد.' };
+  } catch (error) {
+    console.error('Error deleting expense:', error);
+    return { success: false, message: 'خطا در حذف هزینه.' };
+  }
+}
+
+const UpdateExpenseSchema = z.object({
+  id: z.string().min(1),
+  amount: z.coerce.number().min(1, 'مبلغ باید بیشتر از صفر باشد'),
+  currency: z.nativeEnum(Currency),
+  category: z.string().min(1, 'دسته‌بندی الزامی است'),
+  description: z.string().optional(),
+  date: z.string().optional(),
+  accountId: z.string().optional(),
+});
+
+/**
+ * Edit an expense transaction (admin only).
+ * Reverses the old account balance effect and applies the new one atomically.
+ * Preserves the original payment mode: account-paid stays account-paid,
+ * employee-paid (Accounts Payable) stays employee-paid with no balance change.
+ */
+export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  const parsed = UpdateExpenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, message: 'اطلاعات وارد شده معتبر نیست.' };
+  }
+  const { id, amount, currency, category, description, date, accountId } = parsed.data;
+
+  try {
+    const existing = await prisma.transaction.findUnique({ where: { id } });
+    if (!existing || existing.type !== TransactionType.EXPENSE) {
+      return { success: false, message: 'هزینه یافت نشد.' };
+    }
+
+    // Resolve new exchange rate / Toman amount
+    let rate = 1;
+    if (currency !== 'TOMAN') {
+      const latestRate = await prisma.exchangeRate.findFirst({
+        where: { currency },
+        orderBy: { date: 'desc' },
+      });
+      if (!latestRate) {
+        return { success: false, message: `نرخ تبدیل برای ارز ${currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.` };
+      }
+      rate = Number(latestRate.rateToToman);
+    }
+    const newAmountInToman = amount * rate;
+    const wasAccountPaid = !!existing.accountId;
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      if (wasAccountPaid) {
+        // 1. Reverse the original decrement
+        await tx.account.update({
+          where: { id: existing.accountId },
+          data: { balance: { increment: existing.amountInToman } },
+        });
+
+        // 2. Apply the new decrement (account may have changed)
+        const targetAccountId = accountId || existing.accountId;
+        const account = await tx.account.findUnique({ where: { id: targetAccountId } });
+        if (!account) throw new Error('حساب پرداخت یافت نشد');
+
+        if (Number(account.balance) < newAmountInToman) {
+          throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی فعلی: ${Number(account.balance).toLocaleString('fa-IR')} تومان`);
+        }
+
+        await tx.account.update({
+          where: { id: targetAccountId },
+          data: { balance: { decrement: new Prisma.Decimal(newAmountInToman) } },
+        });
+
+        await tx.transaction.update({
+          where: { id },
+          data: {
+            amount: new Prisma.Decimal(amount),
+            currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(newAmountInToman),
+            category,
+            description: description || category,
+            date: date ? new Date(date) : existing.date,
+            accountId: targetAccountId,
+          },
+        });
+      } else {
+        // Employee-paid (liability) — no balance change
+        await tx.transaction.update({
+          where: { id },
+          data: {
+            amount: new Prisma.Decimal(amount),
+            currency,
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Prisma.Decimal(newAmountInToman),
+            category,
+            description: description || category,
+            date: date ? new Date(date) : existing.date,
+          },
+        });
+      }
+      return { ok: true };
+    });
+
+    if (!result.ok) return { success: false, message: 'خطا در ویرایش هزینه.' };
+
+    revalidatePath('/dashboard/accounting/expenses');
+    return { success: true, message: 'هزینه با موفقیت ویرایش شد.' };
+  } catch (error: unknown) {
+    console.error('Error updating expense:', error);
+    const message = error instanceof Error ? error.message : 'خطا در ویرایش هزینه.';
+    return { success: false, message };
+  }
 }
 
 export async function getSalesByProduct() {
