@@ -2,17 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { receivePurchaseOrderItems } from '@/actions/supplier';
-import { updatePurchaseOrderStatus, recordPurchasePayment, recordArrival } from '@/actions/supplier-workflow';
+import { updatePurchaseOrderStatus, recordPurchasePartialPayment, recordArrival } from '@/actions/supplier-workflow';
 import { getLatestExchangeRates } from '@/actions/accounting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
@@ -64,6 +66,15 @@ interface PurchaseOrderArrivalCost {
   exchangeRateSnapshot?: number;
 }
 
+interface PurchaseOrderPayment {
+  id: string;
+  amount: number;
+  accountId: string;
+  accountName: string;
+  description?: string;
+  date: Date | string;
+}
+
 interface PurchaseOrder {
   id: string;
   number: number;
@@ -75,6 +86,8 @@ interface PurchaseOrder {
   items: PurchaseOrderItem[];
   additionalCosts?: PurchaseOrderAdditionalCost[];
   arrivalAdditionalCosts?: PurchaseOrderArrivalCost[];
+  payments?: PurchaseOrderPayment[];
+  paidAmountInToman?: number;
 }
 
 interface ExchangeRate {
@@ -96,6 +109,9 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
   const [showArrivalDialog, setShowArrivalDialog] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState<Date>(new Date());
+  const [paymentDescription, setPaymentDescription] = useState('');
   const [arrivalAccount, setArrivalAccount] = useState('');
   const [arrivalCosts, setArrivalCosts] = useState<Array<{ title: string; amount: number; currency: Currency }>>([]);
   const [receivedItems, setReceivedItems] = useState<Record<string, { quantity: number }>>({});
@@ -251,22 +267,53 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
     }
   };
 
+  // Payment figures (partial payments)
+  const totalInToman = Number(order.totalAmountInToman) || 0;
+  const paidSoFar = order.paidAmountInToman ?? (order.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
+  const remaining = Math.max(0, totalInToman - paidSoFar);
+
+  const openPaymentDialog = () => {
+    setPaymentAmount(remaining > 0 ? String(Math.round(remaining)) : '');
+    setPaymentDate(new Date());
+    setPaymentDescription('');
+    setSelectedAccount('');
+    setError('');
+    setShowPaymentDialog(true);
+  };
+
   const handlePayment = async () => {
     if (!selectedAccount) {
       setError('لطفا حساب را انتخاب کنید');
+      return;
+    }
+    const amountNum = Number(paymentAmount);
+    if (!amountNum || amountNum <= 0) {
+      setError('مبلغ پرداخت باید بیشتر از صفر باشد');
+      return;
+    }
+    if (amountNum > remaining + 1) {
+      setError(`مبلغ پرداخت نمی‌تواند از باقیمانده (${Math.round(remaining).toLocaleString('fa-IR')} تومان) بیشتر باشد`);
       return;
     }
 
     setLoading(true);
     setError('');
     try {
-      const result = await recordPurchasePayment(order.id, selectedAccount);
+      const result = await recordPurchasePartialPayment({
+        orderId: order.id,
+        accountId: selectedAccount,
+        amount: amountNum,
+        date: paymentDate.toISOString(),
+        description: paymentDescription.trim() || undefined,
+      });
       if (result.success) {
         router.refresh();
         setShowPaymentDialog(false);
         setSelectedAccount('');
+        setPaymentAmount('');
+        setPaymentDescription('');
       } else {
-        setError(result.error || 'خطا در ثبت پرداخت');
+        setError(result.message || 'خطا در ثبت پرداخت');
       }
     } catch (err) {
       setError('خطا در ارتباط با سرور');
@@ -310,6 +357,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
     const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
       'DRAFT': { label: 'پیش‌نویس', variant: 'outline' },
       'PENDING_PAYMENT': { label: 'منتظر پرداخت', variant: 'secondary' },
+      'PARTIALLY_PAID': { label: 'پرداخت جزئی', variant: 'secondary' },
       'PAID': { label: 'پرداخت شده', variant: 'default' },
       'IN_PRODUCTION': { label: 'در حال تولید', variant: 'default' },
       'ARRIVED': { label: 'رسیده به مقصد', variant: 'default' },
@@ -331,7 +379,9 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
       { key: 'RECEIVED', label: 'دریافت شده', icon: '✅' },
     ];
 
-    const currentIndex = steps.findIndex(s => s.key === order.status);
+    // Treat a partially-paid order as still at the "pending payment" stage
+    const effectiveStatus = order.status === 'PARTIALLY_PAID' ? 'PENDING_PAYMENT' : order.status;
+    const currentIndex = steps.findIndex(s => s.key === effectiveStatus);
     return steps.map((step, index) => ({
       ...step,
       completed: index <= currentIndex,
@@ -408,13 +458,13 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                   ارسال برای پرداخت
                 </Button>
               )}
-              {order.status === 'PENDING_PAYMENT' && (
-                <Button 
-                  onClick={() => setShowPaymentDialog(true)}
+              {(order.status === 'PENDING_PAYMENT' || order.status === 'PARTIALLY_PAID') && (
+                <Button
+                  onClick={openPaymentDialog}
                   variant="default"
                 >
                   <CreditCard className="w-4 h-4 ml-2" />
-                  ثبت پرداخت
+                  {order.status === 'PARTIALLY_PAID' ? 'ثبت پرداخت بعدی' : 'ثبت پرداخت'}
                 </Button>
               )}
               {order.status === 'PAID' && (
@@ -511,6 +561,70 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payments history */}
+      {(order.status !== 'DRAFT' && order.status !== 'CANCELLED') && totalInToman > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>پرداخت‌ها</span>
+              {remaining <= 0 ? (
+                <Badge variant="default" className="bg-green-600 hover:bg-green-600">تسویه کامل</Badge>
+              ) : paidSoFar > 0 ? (
+                <Badge variant="secondary">پرداخت جزئی</Badge>
+              ) : (
+                <Badge variant="outline">پرداخت‌نشده</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">مبلغ کل</div>
+                <div className="font-bold">{Math.round(totalInToman).toLocaleString('fa-IR')}</div>
+                <div className="text-[10px] text-muted-foreground">تومان</div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">پرداخت‌شده</div>
+                <div className="font-bold text-green-600">{Math.round(paidSoFar).toLocaleString('fa-IR')}</div>
+                <div className="text-[10px] text-muted-foreground">تومان</div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">باقیمانده</div>
+                <div className="font-bold text-orange-600">{Math.round(remaining).toLocaleString('fa-IR')}</div>
+                <div className="text-[10px] text-muted-foreground">تومان</div>
+              </div>
+            </div>
+
+            {order.payments && order.payments.length > 0 ? (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">تاریخ</TableHead>
+                      <TableHead className="text-right">حساب</TableHead>
+                      <TableHead className="text-right">مبلغ (تومان)</TableHead>
+                      <TableHead className="text-right">توضیحات</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {order.payments.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell>{formatJalaliDate(p.date)}</TableCell>
+                        <TableCell>{p.accountName}</TableCell>
+                        <TableCell className="font-medium">{Math.round(Number(p.amount)).toLocaleString('fa-IR')}</TableCell>
+                        <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-2">هنوز پرداختی ثبت نشده است.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -668,7 +782,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
 
       {/* Payment Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>ثبت پرداخت</DialogTitle>
           </DialogHeader>
@@ -678,6 +792,23 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-2 text-center text-sm rounded-lg border p-3 bg-muted/30">
+              <div>
+                <div className="text-xs text-muted-foreground">مبلغ کل</div>
+                <div className="font-semibold">{Math.round(totalInToman).toLocaleString('fa-IR')}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">پرداخت‌شده</div>
+                <div className="font-semibold text-green-600">{Math.round(paidSoFar).toLocaleString('fa-IR')}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">باقیمانده</div>
+                <div className="font-semibold text-orange-600">{Math.round(remaining).toLocaleString('fa-IR')}</div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>حساب پرداخت *</Label>
               <Select value={selectedAccount} onValueChange={setSelectedAccount} required>
@@ -693,8 +824,46 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="text-sm text-muted-foreground">
-              مبلغ کل: {order.totalAmountInToman ? Number(order.totalAmountInToman).toLocaleString('fa-IR') : '0'} تومان
+
+            <div className="space-y-2">
+              <Label>مبلغ پرداخت (تومان) *</Label>
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="مبلغ این پرداخت"
+              />
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">باقیمانده: {Math.round(remaining).toLocaleString('fa-IR')} تومان</span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setPaymentAmount(String(Math.round(remaining)))}
+                >
+                  پرداخت کامل باقیمانده
+                </Button>
+              </div>
+            </div>
+
+            <JalaliDatePicker
+              name="paymentDate"
+              label="تاریخ پرداخت"
+              defaultValue={paymentDate}
+              onChange={(d) => d && setPaymentDate(d)}
+            />
+
+            <div className="space-y-2">
+              <Label>توضیحات (اختیاری)</Label>
+              <Textarea
+                value={paymentDescription}
+                onChange={(e) => setPaymentDescription(e.target.value)}
+                rows={2}
+                placeholder="مثلا: پیش‌پرداخت، قسط اول..."
+              />
             </div>
           </div>
           <DialogFooter>

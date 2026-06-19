@@ -19,7 +19,8 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
     // Validate status transition
     const validTransitions: Record<string, string[]> = {
       'DRAFT': ['PENDING_PAYMENT', 'CANCELLED'],
-      'PENDING_PAYMENT': ['PAID', 'CANCELLED'],
+      'PENDING_PAYMENT': ['PARTIALLY_PAID', 'PAID', 'CANCELLED'],
+      'PARTIALLY_PAID': ['PAID', 'CANCELLED'],
       'PAID': ['IN_PRODUCTION', 'CANCELLED'],
       'IN_PRODUCTION': ['ARRIVED', 'CANCELLED'],
       'ARRIVED': ['RECEIVED', 'CANCELLED'],
@@ -143,6 +144,150 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
     return { success: true, message: 'پرداخت با موفقیت ثبت شد' };
   } catch (error: unknown) {
     console.error('Error recording payment:', error);
+    const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت';
+    return { success: false, message };
+  }
+}
+
+/**
+ * Record a PARTIAL payment for a purchase order. Multiple payments are allowed,
+ * each from a possibly different account, each on its own (Jalali) date.
+ * Payments are made in Toman and are capped at the order's remaining balance.
+ * When the running total reaches the order total, status becomes PAID; otherwise
+ * it becomes PARTIALLY_PAID.
+ */
+export async function recordPurchasePartialPayment(input: {
+  orderId: string;
+  accountId: string;
+  amount: number;        // in Toman
+  date?: string;         // ISO string from the Jalali picker
+  description?: string;
+}): Promise<ActionResult> {
+  const { orderId, accountId, amount, date, description } = input;
+
+  if (!accountId) return { success: false, message: 'لطفا حساب پرداخت را انتخاب کنید.' };
+  if (!amount || amount <= 0) return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
+
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      const order = await tx.purchaseOrder.findUnique({
+        where: { id: orderId },
+        include: { items: true, additionalCosts: true, payments: true },
+      });
+
+      if (!order) throw new Error('سفارش یافت نشد');
+      if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PARTIALLY_PAID') {
+        throw new Error('این سفارش در وضعیت قابل پرداخت نیست');
+      }
+
+      const account = await tx.account.findUnique({ where: { id: accountId } });
+      if (!account) throw new Error('حساب پرداخت یافت نشد');
+
+      // Exchange rates for recalculation fallback
+      const exchangeRates = await tx.exchangeRate.findMany({
+        orderBy: { date: 'desc' },
+        distinct: ['currency'],
+      });
+      const getExchangeRate = (currency: string) => {
+        if (currency === 'TOMAN') return 1;
+        const rate = exchangeRates.find((r: any) => r.currency === currency);
+        return rate ? Number(rate.rateToToman) : 1;
+      };
+
+      // Order total in Toman (recalculate if not stored)
+      let totalInToman = Number(order.totalAmountInToman) || 0;
+      if (!totalInToman) {
+        order.items.forEach((item: any) => {
+          totalInToman += Number(item.quantity) * Number(item.unitCost) * getExchangeRate(item.currency);
+        });
+        order.additionalCosts?.forEach((cost: any) => {
+          totalInToman += Number(cost.amount) * getExchangeRate(cost.currency);
+        });
+      }
+
+      const paidSoFar = order.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+      const remaining = totalInToman - paidSoFar;
+
+      if (remaining <= 0) {
+        throw new Error('این سفارش قبلاً به‌طور کامل تسویه شده است.');
+      }
+      // Allow a tiny rounding tolerance, then cap at remaining
+      if (amount > remaining + 1) {
+        throw new Error(`مبلغ پرداخت از باقیمانده بیشتر است. باقیمانده: ${Math.round(remaining).toLocaleString('fa-IR')} تومان`);
+      }
+      const payAmount = amount > remaining ? remaining : amount;
+
+      const balance = Number(account.balance);
+      if (balance < payAmount) {
+        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${balance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${Math.round(payAmount).toLocaleString('fa-IR')} تومان`);
+      }
+
+      const paymentDate = date ? new Date(date) : new Date();
+
+      // 1. Expense transaction
+      const transaction = await tx.transaction.create({
+        data: {
+          type: TransactionType.EXPENSE,
+          amount: payAmount,
+          currency: Currency.TOMAN,
+          rateSnapshot: 1,
+          amountInToman: payAmount,
+          accountId,
+          description: description?.trim()
+            ? `پرداخت سفارش خرید #${order.number} - ${description.trim()}`
+            : `پرداخت سفارش خرید #${order.number} به تامین‌کننده`,
+          category: 'Purchase Payment',
+          date: paymentDate,
+        },
+      });
+
+      // 2. Decrement account balance
+      await tx.account.update({
+        where: { id: accountId },
+        data: { balance: { decrement: payAmount } },
+      });
+
+      // 3. Payment record
+      await tx.purchaseOrderPayment.create({
+        data: {
+          purchaseOrderId: orderId,
+          amount: payAmount,
+          accountId,
+          transactionId: transaction.id,
+          description: description?.trim() || null,
+          date: paymentDate,
+        },
+      });
+
+      // 4. Update order status + latest payment pointers
+      const newPaid = paidSoFar + payAmount;
+      const fullyPaid = newPaid >= totalInToman - 1; // rounding tolerance
+      await tx.purchaseOrder.update({
+        where: { id: orderId },
+        data: {
+          status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID',
+          paymentAccountId: accountId,
+          paymentTransactionId: transaction.id,
+        },
+      });
+
+      return { fullyPaid, remaining: Math.max(0, totalInToman - newPaid) };
+    });
+
+    revalidatePath('/dashboard/suppliers/orders');
+    revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
+    revalidatePath('/dashboard/accounting/expenses');
+    revalidatePath('/dashboard/accounting/transactions');
+    revalidatePath('/dashboard', 'layout');
+
+    return {
+      success: true,
+      message: result.fullyPaid
+        ? 'پرداخت ثبت شد و سفارش به‌طور کامل تسویه شد.'
+        : `پرداخت ثبت شد. باقیمانده: ${Math.round(result.remaining).toLocaleString('fa-IR')} تومان`,
+    };
+  } catch (error: unknown) {
+    console.error('Error recording partial payment:', error);
     const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت';
     return { success: false, message };
   }

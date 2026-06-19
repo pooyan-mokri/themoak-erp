@@ -48,11 +48,24 @@ export function OrderList({ orders, warehouses }: OrderListProps) {
       label: 'وضعیت',
       sortable: true,
       className: 'text-center',
-      render: (order) => (
-        <Badge variant={order.status === 'RECEIVED' ? 'default' : 'secondary'}>
-          {order.status === 'RECEIVED' ? 'دریافت شده' : order.status}
-        </Badge>
-      ),
+      render: (order) => {
+        const labels: Record<string, string> = {
+          DRAFT: 'پیش‌نویس',
+          PENDING_PAYMENT: 'منتظر پرداخت',
+          PARTIALLY_PAID: 'پرداخت جزئی',
+          PAID: 'پرداخت شده',
+          IN_PRODUCTION: 'در حال تولید',
+          ARRIVED: 'رسیده به مقصد',
+          PARTIALLY_RECEIVED: 'نیمه دریافت شده',
+          RECEIVED: 'دریافت شده',
+          CANCELLED: 'لغو شده',
+        };
+        return (
+          <Badge variant={order.status === 'RECEIVED' ? 'default' : 'secondary'}>
+            {labels[order.status] ?? order.status}
+          </Badge>
+        );
+      },
     },
     {
       key: 'createdAt',

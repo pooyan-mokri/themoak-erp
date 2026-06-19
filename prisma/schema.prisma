@@ -58,6 +58,7 @@ model Account {
   payrollPayments        PayrollPayment[]
   shareholderWithdrawals ShareholderWithdrawal[]
   transactions           Transaction[]
+  purchaseOrderPayments  PurchaseOrderPayment[]
   invoiceOrders          Order[]                 @relation("OrderInvoiceAccount")
 }
 
@@ -129,6 +130,7 @@ model Transaction {
   orderReturn           OrderReturn?
   PayrollPayment        PayrollPayment?
   purchasePayment       PurchaseOrder?             @relation("PurchasePayment")
+  purchaseOrderPayment  PurchaseOrderPayment?      @relation("PurchaseOrderPaymentTxn")
   arrivalCosts          PurchaseOrderArrivalCost[] @relation("ArrivalCost")
   ShareholderWithdrawal ShareholderWithdrawal?
   account               Account?                   @relation(fields: [accountId], references: [id])
@@ -504,6 +506,24 @@ model PurchaseOrder {
   additionalCosts        PurchaseOrderAdditionalCost[]
   arrivalAdditionalCosts PurchaseOrderArrivalCost[]
   items                  PurchaseOrderItem[]
+  payments               PurchaseOrderPayment[]
+}
+
+model PurchaseOrderPayment {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  amount          Decimal       // amount paid, in Toman
+  accountId       String
+  transactionId   String?       @unique
+  description     String?
+  date            DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  account         Account       @relation(fields: [accountId], references: [id])
+  transaction     Transaction?  @relation("PurchaseOrderPaymentTxn", fields: [transactionId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([accountId])
 }
 
 model PurchaseOrderAdditionalCost {

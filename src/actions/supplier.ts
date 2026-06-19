@@ -303,7 +303,11 @@ export async function getPurchaseOrder(orderId: string) {
         arrivalAdditionalCosts: {
           include: { transaction: true }
         },
-        paymentTransaction: true
+        paymentTransaction: true,
+        payments: {
+          include: { account: { select: { name: true } } },
+          orderBy: { date: 'asc' }
+        }
       }
     });
 
@@ -346,6 +350,15 @@ export async function getPurchaseOrder(orderId: string) {
         exchangeRateSnapshot: cost.exchangeRateSnapshot ? Number(cost.exchangeRateSnapshot) : undefined,
         transactionId: cost.transactionId ?? undefined,
       })),
+      payments: (order.payments ?? []).map((p: any) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        accountId: p.accountId,
+        accountName: p.account?.name ?? '',
+        description: p.description ?? undefined,
+        date: p.date,
+      })),
+      paidAmountInToman: (order.payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0),
     };
 
     return { success: true, data: serializedOrder };
