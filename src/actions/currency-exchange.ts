@@ -209,9 +209,10 @@ export async function exchangeCurrency(prevState: any, formData: FormData) {
     };
   }
 
-  revalidatePath('/dashboard/accounting/currency-exchange');
-  revalidatePath('/dashboard/accounting/accounts');
-  revalidatePath('/dashboard/accounting/transactions');
+  // Revalidate the whole dashboard so every balance display (accounts,
+  // transactions, currency-exchange, dashboard overview) reflects the new
+  // balances immediately instead of serving a cached figure.
+  revalidatePath('/dashboard', 'layout');
   return { message: 'معامله ارز با موفقیت انجام شد.', success: true };
 }
 
