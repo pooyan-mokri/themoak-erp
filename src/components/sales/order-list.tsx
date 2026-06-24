@@ -517,15 +517,6 @@ export function OrderList({ orders }: OrderListProps) {
               { value: 'CANCELLED', label: 'لغو شده' },
             ],
           },
-          {
-            key: 'paymentStatus',
-            label: 'وضعیت پرداخت',
-            options: [
-              { value: 'PAID', label: 'پرداخت شده' },
-              { value: 'PARTIAL', label: 'پرداخت جزئی' },
-              { value: 'UNPAID', label: 'پرداخت نشده' },
-            ],
-          },
         ]}
         defaultSort={{ key: 'createdAt', direction: 'desc' }}
         pageSize={10}
