@@ -92,7 +92,7 @@ export class AnthropicProvider implements AIProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        messages: messages.filter(m => m.role !== 'system'),
+        messages: messages.filter(m => m.role !== 'system' && m.content.trim() !== ''),
         system: messages.find(m => m.role === 'system')?.content,
         max_tokens: options?.maxTokens || 2000,
         temperature: options?.temperature || 0.7,
