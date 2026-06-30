@@ -16,7 +16,7 @@ async function getWooWarehouseId(): Promise<string | undefined> {
     return wooSettings.warehouseId;
   }
   // Fallback to Main Warehouse if not configured
-  const warehouse = await prisma.warehouse.findFirst({ where: { name: 'Main Warehouse' } });
+  const warehouse = await prisma.warehouse.findFirst({ where: { name: 'Main Warehouse', isArchived: false } });
   return warehouse?.id || undefined;
 }
 

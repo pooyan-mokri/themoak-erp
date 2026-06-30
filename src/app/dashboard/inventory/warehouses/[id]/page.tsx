@@ -1,11 +1,13 @@
 import { getWarehouseDetail } from '@/actions/warehouse-detail';
 import { WarehouseDetailView } from '@/components/inventory/warehouse-detail-view';
+import { WarehouseArchiveActions } from '@/components/inventory/warehouse-archive-actions';
 import { notFound } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Package, DollarSign, TrendingUp, AlertTriangle, Boxes, Warehouse as WarehouseIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { auth } from '@/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +26,9 @@ export default async function WarehouseDetailPage({
       console.error('Warehouse detail returned undefined for ID:', params.id);
       notFound();
     }
+
+    const session = await auth();
+    const isAdmin = session?.user?.role === 'ADMIN';
 
     // TypeScript-safe: data is guaranteed to exist after notFound() check
     const { warehouse, statistics, inventory, recentOrderItems, recentPurchaseItems, recentAudits, movements, lowStockItems, topProductsByValue } = warehouseData;
@@ -61,8 +66,14 @@ export default async function WarehouseDetailPage({
             )}
           </div>
         </div>
-        <div className="text-left text-sm text-muted-foreground">
-          <p>تاریخ ایجاد: {warehouse.createdAt}</p>
+        <div className="flex flex-col items-end gap-3">
+          <WarehouseArchiveActions
+            warehouseId={warehouse.id}
+            isArchived={(warehouse as any).isArchived ?? false}
+            totalStock={statistics.totalItems}
+            isAdmin={isAdmin}
+          />
+          <p className="text-sm text-muted-foreground">تاریخ ایجاد: {warehouse.createdAt}</p>
         </div>
       </div>
 

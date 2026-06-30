@@ -576,7 +576,7 @@ export async function recordConsignmentSales(input: {
 export async function getConsignmentPartners() {
     try {
         const partners = await prisma.warehouse.findMany({
-            where: { isVirtual: true, customerId: { not: null } },
+            where: { isVirtual: true, customerId: { not: null }, isArchived: false },
             include: { customer: true }
         });
         return partners.map((partner: any) => ({

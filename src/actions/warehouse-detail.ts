@@ -292,6 +292,7 @@ export async function getWarehouseDetail(warehouseId: string) {
         id: warehouse.id,
         name: warehouse.name,
         isVirtual: warehouse.isVirtual,
+        isArchived: warehouse.isArchived,
         customer: warehouse.customer
           ? {
               id: warehouse.customer.id,

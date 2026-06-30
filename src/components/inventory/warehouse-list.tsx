@@ -1,8 +1,8 @@
 'use client';
 
-import { deleteWarehouse } from '@/actions/warehouse';
+import { deleteWarehouse, archiveWarehouse } from '@/actions/warehouse';
 import { WarehouseEditDialog } from './warehouse-edit-dialog';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -32,6 +32,17 @@ export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = 
   const handleDelete = async (id: string) => {
     if (confirm('آیا از حذف این انبار اطمینان دارید؟')) {
       const result = await deleteWarehouse(id);
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    }
+  };
+
+  const handleArchive = async (id: string) => {
+    if (confirm('این انبار آرشیو می‌شود و از فهرست‌ها و انتخاب‌ها پنهان می‌شود. می‌توانید بعداً آن را بازگردانید. ادامه می‌دهید؟')) {
+      const result = await archiveWarehouse(id);
       if (result.success) {
         toast.success(result.message);
       } else {
@@ -82,6 +93,18 @@ export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = 
               <TableCell className="text-left">
                 <div className="flex justify-end gap-2">
                   <WarehouseEditDialog warehouse={warehouse} />
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-30"
+                      onClick={() => handleArchive(warehouse.id)}
+                      disabled={stock !== 0}
+                      title={stock === 0 ? 'آرشیو انبار' : 'فقط انبارهای با موجودی صفر قابل آرشیو هستند'}
+                    >
+                      <Archive className="h-4 w-4" />
+                    </Button>
+                  )}
                   {isAdmin && (
                     <Button
                       variant="ghost"

@@ -8,7 +8,7 @@ import { BackButton } from '@/components/ui/back-button';
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
   const { data: order } = await getPurchaseOrder(params.id);
   const warehouses = await prisma.warehouse.findMany({
-    where: { isVirtual: false }
+    where: { isVirtual: false, isArchived: false }
   });
   const accounts = await getAccounts();
 

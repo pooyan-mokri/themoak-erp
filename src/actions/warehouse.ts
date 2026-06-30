@@ -46,9 +46,11 @@ export async function createWarehouse(prevState: any, formData: FormData) {
   return { message: 'انبار با موفقیت ثبت شد.' };
 }
 
-export async function getWarehouses() {
+export async function getWarehouses(includeArchived = false) {
   try {
     const warehouses = await prisma.warehouse.findMany({
+      // Archived warehouses are hidden from every selector/list by default.
+      where: includeArchived ? {} : { isArchived: false },
       orderBy: { createdAt: 'asc' },
     });
     return warehouses.map((w: any) => ({
@@ -57,6 +59,22 @@ export async function getWarehouses() {
     }));
   } catch (error) {
     throw new Error('Failed to fetch warehouses');
+  }
+}
+
+export async function getArchivedWarehouses() {
+  try {
+    const warehouses = await prisma.warehouse.findMany({
+      where: { isArchived: true },
+      orderBy: { archivedAt: 'desc' },
+    });
+    return warehouses.map((w: any) => ({
+      ...w,
+      customerId: w.customerId ?? undefined,
+      archivedAt: w.archivedAt ?? undefined,
+    }));
+  } catch (error) {
+    throw new Error('Failed to fetch archived warehouses');
   }
 }
 
@@ -144,5 +162,62 @@ export async function deleteWarehouse(id: string) {
     }
     console.error('Error deleting warehouse:', error);
     return { message: 'خطا در حذف انبار.', success: false };
+  }
+}
+
+/**
+ * Archive a warehouse (admin only). Only allowed when the warehouse holds zero
+ * stock. Archived warehouses disappear from every selector but remain viewable
+ * (with their movement history) and can be restored.
+ */
+export async function archiveWarehouse(id: string) {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return { message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند انبار را آرشیو کند.', success: false };
+  }
+
+  try {
+    const agg = await prisma.inventory.aggregate({
+      where: { warehouseId: id },
+      _sum: { quantity: true },
+    });
+    const totalStock = agg._sum.quantity ?? 0;
+    if (totalStock > 0) {
+      return { message: `این انبار دارای ${totalStock.toLocaleString('fa-IR')} عدد موجودی است و قابل آرشیو نیست.`, success: false };
+    }
+
+    await prisma.warehouse.update({
+      where: { id },
+      data: { isArchived: true, archivedAt: new Date() },
+    });
+
+    revalidatePath('/dashboard', 'layout');
+    return { message: 'انبار با موفقیت آرشیو شد.', success: true };
+  } catch (error) {
+    console.error('Error archiving warehouse:', error);
+    return { message: 'خطا در آرشیو انبار.', success: false };
+  }
+}
+
+/**
+ * Restore an archived warehouse (admin only).
+ */
+export async function unarchiveWarehouse(id: string) {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return { message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند انبار را بازگرداند.', success: false };
+  }
+
+  try {
+    await prisma.warehouse.update({
+      where: { id },
+      data: { isArchived: false, archivedAt: null },
+    });
+
+    revalidatePath('/dashboard', 'layout');
+    return { message: 'انبار از آرشیو خارج شد.', success: true };
+  } catch (error) {
+    console.error('Error unarchiving warehouse:', error);
+    return { message: 'خطا در بازگرداندن انبار.', success: false };
   }
 }

@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 export default async function OrdersPage() {
   const { data: orders } = await getPurchaseOrders();
   const warehouses = await prisma.warehouse.findMany({
-    where: { isVirtual: false }
+    where: { isVirtual: false, isArchived: false }
   });
 
   return (
