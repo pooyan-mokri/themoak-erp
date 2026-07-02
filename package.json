@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx prisma migrate resolve --rolled-back 20260505132414_add_warehouse_to_order_item || true && npx prisma migrate resolve --applied 20260522000000_add_tags_to_order || true && npx prisma migrate deploy && next build",
+    "build": "npx prisma db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20260625000000_heal_missing_columns/migration.sql || true && npx prisma migrate resolve --rolled-back 20260505132414_add_warehouse_to_order_item || true && npx prisma migrate resolve --applied 20260522000000_add_tags_to_order || true && npx prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
