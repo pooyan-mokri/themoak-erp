@@ -62,7 +62,11 @@ export async function testWooCommerceConnection(): Promise<ActionResult<{
     let errorMessage = 'خطا در اتصال به WooCommerce';
     const errorObj = error as { message?: string };
     if (errorObj.message?.includes('401') || errorObj.message?.includes('Unauthorized')) {
-      errorMessage = 'خطا: کلیدهای API (Consumer Key/Secret) نامعتبر هستند';
+      errorMessage =
+        'خطا: کلیدهای API (Consumer Key/Secret) نامعتبر هستند. بررسی کنید: ' +
+        '۱) کلیدها در تنظیمات → ووکامرس درست و کامل وارد شده باشند، ' +
+        '۲) آدرس سایت با https:// و دقیقاً همان دامنه‌ای باشد که سایت روی آن باز می‌شود (ریدایرکت http→https باعث این خطا می‌شود)، ' +
+        '۳) کلید در ووکامرس حذف/بازتولید نشده باشد و دسترسی آن Read/Write باشد.';
     } else if (errorObj.message?.includes('404') || errorObj.message?.includes('Not Found')) {
       errorMessage = 'خطا: URL WooCommerce یافت نشد. لطفا URL را بررسی کنید';
     } else if (errorObj.message?.includes('ECONNREFUSED') || errorObj.message?.includes('ENOTFOUND')) {

@@ -60,10 +60,13 @@ export async function getWooSettings() {
   return await getSetting('woo_settings');
 }
 
+// Default to https — an http URL that redirects to https makes the server drop the
+// Authorization header, which WooCommerce reports as an invalid Consumer Key/Secret.
 function normalizeWooUrl(raw: string): string {
   if (!raw) return raw;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  return `http://${raw}`;
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }
 
 export async function saveWooSettings(settings: {
@@ -83,8 +86,12 @@ export async function saveWooSettings(settings: {
     return { success: false, error: 'شما مجوز دسترسی به تنظیمات ووکامرس را ندارید.' };
   }
 
+  // Trim credentials — a stray leading/trailing space in a pasted key is a
+  // common cause of WooCommerce returning 401 "invalid Consumer Key/Secret".
   return await saveSetting('woo_settings', {
     ...settings,
     url: normalizeWooUrl(settings.url),
+    consumerKey: settings.consumerKey?.trim(),
+    consumerSecret: settings.consumerSecret?.trim(),
   });
 }
