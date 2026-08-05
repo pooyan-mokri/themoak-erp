@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
 import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
@@ -149,44 +150,10 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
     return exchangeRates[currency] || 1;
   };
 
-  // Calculate landed cost per unit for an item
-  const calculateLandedCostPerUnit = (item: PurchaseOrderItem, order: PurchaseOrder): number => {
-    // Get unit cost in Toman - ensure it's a number
-    const unitCost = Number(item.unitCost || 0);
-    const itemCurrency = item.currency || 'TOMAN';
-    const exchangeRate = getExchangeRate(itemCurrency);
-    const unitCostInToman = Number(item.unitCostInToman) || (unitCost * exchangeRate);
-
-    // Get total additional costs (order + arrival) in Toman
-    let totalAdditionalCostsInToman = 0;
-
-    // Sum order additional costs
-    if (order.additionalCosts && order.additionalCosts.length > 0) {
-      order.additionalCosts.forEach((cost) => {
-        const costInToman = Number(cost.amountInToman || 0);
-        totalAdditionalCostsInToman += costInToman;
-      });
-    }
-
-    // Sum arrival additional costs
-    if (order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0) {
-      order.arrivalAdditionalCosts.forEach((cost) => {
-        const costInToman = Number(cost.amountInToman || 0);
-        totalAdditionalCostsInToman += costInToman;
-      });
-    }
-
-    // Calculate total quantity of all items in the order
-    const totalOrderQuantity = order.items.reduce((sum: number, i) => sum + Number(i.quantity || 0), 0);
-
-    // Calculate additional cost per unit: total additional costs divided by total quantity
-    const additionalCostPerUnit = totalOrderQuantity > 0 ? totalAdditionalCostsInToman / totalOrderQuantity : 0;
-
-    // Landed cost per unit = unit cost + additional cost per unit
-    const landedCostPerUnit = Number(unitCostInToman) + Number(additionalCostPerUnit);
-
-    return landedCostPerUnit;
-  };
+  // Landed cost per unit — delegates to the same shared helper the server uses
+  // when receiving goods, so what is displayed always equals what is stored.
+  const calculateLandedCostPerUnit = (item: PurchaseOrderItem, order: PurchaseOrder): number =>
+    computeLandedCostPerUnit(item, order, (currency: string) => getExchangeRate(currency as Currency));
 
   const updateReceivedItem = (itemId: string, field: string, value: number) => {
     setReceivedItems(prev => ({

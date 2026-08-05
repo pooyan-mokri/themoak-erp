@@ -78,7 +78,11 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
         const rate = exchangeRates.find((r: any) => r.currency === currency);
-        return rate ? Number(rate.rateToToman) : 1;
+        // Never silently fall back to 1 — this rate sizes a real cash movement.
+        if (!rate) {
+          throw new Error(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+        }
+        return Number(rate.rateToToman);
       };
 
       // Calculate total amount in Toman
@@ -191,7 +195,11 @@ export async function recordPurchasePartialPayment(input: {
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
         const rate = exchangeRates.find((r: any) => r.currency === currency);
-        return rate ? Number(rate.rateToToman) : 1;
+        // Never silently fall back to 1 — this rate sizes a real cash movement.
+        if (!rate) {
+          throw new Error(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+        }
+        return Number(rate.rateToToman);
       };
 
       // Order total in Toman (recalculate if not stored)
@@ -331,7 +339,11 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
         const rate = exchangeRates.find((r: any) => r.currency === currency);
-        return rate ? Number(rate.rateToToman) : 1;
+        // Never silently fall back to 1 — this rate sizes a real cash movement.
+        if (!rate) {
+          throw new Error(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+        }
+        return Number(rate.rateToToman);
       };
 
       // Create arrival costs and transactions

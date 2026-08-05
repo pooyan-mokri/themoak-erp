@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
+import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
 
 // --- Schemas ---
 
@@ -183,9 +184,10 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
     const getExchangeRate = (currency: string) => {
       if (currency === 'TOMAN') return 1;
       const rate = exchangeRates.find((r: any) => r.currency === currency);
+      // Never silently fall back to 1: that would price a $50 item at 50 Toman
+      // and permanently snapshot the error onto the order (there is no edit action).
       if (!rate) {
-        console.warn(`Exchange rate not found for ${currency}, using 1`);
-        return 1;
+        throw new Error(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
       }
       return Number(rate.rateToToman);
     };
@@ -400,32 +402,15 @@ export async function receivePurchaseOrderItems(
       const getExchangeRate = (currency: string) => {
         if (currency === 'TOMAN') return 1;
         const rate = exchangeRates.find((r: any) => r.currency === currency);
-        return rate ? Number(rate.rateToToman) : 1;
+        if (!rate) {
+          throw new Error(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+        }
+        return Number(rate.rateToToman);
       };
 
-      // Calculate total additional costs (from order and arrival) in Toman
-      let totalAdditionalCostsInToman = 0;
-      
-      // Add order additional costs
-      if (order.additionalCosts && order.additionalCosts.length > 0) {
-        order.additionalCosts.forEach((cost: any) => {
-          totalAdditionalCostsInToman += Number(cost.amountInToman || 0);
-        });
-      }
-
-      // Add arrival additional costs
-      if (order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0) {
-        order.arrivalAdditionalCosts.forEach((cost: any) => {
-          totalAdditionalCostsInToman += Number(cost.amountInToman || 0);
-        });
-      }
-
-      // Calculate total quantity of all items in the order
-      const totalOrderQuantity = order.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-      
-      // Calculate additional cost per unit (distributed across all items)
-      const additionalCostPerUnit = totalOrderQuantity > 0 ? totalAdditionalCostsInToman / totalOrderQuantity : 0;
-
+      // Additional costs (order-level + arrival) are allocated PRO RATA ON VALUE
+      // by the shared helper in @/lib/landed-cost, which the purchase-order UI
+      // uses too so the displayed and stored landed cost can never diverge.
       let allItemsReceived = true;
 
       // 2. Process each received item
@@ -439,13 +424,9 @@ export async function receivePurchaseOrderItems(
           throw new Error(`تعداد دریافت شده برای ${orderItem.product.name} بیشتر از تعداد سفارش داده شده است`);
         }
 
-        // Calculate unit cost in Toman
-        const unitCostInToman = orderItem.unitCostInToman
-          ? Number(orderItem.unitCostInToman)
-          : (Number(orderItem.unitCost) * getExchangeRate(orderItem.currency));
-
-        // Calculate landed cost per unit: unit cost + additional cost per unit
-        const landedCostPerUnit = unitCostInToman + additionalCostPerUnit;
+        // Landed cost per unit = own unit cost + value-weighted share of the
+        // order-level and arrival additional costs (all in Toman).
+        const landedCostPerUnit = computeLandedCostPerUnit(orderItem, order, getExchangeRate);
         
         // Calculate total cost for this item (for all received quantities)
         const previousReceivedQty = orderItem.receivedQuantity || 0;
