@@ -402,6 +402,10 @@ model Order {
   invoiceId     String?                 @unique
   tags              String[]
   invoiceAccountId  String?
+  // COGS transaction booked for this sale (capitalization policy). Kept as a
+  // plain id — no relation — so returns/exchanges can adjust it reliably
+  // without text-matching descriptions.
+  cogsTransactionId String?
   commissions   ConsignmentCommission[]
   invoice       Invoice?
   customer      Customer?               @relation(fields: [customerId], references: [id])
@@ -419,6 +423,10 @@ model OrderItem {
   warehouseId   String?
   quantity      Int
   price         Decimal
+  // Landed unit cost at the moment of sale. Product.costPrice moves with every
+  // weighted-average receipt, so a return weeks later must reverse the cost that
+  // was actually expensed, not a re-derived one.
+  costSnapshot  Decimal?
   status        String          @default("PENDING")
   exchangeItems OrderExchange[] @relation("ExchangeItem")
   exchanges     OrderExchange[] @relation("OriginalItem")

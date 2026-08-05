@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 import { syncInvoiceWithOrder } from './invoice';
+import { adjustOrderCogs } from '@/lib/cogs';
 
 const OrderReturnSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -271,6 +272,14 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
             quantity,
           },
         });
+      }
+
+      // 8. The returned units are back in stock, so their cost must stop being
+      // expensed. Reverse using the cost snapshotted at sale time, not the
+      // current one — weighted-average receipts may have moved it since.
+      const returnedUnitCost = Number((orderItem as any).costSnapshot ?? 0);
+      if (returnedUnitCost > 0) {
+        await adjustOrderCogs(tx, (order as any).cogsTransactionId, -returnedUnitCost * quantity);
       }
     });
 

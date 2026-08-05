@@ -3,6 +3,8 @@
 
 import { getWooCommerceClient } from '@/lib/woocommerce';
 import { prisma } from '@/lib/prisma';
+import { postOrderCogs } from '@/lib/cogs';
+import { shouldBookCogs } from '@/lib/accounting-policy';
 import { revalidatePath } from 'next/cache';
 import { getSetting, getWooSettings } from './settings';
 import { Prisma } from '@prisma/client';
@@ -881,6 +883,38 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
                             }
                         });
                         console.log(`[DEBUG] سفارش ایجاد شد: ${createdOrder.id}, number: ${createdOrder.number}`);
+
+                        // Recognise cost of goods sold for online sales too, so
+                        // WooCommerce orders don't report a 100% gross margin once
+                        // purchases are capitalized. Only on/after the cutover.
+                        const wooOrderDate = new Date(order.date_created || Date.now());
+                        if (shouldBookCogs(wooOrderDate)) {
+                            let wooCogsTotal = 0;
+                            for (const item of orderItemsData) {
+                                const prod = await tx.product.findUnique({
+                                    where: { id: item.productId },
+                                    select: { costPrice: true },
+                                });
+                                const unitCost = Number(prod?.costPrice ?? 0);
+                                wooCogsTotal += unitCost * item.quantity;
+                                await tx.orderItem.updateMany({
+                                    where: { orderId: createdOrder.id, productId: item.productId },
+                                    data: { costSnapshot: new Prisma.Decimal(unitCost) },
+                                });
+                            }
+                            const wooCogsId = await postOrderCogs(tx, {
+                                orderNumber: createdOrder.number,
+                                cogsTotal: wooCogsTotal,
+                                date: wooOrderDate,
+                                customerId: customerId || undefined,
+                            });
+                            if (wooCogsId) {
+                                await tx.order.update({
+                                    where: { id: createdOrder.id },
+                                    data: { cogsTransactionId: wooCogsId },
+                                });
+                            }
+                        }
 
                         // Update Account Balance ONLY for completed orders
                         if (isCompleted) {

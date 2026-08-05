@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { countsAsExpense } from '@/lib/accounting-policy';
 import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -83,7 +84,7 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
       const amount = Number(tx.amountInToman || tx.amount);
       if (tx.type === 'INCOME') {
         totalIncome += amount;
-      } else if (tx.type === 'EXPENSE') {
+      } else if (tx.type === 'EXPENSE' && countsAsExpense(tx)) {
         totalExpense += amount;
       }
     });

@@ -1,6 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { countsAsExpense } from '@/lib/accounting-policy';
 import { TransactionType } from '@prisma/client';
 
 // Financial Reports
@@ -31,7 +32,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
       .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
     const expenses = transactions
-      .filter((t: any) => t.type === 'EXPENSE')
+      .filter((t: any) => t.type === 'EXPENSE' && countsAsExpense(t))
       .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
     const netProfit = income - expenses;
@@ -46,7 +47,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
 
       if (t.type === 'INCOME') {
         incomeByCategory[category] = (incomeByCategory[category] || 0) + amount;
-      } else if (t.type === 'EXPENSE') {
+      } else if (t.type === 'EXPENSE' && countsAsExpense(t)) {
         expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
       }
     });
@@ -63,7 +64,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
       const amount = Number(t.amountInToman);
       if (t.type === 'INCOME') {
         monthlyData[monthKey].income += amount;
-      } else if (t.type === 'EXPENSE') {
+      } else if (t.type === 'EXPENSE' && countsAsExpense(t)) {
         monthlyData[monthKey].expenses += amount;
       }
       monthlyData[monthKey].profit = monthlyData[monthKey].income - monthlyData[monthKey].expenses;

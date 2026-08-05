@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 import { syncInvoiceWithOrder } from './invoice';
+import { adjustOrderCogs } from '@/lib/cogs';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -352,6 +353,16 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
             quantity,
           },
         });
+      }
+
+      // 11. The goods that left changed, so the expensed cost must change too:
+      // credit back the original item's snapshotted cost and charge the
+      // replacement product's current landed cost.
+      const originalUnitCost = Number((originalItem as any).costSnapshot ?? 0);
+      const exchangeUnitCost = Number(exchangeProduct?.costPrice ?? 0);
+      const cogsDelta = (exchangeUnitCost - originalUnitCost) * quantity;
+      if (cogsDelta !== 0) {
+        await adjustOrderCogs(tx, (order as any).cogsTransactionId, cogsDelta);
       }
     });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { EXCLUDE_CAPITALIZED_PURCHASES } from '@/lib/accounting-policy';
 import { Prisma } from '@prisma/client';
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
           _sum: { amountInToman: true },
         });
         const expense = await prisma.transaction.aggregate({
-          where: { type: 'EXPENSE', date: { gte: lastMonth } },
+          where: { type: 'EXPENSE', date: { gte: lastMonth }, ...EXCLUDE_CAPITALIZED_PURCHASES },
           _sum: { amountInToman: true },
         });
         const pendingOrders = await prisma.order.count({

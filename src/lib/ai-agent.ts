@@ -1,6 +1,7 @@
 // AI Agent with system access capabilities
 
 import { prisma } from '@/lib/prisma';
+import { countsAsExpense } from '@/lib/accounting-policy';
 import { Prisma } from '@prisma/client';
 
 export interface AgentTool {
@@ -217,7 +218,7 @@ export const agentTools: AgentTool[] = [
         .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
 
       const totalExpense = transactions
-        .filter((t: any) => t.type === 'EXPENSE')
+        .filter((t: any) => t.type === 'EXPENSE' && countsAsExpense(t))
         .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
 
       return {

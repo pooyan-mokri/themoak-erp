@@ -4,12 +4,16 @@ import { ExpenseForm } from '@/components/accounting/expense-form';
 import { ExpenseList } from '@/components/accounting/expense-list';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { EXCLUDE_CAPITALIZED_PURCHASES } from '@/lib/accounting-policy';
 
 async function getExpenses() {
   try {
     const expenses = await prisma.transaction.findMany({
       where: {
         type: 'EXPENSE',
+        // Post-cutover purchases are capitalized into inventory, not expensed,
+        // so they must not appear in the expense list either.
+        ...EXCLUDE_CAPITALIZED_PURCHASES,
         // Exclude purchase-related expenses, payroll, and other non-expense transactions
         // Only show actual expenses (marketing, office, rent, etc.)
         NOT: {

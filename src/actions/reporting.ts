@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { TransactionType, Currency } from '@/lib/types';
 
 import { prisma } from '@/lib/prisma';
+import { countsAsExpense } from '@/lib/accounting-policy';
 
 // const prisma = new PrismaClient();
 
@@ -29,7 +30,7 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
       const amount = Number(tx.amountInToman || tx.amount); // Fallback if amountInToman is missing
       if (tx.type === TransactionType.INCOME) {
         totalIncome += amount;
-      } else if (tx.type === TransactionType.EXPENSE) {
+      } else if (tx.type === TransactionType.EXPENSE && countsAsExpense(tx)) {
         totalExpense += amount;
       }
     });

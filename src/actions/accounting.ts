@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { auth } from '@/auth';
+import { EXCLUDE_CAPITALIZED_PURCHASES } from '@/lib/accounting-policy';
 
 // const prisma = new PrismaClient(); // Removed local instance
 
@@ -607,6 +608,7 @@ export async function getExpenseBreakdown() {
     const expenses = await prisma.transaction.findMany({
       where: {
         type: TransactionType.EXPENSE,
+        ...EXCLUDE_CAPITALIZED_PURCHASES,
       },
     });
 

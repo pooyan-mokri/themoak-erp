@@ -13,6 +13,8 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
+import { postOrderCogs, deleteOrderCogs } from '@/lib/cogs';
+import { shouldBookCogs } from '@/lib/accounting-policy';
 
 // const prisma = new PrismaClient();
 
@@ -118,7 +120,16 @@ export async function createOrder(data: OrderData) {
       // 4. Resolve which warehouse each item is deducted from BEFORE creating
       // OrderItems so we can persist warehouseId per item.
       const itemWarehouses: string[] = [];
+      // Landed unit cost snapshotted at the moment of sale, so COGS can be booked
+      // and later reversed exactly even after weighted-average receipts move it.
+      const itemCosts: number[] = [];
       for (const item of items) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { name: true, costPrice: true },
+        });
+        itemCosts.push(Number(product?.costPrice ?? 0));
+
         if (warehouseId) {
           itemWarehouses.push(warehouseId);
         } else {
@@ -126,7 +137,6 @@ export async function createOrder(data: OrderData) {
             where: { productId: item.productId, quantity: { gte: item.quantity } },
           });
           if (!inv) {
-            const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
             throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" وجود ندارد.`);
           }
           itemWarehouses.push(inv.warehouseId);
@@ -152,6 +162,7 @@ export async function createOrder(data: OrderData) {
               quantity: item.quantity,
               price: item.price,
               warehouseId: itemWarehouses[idx],
+              costSnapshot: new Prisma.Decimal(itemCosts[idx] ?? 0),
             })),
           },
         },
@@ -200,6 +211,29 @@ export async function createOrder(data: OrderData) {
             quantity: { decrement: item.quantity },
           },
         });
+      }
+
+      // 8. Recognise cost of goods sold. Under the capitalization policy the
+      // purchase itself is no longer an expense, so the cost is expensed here,
+      // when the goods leave. Only for sales on/after the cutover — earlier
+      // periods keep the old cash basis and must not change.
+      if (shouldBookCogs(orderDate)) {
+        const cogsTotal = items.reduce(
+          (sum: number, item: any, idx: number) => sum + (itemCosts[idx] ?? 0) * item.quantity,
+          0,
+        );
+        const cogsTransactionId = await postOrderCogs(tx, {
+          orderNumber: order.number,
+          cogsTotal,
+          date: orderDate,
+          customerId: customerId || undefined,
+        });
+        if (cogsTransactionId) {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { cogsTransactionId },
+          });
+        }
       }
     });
 
@@ -541,8 +575,13 @@ export async function cancelOrder(orderId: string): Promise<{
           paymentStatus: 'UNPAID',
           paidAmount: 0,
           transactionId: null,
+          cogsTransactionId: null,
         },
       });
+
+      // The goods come back into stock below, so their cost must stop being
+      // expensed — otherwise the same units are counted as both asset and COGS.
+      await deleteOrderCogs(tx, (order as any).cogsTransactionId);
 
       // 2. Restore inventory for each order item back to its original warehouse
       for (const item of order.items) {
