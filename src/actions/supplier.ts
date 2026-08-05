@@ -451,6 +451,30 @@ export async function receivePurchaseOrderItems(
         const purchasePrice = landedCostPerUnit; // Use landed cost per unit, not average
 
         if (productType === 'SALEABLE' || productType === 'OTHER') {
+          // Roll the landed cost into the product's cost of record using a
+          // WEIGHTED AVERAGE over the stock already on hand. Without this the
+          // freight/customs share computed above is discarded and every
+          // valuation, COGS and margin figure keeps using a stale cost.
+          const stockBefore = await tx.inventory.aggregate({
+            where: { productId: orderItem.productId },
+            _sum: { quantity: true },
+          });
+          const qtyBefore = Math.max(0, Number(stockBefore._sum.quantity ?? 0));
+          const costBefore = Number(product.costPrice ?? 0);
+          const receivedQty = receivedItem.receivedQuantity;
+
+          // Fall back to the pure landed cost when there is nothing meaningful
+          // to average against (no prior stock, or no prior cost recorded).
+          const newCostPrice =
+            qtyBefore > 0 && costBefore > 0
+              ? (qtyBefore * costBefore + receivedQty * landedCostPerUnit) / (qtyBefore + receivedQty)
+              : landedCostPerUnit;
+
+          await tx.product.update({
+            where: { id: orderItem.productId },
+            data: { costPrice: new Prisma.Decimal(newCostPrice) },
+          });
+
           // Add to Inventory
           await tx.inventory.upsert({
             where: {
@@ -467,6 +491,18 @@ export async function receivePurchaseOrderItems(
               warehouseId: warehouseId,
               quantity: receivedItem.receivedQuantity
             }
+          });
+
+          // Record the movement so the receipt (and the cost change) is auditable
+          await tx.inventoryMovement.create({
+            data: {
+              productId: orderItem.productId,
+              toWarehouseId: warehouseId,
+              quantity: receivedItem.receivedQuantity,
+              type: 'PURCHASE',
+              referenceId: orderId,
+              note: `دریافت سفارش خرید #${order.number} - قیمت تمام‌شده هر واحد: ${Math.round(landedCostPerUnit).toLocaleString('fa-IR')} تومان`,
+            },
           });
         } else if (productType === 'CONSUMABLE') {
           // Add to FixedAsset for consumable items
