@@ -130,6 +130,20 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
         }
       });
 
+      // Record it as a payment too. The payments table is the single source of
+      // truth for "how much has been paid" — without a row here a fully paid
+      // order still reports zero paid and shows the whole amount as owing.
+      await tx.purchaseOrderPayment.create({
+        data: {
+          purchaseOrderId: orderId,
+          amount: totalInToman,
+          accountId,
+          transactionId: transaction.id,
+          description: 'پرداخت کامل',
+          date: new Date(),
+        },
+      });
+
       // Update order
       await tx.purchaseOrder.update({
         where: { id: orderId },
