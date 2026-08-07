@@ -79,6 +79,8 @@ export async function getBalanceSheet() {
     const pendingOrders = await prisma.order.findMany({
       where: {
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+        // Cancelled orders keep paymentStatus UNPAID but are not receivable.
+        status: { not: 'CANCELLED' },
         customer: { warehouses: { some: { isVirtual: true } } },
       },
       include: { items: true, commissions: true },

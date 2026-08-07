@@ -389,6 +389,11 @@ export async function recordConsignmentSales(input: {
         where: {
           customerId: warehouse.customerId,
           paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+          // Cancelling an order leaves paymentStatus UNPAID, so without this a
+          // new sale is appended to a CANCELLED order: the stock is deducted
+          // but the sale is invisible everywhere (settlement lists filter
+          // cancelled orders out).
+          status: { not: 'CANCELLED' },
           createdAt: { gte: dayStart, lte: dayEnd },
           items: { some: { warehouseId: partnerWarehouseId } },
         },
