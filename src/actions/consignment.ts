@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 
 // const prisma = new PrismaClient();
 
@@ -811,7 +812,7 @@ export async function deleteConsignmentOrder(
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
-          items: true,
+          items: { include: { product: true } },
           commissions: true,
           customer: { include: { warehouses: { where: { isVirtual: true } } } },
         },
@@ -826,31 +827,17 @@ export async function deleteConsignmentOrder(
       // 1. Return sold goods to the partner warehouse (skip if a prior
       //    cancellation already restored them).
       if (!alreadyCancelled) {
+        // Same never-skip contract as cancelOrder: lines whose warehouse was
+        // never recorded (or was blanked when a warehouse was deleted) are
+        // resolved through the shared fallback instead of being dropped.
         for (const item of order.items) {
-          if (!item.warehouseId) continue;
-          await tx.inventory.upsert({
-            where: {
-              productId_warehouseId: {
-                productId: item.productId,
-                warehouseId: item.warehouseId,
-              },
-            },
-            update: { quantity: { increment: item.quantity } },
-            create: {
-              productId: item.productId,
-              warehouseId: item.warehouseId,
-              quantity: item.quantity,
-            },
-          });
-          await tx.inventoryMovement.create({
-            data: {
-              productId: item.productId,
-              toWarehouseId: item.warehouseId,
-              quantity: item.quantity,
-              type: 'RETURN',
-              note: 'حذف فاکتور امانی',
-            },
-          });
+          await restoreOrderItemStock(
+            tx,
+            order as any,
+            item as any,
+            (item as any).product?.name ?? item.productId,
+            order.number,
+          );
         }
       }
 

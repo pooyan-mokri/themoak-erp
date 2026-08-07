@@ -13,6 +13,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
+import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 
 // const prisma = new PrismaClient();
 
@@ -532,10 +533,17 @@ export async function cancelOrder(orderId: string): Promise<{
       return { success: false, message: 'این سفارش قبلاً لغو شده است.' };
     }
 
+    // Lines deliberately not credited back (e.g. a WooCommerce order whose
+    // stock was never deducted). Reported to the operator rather than hidden
+    // behind a blanket success message.
+    const notRestored: string[] = [];
+
     await prisma.$transaction(async (tx) => {
-      // 1. Update order status to CANCELLED and disconnect transaction reference FIRST
-      await tx.order.update({
-        where: { id: orderId },
+      // 1. Claim the cancellation. The status check above runs outside this
+      // transaction, so two concurrent cancels could both pass it and restore
+      // the stock twice. This conditional update serializes them in the DB.
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: { not: 'CANCELLED' } },
         data: {
           status: 'CANCELLED',
           paymentStatus: 'UNPAID',
@@ -543,24 +551,24 @@ export async function cancelOrder(orderId: string): Promise<{
           transactionId: null,
         },
       });
+      if (claimed.count === 0) {
+        throw new Error('این سفارش هم‌زمان توسط کاربر دیگری لغو شد.');
+      }
 
-      // 2. Restore inventory for each order item back to its original warehouse
+      // 2. Restore inventory. Never skip a line silently: resolve the target
+      // warehouse through a validated fallback (the column is nullable and is
+      // blanked when a warehouse is deleted), net out quantities already
+      // credited back by returns/exchanges, and report anything intentionally
+      // left uncredited instead of swallowing it.
       for (const item of order.items) {
-        if (!item.warehouseId) continue;
-        await tx.inventory.upsert({
-          where: {
-            productId_warehouseId: {
-              productId: item.productId,
-              warehouseId: item.warehouseId,
-            },
-          },
-          update: { quantity: { increment: item.quantity } },
-          create: {
-            productId: item.productId,
-            warehouseId: item.warehouseId,
-            quantity: item.quantity,
-          },
-        });
+        const note = await restoreOrderItemStock(
+          tx,
+          order as any,
+          item as any,
+          (item as any).product?.name ?? item.productId,
+          order.number,
+        );
+        if (note) notRestored.push(note);
       }
 
       // 3. If order had a transaction, restore account balance and delete it
@@ -617,13 +625,17 @@ export async function cancelOrder(orderId: string): Promise<{
 
     return {
       success: true,
-      message: `سفارش #${order.number} با موفقیت لغو شد.`,
+      message: notRestored.length > 0
+        ? `سفارش #${order.number} لغو شد، اما موجودی این اقلام بازنگشت: ${notRestored.join(' ')}`
+        : `سفارش #${order.number} با موفقیت لغو شد و موجودی کالاها به انبار بازگشت.`,
     };
   } catch (error) {
     console.error('Error cancelling order:', error);
+    // Surface the real reason (e.g. target warehouse could not be determined)
+    // so the operator can fix it, instead of a blanket failure message.
     return {
       success: false,
-      message: 'خطا در لغو سفارش.',
+      message: error instanceof Error ? error.message : 'خطا در لغو سفارش.',
     };
   }
 }
