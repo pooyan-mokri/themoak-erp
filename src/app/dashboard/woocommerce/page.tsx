@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync, forceSyncOrderStatus } from '@/actions/woocommerce';
+import { syncProducts, syncOrders, testWooCommerceConnection, debugProductMatching, performAutoSync, forceSyncOrderStatus, pushStockToWooCommerce } from '@/actions/woocommerce';
 import { getAutoSyncSettings, setAutoSyncSettings } from '@/actions/woocommerce-settings';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,6 +16,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 export default function WooCommercePage() {
   const router = useRouter();
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
+  const [isPushingStock, setIsPushingStock] = useState(false);
+  const [stockProblems, setStockProblems] = useState<string[]>([]);
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isDebugging, setIsDebugging] = useState(false);
@@ -60,6 +62,24 @@ export default function WooCommercePage() {
       toast.error(error?.message || 'خطا در سینک محصولات');
     } finally {
       setIsSyncingProducts(false);
+    }
+  };
+
+  const handlePushStock = async () => {
+    setIsPushingStock(true);
+    setStockProblems([]);
+    try {
+      const result = await pushStockToWooCommerce();
+      setStockProblems(result.data?.problems ?? []);
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'خطا در ارسال موجودی به ووکامرس');
+    } finally {
+      setIsPushingStock(false);
     }
   };
 
@@ -519,6 +539,36 @@ export default function WooCommercePage() {
                 'Sync Products'
               )}
             </Button>
+
+            <Button
+              onClick={handlePushStock}
+              disabled={isPushingStock}
+              variant="outline"
+              className="w-full mt-2"
+            >
+              {isPushingStock ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  در حال ارسال موجودی...
+                </>
+              ) : (
+                'ارسال موجودی به ووکامرس'
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2">
+              موجودی همه محصولات را از انبار پیش‌فرض ERP به فروشگاه ارسال می‌کند.
+            </p>
+
+            {stockProblems.length > 0 && (
+              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-900 dark:bg-amber-950/30">
+                <div className="font-medium mb-1">محصولات به‌روزرسانی‌نشده:</div>
+                <ul className="list-disc list-inside space-y-1 max-h-48 overflow-y-auto">
+                  {stockProblems.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
 

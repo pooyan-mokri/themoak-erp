@@ -139,6 +139,8 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
 
     let createdCount = 0;
     let updatedCount = 0;
+    // Products whose price/stock push back to WooCommerce failed.
+    const pushFailures: string[] = [];
 
     // Get warehouse ID from settings
     const warehouseId = await getWooWarehouseId();
@@ -189,6 +191,9 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
             manage_stock: true,
           });
         } catch (e) {
+          // Do not swallow: a silent failure here is exactly why some products
+          // appear to sync and others do not. Counted and surfaced below.
+          pushFailures.push(`«${wooProduct.name}»: ${(e as { message?: string })?.message ?? 'خطای نامشخص'}`);
           console.error(`[Sync] Failed to push price/stock to WooCommerce for ${wooProduct.name}:`, e);
         }
 
@@ -279,7 +284,14 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
     } catch (e) {
         // Ignore revalidate error in script context
     }
-    return { success: true, message: 'سینک محصولات با موفقیت انجام شد.', data: { created: createdCount, updated: updatedCount } };
+    const syncMessage = pushFailures.length > 0
+      ? `سینک انجام شد، اما ارسال قیمت/موجودی ${pushFailures.length.toLocaleString('fa-IR')} محصول به ووکامرس ناموفق بود: ${pushFailures.slice(0, 5).join(' | ')}${pushFailures.length > 5 ? ' ...' : ''}`
+      : 'سینک محصولات با موفقیت انجام شد.';
+    return {
+      success: pushFailures.length === 0,
+      message: syncMessage,
+      data: { created: createdCount, updated: updatedCount },
+    };
   } catch (error: unknown) {
     console.error("Error syncing products:", error);
     const errorObj = error as { message?: string; stack?: string; code?: string; response?: { data?: unknown } };
@@ -304,6 +316,140 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
       success: false,
       message: errorMessage,
     };
+  }
+}
+
+/**
+ * Push stock levels from the ERP's WooCommerce warehouse to the store, so the
+ * shop always reads its quantities from the ERP.
+ *
+ * Uses the batch endpoint (up to 100 products per request) instead of one PUT
+ * per product: far fewer round-trips, so transient timeouts stop silently
+ * dropping individual products.
+ *
+ * Every product is then VERIFIED against what WooCommerce echoed back, and any
+ * product whose stock did not actually change is reported with a reason. That
+ * is what makes "some updated and some did not" visible instead of silent —
+ * most commonly a variable product, whose stock lives on its variations and
+ * whose parent-level stock_quantity WooCommerce simply ignores.
+ */
+export async function pushStockToWooCommerce(): Promise<ActionResult<{
+  updated: number;
+  failed: number;
+  skipped: number;
+  problems: string[];
+}>> {
+  try {
+    const wooCommerce = await getWooCommerceClient();
+
+    const warehouseId = await getWooWarehouseId();
+    if (!warehouseId) {
+      return {
+        success: false,
+        message: 'انبار پیش‌فرض ووکامرس تنظیم نشده است. لطفا در تنظیمات → ووکامرس، انبار را انتخاب کنید.',
+      };
+    }
+
+    const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
+
+    // Every ERP product that exists in the shop.
+    const products = await prisma.product.findMany({
+      where: { wooId: { not: null } },
+      select: { id: true, wooId: true, name: true, sku: true },
+    });
+
+    if (products.length === 0) {
+      return {
+        success: false,
+        message: 'هیچ محصولی با شناسه ووکامرس یافت نشد. ابتدا سینک محصولات را اجرا کنید.',
+      };
+    }
+
+    // Stock in the WooCommerce warehouse; a product with no row means zero.
+    const inventories = await prisma.inventory.findMany({
+      where: { warehouseId, productId: { in: products.map((p: any) => p.id) } },
+      select: { productId: true, quantity: true },
+    });
+    const stockByProduct = new Map<string, number>(
+      inventories.map((i: any) => [i.productId as string, Number(i.quantity) || 0]),
+    );
+
+    const intended: Array<{ wooId: number; name: string; sku: string; quantity: number }> =
+      products.map((p: any) => ({
+        wooId: Number(p.wooId),
+        name: String(p.name),
+        sku: String(p.sku ?? ''),
+        quantity: Math.max(0, stockByProduct.get(p.id) ?? 0),
+      }));
+
+    const problems: string[] = [];
+    let updated = 0;
+    let failed = 0;
+
+    const CHUNK = 100;
+    for (let i = 0; i < intended.length; i += CHUNK) {
+      const chunk = intended.slice(i, i + CHUNK);
+      try {
+        const response = await wooCommerce.post('products/batch', {
+          update: chunk.map((c) => ({
+            id: c.wooId,
+            stock_quantity: c.quantity,
+            manage_stock: true,
+          })),
+        });
+
+        // Verify against what the store actually stored.
+        const echoed: any[] = response?.data?.update ?? [];
+        const echoedById = new Map(echoed.map((e: any) => [Number(e.id), e]));
+
+        for (const c of chunk) {
+          const result = echoedById.get(c.wooId);
+          if (!result) {
+            failed++;
+            problems.push(`«${c.name}» (${c.sku}): ووکامرس پاسخی برای این محصول برنگرداند.`);
+            continue;
+          }
+          if (result.error) {
+            failed++;
+            problems.push(`«${c.name}» (${c.sku}): ${result.error?.message ?? 'خطای ووکامرس'}`);
+            continue;
+          }
+          if (Number(result.stock_quantity) !== c.quantity) {
+            failed++;
+            const reason = result.type && result.type !== 'simple'
+              ? `محصول از نوع «${result.type}» است و موجودی آن روی تنوع‌ها (variations) نگهداری می‌شود`
+              : 'ووکامرس مقدار را ذخیره نکرد';
+            problems.push(`«${c.name}» (${c.sku}): ${reason}.`);
+            continue;
+          }
+          updated++;
+        }
+      } catch (error: unknown) {
+        // A whole chunk failing is reported, never swallowed.
+        failed += chunk.length;
+        const msg = (error as { message?: string })?.message ?? 'خطای نامشخص';
+        problems.push(`${chunk.length} محصول در یک دسته ارسال نشد: ${msg}`);
+      }
+    }
+
+    try {
+      revalidatePath('/dashboard/woocommerce');
+    } catch (e) {
+      // Ignore outside a Next.js request context
+    }
+
+    const where = warehouse?.name ? `از انبار «${warehouse.name}»` : '';
+    return {
+      success: failed === 0,
+      message: failed === 0
+        ? `موجودی ${updated.toLocaleString('fa-IR')} محصول ${where} در ووکامرس به‌روزرسانی شد.`
+        : `${updated.toLocaleString('fa-IR')} محصول به‌روزرسانی شد و ${failed.toLocaleString('fa-IR')} محصول ناموفق بود.`,
+      data: { updated, failed, skipped: 0, problems: problems.slice(0, 50) },
+    };
+  } catch (error: unknown) {
+    console.error('Error pushing stock to WooCommerce:', error);
+    const msg = (error as { message?: string })?.message ?? 'خطای نامشخص';
+    return { success: false, message: `خطا در ارسال موجودی به ووکامرس: ${msg}` };
   }
 }
 
