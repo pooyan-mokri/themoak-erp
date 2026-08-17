@@ -58,6 +58,10 @@ export async function testFTPConnection(): Promise<{
     client.ftp.verbose = false;
 
     // Connect (passive mode is enabled by default in basic-ftp)
+    // Fail fast: a serverless function has a hard execution limit, so a
+    // hanging FTP handshake must surface as an error rather than a dead request.
+    (client.ftp as any).timeout = 15000;
+
     const accessOptions: any = {
       host: ftpCreds.host,
       port: ftpCreds.port || 21,
@@ -93,7 +97,12 @@ export async function testFTPConnection(): Promise<{
       error?.message?.includes('ECONNREFUSED')
     ) {
       errorMessage =
-        'اتصال رد شد. لطفاً بررسی کنید: آدرس سرور و پورت صحیح است و سرور FTP در حال اجرا است.';
+        'اتصال رد شد (ECONNREFUSED): درخواست به سرور رسید اما سرور آن را فعالانه رد کرد. ' +
+        'رایج‌ترین علت این است که فایروال میزبان، اتصال FTP از IP های خارج از ایران (سرورهای Vercel) را مسدود می‌کند. ' +
+        'برای بررسی: همین آدرس، پورت و نام کاربری را با یک نرم‌افزار FTP از کامپیوتر خودتان تست کنید؛ ' +
+        'اگر از آنجا وصل شد، مشکل مسدودسازی IP است و باید از پشتیبانی هاست بخواهید IP های Vercel را در فایروال مجاز کند ' +
+        '(یا از روش جایگزین غیر-FTP برای ذخیره فایل استفاده شود). ' +
+        'همچنین مطمئن شوید سرویس FTP روی پورت واردشده فعال است (۲۱ برای FTPS صریح، ۹۹۰ برای FTPS ضمنی).';
     } else if (
       error?.code === 'ENOTFOUND' ||
       error?.message?.includes('ENOTFOUND')
