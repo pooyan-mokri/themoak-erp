@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Currency } from '@/lib/types';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { getAccounts } from '@/actions/accounting';
 
 const initialState = {
@@ -47,25 +47,63 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
   const sourceAccount = accounts.find((a) => a.id === sourceAccountId);
   const targetAccount = accounts.find((a) => a.id === targetAccountId);
 
-  // Calculate exchange rate when amounts change
-  useEffect(() => {
-    if (sourceAmount && targetAmount && sourceAccount && targetAccount && Number(sourceAmount) > 0 && Number(targetAmount) > 0) {
-      if (sourceAccount.currency === Currency.TOMAN) {
-        // Buying foreign currency: 1 TOMAN = ? foreign currency
-        // rate = targetAmount / sourceAmount (how much foreign currency per 1 TOMAN)
-        const rate = Number(targetAmount) / Number(sourceAmount);
-        setExchangeRate(rate.toFixed(6));
-      } else if (targetAccount.currency === Currency.TOMAN) {
-        // Selling foreign currency: 1 foreign currency = ? TOMAN
-        // rate = targetAmount / sourceAmount (how much TOMAN per 1 foreign currency)
-        const rate = Number(targetAmount) / Number(sourceAmount);
-        setExchangeRate(rate.toFixed(6));
-      } else {
-        // Foreign to foreign: convert through TOMAN
-        // This is more complex, user should enter rate manually
-      }
+  // The rate is ALWAYS expressed as Toman per 1 unit of the foreign currency
+  // (e.g. 176,800 تومان per 1 USD). The inverse direction (USD per Toman) is a
+  // number like 0.0000056, which loses ~6% of its value once rounded and falls
+  // below the minimum the form and the server accept.
+  const isBuying = sourceAccount?.currency === Currency.TOMAN && targetAccount?.currency !== Currency.TOMAN;
+  const isSelling = targetAccount?.currency === Currency.TOMAN && sourceAccount?.currency !== Currency.TOMAN;
+  const hasTomanSide = isBuying || isSelling;
+  const foreignCurrency = isBuying ? targetAccount?.currency : sourceAccount?.currency;
+
+  const round = (n: number, digits: number) =>
+    Number.isFinite(n) ? String(Number(n.toFixed(digits))) : '';
+
+  // Amount of the foreign currency, given a Toman amount and a rate.
+  const foreignFromToman = (toman: string, rate: string) => {
+    const t = Number(toman);
+    const r = Number(rate);
+    return t > 0 && r > 0 ? round(t / r, 2) : '';
+  };
+
+  const rateFromAmounts = (toman: string, foreign: string) => {
+    const t = Number(toman);
+    const f = Number(foreign);
+    return t > 0 && f > 0 ? round(t / f, 2) : '';
+  };
+
+  const handleSourceAmountChange = (value: string) => {
+    setSourceAmount(value);
+    if (!hasTomanSide) return;
+    if (isBuying) {
+      // Toman side edited: derive the foreign amount from the rate.
+      if (exchangeRate) setTargetAmount(foreignFromToman(value, exchangeRate));
+      else if (targetAmount) setExchangeRate(rateFromAmounts(value, targetAmount));
+    } else {
+      // Foreign side edited: the rate follows from the two amounts.
+      if (targetAmount) setExchangeRate(rateFromAmounts(targetAmount, value));
     }
-  }, [sourceAmount, targetAmount, sourceAccount, targetAccount]);
+  };
+
+  const handleTargetAmountChange = (value: string) => {
+    setTargetAmount(value);
+    if (!hasTomanSide) return;
+    if (isSelling) {
+      if (exchangeRate) setSourceAmount(foreignFromToman(value, exchangeRate));
+      else if (sourceAmount) setExchangeRate(rateFromAmounts(value, sourceAmount));
+    } else {
+      if (sourceAmount) setExchangeRate(rateFromAmounts(sourceAmount, value));
+    }
+  };
+
+  const handleRateChange = (value: string) => {
+    setExchangeRate(value);
+    if (!hasTomanSide) return;
+    // Keep the foreign amount consistent with the Toman amount and the rate,
+    // so "how much currency did I actually buy" is never computed by hand.
+    if (isBuying && sourceAmount) setTargetAmount(foreignFromToman(sourceAmount, value));
+    if (isSelling && targetAmount) setSourceAmount(foreignFromToman(targetAmount, value));
+  };
 
   // Filter accounts by currency
   const tomanAccounts = accounts.filter((a) => a.currency === Currency.TOMAN);
@@ -153,7 +191,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 step="0.01"
                 min="0.01"
                 value={sourceAmount}
-                onChange={(e) => setSourceAmount(e.target.value)}
+                onChange={(e) => handleSourceAmountChange(e.target.value)}
                 placeholder="0.00"
                 required
               />
@@ -180,7 +218,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 step="0.01"
                 min="0.01"
                 value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
+                onChange={(e) => handleTargetAmountChange(e.target.value)}
                 placeholder="0.00"
                 required
               />
@@ -191,7 +229,11 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
 
             {/* Exchange Rate */}
             <div className="space-y-2">
-              <Label htmlFor="exchangeRate">نرخ تبدیل</Label>
+              <Label htmlFor="exchangeRate">
+                {hasTomanSide && foreignCurrency
+                  ? `نرخ تبدیل (تومان به ازای هر ۱ ${foreignCurrency})`
+                  : 'نرخ تبدیل'}
+              </Label>
               <Input
                 id="exchangeRate"
                 name="exchangeRate"
@@ -199,7 +241,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 step="0.000001"
                 min="0.01"
                 value={exchangeRate}
-                onChange={(e) => setExchangeRate(e.target.value)}
+                onChange={(e) => handleRateChange(e.target.value)}
                 placeholder="نرخ تبدیل"
                 required
               />
@@ -208,8 +250,9 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
               )}
               {sourceAccount && targetAccount && exchangeRate && (
                 <p className="text-xs text-muted-foreground">
-                  1 {sourceAccount.currency} = {Number(exchangeRate).toFixed(6)}{' '}
-                  {targetAccount.currency === Currency.TOMAN ? 'تومان' : targetAccount.currency}
+                  {hasTomanSide && foreignCurrency
+                    ? `۱ ${foreignCurrency} = ${new Intl.NumberFormat('fa-IR').format(Number(exchangeRate))} تومان`
+                    : `1 ${sourceAccount.currency} = ${Number(exchangeRate)} ${targetAccount.currency}`}
                 </p>
               )}
             </div>
