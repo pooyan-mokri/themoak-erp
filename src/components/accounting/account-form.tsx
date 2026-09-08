@@ -96,16 +96,21 @@ export function AccountForm({ initialData, onSuccess }: AccountFormProps) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="initialBalance">{initialData ? 'موجودی فعلی' : 'موجودی اولیه'}</Label>
-            <Input
-              id="initialBalance"
-              name="initialBalance"
-              type="number"
-              defaultValue={initialData?.balance || "0"}
-            />
-            {initialData && <p className="text-xs text-muted-foreground text-yellow-600">توجه: تغییر دستی موجودی پیشنهاد نمی‌شود.</p>}
-          </div>
+          {/* Only when creating. In edit mode this field re-stamped the running
+              balance on every save — even a save meant only to add a card
+              number — with no transaction to explain the change. Corrections
+              now go through the explicit «اصلاح موجودی» action. */}
+          {!initialData && (
+            <div className="space-y-2">
+              <Label htmlFor="initialBalance">موجودی اولیه</Label>
+              <Input
+                id="initialBalance"
+                name="initialBalance"
+                type="number"
+                defaultValue="0"
+              />
+            </div>
+          )}
 
           {accountType === 'BANK' && (
             <>

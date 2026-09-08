@@ -9,6 +9,13 @@ import { auth } from '@/auth';
 
 // const prisma = new PrismaClient(); // Removed local instance
 
+/**
+ * Repayments of an employee's out-of-pocket expenses. They are EXPENSE rows
+ * (cash really leaves the account) and are identified by this category so the
+ * debt report can net them against the employee's expenses.
+ */
+export const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
+
 // --- Schemas ---
 
 const AccountSchema = z.object({
@@ -156,7 +163,7 @@ export async function updateAccount(id: string, prevState: ActionState, formData
     };
   }
 
-  const { name, type, currency, initialBalance, cardNumber, sheba } = validatedFields.data;
+  const { name, type, currency, cardNumber, sheba } = validatedFields.data;
 
   try {
     await prisma.account.update({
@@ -165,7 +172,12 @@ export async function updateAccount(id: string, prevState: ActionState, formData
         name,
         type,
         currency,
-        balance: initialBalance !== undefined ? initialBalance : undefined,
+        // balance is deliberately NOT written here. It is a running total
+        // maintained by increments/decrements that each pair with a
+        // Transaction. Writing it from this form silently rebased the ledger
+        // whenever the account was edited for any reason (e.g. to add a card
+        // number), with no transaction to explain the jump. Use
+        // adjustAccountBalance for a deliberate, auditable correction.
         cardNumber: cardNumber ?? null,
         sheba: sheba ?? null,
       },
@@ -637,6 +649,80 @@ export async function getExpenseBreakdown() {
  * Get employee debts (Accounts Payable)
  * Returns list of employees with their total debt amounts
  */
+/**
+ * Deliberately correct an account's balance to a known figure (e.g. a bank
+ * statement), writing an ADJUSTMENT transaction for the difference so the
+ * change is explained and the ledger invariant
+ * (balance == opening + Σ transactions) still holds.
+ *
+ * This replaces the old behaviour where saving the account edit form silently
+ * overwrote the balance with no record of what changed or why.
+ */
+export async function adjustAccountBalance(input: {
+  accountId: string;
+  targetBalance: number;
+  note?: string;
+}): Promise<ActionResult> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند موجودی را اصلاح کند.' };
+  }
+
+  const { accountId, targetBalance, note } = input;
+  if (!Number.isFinite(targetBalance)) {
+    return { success: false, message: 'موجودی جدید معتبر نیست.' };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      const account = await tx.account.findUnique({ where: { id: accountId } });
+      if (!account) throw new Error('حساب یافت نشد.');
+
+      const current = Number(account.balance);
+      const delta = targetBalance - current;
+      if (Math.abs(delta) < 0.5) return { delta: 0, name: account.name };
+
+      await tx.transaction.create({
+        data: {
+          type: TransactionType.ADJUSTMENT,
+          amount: new Prisma.Decimal(Math.abs(delta)),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(1),
+          amountInToman: new Prisma.Decimal(Math.abs(delta)),
+          accountId,
+          category: 'اصلاح موجودی',
+          description:
+            (note?.trim() ? `${note.trim()} — ` : '') +
+            `اصلاح موجودی از ${Math.round(current).toLocaleString('fa-IR')} به ${Math.round(targetBalance).toLocaleString('fa-IR')}`,
+          date: new Date(),
+        },
+      });
+
+      await tx.account.update({
+        where: { id: accountId },
+        data: { balance: new Prisma.Decimal(targetBalance) },
+      });
+
+      return { delta, name: account.name };
+    });
+
+    revalidatePath('/dashboard', 'layout');
+
+    return result.delta === 0
+      ? { success: true, message: 'موجودی از قبل درست بود؛ تغییری ثبت نشد.' }
+      : {
+          success: true,
+          message: `موجودی «${result.name}» اصلاح شد (${result.delta > 0 ? '+' : ''}${Math.round(result.delta).toLocaleString('fa-IR')}) و سند اصلاح ثبت گردید.`,
+        };
+  } catch (error) {
+    console.error('Error adjusting account balance:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'خطا در اصلاح موجودی.',
+    };
+  }
+}
+
 export async function getEmployeeDebts() {
   try {
     // Get all employees
@@ -647,23 +733,20 @@ export async function getEmployeeDebts() {
     // Calculate debt for each employee
     const debtsWithDetails = await Promise.all(
       employees.map(async (employee: any) => {
-        // Get all expense transactions (debts) for this employee
-        const expenseTransactions = await prisma.transaction.findMany({
-          where: {
-            employeeId: employee.id,
-            type: TransactionType.EXPENSE,
-          },
+        // Repayments are identified by category, not by INCOME/EXPENSE:
+        // they are EXPENSE rows now, and legacy rows are INCOME.
+        const allTransactions = await prisma.transaction.findMany({
+          where: { employeeId: employee.id },
         });
+        const isRepayment = (tx: any) =>
+          tx.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY ||
+          tx.type === TransactionType.INCOME;
 
-        // Get all income transactions (payments) for this employee
-        const incomeTransactions = await prisma.transaction.findMany({
-          where: {
-            employeeId: employee.id,
-            type: TransactionType.INCOME,
-          },
-        });
+        const expenseTransactions = allTransactions.filter(
+          (tx: any) => tx.type === TransactionType.EXPENSE && !isRepayment(tx),
+        );
+        const incomeTransactions = allTransactions.filter(isRepayment);
 
-        // Calculate total debt (expenses - payments)
         const totalExpenses = expenseTransactions.reduce(
   (sum: any, tx: any) => sum + Number(tx.amountInToman),
           0
@@ -709,29 +792,20 @@ export async function getEmployeeDebtDetails(employeeId: string) {
       return undefined;
     }
 
-    // Get all expense transactions (debts)
-    const expenseTransactions = await prisma.transaction.findMany({
-      where: {
-        employeeId: employee.id,
-        type: TransactionType.EXPENSE,
-      },
-      include: {
-        project: true,
-      },
+    // Repayments are identified by category (EXPENSE rows now, legacy INCOME).
+    const allEmployeeTransactions = await prisma.transaction.findMany({
+      where: { employeeId: employee.id },
+      include: { project: true, account: true },
       orderBy: { date: 'desc' },
     });
+    const isRepayment = (tx: any) =>
+      tx.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY ||
+      tx.type === TransactionType.INCOME;
 
-    // Get all income transactions (payments)
-    const incomeTransactions = await prisma.transaction.findMany({
-      where: {
-        employeeId: employee.id,
-        type: TransactionType.INCOME,
-      },
-      include: {
-        account: true,
-      },
-      orderBy: { date: 'desc' },
-    });
+    const expenseTransactions = allEmployeeTransactions.filter(
+      (tx: any) => tx.type === TransactionType.EXPENSE && !isRepayment(tx),
+    );
+    const incomeTransactions = allEmployeeTransactions.filter(isRepayment);
 
     const totalExpenses = expenseTransactions.reduce(
   (sum: any, tx: any) => sum + Number(tx.amountInToman),
@@ -830,18 +904,20 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
         throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${amount.toLocaleString('fa-IR')} تومان`);
       }
 
-      // Repayment: recorded as INCOME with employeeId so it offsets the employee's EXPENSE debt
-      // (getEmployeeDebts: totalDebt = EXPENSE - INCOME for each employee)
+      // Money leaves the account, so the row must be an EXPENSE. It was typed
+      // INCOME purely so the debt report could net it out, which made every
+      // repayment of X drive the stored balance 2X away from the sum of its
+      // transactions. The debt report now nets by category instead.
       await tx.transaction.create({
         data: {
           amount: new Prisma.Decimal(amount),
           currency: 'TOMAN',
           rateSnapshot: new Prisma.Decimal(1),
           amountInToman: new Prisma.Decimal(amount),
-          type: TransactionType.INCOME,
+          type: TransactionType.EXPENSE,
           accountId,
           employeeId,
-          category: 'تسویه بدهی کارمند',
+          category: EMPLOYEE_DEBT_REPAYMENT_CATEGORY,
           description: description || `تسویه بدهی به ${employee.name}`,
           date: date ? new Date(date) : new Date(),
         },
