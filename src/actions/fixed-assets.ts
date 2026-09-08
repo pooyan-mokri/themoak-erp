@@ -153,17 +153,29 @@ export async function postDepreciation(assetId: string) {
       });
     }
 
-    await prisma.transaction.create({
-      data: {
-        type: 'EXPENSE',
-        amount: annualDepreciation,
-        amountInToman: annualDepreciation,
-        currency: 'TOMAN',
-        category: 'Depreciation',
-        description: `استهلاک سالانه دارایی: ${asset.name}`,
-        accountId: expenseAccount.id,
-        date: new Date(),
-      }
+    // The row carries an accountId, so it has to move that account's balance
+    // too — otherwise the account drifts from its own transactions by every
+    // depreciation ever posted. Same convention as the marketing expense
+    // account, and atomic so the two can't come apart.
+    const depreciationAccountId = expenseAccount.id;
+    await prisma.$transaction(async (tx) => {
+      await tx.transaction.create({
+        data: {
+          type: 'EXPENSE',
+          amount: annualDepreciation,
+          amountInToman: annualDepreciation,
+          currency: 'TOMAN',
+          category: 'Depreciation',
+          description: `استهلاک سالانه دارایی: ${asset.name}`,
+          accountId: depreciationAccountId,
+          date: new Date(),
+        }
+      });
+
+      await tx.account.update({
+        where: { id: depreciationAccountId },
+        data: { balance: { decrement: annualDepreciation } },
+      });
     });
 
     try {

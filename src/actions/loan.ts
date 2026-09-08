@@ -1,10 +1,11 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/types';
+import { TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // --- Schemas ---
 
@@ -56,10 +57,15 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
     const account = await prisma.account.findUnique({ where: { id: accountId } });
     if (!account) return { message: 'حساب یافت نشد.', success: false };
 
+    // The form is Toman-denominated ("مبلغ قرض (تومان)"), but the cash leaves
+    // the account in the account's own currency.
+    const { amount: amountInAccountCurrency, rate: accountRate } =
+      await inAccountCurrency(prisma, account, amount);
+
     const accountBalance = Number(account.balance);
-    if (accountBalance < amount) {
+    if (accountBalance < amountInAccountCurrency) {
       return {
-        message: `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان`,
+        message: `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} ${account.currency}`,
         success: false,
       };
     }
@@ -79,9 +85,9 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
 
       await tx.transaction.create({
         data: {
-          amount: new Prisma.Decimal(amount),
-          currency: Currency.TOMAN,
-          rateSnapshot: new Prisma.Decimal(1),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(accountRate),
           amountInToman: new Prisma.Decimal(amount),
           type: TransactionType.EXPENSE,
           accountId,
@@ -94,7 +100,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
 
       await tx.account.update({
         where: { id: accountId },
-        data: { balance: { decrement: new Prisma.Decimal(amount) } },
+        data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
       });
     });
 
@@ -171,26 +177,12 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     const principalAmount = principal !== undefined ? principal : amount;
     const interestAmount = interest !== undefined ? interest : 0;
 
-    // Get exchange rate if not TOMAN
-    let rate = 1;
-    let amountInToman = amount;
-
-    if (account.currency !== 'TOMAN') {
-      const latestRate = await prisma.exchangeRate.findFirst({
-        where: { currency: account.currency },
-        orderBy: { date: 'desc' },
-      });
-
-      if (!latestRate) {
-        return {
-          message: `نرخ ارز برای ${account.currency} یافت نشد.`,
-          success: false,
-        };
-      }
-
-      rate = Number(latestRate.rateToToman);
-      amountInToman = amount * rate;
-    }
+    // The payment form is Toman-denominated (capped at loan.remaining, which
+    // is Toman), so `amount` IS the Toman figure. The cash lands in the
+    // account in the account's own currency.
+    const amountInToman = amount;
+    const { amount: amountInAccountCurrency, rate } =
+      await inAccountCurrency(prisma, account, amountInToman);
 
     const transactionDate = date ? new Date(date) : new Date();
     const newRemaining = remainingAmount - principalAmount;
@@ -200,7 +192,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.INCOME,
-          amount: new Prisma.Decimal(amount),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
           currency: account.currency,
           rateSnapshot: new Prisma.Decimal(rate),
           amountInToman: new Prisma.Decimal(amountInToman),
@@ -236,7 +228,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
         where: { id: accountId },
         data: {
           balance: {
-            increment: new Prisma.Decimal(amountInToman),
+            increment: new Prisma.Decimal(amountInAccountCurrency),
           },
         },
       });
@@ -246,7 +238,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     revalidatePath('/dashboard/accounting/transactions');
     revalidatePath('/dashboard/accounting/accounts');
     return {
-      message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت ثبت شد.`,
+      message: `مبلغ ${amount.toLocaleString('fa-IR')} تومان با موفقیت ثبت شد.`,
       success: true,
     };
   } catch (error: unknown) {

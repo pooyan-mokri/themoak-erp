@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { auth } from '@/auth';
-import { sumBalanceEffects } from '@/lib/balance-reconciliation';
+import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // const prisma = new PrismaClient(); // Removed local instance
 
@@ -368,18 +368,22 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
           throw new Error('حساب پرداخت یافت نشد');
         }
 
+        // The money leaves the account in the account's own currency.
+        const { amount: amountInAccountCurrency, rate: accountRate } =
+          await inAccountCurrency(tx, account, amountInToman);
+
         // Check if account has sufficient balance
         const accountBalance = Number(account.balance);
-        if (accountBalance < amountInToman) {
-          throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${amountInToman.toLocaleString('fa-IR')} تومان`);
+        if (accountBalance < amountInAccountCurrency) {
+          throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} ${account.currency}، مبلغ مورد نیاز: ${amountInAccountCurrency.toLocaleString('fa-IR')} ${account.currency}`);
         }
 
         // Create Transaction Record
         await tx.transaction.create({
           data: {
-            amount: new Prisma.Decimal(amount),
-            currency,
-            rateSnapshot: new Prisma.Decimal(rate),
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(accountRate),
             amountInToman: new Prisma.Decimal(amountInToman),
             type: TransactionType.EXPENSE,
             accountId,
@@ -391,13 +395,12 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
           }
         });
 
-        // Update Account Balance
-        // Expenses decrease balance (use amountInToman since account balance is in Toman)
+        // Update Account Balance in the account's own currency
         await tx.account.update({
           where: { id: accountId },
           data: {
             balance: {
-              decrement: new Prisma.Decimal(amountInToman)
+              decrement: new Prisma.Decimal(amountInAccountCurrency)
             }
           }
         });
@@ -442,6 +445,42 @@ async function requireAdmin(): Promise<ActionResult | null> {
   return null;
 }
 
+/** Relations that mark an EXPENSE row as the accounting leg of another document. */
+const SYSTEM_OWNED_RELATIONS = {
+  marketingGift: { select: { id: true } },
+  orderExchange: { select: { id: true } },
+  orderReturn: { select: { id: true } },
+  purchasePayment: { select: { id: true } },
+  purchaseOrderPayment: { select: { id: true } },
+  arrivalCosts: { select: { id: true } },
+  LoanPayment: { select: { id: true } },
+  PayrollPayment: { select: { id: true } },
+  ShareholderWithdrawal: { select: { id: true } },
+};
+
+/**
+ * Some EXPENSE rows are not standalone expenses — they are the accounting leg
+ * of a consignment sale, a currency exchange, a return, a gift or a purchase
+ * payment. Editing or deleting one from the expense list would move the
+ * account balance and leave the document that created it untouched (deleting
+ * one half of a currency exchange, for instance, credits the Toman account
+ * without returning the dollars). Refuse, and name the module that owns it.
+ */
+function systemOwnerOf(expense: any): string | null {
+  if (expense.orderReturn) return 'مرجوعی فروش';
+  if (expense.orderExchange) return 'تعویض کالا';
+  if (expense.marketingGift) return 'هدیه بازاریابی';
+  if (expense.purchasePayment || expense.purchaseOrderPayment) return 'پرداخت سفارش خرید';
+  if (expense.arrivalCosts?.length) return 'هزینه‌های ورود کالا';
+  if (expense.LoanPayment) return 'پرداخت وام';
+  if (expense.PayrollPayment) return 'پرداخت حقوق';
+  if (expense.ShareholderWithdrawal) return 'برداشت سهامدار';
+  if (expense.category === 'COGS') return 'بهای تمام‌شده کالای فروش امانی';
+  if (expense.category === 'CONSIGNMENT_COMMISSION') return 'کمیسیون همکار امانی';
+  if (expense.category === 'Currency Exchange') return 'مبادله ارز';
+  return null;
+}
+
 /**
  * Delete an expense transaction (admin only).
  * Reverses the account balance change that was applied when the expense was recorded.
@@ -451,17 +490,31 @@ export async function deleteExpense(id: string): Promise<ActionResult> {
   if (denied) return denied;
 
   try {
-    const expense = await prisma.transaction.findUnique({ where: { id } });
+    const expense = await prisma.transaction.findUnique({
+      where: { id },
+      include: SYSTEM_OWNED_RELATIONS,
+    });
     if (!expense || expense.type !== TransactionType.EXPENSE) {
       return { success: false, message: 'هزینه یافت نشد.' };
     }
 
+    const owner = systemOwnerOf(expense);
+    if (owner) {
+      return {
+        success: false,
+        message: `این سند به‌صورت خودکار توسط «${owner}» ثبت شده است و باید از همان بخش اصلاح یا لغو شود.`,
+      };
+    }
+
     await prisma.$transaction(async (tx: any) => {
-      // Reverse the balance decrement for account-paid expenses
+      // Reverse the balance decrement for account-paid expenses.
+      // Undo exactly what this row did to the balance, in the account's own
+      // currency — balanceEffect replays the same rule the reconciliation
+      // report uses, so the two can never disagree.
       if (expense.accountId) {
         await tx.account.update({
           where: { id: expense.accountId },
-          data: { balance: { increment: expense.amountInToman } },
+          data: { balance: { increment: new Prisma.Decimal(-balanceEffect(expense as any)) } },
         });
       }
       await tx.transaction.delete({ where: { id } });
@@ -502,9 +555,20 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
   const { id, amount, currency, category, description, date, accountId } = parsed.data;
 
   try {
-    const existing = await prisma.transaction.findUnique({ where: { id } });
+    const existing = await prisma.transaction.findUnique({
+      where: { id },
+      include: SYSTEM_OWNED_RELATIONS,
+    });
     if (!existing || existing.type !== TransactionType.EXPENSE) {
       return { success: false, message: 'هزینه یافت نشد.' };
+    }
+
+    const owner = systemOwnerOf(existing);
+    if (owner) {
+      return {
+        success: false,
+        message: `این سند به‌صورت خودکار توسط «${owner}» ثبت شده است و باید از همان بخش اصلاح یا لغو شود.`,
+      };
     }
 
     // Resolve new exchange rate / Toman amount
@@ -524,10 +588,10 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
 
     const result = await prisma.$transaction(async (tx: any) => {
       if (wasAccountPaid) {
-        // 1. Reverse the original decrement
+        // 1. Reverse the original effect in the currency it was applied in
         await tx.account.update({
           where: { id: existing.accountId },
-          data: { balance: { increment: existing.amountInToman } },
+          data: { balance: { increment: new Prisma.Decimal(-balanceEffect(existing as any)) } },
         });
 
         // 2. Apply the new decrement (account may have changed)
@@ -535,21 +599,24 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
         const account = await tx.account.findUnique({ where: { id: targetAccountId } });
         if (!account) throw new Error('حساب پرداخت یافت نشد');
 
-        if (Number(account.balance) < newAmountInToman) {
-          throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی فعلی: ${Number(account.balance).toLocaleString('fa-IR')} تومان`);
+        const { amount: amountInAccountCurrency, rate: accountRate } =
+          await inAccountCurrency(tx, account, newAmountInToman);
+
+        if (Number(account.balance) < amountInAccountCurrency) {
+          throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی فعلی: ${Number(account.balance).toLocaleString('fa-IR')} ${account.currency}`);
         }
 
         await tx.account.update({
           where: { id: targetAccountId },
-          data: { balance: { decrement: new Prisma.Decimal(newAmountInToman) } },
+          data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
         });
 
         await tx.transaction.update({
           where: { id },
           data: {
-            amount: new Prisma.Decimal(amount),
-            currency,
-            rateSnapshot: new Prisma.Decimal(rate),
+            amount: new Prisma.Decimal(amountInAccountCurrency),
+            currency: account.currency,
+            rateSnapshot: new Prisma.Decimal(accountRate),
             amountInToman: new Prisma.Decimal(newAmountInToman),
             category,
             description: description || category,
@@ -1048,14 +1115,17 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     await prisma.$transaction(async (tx: any) => {
       const account = await tx.account.findUnique({ where: { id: accountId } });
       if (!account) throw new Error('حساب یافت نشد');
-      if (Number(account.balance) < amountInToman) {
+      // The money leaves the account in the account's own currency.
+      const { amount: amountInAccountCurrency, rate: accountRate } =
+        await inAccountCurrency(tx, account, amountInToman);
+      if (Number(account.balance) < amountInAccountCurrency) {
         throw new Error(`موجودی حساب "${account.name}" کافی نیست.`);
       }
       await tx.transaction.create({
         data: {
-          amount: new Prisma.Decimal(amount),
-          currency,
-          rateSnapshot: new Prisma.Decimal(rate),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(accountRate),
           amountInToman: new Prisma.Decimal(amountInToman),
           type: TransactionType.EXPENSE,
           accountId,
@@ -1069,7 +1139,7 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
       });
       await tx.account.update({
         where: { id: accountId },
-        data: { balance: { decrement: new Prisma.Decimal(amountInToman) } },
+        data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
       });
     });
   } catch (error: unknown) {
@@ -1230,11 +1300,15 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
       const account = await tx.account.findUnique({ where: { id: accountId } });
       if (!account) throw new Error('حساب یافت نشد');
 
+      // The money lands in the account in the account's own currency.
+      const { amount: amountInAccountCurrency, rate: accountRate } =
+        await inAccountCurrency(tx, account, amountInToman);
+
       await tx.transaction.create({
         data: {
-          amount: new Prisma.Decimal(amount),
-          currency,
-          rateSnapshot: new Prisma.Decimal(rate),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(accountRate),
           amountInToman: new Prisma.Decimal(amountInToman),
           type: TransactionType.INCOME,
           accountId,
@@ -1247,7 +1321,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
 
       await tx.account.update({
         where: { id: accountId },
-        data: { balance: { increment: new Prisma.Decimal(amountInToman) } },
+        data: { balance: { increment: new Prisma.Decimal(amountInAccountCurrency) } },
       });
     });
   } catch (error: unknown) {

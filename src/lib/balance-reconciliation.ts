@@ -55,3 +55,33 @@ export function balanceEffect(tx: ReconcilableTransaction): number {
 export function sumBalanceEffects(transactions: ReconcilableTransaction[]): number {
   return transactions.reduce((sum, tx) => sum + balanceEffect(tx), 0);
 }
+
+/**
+ * Convert a Toman figure into the currency an account is actually kept in.
+ *
+ * The other half of the rule above: balanceEffect() reads Transaction.amount
+ * as the account's own currency, so whatever writes the balance has to put
+ * that same figure in Transaction.amount. Forms that are denominated in Toman
+ * (expenses, loans) must convert before touching a foreign-currency account —
+ * otherwise a Toman number is moved straight off a dollar balance.
+ *
+ * `client` is a Prisma client or an interactive transaction.
+ */
+export async function inAccountCurrency(
+  client: any,
+  account: { currency: string },
+  amountInToman: number
+): Promise<{ amount: number; rate: number }> {
+  if (account.currency === 'TOMAN') {
+    return { amount: amountInToman, rate: 1 };
+  }
+  const latestRate = await client.exchangeRate.findFirst({
+    where: { currency: account.currency },
+    orderBy: { date: 'desc' },
+  });
+  if (!latestRate) {
+    throw new Error(`نرخ تبدیل برای ارز ${account.currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+  }
+  const rate = Number(latestRate.rateToToman);
+  return { amount: amountInToman / rate, rate };
+}

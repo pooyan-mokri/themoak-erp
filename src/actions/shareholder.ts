@@ -5,6 +5,7 @@ import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // --- Schemas ---
 
@@ -308,15 +309,19 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
 
     const transactionDate = date ? new Date(date) : new Date();
 
+    // The money lands in the account in the account's own currency.
+    const { amount: amountInAccountCurrency, rate: accountRate } =
+      await inAccountCurrency(prisma, account, amountInToman);
+
     // Create transaction and update account balance
     // Type: INCOME (money comes in) but with shareholderId (creates Accounts Payable - debt to shareholder)
     await prisma.$transaction(async (tx: any) => {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.INCOME,
-          amount: new Prisma.Decimal(amount),
-          currency,
-          rateSnapshot: new Prisma.Decimal(rate),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(accountRate),
           amountInToman: new Prisma.Decimal(amountInToman),
           accountId,
           shareholderId,
@@ -331,7 +336,7 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
         where: { id: accountId },
         data: {
           balance: {
-            increment: new Prisma.Decimal(amountInToman),
+            increment: new Prisma.Decimal(amountInAccountCurrency),
           },
         },
       });
@@ -434,11 +439,15 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       amountInToman = amount * rate;
     }
 
+    // The money leaves the account in the account's own currency.
+    const { amount: amountInAccountCurrency, rate: accountRate } =
+      await inAccountCurrency(prisma, account, amountInToman);
+
     // Check account balance
     const accountBalance = Number(account.balance);
-    if (accountBalance < amountInToman) {
+    if (accountBalance < amountInAccountCurrency) {
       return {
-        message: `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${amountInToman.toLocaleString('fa-IR')} تومان`,
+        message: `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} ${account.currency}، مبلغ مورد نیاز: ${amountInAccountCurrency.toLocaleString('fa-IR')} ${account.currency}`,
         success: false,
       };
     }
@@ -451,9 +460,9 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
-          amount: new Prisma.Decimal(amount),
-          currency,
-          rateSnapshot: new Prisma.Decimal(rate),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(accountRate),
           amountInToman: new Prisma.Decimal(amountInToman),
           accountId,
           shareholderId,
@@ -468,7 +477,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
         where: { id: accountId },
         data: {
           balance: {
-            decrement: new Prisma.Decimal(amountInToman),
+            decrement: new Prisma.Decimal(amountInAccountCurrency),
           },
         },
       });

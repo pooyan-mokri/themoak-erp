@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
+import { balanceEffect } from '@/lib/balance-reconciliation';
 
 // const prisma = new PrismaClient();
 
@@ -575,10 +576,12 @@ export async function cancelOrder(orderId: string): Promise<{
       if (order.transactionId && order.transaction) {
         const transaction = order.transaction;
 
-        // INCOME transaction means money came in — reverse it by subtracting
-        const balanceChange = transaction.type === 'INCOME'
-          ? -Number(transaction.amountInToman || transaction.amount)
-          : Number(transaction.amountInToman || transaction.amount);
+        // Undo exactly what this row did to the balance. createOrder credits
+        // the account in ITS OWN currency (amountInAccountCurrency), so
+        // reversing with amountInToman would credit a Toman figure back to a
+        // foreign-currency account. balanceEffect replays the same rule the
+        // reconciliation report uses, so the two can never disagree.
+        const balanceChange = -balanceEffect(transaction as any);
 
         if (transaction.accountId) {
           await tx.account.update({

@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
 
 export interface AgentTool {
   name: string;
@@ -277,22 +278,39 @@ export const agentTools: AgentTool[] = [
         return { success: false, error: 'حساب یافت نشد' };
       }
 
-      const transaction = await prisma.transaction.create({
-        data: {
-          type: 'EXPENSE',
-          amount: params.amount,
-          accountId: params.accountId,
-          category: params.category || 'Other',
-          description: params.description,
-          date: new Date(),
-        },
-      });
+      // The agent quotes amounts in Toman; the balance moves in the account's
+      // own currency. Without amountInToman the row is worth zero to every
+      // report that totals in Toman, and the two writes have to be atomic so a
+      // failure can't move a balance with no matching transaction.
+      const { amount: amountInAccountCurrency, rate } = await inAccountCurrency(
+        prisma,
+        account,
+        params.amount
+      );
 
-      await prisma.account.update({
-        where: { id: params.accountId },
-        data: {
-          balance: { decrement: params.amount },
-        },
+      const transaction = await prisma.$transaction(async (tx) => {
+        const created = await tx.transaction.create({
+          data: {
+            type: 'EXPENSE',
+            amount: amountInAccountCurrency,
+            currency: account.currency,
+            rateSnapshot: rate,
+            amountInToman: params.amount,
+            accountId: params.accountId,
+            category: params.category || 'Other',
+            description: params.description,
+            date: new Date(),
+          },
+        });
+
+        await tx.account.update({
+          where: { id: params.accountId },
+          data: {
+            balance: { decrement: amountInAccountCurrency },
+          },
+        });
+
+        return created;
       });
 
       return {

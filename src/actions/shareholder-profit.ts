@@ -5,6 +5,7 @@ import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // --- Schemas ---
 
@@ -210,26 +211,12 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
       };
     }
 
-    // Get exchange rate if not TOMAN
-    let rate = 1;
-    let amountInToman = amount;
-
-    if (account.currency !== 'TOMAN') {
-      const latestRate = await prisma.exchangeRate.findFirst({
-        where: { currency: account.currency },
-        orderBy: { date: 'desc' },
-      });
-
-      if (!latestRate) {
-        return {
-          message: `نرخ ارز برای ${account.currency} یافت نشد.`,
-          success: false,
-        };
-      }
-
-      rate = Number(latestRate.rateToToman);
-      amountInToman = amount * rate;
-    }
+    // The profit ledger is Toman-denominated (`withdrawn` accumulates this
+    // same figure), so `amount` IS the Toman figure. The cash leaves the
+    // account in the account's own currency.
+    const amountInToman = amount;
+    const { amount: amountInAccountCurrency, rate } =
+      await inAccountCurrency(prisma, account, amountInToman);
 
     const transactionDate = date ? new Date(date) : new Date();
 
@@ -238,7 +225,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
-          amount: new Prisma.Decimal(amount),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
           currency: account.currency,
           rateSnapshot: new Prisma.Decimal(rate),
           amountInToman: new Prisma.Decimal(amountInToman),
@@ -273,7 +260,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
         where: { id: accountId },
         data: {
           balance: {
-            decrement: new Prisma.Decimal(amountInToman),
+            decrement: new Prisma.Decimal(amountInAccountCurrency),
           },
         },
       });

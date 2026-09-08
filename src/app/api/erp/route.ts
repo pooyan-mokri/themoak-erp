@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 function authenticate(req: NextRequest): boolean {
@@ -292,11 +293,17 @@ export async function POST(req: NextRequest) {
         const amountInToman = amount * rate;
 
         await prisma.$transaction(async (tx: any) => {
+          const acct = await tx.account.findUnique({ where: { id: accountId } });
+          if (!acct) throw new Error('Account not found');
+          // The money lands in the account in the account's own currency.
+          const { amount: amountInAccountCurrency, rate: accountRate } =
+            await inAccountCurrency(tx, acct, amountInToman);
+
           await tx.transaction.create({
             data: {
-              amount: new Prisma.Decimal(amount),
-              currency,
-              rateSnapshot: new Prisma.Decimal(rate),
+              amount: new Prisma.Decimal(amountInAccountCurrency),
+              currency: acct.currency,
+              rateSnapshot: new Prisma.Decimal(accountRate),
               amountInToman: new Prisma.Decimal(amountInToman),
               type: 'INCOME',
               accountId,
@@ -307,7 +314,7 @@ export async function POST(req: NextRequest) {
           });
           await tx.account.update({
             where: { id: accountId },
-            data: { balance: { increment: new Prisma.Decimal(amountInToman) } },
+            data: { balance: { increment: new Prisma.Decimal(amountInAccountCurrency) } },
           });
         });
         return NextResponse.json({ success: true, message: 'واریز ثبت شد' });
@@ -333,14 +340,17 @@ export async function POST(req: NextRequest) {
         await prisma.$transaction(async (tx: any) => {
           const acct = await tx.account.findUnique({ where: { id: accountId } });
           if (!acct) throw new Error('Account not found');
-          if (Number(acct.balance) < amountInToman)
+          // The money leaves the account in the account's own currency.
+          const { amount: amountInAccountCurrency, rate: accountRate } =
+            await inAccountCurrency(tx, acct, amountInToman);
+          if (Number(acct.balance) < amountInAccountCurrency)
             throw new Error('Insufficient balance');
 
           await tx.transaction.create({
             data: {
-              amount: new Prisma.Decimal(amount),
-              currency,
-              rateSnapshot: new Prisma.Decimal(rate),
+              amount: new Prisma.Decimal(amountInAccountCurrency),
+              currency: acct.currency,
+              rateSnapshot: new Prisma.Decimal(accountRate),
               amountInToman: new Prisma.Decimal(amountInToman),
               type: 'EXPENSE',
               accountId,
@@ -352,7 +362,7 @@ export async function POST(req: NextRequest) {
           });
           await tx.account.update({
             where: { id: accountId },
-            data: { balance: { decrement: new Prisma.Decimal(amountInToman) } },
+            data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
           });
         });
         return NextResponse.json({ success: true, message: 'هزینه ثبت شد' });
