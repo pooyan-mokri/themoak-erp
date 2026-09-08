@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { auth } from '@/auth';
+import { sumBalanceEffects } from '@/lib/balance-reconciliation';
 
 // const prisma = new PrismaClient(); // Removed local instance
 
@@ -650,6 +651,56 @@ export async function getExpenseBreakdown() {
  * Returns list of employees with their total debt amounts
  */
 /**
+ * Compare every account's stored balance against the balance re-derived from
+ * its own transactions, so accounts whose ledger no longer adds up are visible.
+ *
+ * The difference is NOT purely error: it also contains the account's opening
+ * balance, which was written directly at creation and has no transaction. The
+ * UI says so — this report points at accounts worth checking, it does not
+ * declare a number wrong on its own.
+ */
+export async function getAccountReconciliation() {
+  try {
+    const accounts = await prisma.account.findMany({ orderBy: { name: 'asc' } });
+
+    const rows = await Promise.all(
+      accounts.map(async (account: any) => {
+        const transactions = await prisma.transaction.findMany({
+          where: { accountId: account.id },
+          select: { type: true, amount: true, description: true, date: true },
+        });
+
+        const computed = sumBalanceEffects(transactions as any);
+        const stored = Number(account.balance);
+
+        return {
+          id: account.id,
+          name: account.name,
+          type: account.type,
+          currency: account.currency,
+          stored,
+          computed,
+          difference: stored - computed,
+          transactionCount: transactions.length,
+          lastTransactionAt:
+            transactions.length > 0
+              ? transactions.reduce(
+                  (latest: Date, t: any) => (t.date > latest ? t.date : latest),
+                  transactions[0].date as Date,
+                )
+              : null,
+        };
+      }),
+    );
+
+    return rows;
+  } catch (error) {
+    console.error('Error building account reconciliation:', error);
+    return [];
+  }
+}
+
+/**
  * Deliberately correct an account's balance to a known figure (e.g. a bank
  * statement), writing an ADJUSTMENT transaction for the difference so the
  * change is explained and the ledger invariant
@@ -685,10 +736,12 @@ export async function adjustAccountBalance(input: {
       await tx.transaction.create({
         data: {
           type: TransactionType.ADJUSTMENT,
-          amount: new Prisma.Decimal(Math.abs(delta)),
+          // Signed on purpose: an ADJUSTMENT carries no implicit direction, so
+          // reconciliation can only re-derive its effect if the sign is stored.
+          amount: new Prisma.Decimal(delta),
           currency: account.currency,
           rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: new Prisma.Decimal(Math.abs(delta)),
+          amountInToman: new Prisma.Decimal(delta),
           accountId,
           category: 'اصلاح موجودی',
           description:
