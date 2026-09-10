@@ -98,7 +98,9 @@ function AccountActions({ account }: { account: Account }) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  const isSystemAccount = account.name === 'Marketing Expenses';
+  // EXPENSE accounts (COGS, commission, …) are system P&L buckets too: the
+  // form can't represent their type, and the code finds them by name.
+  const isSystemAccount = account.name === 'Marketing Expenses' || account.type === 'EXPENSE';
 
   const handleDelete = async () => {
     setIsDeleting(true);

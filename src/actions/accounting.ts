@@ -136,7 +136,7 @@ export async function updateAccount(id: string, prevState: ActionState, formData
   // Check if this is the Marketing Expenses account and prevent name change
   const existingAccount = await prisma.account.findUnique({
     where: { id },
-    select: { name: true },
+    select: { name: true, type: true },
   });
 
   if (existingAccount?.name === 'Marketing Expenses') {
@@ -165,6 +165,18 @@ export async function updateAccount(id: string, prevState: ActionState, formData
   }
 
   const { name, type, currency, cardNumber, sheba } = validatedFields.data;
+
+  // EXPENSE accounts are P&L buckets, not money, and money totals and payment
+  // pickers decide inclusion by type — so the type must not cross that line in
+  // either direction. The edit form has no EXPENSE option, so saving one of
+  // these accounts used to quietly resubmit it as BANK.
+  const wasExpense = existingAccount?.type === 'EXPENSE';
+  if (wasExpense !== (type === 'EXPENSE')) {
+    const message = wasExpense
+      ? 'نوع حساب‌های هزینه‌ای سیستم (مثل بهای تمام‌شده) قابل تغییر نیست.'
+      : 'نمی‌توان حساب را به حساب هزینه‌ای تبدیل کرد.';
+    return { errors: { type: [message] }, message };
+  }
 
   try {
     await prisma.account.update({
