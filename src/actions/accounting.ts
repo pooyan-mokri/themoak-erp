@@ -728,7 +728,12 @@ export async function getExpenseBreakdown() {
  */
 export async function getAccountReconciliation() {
   try {
-    const accounts = await prisma.account.findMany({ orderBy: { name: 'asc' } });
+    // EXPENSE-type accounts hold no real money: COGS and commission stay at 0
+    // by design (consignment.ts), so reconciling them only raises false alarms.
+    const accounts = await prisma.account.findMany({
+      where: { type: { not: 'EXPENSE' } },
+      orderBy: { name: 'asc' },
+    });
 
     const rows = await Promise.all(
       accounts.map(async (account: any) => {

@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
     switch (action) {
       // ── خلاصه مالی ─────────────────────────────────────────────────────────
       case 'summary': {
-        const accounts = await prisma.account.findMany();
+        // EXPENSE-type accounts are P&L buckets, not money — see reporting.ts.
+        const accounts = await prisma.account.findMany({ where: { type: { not: 'EXPENSE' } } });
         const totalToman = accounts.reduce(
           (s: number, a: any) => s + Number(a.balance),
           0,
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
         });
         return NextResponse.json({
           totalBalanceToman: totalToman,
-          accounts: accounts.length,
+          accounts: await prisma.account.count(),
           last30Days: {
             income: Number(income._sum.amountInToman ?? 0),
             expense: Number(expense._sum.amountInToman ?? 0),

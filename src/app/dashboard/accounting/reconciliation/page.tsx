@@ -24,7 +24,7 @@ export default async function ReconciliationPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">مغایرت‌گیری حساب‌ها</h1>
         <p className="text-muted-foreground mt-1">
-          موجودی ثبت‌شده هر حساب در برابر جمع تراکنش‌های خودش.
+          موجودی ثبت‌شده هر حساب در برابر جمع تراکنش‌های خودش. حساب‌های هزینه‌ای (مثل بهای تمام‌شده) پول واقعی نیستند و اینجا نمایش داده نمی‌شوند.
         </p>
       </div>
 

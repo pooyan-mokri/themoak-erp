@@ -48,7 +48,10 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
 export async function getBalanceSheet() {
   try {
     // 1. Cash & Bank Balances
-    const accounts = await prisma.account.findMany();
+    // EXPENSE-type accounts (Marketing Expenses, COGS, commission) are P&L
+    // buckets, not money — summing their negative balances here understated
+    // cash by the whole marketing spend.
+    const accounts = await prisma.account.findMany({ where: { type: { not: 'EXPENSE' } } });
     let totalCashBank = 0;
     accounts.forEach((acc: any) => {
         // Simplified: Assuming all balances are normalized to TOMAN or we just sum them for now.
