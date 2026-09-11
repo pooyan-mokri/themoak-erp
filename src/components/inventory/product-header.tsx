@@ -3,7 +3,7 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BackButton } from '@/components/ui/back-button';
-import { Package2, Image as ImageIcon } from 'lucide-react';
+import { Package2, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import Image from 'next/image';
 import { formatJalaliDate } from '@/lib/date-utils';
 
@@ -14,6 +14,8 @@ interface ProductHeaderProps {
     sku: string;
     barcode?: string;
     image?: string;
+    imageUrl?: string;
+    siteUrl?: string;
     createdAt: Date;
     updatedAt: Date;
   };
@@ -31,7 +33,13 @@ export function ProductHeader({ product, showBackButton = false }: ProductHeader
       <div className="flex gap-6">
         {/* Product Image */}
         <div className="flex-shrink-0">
-          {product.image ? (
+          {product.imageUrl ? (
+            // The website's photo: a plain <img>, so a change of image host on
+            // the site can never break this page the way next/image would.
+            <div className="relative w-32 h-32 rounded-lg overflow-hidden border bg-gray-100">
+              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+            </div>
+          ) : product.image ? (
             <div className="relative w-32 h-32 rounded-lg overflow-hidden border bg-gray-100">
               {product.image.startsWith('/uploads/') ? (
                 // Use regular img tag for local uploads
@@ -76,6 +84,17 @@ export function ProductHeader({ product, showBackButton = false }: ProductHeader
                   محصول فعال
                 </Badge>
               </div>
+              {product.siteUrl && (
+                <a
+                  href={product.siteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 mt-2 text-sm text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  مشاهده در سایت
+                </a>
+              )}
             </div>
           </div>
 

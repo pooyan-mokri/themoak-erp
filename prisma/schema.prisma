@@ -148,6 +148,8 @@ model Product {
   name               String
   sku                String                   @unique
   webId              String?                  @unique
+  imageUrl           String?
+  siteUrl            String?
   costPrice          Decimal
   sellPrice          Decimal
   image              String?

@@ -23,6 +23,7 @@ export default function SettingsLayout({
   if (pathname.includes("/settings/profile")) activeTab = "profile";
   if (pathname.includes("/settings/users")) activeTab = "users";
   if (pathname.includes("/settings/backup")) activeTab = "backup";
+  if (pathname.includes("/settings/site")) activeTab = "site";
   if (pathname === "/dashboard/settings" && isAdmin) activeTab = "company";
 
   const handleTabChange = (value: string) => {
@@ -38,6 +39,9 @@ export default function SettingsLayout({
         break;
       case "backup":
         router.push("/dashboard/settings/backup");
+        break;
+      case "site":
+        router.push("/dashboard/settings/site");
         break;
     }
   };
@@ -62,6 +66,9 @@ export default function SettingsLayout({
           )}
           {isAdmin && (
             <TabsTrigger value="backup">بک‌آپ</TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger value="site">اتصال سایت</TabsTrigger>
           )}
         </TabsList>
         <div className="mt-6">

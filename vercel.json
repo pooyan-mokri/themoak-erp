@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/site/catalogue-sync", "schedule": "30 1 * * *" }
+  ]
+}

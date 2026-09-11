@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash } from 'lucide-react';
+import { Edit, Trash, ExternalLink } from 'lucide-react';
 import { GiftProductDialog } from './gift-product-dialog';
 import { ProductForm } from './product-form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -33,6 +33,9 @@ interface Product {
   sellPrice: any; // Decimal
   wooId?: number;
   webId?: string;
+  image?: string;
+  imageUrl?: string;
+  siteUrl?: string;
 }
 
 interface ProductTableProps {
@@ -65,14 +68,37 @@ export function ProductTable({ products }: ProductTableProps) {
       key: 'name',
       label: 'نام کالا',
       sortable: true,
-      render: (product) => (
-        <Link 
-          href={`/dashboard/inventory/products/${product.id}`}
-          className="font-medium text-primary hover:underline"
-        >
-          {product.name}
-        </Link>
-      ),
+      render: (product) => {
+        // The website's front-of-frame photo first: many frames share a code
+        // family and a colour, and the photo is what tells them apart.
+        const photo = product.imageUrl || product.image;
+        return (
+          <div className="flex items-center gap-3">
+            {photo ? (
+              <img src={photo} alt={product.name} loading="lazy" className="h-10 w-10 shrink-0 rounded border object-cover bg-gray-50" />
+            ) : (
+              <div className="h-10 w-10 shrink-0 rounded border bg-gray-50 dark:bg-gray-900" />
+            )}
+            <Link
+              href={`/dashboard/inventory/products/${product.id}`}
+              className="font-medium text-primary hover:underline"
+            >
+              {product.name}
+            </Link>
+            {product.siteUrl && (
+              <a
+                href={product.siteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="مشاهده در سایت"
+                className="text-muted-foreground hover:text-primary"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'sku',

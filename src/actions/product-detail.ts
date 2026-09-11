@@ -23,6 +23,8 @@ export async function getProductDetail(productId: string) {
         costPrice: true,
         sellPrice: true,
         image: true,
+        imageUrl: true,
+        siteUrl: true,
         createdAt: true,
         updatedAt: true,
         inventory: {
@@ -50,6 +52,8 @@ export async function getProductDetail(productId: string) {
       sku: product.sku,
       barcode: product.barcode ?? undefined,
       image: product.image ?? undefined,
+      imageUrl: product.imageUrl ?? undefined,
+      siteUrl: product.siteUrl ?? undefined,
       costPrice: Number(product.costPrice),
       sellPrice: Number(product.sellPrice),
       totalStock,

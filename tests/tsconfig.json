@@ -5,6 +5,7 @@
     "paths": {
       "next/cache": ["tests/stubs/next-cache.ts"],
       "@/auth": ["tests/stubs/auth.ts"],
+      "@/lib/auth": ["tests/stubs/auth.ts"],
       "@/*": ["src/*"]
     }
   }

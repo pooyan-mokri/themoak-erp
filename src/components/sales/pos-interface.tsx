@@ -41,6 +41,7 @@ interface Product {
   sku: string;
   sellPrice: any;
   image?: string;
+  imageUrl?: string;
 }
 
 interface Customer {

@@ -102,6 +102,8 @@ export async function getProducts() {
       image: product.image ?? undefined,
       wooId: product.wooId ?? undefined,
       webId: product.webId ?? undefined,
+      imageUrl: product.imageUrl ?? undefined,
+      siteUrl: product.siteUrl ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -299,7 +301,9 @@ export async function updateProduct(id: string, prevState: ActionState, formData
       sellPrice,
       image: validatedImage || undefined,
       wooId,
-      ...webIdChange,
+      // A new or cleared webId invalidates the photo and link that came with the
+      // old one; the next catalogue sync refills them for the new webId.
+      ...(webIdChange ? { ...webIdChange, imageUrl: null, siteUrl: null } : {}),
     };
     if (webIdChange) {
       // Write only if the webId is still the value checked above, so one set

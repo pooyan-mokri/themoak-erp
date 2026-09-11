@@ -5,8 +5,13 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { Role } from '@prisma/client';
+import { SITE_SETTING_KEYS } from '@/lib/site-connection';
 
 export async function getSetting(key: string) {
+  // These actions are imported by a client component, so they are reachable
+  // from the browser with no session check. The site connection holds the
+  // webhook secret and has its own admin-only actions: never serve it here.
+  if (SITE_SETTING_KEYS.includes(key)) return undefined;
   try {
     const setting = await prisma.systemSetting.findUnique({
       where: { key },
@@ -19,6 +24,9 @@ export async function getSetting(key: string) {
 }
 
 export async function saveSetting(key: string, value: any) {
+  if (SITE_SETTING_KEYS.includes(key)) {
+    return { success: false, error: 'This setting can only be changed from its own settings page' };
+  }
   try {
     await prisma.systemSetting.upsert({
       where: { key },

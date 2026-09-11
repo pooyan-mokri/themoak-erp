@@ -12,6 +12,7 @@ interface Product {
   sku: string;
   sellPrice: any;
   image?: string;
+  imageUrl?: string;
 }
 
 interface ProductGridProps {
@@ -62,8 +63,8 @@ export function ProductGrid({ products, onAddToCart, cart = [] }: ProductGridPro
               <CardContent className="p-3 md:p-4 flex flex-col items-center text-center space-y-2">
                 <div className="w-full aspect-square bg-gray-100 rounded-md flex items-center justify-center text-gray-400">
                   {/* Placeholder for image */}
-                  {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-full h-full object-cover rounded-md" />
+                  {product.imageUrl || product.image ? (
+                      <img src={product.imageUrl || product.image} alt={product.name} className="w-full h-full object-cover rounded-md" />
                   ) : (
                       <span className="text-xs">بدون تصویر</span>
                   )}
