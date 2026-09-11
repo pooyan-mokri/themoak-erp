@@ -15,7 +15,9 @@ import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balan
  * (cash really leaves the account) and are identified by this category so the
  * debt report can net them against the employee's expenses.
  */
-export const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
+// Not exported: a "use server" file may only export async functions, and
+// exporting this constant failed every Next.js build.
+const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
 
 // --- Schemas ---
 
