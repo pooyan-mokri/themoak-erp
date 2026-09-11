@@ -15,6 +15,9 @@ export default async function ProductsPage() {
         <h1 className="text-3xl font-bold tracking-tight">تعریف کالا</h1>
         <div className="flex gap-2">
           <ProductActions products={products} />
+          <Link href="/dashboard/inventory/web-ids">
+            <Button variant="outline">شناسه‌های سایت</Button>
+          </Link>
           <Link href="/dashboard/inventory/products/new">
             <Button>
               <Plus className="mr-2 h-4 w-4" /> افزودن کالا

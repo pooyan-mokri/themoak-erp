@@ -23,6 +23,7 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'inventory': 'انبار',
     'warehouses': 'انبارها',
     'products': 'محصولات',
+    'web-ids': 'شناسه‌های سایت',
     'fixed-assets': 'دارایی‌های ثابت',
     'audits': 'انبارگردانی',
     'console': 'کنسول انبار',

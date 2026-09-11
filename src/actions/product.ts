@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { generateProductBarcode, ensureUniqueBarcode } from '@/lib/barcode-utils';
 import { ActionState, ActionResult } from '@/lib/types';
+import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -41,6 +42,16 @@ export async function createProduct(prevState: ActionState, formData: FormData):
 
   const { name, sku, productType, costPrice, sellPrice, image: validatedImage, wooId } = validatedFields.data;
 
+  const webIdInput = parseWebId(formData.get('webId'));
+  if (!webIdInput.ok) {
+    return { errors: { webId: [webIdInput.message] }, message: webIdInput.message };
+  }
+  const webId = webIdInput.value;
+  if (webId) {
+    const conflict = await webIdConflictMessage(prisma, webId);
+    if (conflict) return { errors: { webId: [conflict] }, message: conflict };
+  }
+
   try {
     // Generate unique barcode if not provided
     const baseBarcode = generateProductBarcode(sku);
@@ -56,9 +67,14 @@ export async function createProduct(prevState: ActionState, formData: FormData):
         sellPrice,
         image: validatedImage || undefined,
         wooId,
+        webId,
       },
     });
   } catch (error) {
+    if (webId && isWebIdUniqueViolation(error)) {
+      const conflict = (await webIdConflictMessage(prisma, webId)) ?? 'این شناسهٔ سایت تکراری است.';
+      return { errors: { webId: [conflict] }, message: conflict };
+    }
     console.error('Error creating product:', error);
     return {
       message: 'خطا در ثبت کالا. ممکن است SKU تکراری باشد.',
@@ -85,6 +101,7 @@ export async function getProducts() {
       sellPrice: Number(product.sellPrice),
       image: product.image ?? undefined,
       wooId: product.wooId ?? undefined,
+      webId: product.webId ?? undefined,
     }));
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -240,25 +257,62 @@ export async function updateProduct(id: string, prevState: ActionState, formData
 
   const { name, sku, productType, costPrice, sellPrice, image: validatedImage, wooId } = validatedFields.data;
 
+  // An absent webId field means "leave it"; an empty one means "clear it".
+  const rawWebId = formData.get('webId');
+  let webIdChange: { webId: string | null } | undefined;
+
   try {
     // Get old product data to check if price changed
     const oldProduct = await prisma.product.findUnique({
       where: { id },
-      select: { sellPrice: true, wooId: true }
+      select: { sellPrice: true, wooId: true, webId: true }
     });
 
-    await prisma.product.update({
-      where: { id },
-      data: {
-        name,
-        sku,
-        productType,
-        costPrice,
-        sellPrice,
-        image: validatedImage || undefined,
-        wooId,
-      },
-    });
+    // Only a real change is validated, so a stored value never blocks an
+    // unrelated edit such as a price change.
+    const typedWebId = typeof rawWebId === 'string' ? rawWebId.trim() || null : null;
+    if (rawWebId !== null && oldProduct && typedWebId !== oldProduct.webId) {
+      const webIdInput = parseWebId(rawWebId);
+      if (!webIdInput.ok) {
+        return { errors: { webId: [webIdInput.message] }, message: webIdInput.message };
+      }
+      // Once set, the webId is how the website finds this product: changing or
+      // clearing it silently repoints the site. The form locks the field and
+      // only sends this confirmation after its warning dialog, so a mismatch
+      // without it is a stale page or a crafted request.
+      if (oldProduct.webId && formData.get('confirmWebIdChange') !== '1') {
+        const message = 'شناسهٔ سایت این کالا ثبت شده و بدون تأیید قابل تغییر نیست. صفحه را تازه کنید؛ برای تغییر عمدی، «تغییر شناسه» را بزنید و هشدار را تأیید کنید.';
+        return { errors: { webId: [message] }, message };
+      }
+      if (webIdInput.value) {
+        const conflict = await webIdConflictMessage(prisma, webIdInput.value, id);
+        if (conflict) return { errors: { webId: [conflict] }, message: conflict };
+      }
+      webIdChange = { webId: webIdInput.value };
+    }
+
+    const data = {
+      name,
+      sku,
+      productType,
+      costPrice,
+      sellPrice,
+      image: validatedImage || undefined,
+      wooId,
+      ...webIdChange,
+    };
+    if (webIdChange) {
+      // Write only if the webId is still the value checked above, so one set
+      // concurrently (e.g. by the seed) is never replaced. updateMany, because
+      // update's unique `where` cannot filter on a null webId.
+      const { count } = await prisma.product.updateMany({ where: { id, webId: oldProduct!.webId }, data });
+      if (count === 0) {
+        const message = 'شناسهٔ سایت این کالا هم‌زمان تغییر کرد؛ صفحه را تازه کنید.';
+        return { errors: { webId: [message] }, message };
+      }
+    } else {
+      await prisma.product.update({ where: { id }, data });
+    }
 
     // If sell price changed and product has WooCommerce ID, update WooCommerce
     if (oldProduct && oldProduct.wooId && Number(oldProduct.sellPrice) !== sellPrice) {
@@ -270,6 +324,10 @@ export async function updateProduct(id: string, prevState: ActionState, formData
       }
     }
   } catch (error) {
+    if (webIdChange?.webId && isWebIdUniqueViolation(error)) {
+      const conflict = (await webIdConflictMessage(prisma, webIdChange.webId, id)) ?? 'این شناسهٔ سایت تکراری است.';
+      return { errors: { webId: [conflict] }, message: conflict };
+    }
     return {
       message: 'خطا در ویرایش کالا. ممکن است SKU تکراری باشد.',
     };

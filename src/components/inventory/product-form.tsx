@@ -16,6 +16,17 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ProductImageUpload } from './product-image-upload';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 const initialState = {
   message: '',
@@ -148,6 +159,10 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
                 defaultValue={initialData?.wooId || undefined}
               />
             </div>
+            <WebIdField
+              initialWebId={initialData?.webId}
+              error={(state.errors as Record<string, string[] | undefined> | undefined)?.webId}
+            />
           </div>
           <div className="md:col-span-2">
             <input type="hidden" name="image" value={imageUrl || ''} />
@@ -168,6 +183,59 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+/**
+ * The webId locks once set: the website finds this product by it, so a change
+ * silently repoints the site. Unlocking takes a warning dialog, and only then
+ * does the form send the confirmation the server requires.
+ */
+function WebIdField({ initialWebId, error }: { initialWebId?: string; error?: string[] }) {
+  const [unlocked, setUnlocked] = useState(false);
+  const locked = !!initialWebId && !unlocked;
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="webId">شناسهٔ سایت (اختیاری)</Label>
+      <div className="flex gap-2">
+        <Input
+          id="webId"
+          name="webId"
+          dir="ltr"
+          className="font-mono"
+          placeholder="MOAK-PANJ-BLUE"
+          defaultValue={initialWebId || ''}
+          readOnly={locked}
+        />
+        {locked && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline">تغییر شناسه</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>تغییر شناسهٔ سایت؟</AlertDialogTitle>
+                <AlertDialogDescription>
+                  سایت این کالا را فقط با همین شناسه می‌شناسد. اگر آن را عوض یا پاک کنید، موجودی، قیمت و
+                  فروش‌های سایت از این به بعد به کالای دیگری وصل می‌شوند یا این کالا دیگر در سایت فروخته
+                  نمی‌شود، بدون هیچ خطایی. فقط وقتی مطمئن هستید ادامه دهید.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>انصراف</AlertDialogCancel>
+                <AlertDialogAction onClick={() => setUnlocked(true)}>متوجه هستم، تغییر می‌دهم</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
+      {unlocked && <input type="hidden" name="confirmWebIdChange" value="1" />}
+      <p className="text-xs text-muted-foreground">
+        خالی یعنی این کالا در سایت فروخته نمی‌شود. بعد از ثبت قفل می‌شود.
+      </p>
+      {error && <p className="text-red-500 text-sm">{error}</p>}
+    </div>
   );
 }
 

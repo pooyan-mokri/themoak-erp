@@ -32,6 +32,7 @@ interface Product {
   costPrice: any; // Decimal
   sellPrice: any; // Decimal
   wooId?: number;
+  webId?: string;
 }
 
 interface ProductTableProps {
@@ -138,8 +139,8 @@ export function ProductTable({ products }: ProductTableProps) {
       data={products}
       columns={columns}
       searchable={true}
-      searchPlaceholder="جستجو در کالاها (نام، SKU)..."
-      searchKeys={['name', 'sku']}
+      searchPlaceholder="جستجو در کالاها (نام، SKU، شناسهٔ سایت)..."
+      searchKeys={['name', 'sku', 'webId']}
       filterable={true}
       filters={[
         {

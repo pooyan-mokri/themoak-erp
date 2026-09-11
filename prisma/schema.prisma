@@ -147,6 +147,7 @@ model Product {
   wooId              Int?                     @unique
   name               String
   sku                String                   @unique
+  webId              String?                  @unique
   costPrice          Decimal
   sellPrice          Decimal
   image              String?

@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx prisma migrate resolve --applied 20260625000000_heal_missing_columns || true && npx prisma db push --skip-generate && (npx prisma db execute --schema ./prisma/schema.prisma --file ./prisma/sql/backfill-purchase-payments.sql || true) && next build",
+    "build": "npx prisma migrate resolve --applied 20260625000000_heal_missing_columns || true && npx prisma db execute --schema ./prisma/schema.prisma --file ./prisma/sql/pre-push-unique-columns.sql && npx prisma db push --skip-generate && (npx prisma db execute --schema ./prisma/schema.prisma --file ./prisma/sql/backfill-purchase-payments.sql || true) && next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
+    "test:site": "tsx --tsconfig tests/tsconfig.json --test --test-concurrency=1 tests/site/*.test.ts",
     "reset-data": "tsx scripts/reset-database.ts",
     "reset-data-full": "tsx scripts/reset-database-full.ts"
   },
