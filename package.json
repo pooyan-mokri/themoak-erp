@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "test:site": "tsx --tsconfig tests/tsconfig.json --test --test-concurrency=1 tests/site/*.test.ts",
+    "test": "tsx --tsconfig tests/tsconfig.json --test --test-concurrency=1 tests/*/*.test.ts",
     "reset-data": "tsx scripts/reset-database.ts",
     "reset-data-full": "tsx scripts/reset-database-full.ts"
   },

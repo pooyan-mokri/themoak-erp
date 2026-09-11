@@ -19,7 +19,21 @@ const UserSchema = z.object({
   phone: z.string().optional(),
 });
 
+/**
+ * User management is admin-only. These actions are imported by client
+ * components, so they are reachable from the browser, and without this check
+ * anyone could create an ADMIN account or promote themselves.
+ */
+async function isAdmin() {
+  const currentUser = await getCurrentUser();
+  return currentUser?.role === 'ADMIN';
+}
+
+const ADMIN_ONLY = 'فقط مدیر سیستم می‌تواند کاربران را مدیریت کند.';
+
 export async function getUsers() {
+  // Non-admin pages list users too (projects, audits), but never to a stranger.
+  if (!(await getCurrentUser())) return [];
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
@@ -45,6 +59,7 @@ export async function getUsers() {
 }
 
 export async function createUser(prevState: any, formData: FormData) {
+  if (!(await isAdmin())) return { message: ADMIN_ONLY };
   const validatedFields = UserSchema.safeParse({
     name: formData.get('name'),
     email: formData.get('email'),
@@ -99,6 +114,7 @@ export async function createUser(prevState: any, formData: FormData) {
 }
 
 export async function updateUser(id: string, prevState: any, formData: FormData) {
+  if (!(await isAdmin())) return { message: ADMIN_ONLY };
   const schema = UserSchema.omit({ password: true }); // Password updated separately
   const validatedFields = schema.safeParse({
     name: formData.get('name'),
@@ -150,6 +166,7 @@ export async function updateUser(id: string, prevState: any, formData: FormData)
 }
 
 export async function updateUserRole(userId: string, newRole: Role) {
+  if (!(await isAdmin())) return { success: false, message: ADMIN_ONLY };
   try {
     const user = await prisma.user.update({
       where: { id: userId },
@@ -166,6 +183,7 @@ export async function updateUserRole(userId: string, newRole: Role) {
 }
 
 export async function deleteUser(userId: string) {
+  if (!(await isAdmin())) return { success: false, message: ADMIN_ONLY };
   try {
     const currentUser = await getCurrentUser();
     if (currentUser?.id === userId) {
