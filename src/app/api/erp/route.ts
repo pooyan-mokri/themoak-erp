@@ -238,6 +238,59 @@ export async function GET(req: NextRequest) {
         });
       }
 
+      // ── انبارها (برای پنل سایت) ─────────────────────────────────────────────
+      case 'warehouses': {
+        // Archived and consignment (virtual) warehouses are not places the site sells from.
+        const warehouses = await prisma.warehouse.findMany({
+          where: { isArchived: false, isVirtual: false },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        });
+        return NextResponse.json(warehouses);
+      }
+
+      // ── موجودی یک انبار برای سایت ───────────────────────────────────────────
+      case 'stock': {
+        const warehouseId = searchParams.get('warehouseId') ?? '';
+        const warehouse = warehouseId
+          ? await prisma.warehouse.findFirst({
+              where: { id: warehouseId, isArchived: false, isVirtual: false },
+              select: { id: true },
+            })
+          : null;
+        // 422, not 400/404: the site reads those as "the ERP does not have this
+        // action yet" and would hide the error.
+        if (!warehouse)
+          return NextResponse.json(
+            { error: 'warehouseId نامعتبر است؛ یکی از انبارهای فهرست warehouses را بفرستید.' },
+            { status: 422 },
+          );
+
+        // Every product the site knows (webId set), including those with no
+        // stock row in this warehouse: the site needs the zeros too.
+        const products = await prisma.product.findMany({
+          where: { webId: { not: null } },
+          select: {
+            webId: true,
+            sku: true,
+            name: true,
+            sellPrice: true,
+            inventory: { where: { warehouseId }, select: { quantity: true } },
+          },
+          orderBy: { webId: 'asc' },
+        });
+        return NextResponse.json(
+          products.map((p: any) => ({
+            webId: p.webId,
+            sku: p.sku,
+            name: p.name,
+            quantity: p.inventory[0]?.quantity ?? 0,
+            price: Math.round(Number(p.sellPrice)),
+          })),
+        );
+      }
+
+      // The site reads 404 as "the ERP does not have this action yet".
       default:
         return NextResponse.json(
           {
@@ -250,9 +303,11 @@ export async function GET(req: NextRequest) {
               'settlements',
               'loans',
               'search',
+              'warehouses',
+              'stock',
             ],
           },
-          { status: 400 },
+          { status: 404 },
         );
     }
   } catch (err: any) {
@@ -265,12 +320,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!authenticate(req)) return unauthorized();
 
+  // A bad body is 422: the site reads 400 and 404 as "the ERP does not have
+  // this action yet" and would hide the error.
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    body = null;
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 422 });
 
   const { action, ...fields } = body;
 
@@ -431,7 +490,7 @@ export async function POST(req: NextRequest) {
             error: 'Unknown action',
             availableActions: ['deposit', 'expense', 'transfer'],
           },
-          { status: 400 },
+          { status: 404 },
         );
     }
   } catch (err: any) {
