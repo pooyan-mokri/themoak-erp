@@ -76,6 +76,7 @@ type OrderWithDetails = {
   paymentStatus: string;
   invoiceId?: string;
   tags?: string[];
+  siteReference?: string | null;
   customer?: Customer;
   items: OrderItem[];
 };
@@ -182,7 +183,7 @@ export function OrderList({ orders }: OrderListProps) {
       'وضعیت سفارش': order.status === 'COMPLETED' ? 'تکمیل شده' :
                      order.status === 'CANCELLED' ? 'لغو شده' : 'در انتظار',
       'تاریخ': formatJalaliDateTime(order.createdAt),
-      'منبع': order.wooId ? 'WooCommerce' : 'سیستم',
+      'منبع': order.siteReference ? 'سایت' : order.wooId ? 'WooCommerce' : 'سیستم',
     }));
 
     // Create worksheet
@@ -363,8 +364,8 @@ export function OrderList({ orders }: OrderListProps) {
               جزئیات
             </Button>
           </Link>
-          {/* دکمه لغو فقط برای سفارشات غیرلغوشده */}
-          {order.status !== 'CANCELLED' && (
+          {/* دکمه لغو فقط برای سفارشات غیرلغوشده؛ سفارش سایت فقط از پنل سایت لغو می‌شود */}
+          {order.status !== 'CANCELLED' && !order.siteReference && (
             <Button
               variant="outline"
               size="sm"

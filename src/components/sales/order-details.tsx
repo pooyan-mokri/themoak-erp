@@ -9,10 +9,12 @@ import { Separator } from '@/components/ui/separator';
 import { ArrowRight, Printer, RotateCcw, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { formatJalaliDateTime } from '@/lib/date-utils';
+import { WEBSITE_ORDER_LOCKED, formatShipTo, type SiteOrderData } from '@/lib/site-sale-data';
 
 import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
 import { ExchangeItemDialog } from './exchange-item-dialog';
+import { SiteOrderCard, type SiteRefundRow } from './site-order-card';
 
 type Customer = {
   id: string;
@@ -96,6 +98,9 @@ type OrderWithDetails = {
   paidAmount?: number;
   paymentStatus: string;
   invoiceId?: string;
+  siteReference?: string;
+  siteData?: SiteOrderData;
+  siteRefunds?: SiteRefundRow[];
   customer?: Customer;
   items: OrderItem[];
   transaction?: Transaction;
@@ -140,6 +145,9 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
     setSelectedItem(item);
     setExchangeDialogOpen(true);
   };
+
+  // A website order ships to the address sent with it, not necessarily the customer's latest one.
+  const customerAddress = (order.siteReference && formatShipTo(order.siteData?.shipTo)) || order.customer?.address;
 
   return (
     <div className="space-y-6">
@@ -220,34 +228,40 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                           باقی‌مانده: {item.remainingQuantity} از {item.quantity}
                         </Badge>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleReturnClick(item)}
-                        disabled={
-                          (item.status || 'PENDING') === 'RETURNED' ||
-                          (item.status || 'PENDING') === 'EXCHANGED' ||
-                          (item.remainingQuantity !== undefined && item.remainingQuantity <= 0)
-                        }
-                      >
-                        <RotateCcw className="w-4 h-4 ml-1" />
-                        عودت
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleExchangeClick(item)}
-                        disabled={
-                          (item.status || 'PENDING') === 'RETURNED' ||
-                          (item.status || 'PENDING') === 'EXCHANGED' ||
-                          !!item.isExchangeDerived ||
-                          (item.remainingQuantity !== undefined && item.remainingQuantity <= 0)
-                        }
-                        title={item.isExchangeDerived ? 'این آیتم حاصل یک تعویض است و دوباره قابل تعویض نیست.' : undefined}
-                      >
-                        <RefreshCw className="w-4 h-4 ml-1" />
-                        تعویض
-                      </Button>
+                      {order.siteReference ? (
+                        <span className="max-w-[16rem] text-xs text-muted-foreground">{WEBSITE_ORDER_LOCKED}</span>
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleReturnClick(item)}
+                            disabled={
+                              (item.status || 'PENDING') === 'RETURNED' ||
+                              (item.status || 'PENDING') === 'EXCHANGED' ||
+                              (item.remainingQuantity !== undefined && item.remainingQuantity <= 0)
+                            }
+                          >
+                            <RotateCcw className="w-4 h-4 ml-1" />
+                            عودت
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleExchangeClick(item)}
+                            disabled={
+                              (item.status || 'PENDING') === 'RETURNED' ||
+                              (item.status || 'PENDING') === 'EXCHANGED' ||
+                              !!item.isExchangeDerived ||
+                              (item.remainingQuantity !== undefined && item.remainingQuantity <= 0)
+                            }
+                            title={item.isExchangeDerived ? 'این آیتم حاصل یک تعویض است و دوباره قابل تعویض نیست.' : undefined}
+                          >
+                            <RefreshCw className="w-4 h-4 ml-1" />
+                            تعویض
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -259,6 +273,10 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
               </div>
             </CardContent>
           </Card>
+
+          {order.siteReference && (
+            <SiteOrderCard reference={order.siteReference} data={order.siteData} refunds={order.siteRefunds ?? []} />
+          )}
 
           {(returns.length > 0 || exchanges.length > 0) && (
             <Card>
@@ -333,10 +351,10 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                   <span className="font-medium">{order.customer.phone}</span>
                 </div>
               )}
-              {order.customer?.address && (
+              {customerAddress && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">آدرس:</span>
-                  <span className="font-medium text-right max-w-[200px] truncate">{order.customer.address}</span>
+                  <span className="font-medium text-right max-w-[200px] truncate">{customerAddress}</span>
                 </div>
               )}
             </CardContent>

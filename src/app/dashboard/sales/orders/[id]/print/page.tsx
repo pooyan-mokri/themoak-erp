@@ -6,6 +6,7 @@ import { getOrderExchanges } from '@/actions/order-exchange';
 import { notFound } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { PrintOrderActions } from '@/components/sales/print-order-actions';
+import { formatShipTo, readSiteOrderData } from '@/lib/site-sale-data';
 
 export default async function PrintOrderPage({ params }: { params: { id: string } }) {
   const order = await prisma.order.findUnique({
@@ -19,6 +20,7 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
       },
       transaction: true,
       invoiceAccount: true,
+      siteRefunds: { select: { amount: true } },
     },
   });
 
@@ -73,6 +75,17 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
   const discountAmount = Number(order.discount || 0);
   const finalAmount = subtotal - discountAmount;
 
+  // Website orders have no OrderReturn rows: their totalAmount already includes
+  // freight and has the website's refunds taken off, so
+  // items + freight - refunds = subtotal, and subtotal - discount = what was paid.
+  const siteData = order.siteReference ? readSiteOrderData(order.siteData) : null;
+  const siteFreight =
+    siteData?.shipping && siteData.shipping.free !== true ? Number(siteData.shipping.freight || 0) : 0;
+  const siteRefunded = order.siteReference
+    ? order.siteRefunds.reduce((sum: number, refund: any) => sum + Number(refund.amount), 0)
+    : 0;
+  const buyerAddress = (siteData && formatShipTo(siteData.shipTo)) || order.customer?.address || '-';
+
   return (
     <div className="bg-white min-h-screen p-8 text-black print:p-0">
       <div className="max-w-4xl mx-auto print:w-full print:max-w-none" id="invoice-content">
@@ -108,7 +121,10 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
           <div className="grid grid-cols-2 gap-4 text-sm">
             <p><span className="text-gray-500 ml-2">نام:</span> {order.customer?.name || 'مشتری عمومی'}</p>
             <p><span className="text-gray-500 ml-2">تلفن:</span> {order.customer?.phone || '-'}</p>
-            <p className="col-span-2"><span className="text-gray-500 ml-2">آدرس:</span> {order.customer?.address || '-'}</p>
+            <p className="col-span-2"><span className="text-gray-500 ml-2">آدرس:</span> {buyerAddress}</p>
+            {siteData?.shipTo?.note && (
+              <p className="col-span-2"><span className="text-gray-500 ml-2">یادداشت ارسال:</span> {siteData.shipTo.note}</p>
+            )}
           </div>
         </div>
 
@@ -156,6 +172,18 @@ export default async function PrintOrderPage({ params }: { params: { id: string 
             ))}
           </tbody>
           <tfoot>
+            {siteFreight > 0 && (
+              <tr>
+                <td colSpan={4} className="text-left py-2 pl-4">هزینهٔ ارسال:</td>
+                <td className="text-left py-2">{siteFreight.toLocaleString()} تومان</td>
+              </tr>
+            )}
+            {siteRefunded > 0 && (
+              <tr>
+                <td colSpan={4} className="text-left py-2 pl-4 text-red-600">بازپرداخت سایت:</td>
+                <td className="text-left py-2 text-red-600">-{siteRefunded.toLocaleString()} تومان</td>
+              </tr>
+            )}
             <tr>
               <td colSpan={4} className="text-left py-2 pl-4">جمع کل:</td>
               <td className="text-left py-2">{subtotal.toLocaleString()} تومان</td>

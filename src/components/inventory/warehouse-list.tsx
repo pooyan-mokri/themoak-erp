@@ -26,9 +26,15 @@ interface WarehouseListProps {
   warehouses: Warehouse[];
   isAdmin?: boolean;
   stockByWarehouse?: Record<string, number>;
+  /** Warehouses holding any non-zero row, even when +4 and -4 sum to 0. */
+  nonZeroStock?: Record<string, boolean>;
+  /** The warehouse the website sells from. */
+  siteWarehouseId?: string | null;
 }
 
-export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = {} }: WarehouseListProps) {
+const SITE_WAREHOUSE_HINT = 'انبار فروش سایت است؛ اول در «تنظیمات › اتصال سایت» انبار دیگری انتخاب کنید';
+
+export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = {}, nonZeroStock = {}, siteWarehouseId = null }: WarehouseListProps) {
   const handleDelete = async (id: string) => {
     if (confirm('آیا از حذف این انبار اطمینان دارید؟')) {
       const result = await deleteWarehouse(id);
@@ -65,7 +71,10 @@ export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = 
         <TableBody>
           {warehouses.map((warehouse) => {
             const stock = stockByWarehouse[warehouse.id] ?? 0;
-            const canDelete = isAdmin && stock === 0;
+            const isSiteWarehouse = warehouse.id === siteWarehouseId;
+            // Any non-zero row blocks it, even when the rows sum to 0; so does being the website's warehouse.
+            const removable = !isSiteWarehouse && !nonZeroStock[warehouse.id];
+            const canDelete = isAdmin && removable;
             return (
             <TableRow key={warehouse.id}>
               <TableCell className="font-medium">
@@ -99,8 +108,8 @@ export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = 
                       size="icon"
                       className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-30"
                       onClick={() => handleArchive(warehouse.id)}
-                      disabled={stock !== 0}
-                      title={stock === 0 ? 'آرشیو انبار' : 'فقط انبارهای با موجودی صفر قابل آرشیو هستند'}
+                      disabled={!removable}
+                      title={removable ? 'آرشیو انبار' : isSiteWarehouse ? SITE_WAREHOUSE_HINT : 'فقط انبارهایی که هیچ موجودی مثبت یا منفی ندارند قابل آرشیو هستند'}
                     >
                       <Archive className="h-4 w-4" />
                     </Button>
@@ -112,7 +121,7 @@ export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = 
                       className="text-red-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30"
                       onClick={() => handleDelete(warehouse.id)}
                       disabled={!canDelete}
-                      title={canDelete ? 'حذف انبار' : 'فقط انبارهای با موجودی صفر قابل حذف هستند'}
+                      title={canDelete ? 'حذف انبار' : isSiteWarehouse ? SITE_WAREHOUSE_HINT : 'فقط انبارهایی که هیچ موجودی مثبت یا منفی ندارند قابل حذف هستند'}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
