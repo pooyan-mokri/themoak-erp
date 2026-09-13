@@ -133,6 +133,7 @@ model Transaction {
   purchaseOrderPayment  PurchaseOrderPayment?      @relation("PurchaseOrderPaymentTxn")
   arrivalCosts          PurchaseOrderArrivalCost[] @relation("ArrivalCost")
   ShareholderWithdrawal ShareholderWithdrawal?
+  siteRefund            SiteRefund?
   account               Account?                   @relation(fields: [accountId], references: [id])
   customer              Customer?                  @relation(fields: [customerId], references: [id])
   employee              Employee?                  @relation(fields: [employeeId], references: [id])
@@ -378,6 +379,8 @@ model Customer {
   segment        String?
   taxId          String?
   commissionRate Decimal?
+  siteId         String?
+  source         String?
   commissions    ConsignmentCommission[]
   deals          Deal[]
   invoices       Invoice[]
@@ -405,6 +408,9 @@ model Order {
   invoiceId     String?                 @unique
   tags              String[]
   invoiceAccountId  String?
+  siteReference     String?                 @unique
+  siteData          Json?
+  siteRestockedAt   DateTime?
   commissions   ConsignmentCommission[]
   invoice       Invoice?
   customer      Customer?               @relation(fields: [customerId], references: [id])
@@ -413,6 +419,7 @@ model Order {
   OrderExchange OrderExchange[]
   items         OrderItem[]
   OrderReturn   OrderReturn[]
+  siteRefunds   SiteRefund[]
 }
 
 model OrderItem {
@@ -449,6 +456,22 @@ model OrderReturn {
 
   @@index([orderId])
   @@index([orderItemId])
+}
+
+/// One refund the website reported for one of its orders, booked at most once.
+/// transactionId is null when nothing was left to refund.
+model SiteRefund {
+  id            String       @id @default(cuid())
+  orderId       String
+  refundId      String
+  transactionId String?      @unique
+  amount        Decimal
+  at            DateTime
+  createdAt     DateTime     @default(now())
+  order         Order        @relation(fields: [orderId], references: [id])
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, refundId])
 }
 
 model OrderExchange {

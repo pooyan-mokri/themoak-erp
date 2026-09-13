@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { createSale, setSaleStatus } from '@/lib/site-sale';
+
+// Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
+export const maxDuration = 30;
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 function authenticate(req: NextRequest): boolean {
@@ -137,6 +141,7 @@ export async function GET(req: NextRequest) {
             paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
             status: { not: 'CANCELLED' },
             customer: { warehouses: { some: { isVirtual: true } } },
+            siteReference: null, // website orders are settled on the website, never with a partner
           },
           include: {
             customer: { select: { name: true } },
@@ -284,7 +289,8 @@ export async function GET(req: NextRequest) {
             webId: p.webId,
             sku: p.sku,
             name: p.name,
-            quantity: p.inventory[0]?.quantity ?? 0,
+            // The ERP keeps a negative row (and its «کسری موجودی» tag); for the site it is simply none left.
+            quantity: Math.max(0, p.inventory[0]?.quantity ?? 0),
             price: Math.round(Number(p.sellPrice)),
           })),
         );
@@ -484,11 +490,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, message: 'انتقال وجه انجام شد' });
       }
 
+      // ── فروش سایت ────────────────────────────────────────────────────────────
+      case 'createSale':
+      case 'setSaleStatus': {
+        const result =
+          action === 'createSale' ? await createSale(prisma, fields) : await setSaleStatus(prisma, fields);
+        return NextResponse.json(result.body, { status: result.status });
+      }
+
       default:
         return NextResponse.json(
           {
             error: 'Unknown action',
-            availableActions: ['deposit', 'expense', 'transfer'],
+            availableActions: ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus'],
           },
           { status: 404 },
         );

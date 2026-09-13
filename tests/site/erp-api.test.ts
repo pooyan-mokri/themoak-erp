@@ -72,7 +72,8 @@ test('stock returns every webId product, counted in the requested warehouse only
   assert.deepEqual(await res.json(), [
     { webId: 'MOAK-DAMN-RAW-WHITE', sku: 'RAW/WHIT', name: 'RAW/WHIT name', quantity: 0, price: 18500000 },
     { webId: 'MOAK-PANJ-BLUE', sku: 'PANJ/BLUE', name: 'PANJ/BLUE name', quantity: 7, price: 15700000 },
-    { webId: 'MOAK-SHORT', sku: 'SHORT', name: 'SHORT name', quantity: -2, price: 2000 },
+    // Its row is -2; for the site that is simply none left.
+    { webId: 'MOAK-SHORT', sku: 'SHORT', name: 'SHORT name', quantity: 0, price: 2000 },
   ]);
 });
 
@@ -109,4 +110,19 @@ test('a missing or wrong token is 401, even for a real action', async () => {
 
   delete process.env.ERP_API_SECRET;
   assert.equal((await get('action=warehouses', 'undefined')).status, 401, 'an unset secret must refuse everything');
+});
+
+test('settlements never lists a website order, even for a consignment partner', async () => {
+  const partner = await prisma.customer.create({ data: { name: 'Partner', phone: '09120000000' } });
+  await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  const consignment = await prisma.order.create({
+    data: { customerId: partner.id, totalAmount: 1000, paidAmount: 0, paymentStatus: 'UNPAID' },
+  });
+  await prisma.order.create({
+    data: { customerId: partner.id, totalAmount: 2000, paidAmount: 0, paymentStatus: 'UNPAID', siteReference: 'M-PARTNER' },
+  });
+
+  const res = await get('action=settlements');
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).map((row: any) => row.id), [consignment.id]);
 });
