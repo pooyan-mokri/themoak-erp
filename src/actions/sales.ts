@@ -15,6 +15,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { balanceEffect } from '@/lib/balance-reconciliation';
+import { WEBSITE_ORDER_LOCKED, readSiteOrderData } from '@/lib/site-sale-data';
 
 // const prisma = new PrismaClient();
 
@@ -230,6 +231,7 @@ export async function getOrders() {
             warehouse: { select: { id: true, name: true } },
           },
         },
+        siteRefunds: { select: { refundId: true, amount: true, at: true }, orderBy: { at: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -242,6 +244,13 @@ export async function getOrders() {
       totalAmount: Number(order.totalAmount),
       discount: Number(order.discount),
       paidAmount: Number(order.paidAmount),
+      siteReference: order.siteReference ?? undefined,
+      siteData: readSiteOrderData(order.siteData) ?? undefined,
+      siteRefunds: order.siteRefunds.map((refund: any) => ({
+        refundId: refund.refundId,
+        amount: Number(refund.amount),
+        at: refund.at,
+      })),
       customer: order.customer ? {
         ...order.customer,
         phone: order.customer.phone ?? undefined,
@@ -392,6 +401,7 @@ export async function getOrder(id: string) {
         },
         invoice: true,
         commissions: true,
+        siteRefunds: { select: { refundId: true, amount: true, at: true }, orderBy: { at: 'asc' } },
       },
     });
     if (!order) return undefined;
@@ -404,6 +414,13 @@ export async function getOrder(id: string) {
       totalAmount: Number(order.totalAmount),
       discount: Number(order.discount),
       paidAmount: Number(order.paidAmount),
+      siteReference: order.siteReference ?? undefined,
+      siteData: readSiteOrderData(order.siteData) ?? undefined,
+      siteRefunds: order.siteRefunds.map((refund: any) => ({
+        refundId: refund.refundId,
+        amount: Number(refund.amount),
+        at: refund.at,
+      })),
       customer: order.customer ? {
         ...order.customer,
         phone: order.customer.phone ?? undefined,
@@ -529,6 +546,12 @@ export async function cancelOrder(orderId: string): Promise<{
       return { success: false, message: 'سفارش یافت نشد.' };
     }
 
+    // Website orders are reversed on the website (setSaleStatus); cancelling
+    // them here too would move their money and stock a second time.
+    if (order.siteReference !== null) {
+      return { success: false, message: WEBSITE_ORDER_LOCKED };
+    }
+
     // Check if already cancelled
     if (order.status === 'CANCELLED') {
       return { success: false, message: 'این سفارش قبلاً لغو شده است.' };
@@ -543,8 +566,9 @@ export async function cancelOrder(orderId: string): Promise<{
       // 1. Claim the cancellation. The status check above runs outside this
       // transaction, so two concurrent cancels could both pass it and restore
       // the stock twice. This conditional update serializes them in the DB.
+      // It never claims a website order, for the same reason as the check above.
       const claimed = await tx.order.updateMany({
-        where: { id: orderId, status: { not: 'CANCELLED' } },
+        where: { id: orderId, status: { not: 'CANCELLED' }, siteReference: null },
         data: {
           status: 'CANCELLED',
           paymentStatus: 'UNPAID',

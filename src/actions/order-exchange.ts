@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 import { syncInvoiceWithOrder } from './invoice';
+import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -53,6 +54,12 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
 
       if (!order) {
         throw new Error('سفارش یافت نشد.');
+      }
+
+      // Website orders are reversed on the website; doing it here too would
+      // move their money and stock a second time.
+      if (order.siteReference != null) {
+        throw new Error(WEBSITE_ORDER_LOCKED);
       }
 
       if (order.status === 'CANCELLED') {

@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { DEFAULT_SITE_WAREHOUSE_NAME, pickWithDefault, readSiteConnection } from '@/lib/site-connection';
 
 // const prisma = new PrismaClient();
 
@@ -126,6 +127,36 @@ export async function updateWarehouse(id: string, prevState: any, formData: Form
   return { message: 'انبار با موفقیت ویرایش شد.', success: true };
 }
 
+/**
+ * Why a warehouse cannot be archived or deleted yet, or null.
+ * Website sales can drive a row below zero, so a zero sum (+4 of one product,
+ * -4 of another) is not an empty warehouse: every row must be zero (leftover
+ * zero-quantity rows are fine). The website's own warehouse is refused too,
+ * resolved exactly like the site connection settings page shows it.
+ */
+async function removalBlocker(id: string): Promise<string | null> {
+  const nonZero = await prisma.inventory.findFirst({
+    where: { warehouseId: id, quantity: { not: 0 } },
+    select: { productId: true },
+  });
+  if (nonZero) {
+    return 'این انبار هنوز موجودی غیرصفر (مثبت یا منفی) دارد؛ اول موجودی را صفر یا منتقل کنید.';
+  }
+
+  const [connection, warehouses] = await Promise.all([
+    readSiteConnection(prisma),
+    prisma.warehouse.findMany({
+      where: { isArchived: false, isVirtual: false },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
+  if (pickWithDefault(warehouses, connection.warehouseId, DEFAULT_SITE_WAREHOUSE_NAME) === id) {
+    return 'این انبار، انبار فروش سایت است؛ اول در «تنظیمات › اتصال سایت» انبار دیگری انتخاب کنید.';
+  }
+  return null;
+}
+
 export async function deleteWarehouse(id: string) {
   // Admin only
   const session = await auth();
@@ -134,22 +165,15 @@ export async function deleteWarehouse(id: string) {
   }
 
   try {
-    // Only allow deletion when the warehouse holds zero stock.
-    // We sum quantities (not record count) so a warehouse with leftover
-    // zero-quantity inventory rows can still be removed.
-    const agg = await prisma.inventory.aggregate({
-      where: { warehouseId: id },
-      _sum: { quantity: true },
-    });
-    const totalStock = agg._sum.quantity ?? 0;
-
-    if (totalStock > 0) {
-      return { message: `این انبار دارای ${totalStock.toLocaleString('fa-IR')} عدد موجودی است و قابل حذف نیست.`, success: false };
+    const blocker = await removalBlocker(id);
+    if (blocker) {
+      return { message: blocker, success: false };
     }
 
     await prisma.$transaction(async (tx: any) => {
-      // Remove the zero-quantity inventory rows first, then the warehouse.
-      await tx.inventory.deleteMany({ where: { warehouseId: id } });
+      // Remove the zero-quantity inventory rows first, then the warehouse. A row
+      // that turned non-zero since the check is kept and makes the delete fail.
+      await tx.inventory.deleteMany({ where: { warehouseId: id, quantity: 0 } });
       await tx.warehouse.delete({ where: { id } });
     });
 
@@ -166,8 +190,8 @@ export async function deleteWarehouse(id: string) {
 }
 
 /**
- * Archive a warehouse (admin only). Only allowed when the warehouse holds zero
- * stock. Archived warehouses disappear from every selector but remain viewable
+ * Archive a warehouse (admin only). Only allowed when removalBlocker finds nothing.
+ * Archived warehouses disappear from every selector but remain viewable
  * (with their movement history) and can be restored.
  */
 export async function archiveWarehouse(id: string) {
@@ -177,13 +201,9 @@ export async function archiveWarehouse(id: string) {
   }
 
   try {
-    const agg = await prisma.inventory.aggregate({
-      where: { warehouseId: id },
-      _sum: { quantity: true },
-    });
-    const totalStock = agg._sum.quantity ?? 0;
-    if (totalStock > 0) {
-      return { message: `این انبار دارای ${totalStock.toLocaleString('fa-IR')} عدد موجودی است و قابل آرشیو نیست.`, success: false };
+    const blocker = await removalBlocker(id);
+    if (blocker) {
+      return { message: blocker, success: false };
     }
 
     await prisma.warehouse.update({

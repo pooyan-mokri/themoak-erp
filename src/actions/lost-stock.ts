@@ -17,6 +17,7 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { restoreOrderItemStock, restorableQuantity } from '@/lib/restore-warehouse';
+import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import type { ActionResult } from '@/lib/types';
 
 export type LostStockLine = {
@@ -42,6 +43,7 @@ export async function getUnrestoredCancelledOrders(): Promise<LostStockOrder[]> 
       where: {
         status: 'CANCELLED',
         wooId: null, // Woo lines with no warehouse were never deducted
+        siteReference: null, // website orders are restocked (or not) only by the website
         items: { some: { warehouseId: null } },
       },
       include: {
@@ -112,6 +114,7 @@ export async function repairCancelledOrderStock(orderId: string): Promise<Action
       });
 
       if (!order) throw new Error('سفارش یافت نشد.');
+      if (order.siteReference) throw new Error(WEBSITE_ORDER_LOCKED);
       if (order.status !== 'CANCELLED') throw new Error('این سفارش لغو نشده است.');
       if (order.wooId != null) throw new Error('سفارش ووکامرس در زمان فروش از موجودی کسر نشده بود.');
 

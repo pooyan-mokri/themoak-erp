@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
+import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
 import { WEB_ID_SEED } from '@/lib/web-id-seed';
 import { planWebIdSeed, type SeedPlan } from '@/lib/web-id-seed-plan';
 
@@ -105,13 +106,16 @@ export async function applyWebIdSeed(approved: { total: number; toSet: number })
   }
 }
 
-/** Saleable products the website can't sell yet because they have no webId. */
+/**
+ * Saleable products the website can't sell yet because they have no webId.
+ * Never the placeholder for unknown website lines: it must not get one.
+ */
 export async function getProductsWithoutWebId(): Promise<
   Array<{ id: string; name: string; sku: string; sellPrice: number }>
 > {
   await requireSignedIn();
   const products = await prisma.product.findMany({
-    where: { webId: null, productType: 'SALEABLE' },
+    where: { webId: null, productType: 'SALEABLE', sku: { not: SITE_UNKNOWN_SKU } },
     select: { id: true, name: true, sku: true, sellPrice: true },
     orderBy: { name: 'asc' },
   });
@@ -136,6 +140,11 @@ export async function setProductWebId(
   const webId = input.value;
 
   try {
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { sku: true } });
+    if (product?.sku === SITE_UNKNOWN_SKU) {
+      return { success: false, message: 'کالای ناشناختهٔ سایت شناسهٔ سایت نمی‌گیرد.' };
+    }
+
     const conflict = await webIdConflictMessage(prisma, webId, productId);
     if (conflict) return { success: false, message: conflict };
 

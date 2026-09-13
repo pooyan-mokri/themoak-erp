@@ -470,6 +470,7 @@ const SYSTEM_OWNED_RELATIONS = {
   LoanPayment: { select: { id: true } },
   PayrollPayment: { select: { id: true } },
   ShareholderWithdrawal: { select: { id: true } },
+  siteRefund: { select: { id: true } },
 };
 
 /**
@@ -483,6 +484,7 @@ const SYSTEM_OWNED_RELATIONS = {
 function systemOwnerOf(expense: any): string | null {
   if (expense.orderReturn) return 'مرجوعی فروش';
   if (expense.orderExchange) return 'تعویض کالا';
+  if (expense.siteRefund) return 'بازپرداخت سفارش سایت';
   if (expense.marketingGift) return 'هدیه بازاریابی';
   if (expense.purchasePayment || expense.purchaseOrderPayment) return 'پرداخت سفارش خرید';
   if (expense.arrivalCosts?.length) return 'هزینه‌های ورود کالا';

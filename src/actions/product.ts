@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { generateProductBarcode, ensureUniqueBarcode } from '@/lib/barcode-utils';
 import { ActionState, ActionResult } from '@/lib/types';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
+import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -267,7 +268,7 @@ export async function updateProduct(id: string, prevState: ActionState, formData
     // Get old product data to check if price changed
     const oldProduct = await prisma.product.findUnique({
       where: { id },
-      select: { sellPrice: true, wooId: true, webId: true }
+      select: { sellPrice: true, wooId: true, webId: true, sku: true }
     });
 
     // Only a real change is validated, so a stored value never blocks an
@@ -277,6 +278,12 @@ export async function updateProduct(id: string, prevState: ActionState, formData
       const webIdInput = parseWebId(rawWebId);
       if (!webIdInput.ok) {
         return { errors: { webId: [webIdInput.message] }, message: webIdInput.message };
+      }
+      // The placeholder collects website lines with an unknown webId; with a
+      // webId of its own, real website sales would land on it.
+      if (webIdInput.value && (oldProduct.sku === SITE_UNKNOWN_SKU || sku === SITE_UNKNOWN_SKU)) {
+        const message = 'کالای ناشناختهٔ سایت شناسهٔ سایت نمی‌گیرد.';
+        return { errors: { webId: [message] }, message };
       }
       // Once set, the webId is how the website finds this product: changing or
       // clearing it silently repoints the site. The form locks the field and

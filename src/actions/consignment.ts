@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
+import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 
 // const prisma = new PrismaClient();
 
@@ -639,6 +640,8 @@ export async function getPendingSettlements() {
         customer: {
           warehouses: { some: { isVirtual: true } },
         },
+        // Website orders are paid and reversed only on the website.
+        siteReference: null,
       },
       include: {
         customer: true,
@@ -719,6 +722,9 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
 
       if (!order) {
         throw new Error('سفارش یافت نشد.');
+      }
+      if (order.siteReference) {
+        throw new Error(WEBSITE_ORDER_LOCKED);
       }
       if (order.paymentStatus === 'PAID') {
         throw new Error('این سفارش قبلاً به طور کامل پرداخت شده است.');
@@ -823,6 +829,7 @@ export async function deleteConsignmentOrder(
         },
       });
       if (!order) throw new Error('سفارش یافت نشد.');
+      if (order.siteReference) throw new Error(WEBSITE_ORDER_LOCKED);
       if (!order.customer?.warehouses?.length) {
         throw new Error('این سفارش یک فاکتور امانی نیست.');
       }

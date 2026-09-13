@@ -73,6 +73,9 @@ async function generateInvoiceNumber(): Promise<string> {
   return `${prefix}${String(nextNumber).padStart(5, '0')}`;
 }
 
+// Not exported: a "use server" file may only export async functions.
+const CANCELLED_ORDER_MESSAGE = 'برای سفارش لغوشده نمی‌توان فاکتور صادر کرد.';
+
 export async function createInvoiceFromOrder(orderId: string) {
   try {
     // Check if invoice already exists
@@ -94,6 +97,10 @@ export async function createInvoiceFromOrder(orderId: string) {
 
     if (!order) {
       return { success: false, message: 'سفارش یافت نشد.' };
+    }
+
+    if (order.status === 'CANCELLED') {
+      return { success: false, message: CANCELLED_ORDER_MESSAGE };
     }
 
     if (!order.customerId) {
@@ -134,36 +141,47 @@ export async function createInvoiceFromOrder(orderId: string) {
     // Generate invoice number
     const invoiceNumber = await generateInvoiceNumber();
 
-    // Create invoice
-    const invoice = await prisma.invoice.create({
-      data: {
-        invoiceNumber,
-        orderId,
-        customerId: order.customerId,
-        issueDate,
-        dueDate,
-        subtotal,
-        discount,
-        tax,
-        total,
-        paidAmount,
-        status,
-      }
-    });
+    // The status check above runs outside this transaction. Writing the invoice
+    // and then claiming the order makes a cancel that committed in between (the
+    // website's setSaleStatus, say) miss the claim and roll the invoice back,
+    // instead of INVOICED silently reviving a cancelled sale.
+    const invoice = await prisma.$transaction(async (tx: any) => {
+      const created = await tx.invoice.create({
+        data: {
+          invoiceNumber,
+          orderId,
+          customerId: order.customerId,
+          issueDate,
+          dueDate,
+          subtotal,
+          discount,
+          tax,
+          total,
+          paidAmount,
+          status,
+        }
+      });
 
-    // Update order
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        invoiceId: invoice.id,
-        status: 'INVOICED',
-      }
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: { not: 'CANCELLED' } },
+        data: {
+          invoiceId: created.id,
+          status: 'INVOICED',
+        }
+      });
+      if (claimed.count === 0) throw new Error(CANCELLED_ORDER_MESSAGE);
+      // A website refund that committed after the totals were read is picked up here.
+      await syncInvoiceWithOrder(orderId, tx);
+      return created;
     });
 
     revalidatePath('/dashboard/sales/invoices');
     revalidatePath(`/dashboard/sales/history/${orderId}`);
     return { success: true, message: 'فاکتور با موفقیت ایجاد شد.', invoiceId: invoice.id };
   } catch (error) {
+    if (error instanceof Error && error.message === CANCELLED_ORDER_MESSAGE) {
+      return { success: false, message: CANCELLED_ORDER_MESSAGE };
+    }
     console.error('Error creating invoice:', error);
     return { success: false, message: 'خطا در ایجاد فاکتور.' };
   }
