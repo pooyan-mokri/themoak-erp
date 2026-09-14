@@ -8,7 +8,7 @@ import { freezeInventory, addAuditTeamMember, removeAuditTeamMember } from '@/ac
 import { getUsers } from '@/actions/user';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { Lock, Users, CheckCircle2, XCircle, Plus } from 'lucide-react';
+import { Camera, Users, CheckCircle2, XCircle, Plus } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -37,6 +37,7 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('COUNTER');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [freezing, setFreezing] = useState(false);
 
   const loadUsers = async () => {
     try {
@@ -48,16 +49,24 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
   };
 
   const handleFreezeInventory = async () => {
-    if (!confirm('آیا مطمئن هستید که می‌خواهید موجودی را فریز کنید؟ این عمل قابل بازگشت نیست.')) {
+    if (!confirm('آیا مطمئن هستید؟ موجودی فعلی این انبار به‌عنوان مبنای شمارش ثبت می‌شود و شمارش شروع می‌شود. این کار موجودی را قفل نمی‌کند و قابل بازگشت نیست.')) {
       return;
     }
 
-    const result = await freezeInventory(audit.id);
-    if (result.success) {
-      toast.success(result.message);
-      router.refresh();
-    } else {
-      toast.error(result.message);
+    setFreezing(true);
+    try {
+      const result = await freezeInventory(audit.id);
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      console.error('Error freezing inventory:', error);
+      toast.error('خطا در ارتباط با سرور. صفحه را تازه کنید؛ اگر «موجودی فریز شده است» را نمی‌بینید، دوباره فریز کنید.');
+    } finally {
+      setFreezing(false);
     }
   };
 
@@ -102,17 +111,20 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
     return labels[role] || role;
   };
 
+  // The page may load only the number of frozen items, not the snapshots themselves.
+  const snapshotCount: number = audit._count?.snapshots ?? audit.snapshots?.length ?? 0;
+
   return (
     <div className="space-y-6">
       {/* Freeze Inventory Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5" />
+            <Camera className="h-5 w-5" />
             فریز کردن موجودی
           </CardTitle>
           <CardDescription>
-            با فریز کردن موجودی، یک اسنپ‌شات از موجودی فعلی گرفته می‌شود و عملیات شمارش شروع می‌شود.
+            با فریز کردن موجودی، یک اسنپ‌شات از موجودی فعلی گرفته می‌شود و عملیات شمارش شروع می‌شود. فریز موجودی را قفل نمی‌کند: فروش و جابه‌جایی همچنان موجودی را تغییر می‌دهند.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -127,15 +139,31 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
               )}
             </div>
           ) : (
-            <Button onClick={handleFreezeInventory} disabled={audit.status !== 'PLANNED'}>
-              <Lock className="h-4 w-4 mr-2" />
-              فریز کردن موجودی
+            <Button onClick={handleFreezeInventory} disabled={audit.status !== 'PLANNED' || freezing}>
+              <Camera className="h-4 w-4 mr-2" />
+              {freezing ? 'در حال فریز...' : 'فریز کردن موجودی'}
             </Button>
           )}
-          {audit.snapshots && audit.snapshots.length > 0 && (
+          {snapshotCount > 0 && (
             <p className="text-sm text-muted-foreground mt-2">
-              تعداد آیتم‌های فریز شده: {audit.snapshots.length}
+              تعداد آیتم‌های فریز شده: {snapshotCount}
             </p>
+          )}
+          {(audit.status === 'PLANNED' || audit.status === 'IN_PROGRESS') && (
+            <div className="mt-4 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+              <p className="font-medium">از فریز تا صدور اسناد اصلاحی، در این انبار انجام ندهید:</p>
+              <ul className="mt-1 pr-5 list-disc space-y-0.5">
+                <li>فروش حضوری از این انبار</li>
+                <li>انتقال موجودی به این انبار یا از آن</li>
+                <li>انتقال امانی از این انبار</li>
+                <li>دریافت کالای خرید</li>
+                <li>ویرایش دستی موجودی</li>
+                <li>مرجوعی یا تعویضی که به موجودی این انبار برمی‌گردد</li>
+              </ul>
+              <p className="mt-1">
+                کالای سفارش‌های سایت که بعد از فریز ثبت می‌شوند، تا صدور اسناد اصلاحی روی قفسه می‌ماند و شمرده می‌شود.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>

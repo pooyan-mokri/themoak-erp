@@ -24,6 +24,37 @@ function generateTagBarcode(auditId: string, index: number, productBarcode?: str
   return `TAG-${auditId.substring(0, 8)}-${index.toString().padStart(6, '0')}`;
 }
 
+// A refusal found inside a transaction: thrown so everything rolls back, then shown to the user as it is.
+class AuditRefusal extends Error {}
+
+// ADMIN, the audit's creator, or a team member with this permission.
+async function mayWorkOnAudit(
+  audit: { id: string; createdBy: string | null },
+  user: { id: string; role: string },
+  permission: 'canCount' | 'canApprove'
+): Promise<boolean> {
+  if (user.role === 'ADMIN' || audit.createdBy === user.id) return true;
+  const member = await prisma.inventoryAuditTeam.findUnique({
+    where: { auditId_userId: { auditId: audit.id, userId: user.id } },
+  });
+  return member?.[permission] === true;
+}
+
+// Runs `write` in a transaction that holds the audit row FOR SHARE, and only while the audit is IN_PROGRESS (false
+// otherwise). Issuing claims that row with an UPDATE, so it waits for a write already running and then sees it, and a
+// write started while issuing waits for the issue to commit and then finds the audit COMPLETED.
+async function writeWhileInProgress(auditId: string, write: (tx: any) => Promise<void>): Promise<boolean> {
+  return prisma.$transaction(
+    async (tx: any) => {
+      const [audit] = await tx.$queryRaw`SELECT "status" FROM "InventoryAudit" WHERE "id" = ${auditId} FOR SHARE`;
+      if (audit?.status !== 'IN_PROGRESS') return false;
+      await write(tx);
+      return true;
+    },
+    { maxWait: 10_000, timeout: 60_000 },
+  );
+}
+
 // 1. Pre-Audit: Create Inventory Audit
 export async function createInventoryAudit(
   prevState: ActionState<{ auditId: string }>,
@@ -267,6 +298,10 @@ export async function addAuditTeamMember(
       return { success: false, message: 'انبارگردانی یافت نشد.' };
     }
 
+    if (session.user.role !== 'ADMIN' && audit.createdBy !== session.user.id) {
+      return { success: false, message: 'دسترسی غیرمجاز — فقط سازنده انبارگردانی یا مدیر سیستم می‌تواند تیم را تغییر دهد.' };
+    }
+
     // Check if user is already in team
     const existingMember = await prisma.inventoryAuditTeam.findUnique({
       where: {
@@ -314,6 +349,19 @@ export async function removeAuditTeamMember(auditId: string, userId: string): Pr
       return { success: false, message: 'لطفاً وارد سیستم شوید.' };
     }
 
+    const audit = await prisma.inventoryAudit.findUnique({
+      where: { id: auditId },
+      select: { createdBy: true },
+    });
+
+    if (!audit) {
+      return { success: false, message: 'انبارگردانی یافت نشد.' };
+    }
+
+    if (session.user.role !== 'ADMIN' && audit.createdBy !== session.user.id) {
+      return { success: false, message: 'دسترسی غیرمجاز — فقط سازنده انبارگردانی یا مدیر سیستم می‌تواند تیم را تغییر دهد.' };
+    }
+
     await prisma.inventoryAuditTeam.delete({
       where: {
         auditId_userId: {
@@ -353,20 +401,14 @@ export async function getInventoryAudit(auditId: string) {
           },
           orderBy: { product: { name: 'asc' } },
         },
-        tags: {
-          include: { product: true },
-          orderBy: { createdAt: 'desc' },
-        },
         teams: {
           include: {
             user: { select: { id: true, name: true, email: true, role: true } },
             assignedByUser: { select: { id: true, name: true } },
           },
         },
-        snapshots: {
-          include: { product: true },
-        },
         createdByUser: { select: { id: true, name: true, email: true } },
+        _count: { select: { snapshots: true } },
       },
     });
 
@@ -396,28 +438,6 @@ export async function getInventoryAudit(auditId: string) {
           image: item.product.image ?? undefined,
           wooId: item.product.wooId ?? undefined,
           barcode: item.product.barcode ?? undefined,
-        } : undefined,
-      })),
-      tags: audit.tags.map((tag: any) => ({
-        ...tag,
-        location: tag.location ?? undefined,
-        productId: tag.productId ?? undefined,
-        printedAt: tag.printedAt ?? undefined,
-        printedBy: tag.printedBy ?? undefined,
-        product: tag.product ? {
-          ...tag.product,
-          image: tag.product.image ?? undefined,
-          wooId: tag.product.wooId ?? undefined,
-          barcode: tag.product.barcode ?? undefined,
-        } : undefined,
-      })),
-      snapshots: audit.snapshots.map((snapshot: any) => ({
-        ...snapshot,
-        product: snapshot.product ? {
-          ...snapshot.product,
-          image: snapshot.product.image ?? undefined,
-          wooId: snapshot.product.wooId ?? undefined,
-          barcode: snapshot.product.barcode ?? undefined,
         } : undefined,
       })),
     };
@@ -481,6 +501,10 @@ export async function recordCount(
       return { success: false, message: 'لطفاً وارد سیستم شوید.' };
     }
 
+    if (!Number.isInteger(count) || count < 0) {
+      return { success: false, message: 'تعداد شمارش باید عدد صحیح و بزرگ‌تر یا برابر صفر باشد.' };
+    }
+
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
     });
@@ -511,7 +535,22 @@ export async function recordCount(
       }
     }
 
-    // Update or create audit item
+    // Update only: a product that is not an item of this audit has no frozen system quantity.
+    const auditItem = await prisma.inventoryAuditItem.findUnique({
+      where: {
+        auditId_productId: {
+          auditId,
+          productId,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!auditItem) {
+      return { success: false, message: 'آیتم انبارگردانی یافت نشد.' };
+    }
+
+    // Update audit item
     const updateData: Record<string, number | string | Date> = {
       [`countedQuantity${countRound}`]: count,
       [`countedBy${countRound}`]: session.user.id,
@@ -522,21 +561,16 @@ export async function recordCount(
       updateData.notes = notes;
     }
 
-    await prisma.inventoryAuditItem.upsert({
-      where: {
-        auditId_productId: {
-          auditId,
-          productId,
-        },
-      },
-      update: updateData,
-      create: {
-        auditId,
-        productId,
-        systemQuantity: 0, // Will be set from snapshot
-        ...updateData,
-      },
+    const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      await tx.inventoryAuditItem.update({
+        where: { id: auditItem.id },
+        data: updateData,
+      });
     });
+
+    if (!inProgress) {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
@@ -552,39 +586,115 @@ export async function recordCount(
   }
 }
 
-// 7. Execution: Record Count by Barcode
-export async function recordCountByBarcode(
+export type SaveAuditCountsResult =
+  | {
+      success: true;
+      saved: Array<{ productId: string; count: number | null }>;
+      conflicts: Array<{ productId: string; theirCount: number | null; theirName: string | null }>;
+      refused: Array<{ productId: string; reason: string }>;
+    }
+  | { success: false; error: string };
+
+// 7b. Execution: Save count totals
+// Each save is the product's whole total for the round, or null for "not counted" (undoing a mistaken first scan),
+// so sending a batch again changes nothing. It is written only if the stored total is still the base the total
+// started from (null: not counted), whoever saved it: the same user in a second tab or device gets a conflict too.
+// A conflict comes back with the stored total and the name of who saved it.
+export async function saveAuditCounts(
   auditId: string,
-  barcode: string,
-  count: number,
-  countRound: 1 | 2 | 3 = 1
-): Promise<ActionResult> {
+  round: 1 | 2 | 3,
+  saves: Array<{ productId: string; count: number | null; base: number | null }>
+): Promise<SaveAuditCountsResult> {
   try {
-    // Find tag by barcode
-    const tag = await prisma.inventoryAuditTag.findUnique({
-      where: { barcode },
-      include: { audit: true, product: true },
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'لطفاً وارد سیستم شوید.' };
+    }
+
+    if (round !== 1 && round !== 2 && round !== 3) {
+      return { success: false, error: 'مرحله شمارش نامعتبر است.' };
+    }
+
+    const audit = await prisma.inventoryAudit.findUnique({
+      where: { id: auditId },
+      select: { id: true, createdBy: true },
     });
 
-    if (!tag) {
-      return { success: false, message: 'تگ با این بارکد یافت نشد.' };
+    if (!audit) {
+      return { success: false, error: 'انبارگردانی یافت نشد.' };
     }
 
-    if (tag.auditId !== auditId) {
-      return { success: false, message: 'این تگ متعلق به این انبارگردانی نیست.' };
+    if (!(await mayWorkOnAudit(audit, session.user, 'canCount'))) {
+      return { success: false, error: 'شما مجوز شمارش ندارید. لطفاً از بخش "پیش از عملیات" خود را به تیم اضافه کنید.' };
     }
 
-    if (!tag.productId) {
-      return { success: false, message: 'این تگ به محصول خاصی مرتبط نیست.' };
+    const userId = session.user.id;
+    const quantityField = `countedQuantity${round}` as const;
+    const byField = `countedBy${round}` as const;
+    const atField = `countedAt${round}` as const;
+    const result: Extract<SaveAuditCountsResult, { success: true }> = { success: true, saved: [], conflicts: [], refused: [] };
+
+    // The whole batch in one transaction: an error writes none of it, and issuing never runs in between.
+    const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      for (const { productId, count, base } of saves) {
+        if (count !== null && (!Number.isInteger(count) || count < 0 || count > 100000)) {
+          result.refused.push({ productId, reason: 'تعداد باید عدد صحیح از 0 تا 100000 باشد.' });
+          continue;
+        }
+
+        // updateMany drops an undefined filter, which would match every item of the audit.
+        if (typeof productId !== 'string') {
+          result.refused.push({ productId, reason: 'این کالا جزو اقلام این انبارگردانی نیست.' });
+          continue;
+        }
+
+        const written = await tx.inventoryAuditItem.updateMany({
+          where: { auditId, productId, [quantityField]: base ?? null },
+          data:
+            count === null
+              ? { [quantityField]: null, [byField]: null, [atField]: null }
+              : { [quantityField]: count, [byField]: userId, [atField]: new Date() },
+        });
+
+        if (written.count === 1) {
+          result.saved.push({ productId, count });
+          continue;
+        }
+
+        const item = await tx.inventoryAuditItem.findUnique({
+          where: { auditId_productId: { auditId, productId } },
+          include: {
+            countedBy1User: { select: { name: true } },
+            countedBy2User: { select: { name: true } },
+            countedBy3User: { select: { name: true } },
+          },
+        });
+
+        if (!item) {
+          result.refused.push({ productId, reason: 'این کالا جزو اقلام این انبارگردانی نیست.' });
+        } else {
+          result.conflicts.push({
+            productId,
+            theirCount: [item.countedQuantity1, item.countedQuantity2, item.countedQuantity3][round - 1],
+            theirName: [item.countedBy1User, item.countedBy2User, item.countedBy3User][round - 1]?.name ?? null,
+          });
+        }
+      }
+    });
+
+    if (!inProgress) {
+      return {
+        success: true,
+        saved: [],
+        conflicts: [],
+        refused: saves.map(({ productId }) => ({ productId, reason: 'انبارگردانی در حال انجام نیست.' })),
+      };
     }
 
-    return await recordCount(auditId, tag.productId, count, countRound);
+    return result;
   } catch (error: unknown) {
-    console.error('Error recording count by barcode:', error);
-    return {
-      success: false,
-      message: 'خطا در ثبت شمارش. لطفاً دوباره تلاش کنید.',
-    };
+    console.error('Error saving audit counts:', error);
+    return { success: false, error: 'خطا در ذخیره شمارش. لطفاً دوباره تلاش کنید.' };
   }
 }
 
@@ -600,31 +710,26 @@ export async function setFinalQuantity(
       return { success: false, message: 'لطفاً وارد سیستم شوید.' };
     }
 
-    // Check if user is creator or can approve
+    if (!Number.isInteger(finalQuantity) || finalQuantity < 0) {
+      return { success: false, message: 'مقدار نهایی باید عدد صحیح و بزرگ‌تر یا برابر صفر باشد.' };
+    }
+
+    // ADMIN, the creator, or a team member who may approve
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
-      select: { createdBy: true },
+      select: { id: true, createdBy: true, status: true },
     });
 
     if (!audit) {
       return { success: false, message: 'انبارگردانی یافت نشد.' };
     }
 
-    const isCreator = audit.createdBy === session.user.id;
-    
-    if (!isCreator) {
-      const teamMember = await prisma.inventoryAuditTeam.findUnique({
-        where: {
-          auditId_userId: {
-            auditId,
-            userId: session.user.id,
-          },
-        },
-      });
+    if (audit.status !== 'IN_PROGRESS') {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
 
-      if (!teamMember || !teamMember.canApprove) {
-        return { success: false, message: 'شما مجوز تأیید ندارید. لطفاً از بخش "پیش از عملیات" خود را به تیم اضافه کنید.' };
-      }
+    if (!(await mayWorkOnAudit(audit, session.user, 'canApprove'))) {
+      return { success: false, message: 'شما مجوز تأیید ندارید. لطفاً از بخش "پیش از عملیات" خود را به تیم اضافه کنید.' };
     }
 
     const auditItem = await prisma.inventoryAuditItem.findUnique({
@@ -644,19 +749,25 @@ export async function setFinalQuantity(
     const discrepancy = finalQuantity - auditItem.systemQuantity;
     const discrepancyValue = discrepancy * Number(auditItem.product.costPrice);
 
-    await prisma.inventoryAuditItem.update({
-      where: {
-        auditId_productId: {
-          auditId,
-          productId,
+    const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      await tx.inventoryAuditItem.update({
+        where: {
+          auditId_productId: {
+            auditId,
+            productId,
+          },
         },
-      },
-      data: {
-        finalQuantity,
-        discrepancy,
-        discrepancyValue,
-      },
+        data: {
+          finalQuantity,
+          discrepancy,
+          discrepancyValue,
+        },
+      });
     });
+
+    if (!inProgress) {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
@@ -672,11 +783,138 @@ export async function setFinalQuantity(
   }
 }
 
+// 8b. Execution: Finalise every counted item from its latest round
+export async function finalizeAllFromLastCount(auditId: string): Promise<ActionResult<{ finalizedCount: number }>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, message: 'لطفاً وارد سیستم شوید.' };
+    }
+
+    const audit = await prisma.inventoryAudit.findUnique({
+      where: { id: auditId },
+      select: { id: true, createdBy: true, status: true },
+    });
+
+    if (!audit) {
+      return { success: false, message: 'انبارگردانی یافت نشد.' };
+    }
+
+    if (!(await mayWorkOnAudit(audit, session.user, 'canApprove'))) {
+      return { success: false, message: 'شما مجوز تأیید ندارید. لطفاً از بخش "پیش از عملیات" خود را به تیم اضافه کنید.' };
+    }
+
+    if (audit.status !== 'IN_PROGRESS') {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
+
+    // One statement, under the audit lock: nothing changes while or after the audit is issued.
+    let finalizedCount = 0;
+    const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      finalizedCount = await tx.$executeRaw`
+        UPDATE "InventoryAuditItem" AS i
+           SET "finalQuantity" = COALESCE(i."countedQuantity3", i."countedQuantity2", i."countedQuantity1"),
+               "discrepancy" = COALESCE(i."countedQuantity3", i."countedQuantity2", i."countedQuantity1") - i."systemQuantity",
+               "discrepancyValue" = (COALESCE(i."countedQuantity3", i."countedQuantity2", i."countedQuantity1") - i."systemQuantity") * p."costPrice",
+               "updatedAt" = now() AT TIME ZONE 'UTC'
+          FROM "Product" AS p, "InventoryAudit" AS a
+         WHERE p."id" = i."productId" AND a."id" = i."auditId" AND a."status" = 'IN_PROGRESS'
+           AND i."auditId" = ${auditId} AND i."finalQuantity" IS NULL
+           AND COALESCE(i."countedQuantity3", i."countedQuantity2", i."countedQuantity1") IS NOT NULL`;
+    });
+
+    if (!inProgress) {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
+
+    revalidatePath(`/dashboard/inventory/audits/${auditId}`);
+    return {
+      success: true,
+      message: `مقدار نهایی ${finalizedCount} آیتم از آخرین شمارش ثبت شد.`,
+      data: { finalizedCount },
+    };
+  } catch (error: unknown) {
+    console.error('Error finalizing audit items:', error);
+    return {
+      success: false,
+      message: 'خطا در ثبت مقدار نهایی. لطفاً دوباره تلاش کنید.',
+    };
+  }
+}
+
+// 8c. Execution: Set 0 as the final quantity of listed items that nobody counted
+export async function setZeroForUncounted(
+  auditId: string,
+  productIds: string[]
+): Promise<ActionResult<{ updatedCount: number }>> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, message: 'لطفاً وارد سیستم شوید.' };
+    }
+
+    const audit = await prisma.inventoryAudit.findUnique({
+      where: { id: auditId },
+      select: { id: true, createdBy: true, status: true },
+    });
+
+    if (!audit) {
+      return { success: false, message: 'انبارگردانی یافت نشد.' };
+    }
+
+    if (!(await mayWorkOnAudit(audit, session.user, 'canApprove'))) {
+      return { success: false, message: 'شما مجوز تأیید ندارید. لطفاً از بخش "پیش از عملیات" خود را به تیم اضافه کنید.' };
+    }
+
+    if (audit.status !== 'IN_PROGRESS') {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
+
+    // One statement, under the audit lock: nothing changes while or after the audit is issued.
+    let updatedCount = 0;
+    const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      updatedCount = await tx.$executeRaw`
+        UPDATE "InventoryAuditItem" AS i
+           SET "finalQuantity" = 0,
+               "discrepancy" = -i."systemQuantity",
+               "discrepancyValue" = -i."systemQuantity" * p."costPrice",
+               "updatedAt" = now() AT TIME ZONE 'UTC'
+          FROM "Product" AS p, "InventoryAudit" AS a
+         WHERE p."id" = i."productId" AND a."id" = i."auditId" AND a."status" = 'IN_PROGRESS'
+           AND i."auditId" = ${auditId} AND i."productId" = ANY(${productIds})
+           AND i."finalQuantity" IS NULL
+           AND i."countedQuantity1" IS NULL AND i."countedQuantity2" IS NULL AND i."countedQuantity3" IS NULL`;
+    });
+
+    if (!inProgress) {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
+
+    revalidatePath(`/dashboard/inventory/audits/${auditId}`);
+    return {
+      success: true,
+      message: `مقدار نهایی ${updatedCount} آیتم شمارش‌نشده صفر ثبت شد.`,
+      data: { updatedCount },
+    };
+  } catch (error: unknown) {
+    console.error('Error setting uncounted items to zero:', error);
+    return {
+      success: false,
+      message: 'خطا در ثبت مقدار نهایی. لطفاً دوباره تلاش کنید.',
+    };
+  }
+}
+
 // ==================== POST-AUDIT TASKS ====================
 
 // 9. Post-Audit: Calculate Discrepancies
 export async function calculateDiscrepancies(auditId: string): Promise<ActionResult> {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, message: 'لطفاً وارد سیستم شوید.' };
+    }
+
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
       include: {
@@ -688,6 +926,10 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
 
     if (!audit) {
       return { success: false, message: 'انبارگردانی یافت نشد.' };
+    }
+
+    if (audit.status !== 'IN_PROGRESS') {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
     }
 
     // Calculate discrepancies for all items
@@ -732,6 +974,11 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
 // 10. Post-Audit: Get Discrepancy Report
 export async function getDiscrepancyReport(auditId: string) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return undefined;
+    }
+
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
       include: {
@@ -780,46 +1027,67 @@ export async function getDiscrepancyReport(auditId: string) {
 }
 
 // 11. Post-Audit: Issue Adjustment Documents
-export async function issueAdjustmentDocuments(auditId: string): Promise<ActionResult<{ adjustedCount: number }>> {
+export async function issueAdjustmentDocuments(
+  auditId: string
+): Promise<ActionResult<{ adjustedCount: number; unitsUp: number; unitsDown: number }>> {
   try {
     const session = await auth();
-    if (!session?.user?.id) {
-      return { success: false, message: 'لطفاً وارد سیستم شوید.' };
-    }
-
-    const audit = await prisma.inventoryAudit.findUnique({
-      where: { id: auditId },
-      include: {
-        items: {
-          where: {
-            OR: [
-              { discrepancy: { gt: 0 } },
-              { discrepancy: { lt: 0 } },
-            ],
-            isAdjusted: false,
-          },
-          include: { product: true },
-        },
-        warehouse: true,
-      },
-    });
-
-    if (!audit) {
-      return { success: false, message: 'انبارگردانی یافت نشد.' };
-    }
-
-    if (audit.status !== 'IN_PROGRESS') {
-      return { success: false, message: 'انبارگردانی باید در حال انجام باشد.' };
+    if (!session?.user || session.user.role !== 'ADMIN') {
+      return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند اسناد اصلاحی صادر کند.' };
     }
 
     // Every adjustment in one transaction, so they become visible all at once:
     // the website stock push then sees 10 or more frames going to 0 together and
     // holds them for an admin, instead of sending them in pieces.
-    await prisma.$transaction(
+    const result = await prisma.$transaction(
       async (tx: any) => {
+        // Claim the audit first. A second call (a reload, another device) waits on this row until the first
+        // commits, then finds it COMPLETED. A refusal or error below rolls the claim back with everything else.
+        const claim = await tx.inventoryAudit.updateMany({
+          where: { id: auditId, status: 'IN_PROGRESS' },
+          data: { status: 'COMPLETED', completedDate: new Date() },
+        });
+        if (claim.count !== 1) {
+          throw new AuditRefusal('اسناد اصلاحی این انبارگردانی قبلاً صادر شده یا انبارگردانی در حال انجام نیست.');
+        }
+
+        const audit = await tx.inventoryAudit.findUnique({
+          where: { id: auditId },
+          include: {
+            items: {
+              include: { product: { select: { name: true } } },
+              orderBy: { product: { name: 'asc' } },
+            },
+          },
+        });
+
+        const counted = (item: any) =>
+          item.countedQuantity1 !== null || item.countedQuantity2 !== null || item.countedQuantity3 !== null;
+        const names = (items: any[]) =>
+          items.slice(0, 3).map((item) => `«${item.product.name}»`).join('، ') +
+          (items.length > 3 ? ` و ${items.length - 3} آیتم دیگر` : '');
+        const notFinal = audit.items.filter((item: any) => item.finalQuantity === null && counted(item));
+        const notCounted = audit.items.filter(
+          (item: any) => item.finalQuantity === null && !counted(item) && item.systemQuantity !== 0
+        );
+        const problems: string[] = [];
+        if (notFinal.length > 0) {
+          problems.push(`${notFinal.length} آیتم شمارش شده ولی مقدار نهایی ندارد: ${names(notFinal)}. ابتدا مقدار نهایی را ثبت کنید.`);
+        }
+        if (notCounted.length > 0) {
+          problems.push(`${notCounted.length} آیتم با موجودی سیستمی شمارش نشده است: ${names(notCounted)}. آن‌ها را بشمارید یا صفر ثبت کنید.`);
+        }
+        if (problems.length > 0) {
+          throw new AuditRefusal(`اسناد اصلاحی صادر نشد. ${problems.join(' ')}`);
+        }
+
+        let adjustedCount = 0;
+        let unitsUp = 0;
+        let unitsDown = 0;
         for (const item of audit.items) {
-          // Positive for excess, negative for shortage
-          const adjustment = item.discrepancy || 0;
+          if (item.finalQuantity === null) continue;
+          // Positive for excess, negative for shortage; from the final number, not the stored discrepancy
+          const adjustment = item.finalQuantity - item.systemQuantity;
           if (adjustment === 0) continue;
           await tx.inventory.upsert({
             where: { productId_warehouseId: { productId: item.productId, warehouseId: audit.warehouseId } },
@@ -833,38 +1101,35 @@ export async function issueAdjustmentDocuments(auditId: string): Promise<ActionR
               toWarehouseId: adjustment >= 0 ? audit.warehouseId : null,
               quantity: Math.abs(adjustment),
               type: 'ADJUSTMENT',
-              note: adjustment >= 0 ? 'افزایش موجودی' : 'کاهش موجودی',
-              referenceId: null,
+              note: `انبارگردانی ${audit.auditNumber}`,
+              referenceId: auditId,
               tags: [],
             },
           });
           await tx.inventoryAuditItem.update({
-            where: { auditId_productId: { auditId, productId: item.productId } },
+            where: { id: item.id },
             data: { isAdjusted: true, adjustmentDocId: `ADJ-${auditId}-${item.productId}` },
           });
+          adjustedCount++;
+          if (adjustment > 0) unitsUp += adjustment;
+          else unitsDown -= adjustment;
         }
+        return { adjustedCount, unitsUp, unitsDown };
       },
       { maxWait: 10_000, timeout: 60_000 },
     );
     kickSiteHook();
     revalidatePath('/dashboard/inventory');
-
-    // Mark audit as completed
-    await prisma.inventoryAudit.update({
-      where: { id: auditId },
-      data: {
-        status: 'COMPLETED',
-        completedDate: new Date(),
-      },
-    });
-
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
       success: true,
-      message: `اسناد اصلاحی برای ${audit.items.length} آیتم صادر شد.`,
-      data: { adjustedCount: audit.items.length },
+      message: `اسناد اصلاحی برای ${result.adjustedCount} آیتم صادر شد (${result.unitsUp} عدد افزایش، ${result.unitsDown} عدد کاهش).`,
+      data: result,
     };
   } catch (error: unknown) {
+    if (error instanceof AuditRefusal) {
+      return { success: false, message: error.message };
+    }
     console.error('Error issuing adjustment documents:', error);
     return {
       success: false,

@@ -2,6 +2,10 @@ import { getInventoryAudit } from '@/actions/inventory-audit';
 import { notFound } from 'next/navigation';
 import { AuditDetailsTabs } from '@/components/inventory/audit-details-tabs';
 import { BackButton } from '@/components/ui/back-button';
+import { auth } from '@/auth';
+
+// Issuing adjustments runs from this page: one transaction with a few writes per adjusted item.
+export const maxDuration = 60;
 
 export default async function InventoryAuditDetailsPage({
   params,
@@ -15,6 +19,9 @@ export default async function InventoryAuditDetailsPage({
       notFound();
     }
 
+    const session = await auth();
+    const isAdmin = session?.user?.role === 'ADMIN';
+
     return (
       <div className="space-y-6">
         <BackButton href="/dashboard/inventory/audits" label="بازگشت به لیست انبارگردانی‌ها" />
@@ -25,7 +32,7 @@ export default async function InventoryAuditDetailsPage({
           </p>
         </div>
 
-        <AuditDetailsTabs audit={audit} />
+        <AuditDetailsTabs audit={audit} isAdmin={isAdmin} />
       </div>
     );
   } catch (error) {

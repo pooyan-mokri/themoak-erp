@@ -1,47 +1,51 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { recordCount, recordCountByBarcode, setFinalQuantity } from '@/actions/inventory-audit';
+import { finalizeAllFromLastCount, setFinalQuantity, setZeroForUncounted } from '@/actions/inventory-audit';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
-import { Scan, Save, CheckCircle2, XCircle, Search, Wifi, WifiOff, Camera, Plus, Trash2 } from 'lucide-react';
-import { BarcodeScannerDialog } from '@/components/inventory/barcode-scanner';
-import { 
-  isOnline, 
-  setupOnlineListener, 
-  getPendingCounts, 
-  syncPendingCounts, 
-  saveCountOffline 
-} from '@/lib/offline-storage';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { CheckCircle2, ListChecks, Search } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { AuditCountQueue } from '@/lib/audit-scan-queue';
+import {
+  AuditSaveStatus,
+  AuditScanPanel,
+  savedCount,
+  useAuditCountQueue,
+} from '@/components/inventory/audit-scan-panel';
+import {
+  ITEM_FILTERS,
+  RESOLVE_CONFLICTS_FIRST,
+  foldSearchText,
+  lastCount,
+  matchesFilter,
+  matchesSearch,
+  parseRound,
+  parseWholeNumber,
+  type ItemFilter,
+  type Round,
+} from '@/components/inventory/audit-count-view';
 
 interface Product {
   id: string;
   name: string;
   sku: string;
+  webId?: string | null;
+  barcode?: string | null;
 }
 
 interface InventoryAuditItem {
   id: string;
   productId: string;
   systemQuantity: number;
-  countedQuantity1?: number;
-  countedQuantity2?: number;
-  countedQuantity3?: number;
-  finalQuantity?: number;
+  countedQuantity1?: number | null;
+  countedQuantity2?: number | null;
+  countedQuantity3?: number | null;
+  finalQuantity?: number | null;
   notes?: string;
   product: Product;
 }
@@ -52,86 +56,31 @@ interface InventoryAudit {
   items?: InventoryAuditItem[];
 }
 
-interface PendingCount {
-  id?: number;
-  auditId: string;
-  productId: string;
-  count: number;
-  countRound: 1 | 2 | 3;
-  notes?: string;
-  timestamp: number;
-  synced: boolean;
-}
-
 interface ExecutionTabProps {
   audit: InventoryAudit;
 }
 
+const CONNECTION_LOST = 'ارتباط قطع شد؛ ثبت نشد. دوباره بزنید.';
+const NO_ITEMS: InventoryAuditItem[] = [];
+
 export function ExecutionTab({ audit }: ExecutionTabProps) {
-  const router = useRouter();
-  const [barcode, setBarcode] = useState('');
-  const [manualProductId, setManualProductId] = useState('');
-  const [count, setCount] = useState('');
-  const [countRound, setCountRound] = useState<1 | 2 | 3>(1);
-  const [notes, setNotes] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [online, setOnline] = useState(true);
-  const [pendingCounts, setPendingCounts] = useState<PendingCount[]>([]);
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [manualEntries, setManualEntries] = useState<Array<{ productId: string; count: string; notes: string }>>([]);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const round = parseRound(searchParams.get('round'));
+  const items = audit.items ?? NO_ITEMS;
+  const inProgress = audit.status === 'IN_PROGRESS';
+  const queue = useAuditCountQueue(audit.id, round, items, inProgress);
 
-  useEffect(() => {
-    setOnline(isOnline());
-    loadPendingCounts();
-    const cleanup = setupOnlineListener(() => {
-      setOnline(true);
-      syncAllPendingCounts();
-    });
-    return cleanup;
-  }, []);
-
-  const loadPendingCounts = async () => {
-    try {
-      const counts = await getPendingCounts(audit.id);
-      setPendingCounts(counts);
-    } catch (error) {
-      console.error('Error loading pending counts:', error);
-    }
-  };
-
-  const syncAllPendingCounts = async () => {
-    if (!online) return;
-
-    try {
-      const { synced, failed } = await syncPendingCounts(async (count) => {
-        if (count.productId) {
-          const result = await recordCount(
-            count.auditId,
-            count.productId,
-            count.count,
-            count.countRound,
-            count.notes
-          );
-          return { success: result.success ?? false };
-        }
-        return { success: false };
-      });
-
-      if (synced > 0) {
-        toast.success(`${synced} شمارش با موفقیت همگام‌سازی شد.`);
-        loadPendingCounts();
-        router.refresh();
-      }
-      if (failed > 0) {
-        toast.error(`${failed} شمارش با خطا مواجه شد.`);
-      }
-    } catch (error) {
-      console.error('Error syncing counts:', error);
-    }
+  // The round lives in the URL so a reload keeps it. The scan panel changes it only with every count saved.
+  const goToRound = (next: Round) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('round', String(next));
+    // Next.js keeps useSearchParams in step with replaceState, with no request to the server.
+    window.history.replaceState(null, '', `${pathname}?${params.toString()}`);
   };
 
   // Check if audit is in progress
-  if (audit.status !== 'IN_PROGRESS') {
+  if (!inProgress) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
@@ -143,251 +92,9 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
     );
   }
 
-  const handleBarcodeScan = async () => {
-    if (!barcode.trim()) {
-      toast.error('لطفاً بارکد را وارد کنید.');
-      return;
-    }
-
-    if (!count.trim() || isNaN(Number(count))) {
-      toast.error('لطفاً تعداد را به درستی وارد کنید.');
-      return;
-    }
-
-    if (!online) {
-      // Save offline - we need productId from barcode, but for now save with barcode
-      toast.info('در حال ذخیره آفلاین...');
-      // Note: For offline barcode, we'd need to lookup productId first
-      // This is a simplified version
-      return;
-    }
-
-    const result = await recordCountByBarcode(audit.id, barcode, Number(count), countRound);
-    if (result.success) {
-      toast.success(result.message);
-      setBarcode('');
-      setCount('');
-      router.refresh();
-    } else {
-      toast.error(result.message);
-    }
-  };
-
-  const addManualEntry = () => {
-    if (!manualProductId) {
-      toast.error('لطفاً محصول را انتخاب کنید.');
-      return;
-    }
-
-    if (!count.trim() || isNaN(Number(count)) || Number(count) < 0) {
-      toast.error('لطفاً تعداد را به درستی وارد کنید (صفر یا بیشتر).');
-      return;
-    }
-
-    // Check if product already exists in entries
-    if (manualEntries.some(entry => entry.productId === manualProductId)) {
-      toast.error('این محصول قبلاً به لیست اضافه شده است.');
-      return;
-    }
-
-    setManualEntries([...manualEntries, {
-      productId: manualProductId,
-      count: count,
-      notes: notes
-    }]);
-
-    // Reset form
-    setManualProductId('');
-    setCount('');
-    setNotes('');
-  };
-
-  const removeManualEntry = (index: number) => {
-    setManualEntries(manualEntries.filter((_, i) => i !== index));
-  };
-
-  const handleManualCount = async (productId?: string, countValue?: string, notesValue?: string) => {
-    const targetProductId = productId || manualProductId;
-    const targetCount = countValue || count;
-    const targetNotes = notesValue || notes;
-
-    if (!targetProductId) {
-      toast.error('لطفاً محصول را انتخاب کنید.');
-      return;
-    }
-
-    if (!targetCount.trim() || isNaN(Number(targetCount))) {
-      toast.error('لطفاً تعداد را به درستی وارد کنید.');
-      return;
-    }
-
-    if (!online) {
-      // Save offline
-      try {
-        await saveCountOffline(
-          audit.id,
-          targetProductId,
-          Number(targetCount),
-          countRound,
-          targetNotes || undefined
-        );
-        toast.success('شمارش به صورت آفلاین ذخیره شد. پس از اتصال به اینترنت همگام‌سازی می‌شود.');
-        loadPendingCounts();
-      } catch (error) {
-        toast.error('خطا در ذخیره آفلاین.');
-      }
-      return;
-    }
-
-    const result = await recordCount(audit.id, targetProductId, Number(targetCount), countRound, targetNotes);
-    if (result.success) {
-      toast.success(result.message);
-      router.refresh();
-    } else {
-      toast.error(result.message);
-    }
-  };
-
-  const handleBatchManualCount = async () => {
-    if (manualEntries.length === 0) {
-      toast.error('لطفاً حداقل یک آیتم به لیست اضافه کنید.');
-      return;
-    }
-
-    let successCount = 0;
-    let errorCount = 0;
-    const errors: string[] = [];
-
-    for (const entry of manualEntries) {
-      const targetProductId = entry.productId;
-      const targetCount = entry.count;
-      const targetNotes = entry.notes;
-
-      if (!targetProductId || !targetCount.trim() || isNaN(Number(targetCount)) || Number(targetCount) < 0) {
-        errorCount++;
-        errors.push('داده‌های نامعتبر');
-        continue;
-      }
-
-      if (!online) {
-        // Save offline
-        try {
-          await saveCountOffline(
-            audit.id,
-            targetProductId,
-            Number(targetCount),
-            countRound,
-            targetNotes || undefined
-          );
-          successCount++;
-        } catch (error) {
-          errorCount++;
-          console.error('Error saving offline:', error);
-          errors.push(error instanceof Error ? error.message : 'خطا در ذخیره آفلاین');
-        }
-      } else {
-        try {
-          const result = await recordCount(audit.id, targetProductId, Number(targetCount), countRound, targetNotes);
-          if (result.success) {
-            successCount++;
-          } else {
-            errorCount++;
-            console.error('Record count error:', result.message);
-            errors.push(result.message || 'خطا در ثبت شمارش');
-          }
-        } catch (error) {
-          errorCount++;
-          console.error('Error recording count:', error);
-          errors.push(error instanceof Error ? error.message : 'خطا در ثبت شمارش');
-        }
-      }
-    }
-
-    if (successCount > 0) {
-      toast.success(`${successCount} شمارش با موفقیت ثبت شد.`);
-      setManualEntries([]);
-      if (!online) {
-        loadPendingCounts();
-      }
-      router.refresh();
-    }
-    if (errorCount > 0) {
-      const errorMessage = errors.length > 0 
-        ? `${errorCount} شمارش با خطا مواجه شد: ${errors[0]}${errors.length > 1 ? ' و ...' : ''}`
-        : `${errorCount} شمارش با خطا مواجه شد.`;
-      toast.error(errorMessage);
-    }
-  };
-
-  const handleSetFinal = async (productId: string, finalQuantity: number) => {
-    if (!confirm('آیا مطمئن هستید که می‌خواهید این مقدار را به عنوان مقدار نهایی ثبت کنید؟')) {
-      return;
-    }
-
-    const result = await setFinalQuantity(audit.id, productId, finalQuantity);
-    if (result.success) {
-      toast.success(result.message);
-      router.refresh();
-    } else {
-      toast.error(result.message);
-    }
-  };
-
-  const filteredItems = audit.items?.filter((item) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      item.product.name.toLowerCase().includes(query) ||
-      item.product.sku.toLowerCase().includes(query)
-    );
-  }) || [];
-
-  const getCountStatus = (item: InventoryAuditItem) => {
-    if (item.finalQuantity !== undefined) {
-      return { status: 'final', label: 'نهایی شده', variant: 'default' as const };
-    }
-    if (item.countedQuantity3 !== undefined) {
-      return { status: 'third', label: 'شمارش سوم', variant: 'secondary' as const };
-    }
-    if (item.countedQuantity2 !== undefined) {
-      return { status: 'second', label: 'شمارش دوم', variant: 'outline' as const };
-    }
-    if (item.countedQuantity1 !== undefined) {
-      return { status: 'first', label: 'شمارش اول', variant: 'outline' as const };
-    }
-    return { status: 'none', label: 'شمارش نشده', variant: 'outline' as const };
-  };
-
   return (
     <div className="space-y-6">
-      {/* Online/Offline Status */}
-      <Card>
-        <CardContent className="py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {online ? (
-                <>
-                  <Wifi className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-600">آنلاین</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-600">آفلاین</span>
-                  <Badge variant="outline" className="text-xs">
-                    {pendingCounts.length} شمارش در انتظار
-                  </Badge>
-                </>
-              )}
-            </div>
-            {!online && pendingCounts.length > 0 && (
-              <Button size="sm" variant="outline" onClick={syncAllPendingCounts}>
-                همگام‌سازی
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <AuditSaveStatus auditId={audit.id} round={round} items={items} queue={queue} />
 
       <Tabs defaultValue="count" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -395,344 +102,318 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
           <TabsTrigger value="items">لیست آیتم‌ها</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="count" className="space-y-4">
-          {/* Barcode Scanner Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Scan className="h-5 w-5" />
-                اسکن بارکد
-              </CardTitle>
-              <CardDescription>
-                بارکد را از طریق دوربین موبایل یا بارکدخوان اسکن کنید.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Select value={countRound.toString()} onValueChange={(v) => setCountRound(Number(v) as 1 | 2 | 3)}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">شمارش اول</SelectItem>
-                    <SelectItem value="2">شمارش دوم</SelectItem>
-                    <SelectItem value="3">شمارش سوم</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>بارکد</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={barcode}
-                    onChange={(e) => setBarcode(e.target.value)}
-                    placeholder="بارکد را وارد یا اسکن کنید..."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleBarcodeScan();
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <Button 
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsScannerOpen(true)}
-                  >
-                    <Camera className="h-4 w-4 mr-2" />
-                    دوربین
-                  </Button>
-                  <Button onClick={handleBarcodeScan}>
-                    <Scan className="h-4 w-4 mr-2" />
-                    ثبت
-                  </Button>
-                </div>
-              </div>
-              <BarcodeScannerDialog
-                open={isScannerOpen}
-                onOpenChange={setIsScannerOpen}
-                onScan={(scannedBarcode) => {
-                  setBarcode(scannedBarcode);
-                  setIsScannerOpen(false);
-                  // Auto-focus on count input after scanning
-                  setTimeout(() => {
-                    const countInput = document.querySelector('input[type="number"]') as HTMLInputElement;
-                    if (countInput) {
-                      countInput.focus();
-                    }
-                  }, 100);
-                }}
-              />
-              <div className="space-y-2">
-                <Label>تعداد</Label>
-                <Input
-                  type="number"
-                  value={count}
-                  onChange={(e) => setCount(e.target.value)}
-                  placeholder="تعداد شمارش شده"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Manual Entry Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>ثبت دستی</CardTitle>
-              <CardDescription>
-                در صورت عدم دسترسی به بارکد، شمارش را به صورت دستی ثبت کنید. می‌توانید چندین آیتم را به لیست اضافه کرده و یکجا ثبت کنید.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>محصول</Label>
-                <Select value={manualProductId} onValueChange={setManualProductId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="انتخاب محصول" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {audit.items?.map((item) => (
-                      <SelectItem
-                        key={item.productId}
-                        value={item.productId}
-                        disabled={manualEntries.some(e => e.productId === item.productId)}
-                      >
-                        {item.product.name} ({item.product.sku})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>تعداد</Label>
-                <Input
-                  type="number"
-                  value={count}
-                  onChange={(e) => setCount(e.target.value)}
-                  placeholder="تعداد شمارش شده"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addManualEntry();
-                    }
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>توضیحات (آسیب‌دیده/ضایعات)</Label>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="توضیحات اختیاری..."
-                  rows={2}
-                />
-              </div>
-              <Button onClick={addManualEntry} variant="outline" className="w-full">
-                <Plus className="h-4 w-4 mr-2" />
-                افزودن به لیست
-              </Button>
-
-              {/* List of entries */}
-              {manualEntries.length > 0 && (
-                <div className="space-y-2 border-t pt-4">
-                  <Label>لیست آیتم‌های انتخابی ({manualEntries.length})</Label>
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {manualEntries.map((entry, index) => {
-                      const product = audit.items?.find((item) => item.productId === entry.productId)?.product;
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-3 border rounded-lg bg-muted/50"
-                        >
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{product?.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              SKU: {product?.sku} | تعداد: {entry.count}
-                              {entry.notes && ` | ${entry.notes}`}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => removeManualEntry(index)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button 
-                      onClick={handleBatchManualCount} 
-                      className="flex-1"
-                      disabled={manualEntries.length === 0}
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      ثبت همه ({manualEntries.length})
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => setManualEntries([])}
-                      disabled={manualEntries.length === 0}
-                    >
-                      پاک کردن لیست
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Single entry button (for backward compatibility) */}
-              {manualEntries.length === 0 && (
-                <Button onClick={() => handleManualCount()} className="w-full">
-                  <Save className="h-4 w-4 mr-2" />
-                  ثبت شمارش
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+        {/* Stays mounted while the list is open, so the last scans and a typed quantity are kept. */}
+        <TabsContent value="count" forceMount className="space-y-4 data-[state=inactive]:hidden">
+          <AuditScanPanel
+            key={round}
+            items={items}
+            round={round}
+            queue={queue}
+            onRoundChange={goToRound}
+          />
         </TabsContent>
 
         <TabsContent value="items">
-          <Card>
-            <CardHeader>
-              <CardTitle>لیست آیتم‌های شمارش</CardTitle>
-              <CardDescription>
-                وضعیت شمارش تمام آیتم‌ها را مشاهده و مدیریت کنید.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="جستجو محصول..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {filteredItems.map((item) => {
-                  const countStatus = getCountStatus(item);
-                  return (
-                    <div
-                      key={item.id}
-                      className="p-4 border rounded-lg space-y-3"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium">{item.product.name}</p>
-                          <p className="text-sm text-muted-foreground">{item.product.sku}</p>
-                        </div>
-                        <Badge variant={countStatus.variant}>{countStatus.label}</Badge>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">موجودی سیستم:</span>
-                          <span className="font-medium mr-2">{item.systemQuantity}</span>
-                        </div>
-                        {item.countedQuantity1 !== undefined && (
-                          <div>
-                            <span className="text-muted-foreground">شمارش اول:</span>
-                            <span className="font-medium mr-2">{item.countedQuantity1}</span>
-                          </div>
-                        )}
-                        {item.countedQuantity2 !== undefined && (
-                          <div>
-                            <span className="text-muted-foreground">شمارش دوم:</span>
-                            <span className="font-medium mr-2">{item.countedQuantity2}</span>
-                          </div>
-                        )}
-                        {item.countedQuantity3 !== undefined && (
-                          <div>
-                            <span className="text-muted-foreground">شمارش سوم:</span>
-                            <span className="font-medium mr-2">{item.countedQuantity3}</span>
-                          </div>
-                        )}
-                        {item.finalQuantity !== undefined && (
-                          <div>
-                            <span className="text-muted-foreground">مقدار نهایی:</span>
-                            <span className="font-medium mr-2 text-green-600">
-                              {item.finalQuantity}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      {item.notes && (
-                        <div className="text-sm text-muted-foreground">
-                          <span className="font-medium">توضیحات:</span> {item.notes}
-                        </div>
-                      )}
-                      {item.countedQuantity1 !== undefined && item.finalQuantity === undefined && (
-                        <div className="flex gap-2 items-center">
-                          <Input
-                            type="number"
-                            placeholder="مقدار نهایی"
-                            className="w-32"
-                            defaultValue={
-                              // Auto-suggest: use last count or average if multiple counts exist
-                              item.countedQuantity3 !== undefined
-                                ? item.countedQuantity3
-                                : item.countedQuantity2 !== undefined
-                                ? item.countedQuantity2
-                                : item.countedQuantity1
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                const finalQty = Number((e.target as HTMLInputElement).value);
-                                if (!isNaN(finalQty) && finalQty >= 0) {
-                                  handleSetFinal(item.productId, finalQty);
-                                }
-                              }
-                            }}
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              // Auto-set to last count
-                              const suggestedQty = item.countedQuantity3 !== undefined
-                                ? item.countedQuantity3
-                                : item.countedQuantity2 !== undefined
-                                ? item.countedQuantity2
-                                : item.countedQuantity1;
-                              if (suggestedQty !== undefined) {
-                                handleSetFinal(item.productId, suggestedQty);
-                              }
-                            }}
-                            title="استفاده از آخرین شمارش"
-                          >
-                            آخرین شمارش
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              const input = document.querySelector(
-                                `input[placeholder="مقدار نهایی"]`
-                              ) as HTMLInputElement;
-                              if (input && !isNaN(Number(input.value)) && Number(input.value) >= 0) {
-                                handleSetFinal(item.productId, Number(input.value));
-                              } else {
-                                toast.error('لطفاً مقدار معتبری وارد کنید.');
-                              }
-                            }}
-                          >
-                            <CheckCircle2 className="h-4 w-4 mr-2" />
-                            ثبت نهایی
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+          <AuditItemsList auditId={audit.id} items={items} round={round} queue={queue} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
+type ListItem = InventoryAuditItem & {
+  countedQuantity1: number | null;
+  countedQuantity2: number | null;
+  countedQuantity3: number | null;
+};
+
+const getCountStatus = (item: ListItem) => {
+  if (item.finalQuantity != null) {
+    return { status: 'final', label: 'نهایی شده', variant: 'default' as const };
+  }
+  if (item.countedQuantity3 !== null) {
+    return { status: 'third', label: 'شمارش سوم', variant: 'secondary' as const };
+  }
+  if (item.countedQuantity2 !== null) {
+    return { status: 'second', label: 'شمارش دوم', variant: 'outline' as const };
+  }
+  if (item.countedQuantity1 !== null) {
+    return { status: 'first', label: 'شمارش اول', variant: 'outline' as const };
+  }
+  return { status: 'none', label: 'شمارش نشده', variant: 'outline' as const };
+};
+
+type ItemsListProps = {
+  auditId: string;
+  items: InventoryAuditItem[];
+  round: Round;
+  queue: AuditCountQueue | null;
+};
+
+function AuditItemsList({ auditId, items, round, queue }: ItemsListProps) {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<ItemFilter>('all');
+  const [finalDrafts, setFinalDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  // Counts as this page knows them: the page data, saves confirmed since, and this round's totals still being saved.
+  const countFor = (item: InventoryAuditItem, r: Round) =>
+    r === round && queue ? queue.getTotal(item.productId) : savedCount(auditId, r, item);
+  const view: ListItem[] = items.map((item) => ({
+    ...item,
+    countedQuantity1: countFor(item, 1),
+    countedQuantity2: countFor(item, 2),
+    countedQuantity3: countFor(item, 3),
+  }));
+  const query = foldSearchText(searchQuery);
+  const searched = view.filter((item) => matchesSearch(item, query));
+  const shown = searched.filter((item) => matchesFilter(item, filter));
+  const notFinalCount = view.filter((item) => matchesFilter(item, 'notFinal')).length;
+
+  const run = async (call: () => Promise<{ success?: boolean; message?: string }>) => {
+    setBusy(true);
+    try {
+      // Counts this device has not saved yet go first, so the page data loaded after the call already holds them.
+      await queue?.flush();
+      const result = await call();
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error(CONNECTION_LOST);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSetFinal = (item: ListItem, finalQuantity: number | null) => {
+    if (finalQuantity === null || finalQuantity > 100000) {
+      toast.error('لطفاً مقدار معتبری وارد کنید.');
+      return;
+    }
+    if (!confirm(`مقدار نهایی «${item.product.name}» برابر ${finalQuantity} ثبت شود؟`)) {
+      return;
+    }
+    void run(() => setFinalQuantity(auditId, item.productId, finalQuantity));
+  };
+
+  const handleFinalizeAll = () => {
+    // A conflict never saves by itself, and finalising would take the other person's number for it.
+    if (queue && queue.conflicts().length > 0) {
+      toast.error(RESOLVE_CONFLICTS_FIRST);
+      return;
+    }
+    if (!confirm(`مقدار نهایی ${notFinalCount} آیتم شمارش‌شده از آخرین شمارش هر کدام ثبت شود؟`)) {
+      return;
+    }
+    void run(async () => {
+      // The server finalises from saved counts, so what was counted on this device has to be saved first.
+      await queue?.flush();
+      if (queue && queue.conflicts().length > 0) {
+        return { success: false, message: RESOLVE_CONFLICTS_FIRST };
+      }
+      const unsaved = queue?.pendingCount() ?? 0;
+      if (unsaved > 0) {
+        return {
+          success: false,
+          message: `${unsaved} شمارش هنوز ذخیره نشده است. صبر کنید تا ذخیره شود، سپس دوباره بزنید.`,
+        };
+      }
+      return finalizeAllFromLastCount(auditId);
+    });
+  };
+
+  const handleZero = (targets: ListItem[]) => {
+    const names = targets
+      .slice(0, 40)
+      .map((item) => `«${item.product.name}»`)
+      .join('\n');
+    const more = targets.length > 40 ? `\nو ${targets.length - 40} کالای دیگر` : '';
+    const question =
+      targets.length === 1
+        ? `مقدار نهایی «${targets[0].product.name}» صفر ثبت شود؟ (موجودی سیستم: ${targets[0].systemQuantity})`
+        : `مقدار نهایی این ${targets.length} کالای شمارش‌نشده صفر ثبت شود؟ با صدور اسناد اصلاحی، موجودی آن‌ها صفر می‌شود.\n\n${names}${more}`;
+    if (!confirm(question)) {
+      return;
+    }
+    void run(() => setZeroForUncounted(auditId, targets.map((item) => item.productId)));
+  };
+
+  return (
+    <Card>
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle>لیست آیتم‌های شمارش</CardTitle>
+        <CardDescription>
+          وضعیت شمارش تمام آیتم‌ها را مشاهده و مدیریت کنید.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="جستجو: نام، SKU، کد وب یا بارکد..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {ITEM_FILTERS.map(({ value, label }) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={filter === value ? 'default' : 'outline'}
+              className="h-8 gap-1.5 rounded-full hover:scale-100"
+              onClick={() => setFilter(value)}
+            >
+              {label}
+              <span className="tabular-nums opacity-70">
+                {searched.filter((item) => matchesFilter(item, value)).length}
+              </span>
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={busy || notFinalCount === 0}
+            onClick={handleFinalizeAll}
+          >
+            <ListChecks className="h-4 w-4" />
+            نهایی کردن همه از آخرین شمارش
+          </Button>
+          {filter === 'uncounted' && shown.length > 0 && (
+            <Button type="button" variant="destructive" disabled={busy} onClick={() => handleZero(shown)}>
+              ثبت ۰ برای همهٔ این‌ها
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-2 max-h-[600px] overflow-y-auto">
+          {shown.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">آیتمی با این شرایط نیست.</p>
+          )}
+          {shown.map((item) => {
+            const countStatus = getCountStatus(item);
+            const last = lastCount(item);
+            const draft = finalDrafts[item.productId] ?? (last === null ? '' : String(last));
+            return (
+              <div
+                key={item.id}
+                className="p-3 sm:p-4 border rounded-lg space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium break-words">{item.product.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      <bdi>{item.product.sku}</bdi>
+                    </p>
+                  </div>
+                  <Badge variant={countStatus.variant} className="shrink-0">{countStatus.label}</Badge>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">موجودی سیستم:</span>
+                    <span className="font-medium mr-2">{item.systemQuantity}</span>
+                  </div>
+                  {item.countedQuantity1 !== null && (
+                    <div>
+                      <span className="text-muted-foreground">شمارش اول:</span>
+                      <span className="font-medium mr-2">{item.countedQuantity1}</span>
+                    </div>
+                  )}
+                  {item.countedQuantity2 !== null && (
+                    <div>
+                      <span className="text-muted-foreground">شمارش دوم:</span>
+                      <span className="font-medium mr-2">{item.countedQuantity2}</span>
+                    </div>
+                  )}
+                  {item.countedQuantity3 !== null && (
+                    <div>
+                      <span className="text-muted-foreground">شمارش سوم:</span>
+                      <span className="font-medium mr-2">{item.countedQuantity3}</span>
+                    </div>
+                  )}
+                  {item.finalQuantity != null && (
+                    <div>
+                      <span className="text-muted-foreground">مقدار نهایی:</span>
+                      <span className="font-medium mr-2 text-green-600">
+                        {item.finalQuantity}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {item.notes && (
+                  <div className="text-sm text-muted-foreground">
+                    <span className="font-medium">توضیحات:</span> {item.notes}
+                  </div>
+                )}
+                {last !== null && item.finalQuantity == null && (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Input
+                      inputMode="numeric"
+                      dir="ltr"
+                      placeholder="مقدار نهایی"
+                      aria-label={`مقدار نهایی ${item.product.name}`}
+                      className="h-9 w-24 text-center"
+                      value={draft}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFinalDrafts((previous) => ({ ...previous, [item.productId]: value }));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !busy) {
+                          handleSetFinal(item, parseWholeNumber(draft));
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => handleSetFinal(item, last)}
+                      title="استفاده از آخرین شمارش"
+                    >
+                      آخرین شمارش
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      disabled={busy}
+                      onClick={() => handleSetFinal(item, parseWholeNumber(draft))}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      ثبت نهایی
+                    </Button>
+                  </div>
+                )}
+                {filter === 'uncounted' && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => handleZero([item])}
+                      title="ثبت ۰ به عنوان مقدار نهایی"
+                    >
+                      ۰
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

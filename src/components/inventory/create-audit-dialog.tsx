@@ -33,6 +33,7 @@ interface CreateAuditDialogProps {
 export function CreateAuditDialog({ warehouses }: CreateAuditDialogProps) {
   const [open, setOpen] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -52,6 +53,7 @@ export function CreateAuditDialog({ warehouses }: CreateAuditDialogProps) {
 
     console.log('Submitting audit form:', { warehouseId, description });
 
+    setSubmitting(true);
     try {
       const result = await createInventoryAudit(undefined, formData);
       console.log('Audit creation result:', result);
@@ -74,6 +76,8 @@ export function CreateAuditDialog({ warehouses }: CreateAuditDialogProps) {
     } catch (error) {
       console.error('Error creating audit:', error);
       toast.error('خطا در ایجاد انبارگردانی. لطفاً دوباره تلاش کنید.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -124,7 +128,9 @@ export function CreateAuditDialog({ warehouses }: CreateAuditDialogProps) {
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               انصراف
             </Button>
-            <Button type="submit">ایجاد</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'در حال ایجاد...' : 'ایجاد'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
