@@ -328,8 +328,17 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST /api/erp  body: { action, ...fields } ───────────────────────────────
+const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus'];
+
+function unknownPostAction() {
+  return NextResponse.json({ error: 'Unknown action', availableActions: POST_ACTIONS }, { status: 404 });
+}
+
 export async function POST(req: NextRequest) {
   if (!authenticate(req)) return unauthorized();
+  // The spec writes the address as /api/erp?action=…, so the action may come
+  // there instead of in the body. The body's wins when both name one.
+  const queryAction = req.nextUrl.searchParams.get('action');
 
   // A bad body is 422: the site reads 400 and 404 as "the ERP does not have
   // this action yet" and would hide the error.
@@ -339,10 +348,14 @@ export async function POST(req: NextRequest) {
   } catch {
     body = null;
   }
-  if (!body || typeof body !== 'object' || Array.isArray(body))
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    // An action the ERP does not have is 404, whatever body came with it.
+    if (queryAction && !POST_ACTIONS.includes(queryAction)) return unknownPostAction();
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 422 });
+  }
 
-  const { action, ...fields } = body;
+  const { action: bodyAction, ...fields } = body;
+  const action = bodyAction ?? queryAction;
 
   try {
     switch (action) {
@@ -507,13 +520,7 @@ export async function POST(req: NextRequest) {
       }
 
       default:
-        return NextResponse.json(
-          {
-            error: 'Unknown action',
-            availableActions: ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus'],
-          },
-          { status: 404 },
-        );
+        return unknownPostAction();
     }
   } catch (err: any) {
     console.error('[ERP API POST]', err);

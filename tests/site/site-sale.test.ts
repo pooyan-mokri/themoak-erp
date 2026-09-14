@@ -271,6 +271,20 @@ test('an unknown webId still records the sale, on the placeholder, flagged for r
   });
   assert.equal((await sell(trap)).status, 200);
   assert.ok((await orderOf(trap.reference)).tags.includes(TAG_NEEDS_REVIEW));
+
+  // A line that comes with no webId and no erpId at all is unknown too: still a sale, on the placeholder, flagged.
+  const nameless = saleBody({
+    items: [{ webId: null, erpId: null, sku: null, productId: 'site-product-9', name: 'Frame without an id', quantity: 1, unitPrice: 18_500_000, lineTotal: 18_500_000 }],
+  });
+  const namelessSale = await sell(nameless);
+  assert.equal(namelessSale.status, 200, JSON.stringify(namelessSale.body));
+  const namelessOrder = await orderOf(nameless.reference);
+  assert.deepEqual(namelessSale.body, { id: namelessOrder.id, number: String(namelessOrder.number) });
+  assert.deepEqual(namelessOrder.items.map((i: any) => [i.productId, i.quantity, Number(i.price)]), [[placeholder.id, 1, 18_500_000]]);
+  assert.ok(namelessOrder.tags.includes(TAG_NEEDS_REVIEW));
+  const namelessData = readSiteOrderData(namelessOrder.siteData);
+  assert.deepEqual(namelessData?.unknownLines.map((line) => [line.webId, line.name]), [[null, 'Frame without an id']]);
+  assert.ok(namelessData?.review.some((reason) => reason.includes('Frame without an id')));
   await assertBooksBalance();
 });
 
@@ -313,6 +327,21 @@ test('one mobile is one customer: +98, spaces and Persian digits match, and empt
   assert.equal(sara.source, null, 'an existing customer keeps their channel');
   assert.equal(sara.phone, '+98 912 345-6789', 'what staff typed is left alone');
 
+  // An email a website order brings sits; a later order without email, name or address erases none of them.
+  const withEmail = await sell(saleBody({ customer: { name: 'سارا', mobile: '09123456789', email: 'sara.new@example.com' } }));
+  assert.equal(withEmail.status, 200, JSON.stringify(withEmail.body));
+  assert.equal((await prisma.customer.findUniqueOrThrow({ where: { id: sara.id } })).email, 'sara.new@example.com');
+  for (const shipTo of [null, { province: '', city: ' ', address: null, postal: null, note: null }]) {
+    const res = await sell(saleBody({ customer: { name: null, mobile: '09123456789', email: null, siteId: null }, shipTo }));
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const kept = await prisma.customer.findUniqueOrThrow({ where: { id: sara.id } });
+    assert.deepEqual(
+      [kept.name, kept.email, kept.address, kept.siteId],
+      ['سارا', 'sara.new@example.com', 'تهران، تهران، خیابان ولیعصر، کد پستی 1234567890', 'site-7'],
+      `shipTo ${JSON.stringify(shipTo)}`,
+    );
+  }
+
   // Two first orders from one new number, at the same moment, make one customer.
   await Promise.all([
     sell(saleBody({ customer: { mobile: '09350000001' } })),
@@ -320,6 +349,27 @@ test('one mobile is one customer: +98, spaces and Persian digits match, and empt
   ]);
   assert.equal(await prisma.customer.count({ where: { phone: '09350000001' } }), 1);
   assert.equal(await prisma.customer.count(), 2);
+
+  // Paid sales already queue on the account row, so the race above never overlaps.
+  // Free orders (a full coupon) take no account lock: only the mobile keeps them apart.
+  const free = (mobile: string) => saleBody({ customer: { mobile }, payment: { amount: 0 } });
+  let racing = null as Promise<{ status: number; body: any }> | null;
+  beforeQuery.fn = async (params) => {
+    if (!racing && params.model === 'Customer' && params.action === 'create') {
+      racing = sell(free('0935 000 0002'));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  };
+  try {
+    const first = await sell(free('09350000002'));
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+  } finally {
+    beforeQuery.fn = null;
+  }
+  assert.ok(racing, 'the hook fired inside the first sale');
+  const second = await racing;
+  assert.equal(second?.status, 200, JSON.stringify(second?.body));
+  assert.equal(await prisma.customer.count({ where: { phone: '09350000002' } }), 1);
 
   assert.equal(normalizeMobile('0098 912 345 6789'), '09123456789');
   assert.equal(normalizeMobile('912-345-6789'), '09123456789');
@@ -384,6 +434,13 @@ test('a malformed body is 422 with a reason, null optional fields are fine, and 
     ['price as text', saleBody({ items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 1, unitPrice: '1000' }] })],
     ['no mobile', saleBody({ customer: { name: 'x' } })],
     ['no payment', saleBody({ payment: null })],
+    // Numbers the ERP cannot store are a malformed body too: a 500 would make the site retry it forever.
+    ['quantity beyond an Int', saleBody({ items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 3_000_000_000, unitPrice: 1 }] })],
+    ['quantities that add up beyond the limit', saleBody({ items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 600_000, unitPrice: 1 }, { webId: 'MOAK-PANJ-BLUE', quantity: 600_000, unitPrice: 1 }] })],
+    ['total beyond a Decimal', saleBody({ total: 1e40 })],
+    ['price beyond a Decimal', saleBody({ items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 1, unitPrice: 1e40 }] })],
+    ['payment beyond a Decimal', saleBody({ payment: { amount: 1e40, paidAt: null } })],
+    ['freight beyond a Decimal', saleBody({ shipping: { freight: 1e40 } })],
   ];
   for (const [label, body] of cases) {
     const res = await sell(body);
@@ -425,6 +482,7 @@ test('a malformed body is 422 with a reason, null optional fields are fine, and 
     ['refund without refundId', { status: 'refunded', amount: 1 }],
     ['restock as text', { status: 'returned', restock: 'yes' }],
     ['bad at', { status: 'shipped', at: 'soon' }],
+    ['refund beyond a Decimal', { status: 'refunded', refundId: 'r-big', amount: 1e40 }],
   ];
   for (const [label, body] of badStatuses) {
     const res = await status({ reference: nulls.reference, ...body });
@@ -435,6 +493,20 @@ test('a malformed body is 422 with a reason, null optional fields are fine, and 
   assert.equal((await call('nope', {})).status, 404);
 });
 
+test('a createSale that names its action only in the address records the sale like any other', async () => {
+  const body = saleBody();
+  const res = await POST(
+    new NextRequest('http://localhost/api/erp?action=createSale', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+  assert.equal(res.status, 200);
+  const order = await orderOf(body.reference);
+  assert.deepEqual(await res.json(), { id: order.id, number: String(order.number) });
+  assert.equal(await prisma.order.count(), 1);
+});
 test('shipped and delivered only add to the history', async () => {
   const body = saleBody();
   await sell(body);
@@ -482,6 +554,9 @@ test('goods go back only with restock:true, once, into the warehouse they left',
 
   await status({ status: 'returned', reference: body.reference });
   assert.equal(await qty(world.panj.id, world.central.id), 98, 'no restock without restock:true');
+  // A damaged return: the site says restock:false, and the goods stay out.
+  await status({ status: 'returned', reference: body.reference, restock: false });
+  assert.equal(await qty(world.panj.id, world.central.id), 98, 'no restock with restock:false');
 
   const [a, b] = await Promise.all([
     status({ status: 'returned', reference: body.reference, restock: true }),

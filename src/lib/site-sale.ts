@@ -36,6 +36,13 @@ const TX_OPTIONS = { maxWait: 5_000, timeout: 15_000 };
 const invalid = (error: string): SiteSaleResult => ({ status: 422, body: { error } });
 const fa = (n: number) => n.toLocaleString('fa-IR');
 
+// A number the ERP cannot store is a malformed body, not a 500 the site would
+// retry forever. 10^15 Toman is far above any order, and sums of such amounts
+// stay exact in JavaScript; stock counts are 32-bit integers.
+const MAX_AMOUNT = 1e15;
+const MAX_QUANTITY = 1_000_000;
+const AMOUNT_RULE = `عدد نامنفی و حداکثر ${fa(MAX_AMOUNT)}`;
+
 // ── Reading the body ─────────────────────────────────────────────────────────
 // null and a missing field mean the same thing everywhere.
 
@@ -49,10 +56,10 @@ function ident(value: unknown): string | null {
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : text(value);
 }
 
-/** A finite non-negative number; null when absent; undefined when malformed. */
+/** A non-negative number up to MAX_AMOUNT; null when absent; undefined when malformed. */
 function money(value: unknown): number | null | undefined {
   if (value === null || value === undefined) return null;
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_AMOUNT ? value : undefined;
 }
 
 /** A date; null when absent; undefined when malformed. */
@@ -171,8 +178,8 @@ function parseSale(body: Record<string, unknown>, reference: string): SaleInput 
     const item = record(items[i]);
     const quantity = item?.quantity;
     const unitPrice = money(item?.unitPrice);
-    if (!item || typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < 1 || unitPrice == null) {
-      return `قلم ${i + 1}: quantity باید عدد صحیح مثبت و unitPrice عدد نامنفی باشد.`;
+    if (!item || typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY || unitPrice == null) {
+      return `قلم ${i + 1}: quantity باید عدد صحیح مثبت و حداکثر ${fa(MAX_QUANTITY)}، و unitPrice ${AMOUNT_RULE} باشد.`;
     }
     lines.push({
       // erpId is the same value under the older contract's name.
@@ -183,22 +190,26 @@ function parseSale(body: Record<string, unknown>, reference: string): SaleInput 
       siteProductId: ident(item.productId),
     });
   }
+  // Lines of one frame are added up into one stock change.
+  if (lines.reduce((sum, line) => sum + line.quantity, 0) > MAX_QUANTITY) {
+    return `جمع quantity اقلام باید حداکثر ${fa(MAX_QUANTITY)} باشد.`;
+  }
 
   const total = money(body.total);
   const discount = money(body.discount);
   const subtotal = money(body.subtotal);
   if (total == null || discount === undefined || subtotal === undefined) {
-    return 'total الزامی است، و total، subtotal و discount باید عدد نامنفی باشند.';
+    return `total الزامی است، و total، subtotal و discount باید ${AMOUNT_RULE} باشند.`;
   }
   const payment = record(body.payment);
   const paid = money(payment?.amount);
   const paidAt = when(payment?.paidAt);
   if (!payment || paid == null || paidAt === undefined) {
-    return 'payment.amount الزامی است (عدد نامنفی) و payment.paidAt باید تاریخ معتبر باشد.';
+    return `payment.amount الزامی است (${AMOUNT_RULE}) و payment.paidAt باید تاریخ معتبر باشد.`;
   }
   const shipping = record(body.shipping);
   const freight = money(shipping?.freight);
-  if (freight === undefined) return 'shipping.freight باید عدد نامنفی باشد.';
+  if (freight === undefined) return `shipping.freight باید ${AMOUNT_RULE} باشد.`;
   const shipTo = record(body.shipTo);
   const ordersBefore = customer?.ordersBefore;
 
@@ -584,7 +595,7 @@ export async function setSaleStatus(client: any, body: Record<string, unknown>):
   const amount = money(body.amount);
   const refundedTotal = money(body.refundedTotal);
   if (at === undefined || amount === undefined || refundedTotal === undefined) {
-    return invalid('at باید تاریخ معتبر باشد، و amount و refundedTotal عدد نامنفی.');
+    return invalid(`at باید تاریخ معتبر باشد، و amount و refundedTotal ${AMOUNT_RULE}.`);
   }
   if (body.restock != null && typeof body.restock !== 'boolean') return invalid('restock باید true یا false باشد.');
   if (status === 'refunded' && amount === null) return invalid('amount برای refunded الزامی است.');

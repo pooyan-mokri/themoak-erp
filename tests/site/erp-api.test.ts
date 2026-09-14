@@ -22,9 +22,9 @@ function get(query: string, token: string | null = TOKEN) {
   );
 }
 
-function post(body: string, token = TOKEN) {
+function post(body: string, token = TOKEN, query = '') {
   return POST(
-    new NextRequest('http://localhost/api/erp', {
+    new NextRequest(`http://localhost/api/erp${query ? `?${query}` : ''}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body,
@@ -100,12 +100,26 @@ test('an unknown action is 404 and a bad body is 422, never confused', async () 
   assert.equal((await get('action=nope')).status, 404);
   assert.equal((await get('')).status, 404);
   assert.equal((await post(JSON.stringify({ action: 'nope' }))).status, 404);
+  // Input a real action would refuse with 422 must not make an unknown action look real.
+  assert.equal((await get('action=nope&warehouseId=nope')).status, 404);
+  assert.equal((await post(JSON.stringify({ action: 'nope', reference: null, items: 'x' }))).status, 404);
 
   for (const body of ['{not json', 'null', '[]', '5']) {
     assert.equal((await post(body)).status, 422, body);
   }
 });
 
+test('a POST may name its action in the address instead of the body, and the body wins when both do', async () => {
+  // Named only in the address, a real action is that action: a bad body for it is 422, not 404.
+  assert.equal((await post('{}', TOKEN, 'action=setSaleStatus')).status, 422);
+  assert.equal((await post('{not json', TOKEN, 'action=createSale')).status, 422);
+  // An action the ERP does not have stays 404, whatever body comes with it.
+  assert.equal((await post('{}', TOKEN, 'action=nope')).status, 404);
+  assert.equal((await post('{not json', TOKEN, 'action=nope')).status, 404);
+  // The body's action wins over the address.
+  assert.equal((await post(JSON.stringify({ action: 'setSaleStatus' }), TOKEN, 'action=nope')).status, 422);
+  assert.equal((await post(JSON.stringify({ action: 'nope' }), TOKEN, 'action=setSaleStatus')).status, 404);
+});
 test('a missing or wrong token is 401, even for a real action', async () => {
   assert.equal((await get('action=warehouses', null)).status, 401);
   assert.equal((await get('action=warehouses', 'wrong')).status, 401);
