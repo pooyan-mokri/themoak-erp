@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { prisma } from '@/lib/prisma';
 
 export { prisma };
+
+let deploySql: Promise<unknown> | null = null;
 
 const TEST_DB_NAME = /(^|_)test(_|$)/i;
 
@@ -32,6 +36,11 @@ export async function resetDatabase() {
   // Check again against the database we are actually connected to.
   const [{ db }] = (await prisma.$queryRawUnsafe('SELECT current_database() AS db')) as Array<{ db: string }>;
   if (!TEST_DB_NAME.test(db)) throw new Error(`Refusing to truncate "${db}": not a test database.`);
+  // What a deploy creates before prisma db push (tables, the stock-push triggers), once per test process.
+  deploySql ??= prisma.$executeRawUnsafe(
+    readFileSync(join(process.cwd(), 'prisma/sql/pre-push-unique-columns.sql'), 'utf8'),
+  );
+  await deploySql;
   await prisma.$executeRawUnsafe(`DO $$ DECLARE r record; BEGIN
     FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations' LOOP
       EXECUTE 'TRUNCATE TABLE "' || r.tablename || '" CASCADE';

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { ActionResult, ActionState } from '@/lib/types';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // Generate unique audit number
 function generateAuditNumber(): string {
@@ -811,34 +812,42 @@ export async function issueAdjustmentDocuments(auditId: string): Promise<ActionR
       return { success: false, message: 'انبارگردانی باید در حال انجام باشد.' };
     }
 
-    // Import inventory actions
-    const { adjustStock } = await import('./inventory');
-
-    // Adjust inventory for each item
-    const adjustments = audit.items.map(async (item: any) => {
-      const adjustment = item.discrepancy || 0;
-
-      if (adjustment !== 0) {
-        // Adjust stock (positive for excess, negative for shortage)
-        await adjustStock(item.productId, audit.warehouseId, adjustment);
-
-        // Mark as adjusted
-        await prisma.inventoryAuditItem.update({
-          where: {
-            auditId_productId: {
-              auditId,
+    // Every adjustment in one transaction, so they become visible all at once:
+    // the website stock push then sees 10 or more frames going to 0 together and
+    // holds them for an admin, instead of sending them in pieces.
+    await prisma.$transaction(
+      async (tx: any) => {
+        for (const item of audit.items) {
+          // Positive for excess, negative for shortage
+          const adjustment = item.discrepancy || 0;
+          if (adjustment === 0) continue;
+          await tx.inventory.upsert({
+            where: { productId_warehouseId: { productId: item.productId, warehouseId: audit.warehouseId } },
+            update: { quantity: { increment: adjustment } },
+            create: { productId: item.productId, warehouseId: audit.warehouseId, quantity: adjustment },
+          });
+          await tx.inventoryMovement.create({
+            data: {
               productId: item.productId,
+              fromWarehouseId: adjustment < 0 ? audit.warehouseId : null,
+              toWarehouseId: adjustment >= 0 ? audit.warehouseId : null,
+              quantity: Math.abs(adjustment),
+              type: 'ADJUSTMENT',
+              note: adjustment >= 0 ? 'افزایش موجودی' : 'کاهش موجودی',
+              referenceId: null,
+              tags: [],
             },
-          },
-          data: {
-            isAdjusted: true,
-            adjustmentDocId: `ADJ-${auditId}-${item.productId}`,
-          },
-        });
-      }
-    });
-
-    await Promise.all(adjustments);
+          });
+          await tx.inventoryAuditItem.update({
+            where: { auditId_productId: { auditId, productId: item.productId } },
+            data: { isAdjusted: true, adjustmentDocId: `ADJ-${auditId}-${item.productId}` },
+          });
+        }
+      },
+      { maxWait: 10_000, timeout: 60_000 },
+    );
+    kickSiteHook();
+    revalidatePath('/dashboard/inventory');
 
     // Mark audit as completed
     await prisma.inventoryAudit.update({

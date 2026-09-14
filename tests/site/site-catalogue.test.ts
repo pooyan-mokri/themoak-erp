@@ -7,7 +7,13 @@ import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { fetchSiteCatalogue, parseCatalogue, planCatalogueSync } from '@/lib/site-catalogue';
 import { runCatalogueSync } from '@/lib/site-catalogue-sync';
-import { SITE_CONNECTION_KEY, SITE_CATALOGUE_SYNC_KEY, normalizeSiteUrl } from '@/lib/site-connection';
+import {
+  SITE_CONNECTION_KEY,
+  SITE_CATALOGUE_SYNC_KEY,
+  SITE_HOOK_HOLD_KEY,
+  SITE_HOOK_STATUS_KEY,
+  normalizeSiteUrl,
+} from '@/lib/site-connection';
 import { updateProduct } from '@/actions/product';
 import { form } from '../helpers/db';
 import {
@@ -280,6 +286,32 @@ test('the generic, browser-reachable settings actions can neither read nor overw
   const stored = JSON.parse((await prisma.systemSetting.findUniqueOrThrow({ where: { key: SITE_CONNECTION_KEY } })).value);
   assert.equal(stored.siteUrl, 'https://api.themoak.com');
   assert.equal(stored.webhookSecret, SECRET);
+});
+
+test('the generic settings actions can neither read nor overwrite the stock push hold and status', async () => {
+  const hold = JSON.stringify({ state: 'held', since: '2026-09-13T08:00:00.000Z', webIds: ['MOAK-PANJ-BLUE'] });
+  const status = JSON.stringify({
+    lastRunAt: null,
+    lastOkAt: null,
+    failingSince: '2026-09-13T08:00:00.000Z',
+    paused: { why: 'test', at: '2026-09-13T08:00:00.000Z', probedAt: '2026-09-13T08:00:00.000Z' },
+    lastMessage: 'test',
+  });
+  await prisma.systemSetting.createMany({
+    data: [
+      { key: SITE_HOOK_HOLD_KEY, value: hold },
+      { key: SITE_HOOK_STATUS_KEY, value: status },
+    ],
+  });
+
+  assert.equal(await getSetting(SITE_HOOK_HOLD_KEY), undefined);
+  assert.equal(await getSetting(SITE_HOOK_STATUS_KEY), undefined);
+  const release = await saveSetting(SITE_HOOK_HOLD_KEY, { state: 'released', since: '2026-09-13T08:00:00.000Z', webIds: ['MOAK-PANJ-BLUE'] });
+  assert.equal(release.success, false, 'the hold is released only by an admin who saw it');
+  const unpause = await saveSetting(SITE_HOOK_STATUS_KEY, { paused: null, failingSince: null });
+  assert.equal(unpause.success, false);
+  assert.equal((await prisma.systemSetting.findUniqueOrThrow({ where: { key: SITE_HOOK_HOLD_KEY } })).value, hold);
+  assert.equal((await prisma.systemSetting.findUniqueOrThrow({ where: { key: SITE_HOOK_STATUS_KEY } })).value, status);
 });
 
 test('changing or clearing a webId drops the old frame\'s photo, and the next sync gives it to the right product', async () => {

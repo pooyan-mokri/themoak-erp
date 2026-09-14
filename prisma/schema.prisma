@@ -474,6 +474,34 @@ model SiteRefund {
   @@unique([orderId, refundId])
 }
 
+/// Stock and webId changes still to be sent to the website. Written only by
+/// database triggers (prisma/sql/pre-push-unique-columns.sql); removing this
+/// model means dropping those triggers and their function first.
+model SiteHookLog {
+  id          BigInt   @id @default(autoincrement())
+  productId   String
+  kind        String
+  warehouseId String?
+  oldWebId    String?
+  createdAt   DateTime @default(now())
+}
+
+/// A single row (id 1): which drain is delivering to the website, and until when.
+model SiteHookLease {
+  id     Int      @id
+  holder String?
+  until  DateTime
+}
+
+/// The last quantity the website accepted for each webId, and why it last refused one.
+model SiteHookState {
+  webId    String    @id
+  quantity Int?
+  sentAt   DateTime?
+  skipWhy  String?
+  skipAt   DateTime?
+}
+
 model OrderExchange {
   id              String       @id @default(cuid())
   orderId         String

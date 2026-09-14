@@ -3,9 +3,10 @@ import { WEB_ID_PATTERN } from './web-id';
 /**
  * The website's read-only product list (docs/erp-prompt.md §5):
  * GET {SITE}/erp/catalogue with `Authorization: Bearer <webhookSecret>`.
- * Only what the ERP keeps is read: the front-of-frame photo and the page link.
+ * Only what the ERP uses is read: the front-of-frame photo, the page link, and
+ * whether the site shows the frame in stock (for the stock push preview).
  */
-export type CatalogueItem = { webId: string; image: string | null; url: string | null };
+export type CatalogueItem = { webId: string; image: string | null; url: string | null; inStock?: boolean | null };
 export type CatalogueSkip = { key: string; why: string };
 
 export type CatalogueFetchResult =
@@ -55,7 +56,12 @@ export function parseCatalogue(body: unknown): CatalogueFetchResult {
       // Two entries for one webId: there is no way to know which photo is right.
       skipped.push({ key: webId, why: 'در کاتالوگ سایت تکراری است' });
     } else {
-      items.push({ webId, image: absoluteUrl(raw.image), url: absoluteUrl(raw.url) });
+      items.push({
+        webId,
+        image: absoluteUrl(raw.image),
+        url: absoluteUrl(raw.url),
+        inStock: typeof raw.inStock === 'boolean' ? raw.inStock : null,
+      });
     }
   }
   return { ok: true, items, skipped };

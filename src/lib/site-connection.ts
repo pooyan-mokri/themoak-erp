@@ -6,9 +6,16 @@ import type { CatalogueSyncResult } from './site-catalogue';
  */
 export const SITE_CONNECTION_KEY = 'site_connection';
 export const SITE_CATALOGUE_SYNC_KEY = 'site_catalogue_last_sync';
+export const SITE_HOOK_STATUS_KEY = 'site_hook_status';
+export const SITE_HOOK_HOLD_KEY = 'site_hook_hold';
 
 /** Keys the generic, browser-reachable getSetting/saveSetting must never serve. */
-export const SITE_SETTING_KEYS: readonly string[] = [SITE_CONNECTION_KEY, SITE_CATALOGUE_SYNC_KEY];
+export const SITE_SETTING_KEYS: readonly string[] = [
+  SITE_CONNECTION_KEY,
+  SITE_CATALOGUE_SYNC_KEY,
+  SITE_HOOK_STATUS_KEY,
+  SITE_HOOK_HOLD_KEY,
+];
 
 // The owner's defaults, used until something else is saved.
 export const DEFAULT_PAYMENT_ACCOUNT_NAME = 'بانک سامان';
@@ -19,6 +26,8 @@ export type SiteConnection = {
   webhookSecret: string | null;
   paymentAccountId: string | null;
   warehouseId: string | null;
+  /** Push stock changes to the site. Turned on only after /erp/ping confirms the warehouse. */
+  stockPushEnabled: boolean;
 };
 
 /** What the settings page gets: everything except the secret itself. */
@@ -46,6 +55,7 @@ export async function readSiteConnection(client: any): Promise<SiteConnection> {
     webhookSecret: saved.webhookSecret ?? null,
     paymentAccountId: saved.paymentAccountId ?? null,
     warehouseId: saved.warehouseId ?? null,
+    stockPushEnabled: saved.stockPushEnabled === true,
   };
 }
 
