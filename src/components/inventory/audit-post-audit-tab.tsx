@@ -121,6 +121,8 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
   const [issuing, setIssuing] = useState(false);
   const [issueError, setIssueError] = useState<string | undefined>(undefined);
   const [unsavedOnDevice, setUnsavedOnDevice] = useState(0);
+  // Opening the issue dialog found the audit completed since this page loaded, on another device or in another tab.
+  const [alreadyCompleted, setAlreadyCompleted] = useState(false);
   const [issueResult, setIssueResult] = useState<
     { adjustedCount: number; unitsUp: number; unitsDown: number } | undefined
   >(undefined);
@@ -146,6 +148,7 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
         stock &&
           new Map(stock.map((row: { productId: string; quantity: number }): [string, number] => [row.productId, row.quantity]))
       );
+      return discrepancy?.audit.status;
     } catch (error) {
       console.error('Error loading reports:', error);
     } finally {
@@ -164,12 +167,18 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
     }
   };
 
-  const openIssueDialog = () => {
+  const openIssueDialog = async () => {
     setIssueError(undefined);
+    setAlreadyCompleted(false);
     setUnsavedOnDevice(countUnsavedOnDevice(audit.id));
     setConfirmOpen(true);
     // Reload, so the summary includes counts and final quantities saved since the tab opened, here or on another device.
-    loadReports();
+    const status = await loadReports();
+    // Completed since this page loaded: nothing left to issue, and the page shows an old status.
+    if (status !== undefined && status !== 'IN_PROGRESS') {
+      setAlreadyCompleted(true);
+      router.refresh();
+    }
   };
 
   const handleIssueAdjustments = async () => {
@@ -453,6 +462,12 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
               <p className="text-sm text-muted-foreground">در حال بارگذاری...</p>
             ) : (
               <div className="space-y-3 text-sm">
+                {alreadyCompleted && (
+                  <div className="flex gap-2 p-3 rounded-lg border border-red-200 bg-red-50 font-semibold text-red-700">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <p>این انبارگردانی قبلاً تکمیل شده است.</p>
+                  </div>
+                )}
                 {performanceReport ? (
                   <>
                     <div className="grid grid-cols-2 gap-3">
@@ -521,7 +536,7 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
             )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={issuing}>انصراف</AlertDialogCancel>
-              <Button onClick={handleIssueAdjustments} disabled={issuing || loading}>
+              <Button onClick={handleIssueAdjustments} disabled={issuing || loading || alreadyCompleted}>
                 {issuing ? 'در حال صدور...' : hasDiscrepancies ? 'صدور اسناد اصلاحی' : 'تکمیل انبارگردانی'}
               </Button>
             </AlertDialogFooter>

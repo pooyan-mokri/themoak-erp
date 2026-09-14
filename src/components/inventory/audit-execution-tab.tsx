@@ -85,7 +85,9 @@ export function ExecutionTab({ audit }: ExecutionTabProps) {
       <Card>
         <CardContent className="py-12 text-center">
           <p className="text-muted-foreground">
-            برای شروع شمارش، ابتدا موجودی را فریز کنید.
+            {audit.status === 'COMPLETED'
+              ? 'انبارگردانی تکمیل شده است؛ شمارش بسته است.'
+              : 'برای شروع شمارش، ابتدا موجودی را فریز کنید.'}
           </p>
         </CardContent>
       </Card>

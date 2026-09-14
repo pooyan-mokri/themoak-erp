@@ -371,6 +371,7 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
   const scanRef = useRef<HTMLInputElement>(null);
   const idleTimer = useRef<number | undefined>(undefined);
   const flashTimer = useRef<number | undefined>(undefined);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
   const [quantity, setQuantity] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -379,6 +380,8 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
   const [search, setSearch] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [touchScreen, setTouchScreen] = useState(false);
+  // Scans made in this panel, so a touch screen can bring the last scan into view after each.
+  const [scans, setScans] = useState(0);
   // A round chosen while counts were still unsaved.
   const [wantedRound, setWantedRound] = useState<Round | null>(null);
 
@@ -432,6 +435,11 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
   useEffect(() => {
     focusScan();
   }, [touchScreen]);
+  // On a phone or a short laptop screen the last-scan panel can sit out of view; each scan brings it back, so the
+  // counter sees the result. It does nothing while the panel is already visible.
+  useEffect(() => {
+    if (scans > 0) feedbackRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [scans]);
 
   // A round is left only with every count saved, so nothing is asked while the scanner can type into the answer. A
   // round chosen before that is kept and taken once they are saved; scans are refused until then, so none goes into
@@ -505,7 +513,9 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
 
   const submitScan = (raw: string) => {
     const result = resolveScan(scanIndex, raw);
-    if (result.kind === 'empty' || waitingForRound()) return;
+    if (result.kind === 'empty') return;
+    setScans((n) => n + 1);
+    if (waitingForRound()) return;
     if (result.kind === 'unknown') {
       setFeedback({ kind: 'unknown', raw, persianLayout: result.persianLayout });
       signal('bad');
@@ -566,12 +576,13 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
   return (
     <>
       <Card className="overflow-hidden">
-        <div className={cn('flex flex-wrap items-center justify-between gap-3 px-4 py-3', ROUND_BANNER[round])}>
-          <div>
+        {/* On a phone one compact row, so the last scan fits on screen: the colour and the white button show the round. */}
+        <div className={cn('flex flex-wrap items-center justify-between gap-3 px-4 py-2 sm:py-3', ROUND_BANNER[round])}>
+          <div className="hidden sm:block">
             <p className="text-xs opacity-80">مرحله شمارش</p>
             <p className="text-2xl font-bold sm:text-3xl">{ROUND_LABELS[round]}</p>
           </div>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex w-full gap-1 sm:w-auto sm:flex-wrap">
             {ROUNDS.map((r) => (
               <Button
                 key={r}
@@ -579,7 +590,7 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
                 size="sm"
                 variant="ghost"
                 className={cn(
-                  'hover:scale-100',
+                  'h-10 flex-1 hover:scale-100 sm:h-9 sm:flex-initial',
                   r === round
                     ? 'bg-white text-gray-900 hover:bg-white hover:text-gray-900'
                     : 'bg-white/15 text-white hover:bg-white/25 hover:text-white'
@@ -670,12 +681,9 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
               </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            هر اسکن 1 عدد به جمع این مرحله اضافه می‌کند. برای چند عدد از یک مدل، عدد را در «تعداد» بنویسید و یک بار اسکن کنید.
-          </p>
-
           <div
             key={flash.id}
+            ref={feedbackRef}
             className={cn(
               'min-h-[8.5rem] rounded-lg border-2 p-4 transition-colors duration-700',
               panelTone(feedback),
@@ -781,6 +789,9 @@ export function AuditScanPanel({ items, round, queue, onRoundChange }: ScanPanel
               </p>
             )}
           </div>
+          <p className="text-xs text-muted-foreground">
+            هر اسکن 1 عدد به جمع این مرحله اضافه می‌کند. برای چند عدد از یک مدل، عدد را در «تعداد» بنویسید و یک بار اسکن کنید.
+          </p>
 
           {recent.length > 0 && (
             <div className="space-y-1.5">
