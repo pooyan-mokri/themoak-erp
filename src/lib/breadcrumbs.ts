@@ -41,7 +41,6 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'marketing': 'بازاریابی',
     'gifts': 'هدایا',
     'campaigns': 'کمپین‌ها',
-    'woocommerce': 'WooCommerce',
     'crm': 'مدیریت ارتباط با مشتری',
     'leads': 'سرنخ‌ها',
     'deals': 'معاملات',

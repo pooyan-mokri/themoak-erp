@@ -364,12 +364,6 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     });
     kickSiteHook();
 
-    // Note: we intentionally do NOT cancel the WooCommerce order on
-    // exchange. The customer received goods (the replacement product), so
-    // the Woo order remains a real fulfilled order. Cancelling it here was
-    // incorrect — it wiped the entire Woo order even for a single-line
-    // swap.
-
     // Inventory, POS, customer debt list, accounting reports all derive
     // from this order's data — revalidate the whole dashboard so none of
     // them keep serving the pre-exchange snapshot.

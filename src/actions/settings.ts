@@ -16,7 +16,9 @@ export async function getSetting(key: string) {
     const setting = await prisma.systemSetting.findUnique({
       where: { key },
     });
-    return setting?.value ? JSON.parse(setting.value) : undefined;
+    const value = setting?.value ? JSON.parse(setting.value) : undefined;
+    // The WooCommerce store is gone: its url and keys are never served.
+    return key === 'woo_settings' && value ? withoutWooConnection(value) : value;
   } catch (error) {
     console.error(`Error fetching setting ${key}:`, error);
     return undefined;
@@ -64,26 +66,20 @@ export async function saveCompanyInfo(info: {
   return await saveSetting('company_info', info);
 }
 
-export async function getWooSettings() {
-  return await getSetting('woo_settings');
+/** Fields of the retired WooCommerce connection: never served, and dropped on the next save. */
+const WOO_CONNECTION_FIELDS = ['url', 'consumerKey', 'consumerSecret'];
+
+function withoutWooConnection(woo: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(woo).filter(([field]) => !WOO_CONNECTION_FIELDS.includes(field)));
 }
 
-// Default to https — an http URL that redirects to https makes the server drop the
-// Authorization header, which WooCommerce reports as an invalid Consumer Key/Secret.
-function normalizeWooUrl(raw: string): string {
-  if (!raw) return raw;
-  const trimmed = raw.trim().replace(/\/+$/, '');
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+/** The settings card only picks the default warehouse cancelled stock returns to. */
+export async function getWooSettings(): Promise<{ warehouseId?: string }> {
+  const woo = await getSetting('woo_settings');
+  return { warehouseId: woo?.warehouseId };
 }
 
-export async function saveWooSettings(settings: {
-  url: string;
-  consumerKey: string;
-  consumerSecret: string;
-  warehouseId?: string;
-  accountId?: string;
-}) {
+export async function saveWooSettings(settings: { warehouseId?: string }) {
   const session = await auth();
 
   if (!session?.user) {
@@ -91,15 +87,17 @@ export async function saveWooSettings(settings: {
   }
 
   if (session.user.role !== Role.ADMIN) {
-    return { success: false, error: 'شما مجوز دسترسی به تنظیمات ووکامرس را ندارید.' };
+    return { success: false, error: 'شما مجوز دسترسی به این تنظیمات را ندارید.' };
   }
 
-  // Trim credentials — a stray leading/trailing space in a pasted key is a
-  // common cause of WooCommerce returning 401 "invalid Consumer Key/Secret".
-  return await saveSetting('woo_settings', {
-    ...settings,
-    url: normalizeWooUrl(settings.url),
-    consumerKey: settings.consumerKey?.trim(),
-    consumerSecret: settings.consumerSecret?.trim(),
-  });
+  // Only the warehouse comes from the card; every other stored key is written back as stored.
+  let woo: Record<string, unknown>;
+  try {
+    const stored = await prisma.systemSetting.findUnique({ where: { key: 'woo_settings' } });
+    woo = stored?.value ? withoutWooConnection(JSON.parse(stored.value)) : {};
+  } catch (error) {
+    console.error('Error reading setting woo_settings:', error);
+    return { success: false, error: 'Failed to save setting' };
+  }
+  return await saveSetting('woo_settings', { ...woo, warehouseId: settings.warehouseId });
 }

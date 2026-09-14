@@ -149,16 +149,6 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="wooId">شناسه ووکامرس (اختیاری)</Label>
-              <Input 
-                id="wooId" 
-                name="wooId" 
-                type="number" 
-                placeholder="12345" 
-                defaultValue={initialData?.wooId || undefined}
-              />
-            </div>
             <WebIdField
               initialWebId={initialData?.webId}
               error={(state.errors as Record<string, string[] | undefined> | undefined)?.webId}

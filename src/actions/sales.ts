@@ -349,25 +349,6 @@ export async function recordOrderPayment(orderId: string, accountId: string, amo
       });
     });
 
-    // If order is now fully paid and came from WooCommerce, mark it as completed
-    if (order.wooId) {
-      const finalPaidAmount = currentPaid + amount;
-      if (finalPaidAmount >= totalAmount) {
-        try {
-          const { completeOrderInWooCommerce } = await import('./woocommerce');
-          const result = await completeOrderInWooCommerce(order.wooId);
-          if (result.success) {
-            console.log(`[Payment] سفارش WooCommerce #${order.number} (ID: ${order.wooId}) در WooCommerce به تکمیل شده تغییر کرد.`);
-          } else {
-            console.warn(`[Payment] خطا در تکمیل سفارش در WooCommerce: ${result.message}`);
-          }
-        } catch (error) {
-          console.error('[Payment] خطا در تکمیل سفارش در WooCommerce:', error);
-          // Don't fail the payment process if WooCommerce update fails
-        }
-      }
-    }
-
     revalidatePath('/dashboard/sales/history');
     revalidatePath(`/dashboard/sales/history/${orderId}`);
     return { success: true, message: 'پرداخت با موفقیت ثبت شد.' };
@@ -516,7 +497,6 @@ export async function getOrder(id: string) {
 
 /**
  * لغو (حذف) سفارش
- * - اگر از WooCommerce باشد، در WooCommerce هم لغو می‌شود
  * - اگر transaction داشته باشد، transaction حذف می‌شود
  * - موجودی حساب بازگردانده می‌شود
  */
@@ -635,18 +615,6 @@ export async function cancelOrder(orderId: string): Promise<{
       });
     });
     kickSiteHook();
-
-    // 3. If order is from WooCommerce, cancel it there too
-    if (order.wooId) {
-      try {
-        const { cancelOrderInWooCommerce } = await import('./woocommerce');
-        await cancelOrderInWooCommerce(order.wooId);
-        console.log(`[CANCEL-ORDER] سفارش WooCommerce #${order.wooId} لغو شد`);
-      } catch (wooError) {
-        console.error('[CANCEL-ORDER] خطا در لغو سفارش در WooCommerce:', wooError);
-        // Don't fail the whole operation if WooCommerce update fails
-      }
-    }
 
     // Revalidate relevant paths to update the UI
     revalidatePath('/dashboard/sales/history');

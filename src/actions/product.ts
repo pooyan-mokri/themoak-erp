@@ -18,7 +18,6 @@ const ProductSchema = z.object({
   costPrice: z.coerce.number().min(0, 'قیمت خرید نمی‌تواند منفی باشد'),
   sellPrice: z.coerce.number().min(0, 'قیمت فروش نمی‌تواند منفی باشد'),
   image: z.string().optional(),
-  wooId: z.coerce.number().optional(),
 });
 
 export async function createProduct(prevState: ActionState, formData: FormData): Promise<ActionResult> {
@@ -32,7 +31,6 @@ export async function createProduct(prevState: ActionState, formData: FormData):
     costPrice: formData.get('costPrice'),
     sellPrice: formData.get('sellPrice'),
     image: image || undefined,
-    wooId: formData.get('wooId') || undefined,
   });
 
   if (!validatedFields.success) {
@@ -42,7 +40,7 @@ export async function createProduct(prevState: ActionState, formData: FormData):
     };
   }
 
-  const { name, sku, productType, costPrice, sellPrice, image: validatedImage, wooId } = validatedFields.data;
+  const { name, sku, productType, costPrice, sellPrice, image: validatedImage } = validatedFields.data;
 
   const webIdInput = parseWebId(formData.get('webId'));
   if (!webIdInput.ok) {
@@ -68,7 +66,6 @@ export async function createProduct(prevState: ActionState, formData: FormData):
         costPrice,
         sellPrice,
         image: validatedImage || undefined,
-        wooId,
         webId,
       },
     });
@@ -251,7 +248,6 @@ export async function updateProduct(id: string, prevState: ActionState, formData
     costPrice: formData.get('costPrice'),
     sellPrice: formData.get('sellPrice'),
     image: image || undefined,
-    wooId: formData.get('wooId') || undefined,
   });
 
   if (!validatedFields.success) {
@@ -261,17 +257,17 @@ export async function updateProduct(id: string, prevState: ActionState, formData
     };
   }
 
-  const { name, sku, productType, costPrice, sellPrice, image: validatedImage, wooId } = validatedFields.data;
+  const { name, sku, productType, costPrice, sellPrice, image: validatedImage } = validatedFields.data;
 
   // An absent webId field means "leave it"; an empty one means "clear it".
   const rawWebId = formData.get('webId');
   let webIdChange: { webId: string | null } | undefined;
 
   try {
-    // Get old product data to check if price changed
+    // Get old product data
     const oldProduct = await prisma.product.findUnique({
       where: { id },
-      select: { sellPrice: true, wooId: true, webId: true, sku: true }
+      select: { webId: true, sku: true }
     });
 
     // Only a real change is validated, so a stored value never blocks an
@@ -310,7 +306,6 @@ export async function updateProduct(id: string, prevState: ActionState, formData
       costPrice,
       sellPrice,
       image: validatedImage || undefined,
-      wooId,
       // A new or cleared webId invalidates the photo and link that came with the
       // old one; the next catalogue sync refills them for the new webId.
       ...(webIdChange ? { ...webIdChange, imageUrl: null, siteUrl: null } : {}),
@@ -328,16 +323,6 @@ export async function updateProduct(id: string, prevState: ActionState, formData
       await prisma.product.update({ where: { id }, data });
     }
     kickSiteHook();
-
-    // If sell price changed and product has WooCommerce ID, update WooCommerce
-    if (oldProduct && oldProduct.wooId && Number(oldProduct.sellPrice) !== sellPrice) {
-      const { updateProductPriceInWooCommerce } = await import('./woocommerce');
-      const wooResult = await updateProductPriceInWooCommerce(id, sellPrice);
-
-      if (wooResult.success && wooResult.data?.updated) {
-        console.log(`[Product Update] قیمت در WooCommerce هم به‌روزرسانی شد`);
-      }
-    }
   } catch (error) {
     if (webIdChange?.webId && isWebIdUniqueViolation(error)) {
       const conflict = (await webIdConflictMessage(prisma, webIdChange.webId, id)) ?? 'این شناسهٔ سایت تکراری است.';

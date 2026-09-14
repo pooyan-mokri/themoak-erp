@@ -15,7 +15,6 @@ import {
   Users,
   BarChart3,
   Megaphone,
-  Store,
   UserCircle,
   Wallet,
   Bot,
@@ -86,12 +85,6 @@ const routes = [
     icon: Megaphone,
     href: '/dashboard/marketing',
     color: 'text-pink-600',
-  },
-  {
-    label: 'WooCommerce',
-    icon: Store,
-    href: '/dashboard/woocommerce',
-    color: 'text-amber-600',
   },
   {
     label: 'گزارشات',

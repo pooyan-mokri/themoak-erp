@@ -24,7 +24,6 @@ import {
   getWooSettings,
   saveWooSettings,
 } from '@/actions/settings';
-import { getAccounts } from '@/actions/accounting';
 import { getWarehouses } from '@/actions/warehouse';
 import {
   saveFTPCredentials,
@@ -45,15 +44,8 @@ export function CompanySettingsForm() {
     logo: '',
   });
   const [wooSettings, setWooSettings] = useState({
-    url: '',
-    consumerKey: '',
-    consumerSecret: '',
-    accountId: '',
     warehouseId: '',
   });
-  const [accounts, setAccounts] = useState<
-    Array<{ id: string; name: string; type: string; currency: string }>
-  >([]);
   const [warehouses, setWarehouses] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -78,19 +70,11 @@ export function CompanySettingsForm() {
       if (info) setCompanyInfo(info);
 
       const woo = await getWooSettings();
-      if (woo)
-        setWooSettings((prev) => ({
-          ...prev,
-          ...woo,
-          accountId: woo.accountId || '',
-          warehouseId: woo.warehouseId || '',
-        }));
-
-      const accs = await getAccounts();
-      setAccounts(accs);
+      setWooSettings({ warehouseId: woo.warehouseId || '' });
 
       const whs = await getWarehouses();
-      setWarehouses(whs);
+      // A consignment (virtual) warehouse is never used to restore stock, so it is not offered.
+      setWarehouses(whs.filter((warehouse: any) => !warehouse.isVirtual));
 
       const ftpCreds = await getFTPCredentials();
       if (ftpCreds) {
@@ -137,7 +121,7 @@ export function CompanySettingsForm() {
     const result = await saveWooSettings(wooSettings);
     setLoading(false);
     if (result.success) {
-      toast.success('تنظیمات ووکامرس ذخیره شد');
+      toast.success('انبار پیش‌فرض برگشت موجودی ذخیره شد');
     } else {
       toast.error(result.error || 'خطا در ذخیره تنظیمات');
     }
@@ -215,83 +199,13 @@ export function CompanySettingsForm() {
 
         <Card>
           <CardHeader>
-            <CardTitle>تنظیمات ووکامرس</CardTitle>
-            <CardDescription>
-              کلیدهای API برای اتصال به فروشگاه اینترنتی.
-            </CardDescription>
+            <CardTitle>انبار پیش‌فرض برگشت موجودی</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="woo-url">آدرس سایت</Label>
-                <Input
-                  id="woo-url"
-                  placeholder="https://example.com"
-                  value={wooSettings.url}
-                  onChange={(e) =>
-                    setWooSettings({ ...wooSettings, url: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="woo-key">Consumer Key</Label>
-                <Input
-                  id="woo-key"
-                  type="password"
-                  placeholder="ck_..."
-                  value={wooSettings.consumerKey}
-                  onChange={(e) =>
-                    setWooSettings({
-                      ...wooSettings,
-                      consumerKey: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="woo-secret">Consumer Secret</Label>
-                <Input
-                  id="woo-secret"
-                  type="password"
-                  placeholder="cs_..."
-                  value={wooSettings.consumerSecret}
-                  onChange={(e) =>
-                    setWooSettings({
-                      ...wooSettings,
-                      consumerSecret: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="woo-account">حساب برای واریز درآمد فروش</Label>
-                <Select
-                  value={wooSettings.accountId || ''}
-                  onValueChange={(value) =>
-                    setWooSettings({ ...wooSettings, accountId: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="انتخاب حساب" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem
-                        key={account.id}
-                        value={account.id}
-                      >
-                        {account.name} ({account.currency})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-gray-500">
-                  درآمد حاصل از فروش ووکامرس به این حساب واریز می‌شود
-                </p>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="woo-warehouse">
-                  انبار پیش‌فرض برای محصولات
+                  انبار برگشت موجودی
                 </Label>
                 <Select
                   value={wooSettings.warehouseId || ''}
@@ -314,7 +228,7 @@ export function CompanySettingsForm() {
                   </SelectContent>
                 </Select>
                 <p className="text-sm text-gray-500">
-                  محصولات سینک شده از ووکامرس در این انبار قرار می‌گیرند
+                  وقتی فروشی لغو می‌شود و انبار اقلامش ثبت نشده، موجودی به این انبار برمی‌گردد.
                 </p>
               </div>
             </div>

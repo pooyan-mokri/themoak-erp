@@ -142,11 +142,11 @@ export function ProductTable({ products }: ProductTableProps) {
     },
     {
       key: 'wooId',
-      label: 'وضعیت سینک',
+      label: 'ووکامرس (قدیمی)',
       sortable: true,
       render: (product) =>
         product.wooId ? (
-          <span className="text-green-600 text-xs bg-green-100 px-2 py-1 rounded-full">متصل</span>
+          <span className="text-green-600 text-xs bg-green-100 px-2 py-1 rounded-full">ثبت‌شده</span>
         ) : (
           <span className="text-gray-500 text-xs bg-gray-100 px-2 py-1 rounded-full">داخلی</span>
         ),

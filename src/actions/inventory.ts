@@ -69,14 +69,6 @@ export async function updateStock(productId: string, warehouseId: string, quanti
     });
     kickSiteHook();
 
-    // Update stock in WooCommerce if this is the WooCommerce warehouse
-    const { updateProductStockInWooCommerce } = await import('./woocommerce');
-    const wooResult = await updateProductStockInWooCommerce(productId, warehouseId, quantity);
-
-    if (wooResult.success && wooResult.data?.updated) {
-      console.log(`[Inventory Update] موجودی در WooCommerce هم به‌روزرسانی شد`);
-    }
-
     revalidatePath('/dashboard/inventory');
     return { success: true };
   } catch (error) {
