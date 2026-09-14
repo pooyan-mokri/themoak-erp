@@ -27,6 +27,8 @@ test('rejects anything outside the MOAK- format', () => {
     'MOAK-PANJ/BLUE',
     'MOAK-پنج',
     'MOAK-PANJ-blue',
+    'XMOAK-PANJ-BLUE',
+    'ID:MOAK-PANJ-BLUE',
   ]) {
     const result = parseWebId(bad);
     assert.equal(result.ok, false, `should reject ${JSON.stringify(bad)}`);

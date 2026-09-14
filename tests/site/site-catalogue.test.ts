@@ -63,6 +63,45 @@ function catalogue(products: unknown[]) {
 const img = (slug: string) => `https://themoak.com/media/products/${slug}-front.webp`;
 const page = (slug: string) => `https://themoak.com/shop/eyewear/${slug}`;
 
+test('the settings button and the daily cron leave a product without a webId exactly as it was, every field included', async () => {
+  await product('a', 'DAMN RAW - White', 'MOAK-DAMN-RAW-WHITE');
+  // Same name as a site entry and a SKU equal to its webId, with every photo field already filled.
+  await prisma.product.create({
+    data: {
+      id: 'b',
+      name: 'DAMN LURKING - Grey',
+      sku: 'MOAK-DAMN-LURKING-GREY',
+      costPrice: 1,
+      sellPrice: 1,
+      imageUrl: 'https://old.example/b.webp',
+      siteUrl: 'https://old.example/b',
+      image: 'https://old.example/b-legacy.webp',
+    },
+  });
+  const before = await prisma.product.findUniqueOrThrow({ where: { id: 'b' } });
+  await connect(
+    await fakeSite(
+      catalogue([
+        { webId: 'MOAK-DAMN-RAW-WHITE', sku: 'MOAK-DAMN-RAW-WHITE', name: 'DAMN RAW - White', image: img('damn-raw-white'), url: page('damn-raw-white') },
+        { webId: 'MOAK-DAMN-LURKING-GREY', sku: 'MOAK-DAMN-LURKING-GREY', name: 'DAMN LURKING - Grey', image: img('damn-lurking-grey'), url: page('damn-lurking-grey') },
+      ]),
+    ),
+  );
+
+  const manual = await syncSiteCatalogue();
+  assert.equal(manual.ok, true, manual.message);
+  assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: 'a' } })).imageUrl, img('damn-raw-white'), 'the button did run the sync');
+  assert.deepEqual(await prisma.product.findUniqueOrThrow({ where: { id: 'b' } }), before, 'the settings button');
+
+  process.env.CRON_SECRET = 'cron-test-secret';
+  const cron = await cronGET(
+    new NextRequest('http://localhost/api/site/catalogue-sync', { headers: { authorization: 'Bearer cron-test-secret' } }),
+  );
+  assert.equal(cron.status, 200);
+  assert.deepEqual((await cron.json()).notInErp, ['MOAK-DAMN-LURKING-GREY'], 'the cron did run the sync');
+  assert.deepEqual(await prisma.product.findUniqueOrThrow({ where: { id: 'b' } }), before, 'the daily cron');
+});
+
 async function connect(siteUrl: string, secret = SECRET) {
   const value = JSON.stringify({ siteUrl, webhookSecret: secret, paymentAccountId: null, warehouseId: null });
   await prisma.systemSetting.upsert({ where: { key: SITE_CONNECTION_KEY }, update: { value }, create: { key: SITE_CONNECTION_KEY, value } });

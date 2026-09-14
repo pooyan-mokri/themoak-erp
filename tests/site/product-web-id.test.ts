@@ -12,6 +12,67 @@ beforeEach(async () => {
 });
 after(() => prisma.$disconnect());
 
+test('a duplicate webId that slips past the check on create still gets a readable message, not a database error', async () => {
+  beforeQuery.fn = async (params) => {
+    if (params.model === 'Product' && params.action === 'create') {
+      beforeQuery.fn = null;
+      // Another request saves a product with the same webId right now.
+      await prisma.product.create({
+        data: { name: 'PANJ - Blue', sku: 'PANJ/BLUE', costPrice: 1, sellPrice: 1, webId: 'MOAK-PANJ-BLUE' },
+      });
+    }
+  };
+  const { result, product } = await create('PANJ - Blue copy', 'PANJ/BLUE2', 'MOAK-PANJ-BLUE');
+  assert.equal(beforeQuery.fn, null, 'the concurrent write must happen between the check and the create');
+  assert.equal(product, null);
+  assert.notEqual(result.success, true);
+  assert.match(String(result.message), /قبلاً به کالای «PANJ - Blue» \(PANJ\/BLUE\) داده شده است/);
+  assert.doesNotMatch(String(result.message), /Unique constraint|P2002|prisma/i);
+});
+
+test('a duplicate webId that slips past the check on update still gets a readable message, and nothing changes', async () => {
+  const { product } = await create('YEK - Black', 'YEK/BLK');
+  beforeQuery.fn = async (params) => {
+    if (params.model === 'Product' && (params.action === 'update' || params.action === 'updateMany')) {
+      beforeQuery.fn = null;
+      // Another request gives a different product this webId right now.
+      await prisma.product.create({
+        data: { name: 'PANJ - Blue', sku: 'PANJ/BLUE', costPrice: 1, sellPrice: 1, webId: 'MOAK-PANJ-BLUE' },
+      });
+    }
+  };
+  const { result, product: after } = await update(product!.id, 'YEK - Black', 'YEK/BLK', { webId: 'MOAK-PANJ-BLUE' });
+  assert.equal(beforeQuery.fn, null, 'the concurrent write must happen between the check and the write');
+  assert.notEqual(result.success, true);
+  assert.equal(after.webId, null);
+  assert.match(String(result.message), /قبلاً به کالای «PANJ - Blue» \(PANJ\/BLUE\) داده شده است/);
+  assert.doesNotMatch(String(result.message), /Unique constraint|P2002|prisma/i);
+});
+
+test('a badly formatted webId on update is refused and nothing is saved', async () => {
+  const { product } = await create('YEK - Black', 'YEK/BLK');
+  const added = await update(product!.id, 'YEK - Black (renamed)', 'YEK/BLK', { webId: 'moak-yek-black' });
+  assert.notEqual(added.result.success, true);
+  assert.match(String(added.result.message), /MOAK-PANJ-BLUE/);
+  assert.equal(added.product.webId, null);
+  assert.equal(added.product.name, 'YEK - Black');
+
+  const { product: held } = await create('PANJ - Blue', 'PANJ/BLUE', 'MOAK-PANJ-BLUE');
+  const changed = await update(held!.id, 'PANJ - Blue', 'PANJ/BLUE', { webId: 'MOAK-PANJ/GREEN', confirmWebIdChange: '1' });
+  assert.notEqual(changed.result.success, true);
+  assert.match(String(changed.result.message), /MOAK-PANJ-BLUE/);
+  assert.equal(changed.product.webId, 'MOAK-PANJ-BLUE');
+});
+
+test('a duplicate webId on update saves none of the other edits either', async () => {
+  await create('PANJ - Blue', 'PANJ/BLUE', 'MOAK-PANJ-BLUE');
+  const { product: other } = await create('YEK - Black', 'YEK/BLK');
+  const { result, product } = await update(other!.id, 'YEK - Black (renamed)', 'YEK/BLK', { webId: 'MOAK-PANJ-BLUE' });
+  assert.notEqual(result.success, true);
+  assert.equal(product.webId, null);
+  assert.equal(product.name, 'YEK - Black');
+});
+
 async function create(name: string, sku: string, webId?: string) {
   const result = await createProduct({} as any, form({ ...base, name, sku, ...(webId !== undefined ? { webId } : {}) }));
   return { result, product: await prisma.product.findUnique({ where: { sku } }) };

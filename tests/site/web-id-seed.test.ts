@@ -25,6 +25,63 @@ async function productsFromFile() {
 
 const withWebId = () => prisma.product.count({ where: { webId: { not: null } } });
 
+test('a duplicate webId that slips past the check in the "without webId" list still gets a readable message', async () => {
+  await prisma.product.createMany({
+    data: [
+      { id: 'a', name: 'PANJ - Blue', sku: 'PANJ/BLUE', costPrice: 1, sellPrice: 1 },
+      { id: 'b', name: 'YEK - Black', sku: 'YEK/BLK', costPrice: 1, sellPrice: 1 },
+    ],
+  });
+  beforeQuery.fn = async (params) => {
+    if (params.model === 'Product' && params.action === 'updateMany') {
+      beforeQuery.fn = null;
+      // Someone else gives product b the same webId right now.
+      await prisma.$executeRawUnsafe('UPDATE "Product" SET "webId" = $1 WHERE id = $2', 'MOAK-PANJ-BLUE', 'b');
+    }
+  };
+  const result = await setProductWebId('a', 'MOAK-PANJ-BLUE');
+  assert.equal(beforeQuery.fn, null, 'the concurrent write must happen between the check and the write');
+  assert.equal(result.success, false);
+  assert.match(result.message, /قبلاً به کالای «YEK - Black» \(YEK\/BLK\) داده شده است/);
+  assert.doesNotMatch(result.message, /Unique constraint|P2002|prisma/i);
+  assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: 'a' } })).webId, null);
+});
+
+test('a webId another product already holds blocks the file, even when the admin approves the preview numbers', async () => {
+  await productsFromFile();
+  await prisma.product.create({
+    data: { id: 'other', name: 'Showroom frame', sku: 'SHOW/1', costPrice: 1, sellPrice: 1, webId: WEB_ID_SEED[0].webId },
+  });
+  const preview = await getWebIdSeedPreview();
+  assert.equal(preview.counts.conflicts, 1);
+  assert.equal(preview.rows[0].status, 'WEBID_TAKEN');
+  assert.equal(preview.rows[0].takenBy, 'Showroom frame (SHOW/1)');
+
+  const result = await applyWebIdSeed({ total: preview.counts.total, toSet: preview.counts.toSet });
+  assert.equal(result.success, false);
+  assert.match(result.message, /نمی‌خواند؛ هیچ چیزی نوشته نشد/);
+  assert.equal(await withWebId(), 1);
+});
+
+test('a webId given to another product while the file is being written stops it with a readable message', async () => {
+  await productsFromFile();
+  await prisma.product.create({ data: { id: 'other', name: 'Showroom frame', sku: 'SHOW/1', costPrice: 1, sellPrice: 1 } });
+  beforeQuery.fn = async (params) => {
+    if (params.model === 'Product' && params.action === 'updateMany') {
+      beforeQuery.fn = null;
+      // Outside the transaction, someone gives another product the webId about to be written.
+      const webId = (params.args as any).data.webId;
+      await prisma.$executeRawUnsafe('UPDATE "Product" SET "webId" = $1 WHERE id = $2', webId, 'other');
+    }
+  };
+  const result = await applyWebIdSeed(ALL);
+  assert.equal(beforeQuery.fn, null, 'the concurrent write must happen inside the transaction');
+  assert.equal(result.success, false);
+  assert.match(result.message, /هم‌زمان به کالای دیگری داده شد/);
+  assert.doesNotMatch(result.message, /Unique constraint|P2002|prisma/i);
+  assert.equal(await withWebId(), 1);
+});
+
 test('the bundled file is the 91 matched frames, all unique and well formed', () => {
   const plan = planWebIdSeed(
     WEB_ID_SEED,
