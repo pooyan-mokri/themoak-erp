@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // const prisma = new PrismaClient();
 
@@ -236,6 +237,7 @@ export async function transferStock(prevState: ActionState, formData: FormData):
     return { message };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/consignment/transfer');
   revalidatePath('/dashboard/inventory');
   return { message: 'انتقال موجودی با موفقیت انجام شد.' };
@@ -302,6 +304,7 @@ export async function transferStockBatch(input: {
     return { success: false, message };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/consignment/transfer');
   revalidatePath('/dashboard/inventory');
   return { success: true, message: `انتقال ${validItems.length} کالا با موفقیت انجام شد.` };
@@ -572,6 +575,7 @@ export async function recordConsignmentSales(input: {
     return { message };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/consignment/settlement');
   revalidatePath('/dashboard/consignment/reports');
   revalidatePath('/dashboard/consignment/commissions');
@@ -888,6 +892,7 @@ export async function deleteConsignmentOrder(
     return { message };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/consignment/settlement');
   revalidatePath('/dashboard/consignment/reports');
   revalidatePath('/dashboard/consignment/commissions');
@@ -1002,6 +1007,7 @@ export async function returnConsignmentStock(input: {
     return { message };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/consignment/return');
   revalidatePath('/dashboard/consignment/reports');
   revalidatePath('/dashboard/inventory');

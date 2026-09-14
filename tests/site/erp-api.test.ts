@@ -69,7 +69,10 @@ test('stock returns every webId product, counted in the requested warehouse only
 
   const res = await get(`action=stock&warehouseId=${site.id}`);
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), [
+  const body = await res.json();
+  // `at` is when the ERP read the counts; the site orders its readings by it.
+  assert.ok(!Number.isNaN(Date.parse(body.at)), String(body.at));
+  assert.deepEqual(body.items, [
     { webId: 'MOAK-DAMN-RAW-WHITE', sku: 'RAW/WHIT', name: 'RAW/WHIT name', quantity: 0, price: 18500000 },
     { webId: 'MOAK-PANJ-BLUE', sku: 'PANJ/BLUE', name: 'PANJ/BLUE name', quantity: 7, price: 15700000 },
     // Its row is -2; for the site that is simply none left.

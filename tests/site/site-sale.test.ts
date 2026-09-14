@@ -190,14 +190,18 @@ test('createSale books the sale, the money and the stock, and answers with {id, 
       }),
     )
   ).json();
-  assert.equal(stock.find((row: any) => row.webId === 'MOAK-DAMN-RAW-WHITE').quantity, 0);
+  assert.equal(stock.items.find((row: any) => row.webId === 'MOAK-DAMN-RAW-WHITE').quantity, 0);
 });
 
 test('the same reference makes one sale with one number, even when sent twice at once', async () => {
   const body = saleBody();
   const first = await sell(body);
   assert.equal(first.status, 200);
+  const resyncRows = () => prisma.siteHookLog.count({ where: { kind: 'resync' } });
+  assert.equal(await resyncRows(), 0, 'a first sale queues no resend');
   assert.deepEqual(await sell(body), first);
+  // The site may not have had the first answer, so the frame is queued to be sent again.
+  assert.equal(await resyncRows(), 1);
 
   const racing = saleBody({
     items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 1, unitPrice: 15_700_000 }],

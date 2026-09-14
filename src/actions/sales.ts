@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { balanceEffect } from '@/lib/balance-reconciliation';
 import { WEBSITE_ORDER_LOCKED, readSiteOrderData } from '@/lib/site-sale-data';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // const prisma = new PrismaClient();
 
@@ -205,6 +206,7 @@ export async function createOrder(data: OrderData) {
         });
       }
     });
+    kickSiteHook();
 
     try {
       revalidatePath('/dashboard/sales');
@@ -632,6 +634,7 @@ export async function cancelOrder(orderId: string): Promise<{
         data: { status: 'CANCELLED' },
       });
     });
+    kickSiteHook();
 
     // 3. If order is from WooCommerce, cancel it there too
     if (order.wooId) {

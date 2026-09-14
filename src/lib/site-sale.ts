@@ -257,6 +257,19 @@ const saleResponse = (order: { id: string; number: number }): SiteSaleResult => 
   body: { id: order.id, number: String(order.number) },
 });
 
+/**
+ * A repeat of a sale the site may not have recorded yet (its first answer was
+ * lost). The site subtracts unrecorded sales from any count it receives, so a
+ * count pushed before it had the answer was subtracted twice; its frames are
+ * queued to be sent again once the site has this answer. No kick: the next
+ * scheduled drain comes after the site has written it down.
+ */
+async function resendStockOf(client: any, orderId: string) {
+  await client.$executeRaw`
+    INSERT INTO "SiteHookLog" ("productId", "kind", "createdAt")
+    SELECT DISTINCT "productId", 'resync', now() AT TIME ZONE 'UTC' FROM "OrderItem" WHERE "orderId" = ${orderId}`;
+}
+
 function isSiteReferenceUniqueViolation(error: unknown): boolean {
   const e = error as { code?: string; meta?: { target?: unknown } } | null;
   return e?.code === 'P2002' && String(e.meta?.target ?? '').includes('siteReference');
@@ -269,7 +282,10 @@ export async function createSale(client: any, body: Record<string, unknown>): Pr
   // A retry of a sale that already committed gets the same answer, whatever
   // has changed since (the warehouse archived, a field now malformed).
   const existing = await saleByReference(client, reference);
-  if (existing) return saleResponse(existing);
+  if (existing) {
+    await resendStockOf(client, existing.id);
+    return saleResponse(existing);
+  }
 
   const input = parseSale(body, reference);
   if (typeof input === 'string') return invalid(input);
@@ -302,7 +318,10 @@ export async function createSale(client: any, body: Record<string, unknown>): Pr
     // Two sends of one order that still collided: the loser answers with the winner.
     if (isSiteReferenceUniqueViolation(error)) {
       const winner = await saleByReference(client, reference);
-      if (winner) return saleResponse(winner);
+      if (winner) {
+        await resendStockOf(client, winner.id);
+        return saleResponse(winner);
+      }
     }
     throw error;
   }
@@ -315,7 +334,10 @@ async function recordSale(
 ): Promise<{ id: string; number: number }> {
   await lock(tx, `site-sale:${input.reference}`);
   const existing = await saleByReference(tx, input.reference);
-  if (existing) return existing;
+  if (existing) {
+    await resendStockOf(tx, existing.id);
+    return existing;
+  }
 
   const review: string[] = [];
   const tags = new Set<string>([input.tag ?? 'website']);

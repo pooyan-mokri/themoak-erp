@@ -7,6 +7,7 @@ import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/
 import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
 import { WEB_ID_SEED } from '@/lib/web-id-seed';
 import { planWebIdSeed, type SeedPlan } from '@/lib/web-id-seed-plan';
+import { kickSiteHook } from '@/lib/site-hook';
 
 /** Seeding stopped before writing; the message is safe to show as-is. */
 class SeedStoppedError extends Error {
@@ -85,6 +86,7 @@ export async function applyWebIdSeed(approved: { total: number; toSet: number })
       // for a remote production database.
       { maxWait: 10_000, timeout: 60_000 },
     );
+    kickSiteHook();
 
     revalidate();
     if (counts.toSet === 0) {
@@ -155,6 +157,7 @@ export async function setProductWebId(
     if (count === 0) {
       return { success: false, message: 'این کالا پیدا نشد یا در این فاصله شناسه گرفته است؛ صفحه را تازه کنید.' };
     }
+    kickSiteHook();
     revalidate();
     return { success: true, message: `شناسهٔ «${webId}» ثبت شد.` };
   } catch (error) {

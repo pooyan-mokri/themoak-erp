@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { DEFAULT_SITE_WAREHOUSE_NAME, pickWithDefault, readSiteConnection } from '@/lib/site-connection';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // const prisma = new PrismaClient();
 
@@ -176,6 +177,7 @@ export async function deleteWarehouse(id: string) {
       await tx.inventory.deleteMany({ where: { warehouseId: id, quantity: 0 } });
       await tx.warehouse.delete({ where: { id } });
     });
+    kickSiteHook();
 
     revalidatePath('/dashboard', 'layout');
     return { message: 'انبار با موفقیت حذف شد.', success: true };

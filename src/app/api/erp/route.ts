@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { createSale, setSaleStatus } from '@/lib/site-sale';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
 export const maxDuration = 30;
@@ -271,6 +272,9 @@ export async function GET(req: NextRequest) {
             { status: 422 },
           );
 
+        // Stamped before reading: the site orders its readings by `at`, and this
+        // keeps both the webhook and this feed on the ERP's clock.
+        const at = new Date().toISOString();
         // Every product the site knows (webId set), including those with no
         // stock row in this warehouse: the site needs the zeros too.
         const products = await prisma.product.findMany({
@@ -284,8 +288,9 @@ export async function GET(req: NextRequest) {
           },
           orderBy: { webId: 'asc' },
         });
-        return NextResponse.json(
-          products.map((p: any) => ({
+        return NextResponse.json({
+          at,
+          items: products.map((p: any) => ({
             webId: p.webId,
             sku: p.sku,
             name: p.name,
@@ -293,7 +298,7 @@ export async function GET(req: NextRequest) {
             quantity: Math.max(0, p.inventory[0]?.quantity ?? 0),
             price: Math.round(Number(p.sellPrice)),
           })),
-        );
+        });
       }
 
       // The site reads 404 as "the ERP does not have this action yet".
@@ -495,6 +500,9 @@ export async function POST(req: NextRequest) {
       case 'setSaleStatus': {
         const result =
           action === 'createSale' ? await createSale(prisma, fields) : await setSaleStatus(prisma, fields);
+        // Not after createSale: the site already took its own sale off, and a count
+        // landing before it has recorded this answer would be subtracted twice.
+        if (action === 'setSaleStatus') kickSiteHook();
         return NextResponse.json(result.body, { status: result.status });
       }
 

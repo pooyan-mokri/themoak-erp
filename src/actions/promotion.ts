@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // const prisma = new PrismaClient();
 
@@ -303,6 +304,7 @@ export async function giftProductToCustomer(customerId: string, productId: strin
         }
       }
     });
+    kickSiteHook();
 
     revalidatePath('/dashboard/crm/customers');
     revalidatePath(`/dashboard/crm/customers/${customerId}`);

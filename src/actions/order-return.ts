@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 import { syncInvoiceWithOrder } from './invoice';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
+import { kickSiteHook } from '@/lib/site-hook';
 
 const OrderReturnSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -280,6 +281,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         });
       }
     });
+    kickSiteHook();
 
     // 8. Cancel order in WooCommerce ONLY when every original item has been
     //    fully returned and nothing was exchanged. A partial return (or any

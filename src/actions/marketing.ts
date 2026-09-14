@@ -5,6 +5,7 @@ import { TransactionType, ActionState, ActionResult } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // --- Schemas ---
 
@@ -235,6 +236,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
     };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/marketing');
   revalidatePath('/dashboard/marketing/gifts');
   revalidatePath('/dashboard/inventory');

@@ -18,6 +18,7 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { restoreOrderItemStock, restorableQuantity } from '@/lib/restore-warehouse';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
+import { kickSiteHook } from '@/lib/site-hook';
 import type { ActionResult } from '@/lib/types';
 
 export type LostStockLine = {
@@ -147,6 +148,7 @@ export async function repairCancelledOrderStock(orderId: string): Promise<Action
 
       return count;
     });
+    if (repaired > 0) kickSiteHook();
 
     revalidatePath('/dashboard/inventory/lost-stock');
     revalidatePath('/dashboard', 'layout');

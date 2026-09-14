@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 import { syncInvoiceWithOrder } from './invoice';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
+import { kickSiteHook } from '@/lib/site-hook';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -361,6 +362,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         });
       }
     });
+    kickSiteHook();
 
     // Note: we intentionally do NOT cancel the WooCommerce order on
     // exchange. The customer received goods (the replacement product), so

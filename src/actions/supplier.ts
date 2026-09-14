@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
 import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // --- Schemas ---
 
@@ -568,6 +569,7 @@ export async function receivePurchaseOrderItems(
         data: { status: newStatus }
       });
     });
+    kickSiteHook();
 
     try {
       revalidatePath('/dashboard/suppliers/orders');
@@ -699,6 +701,7 @@ export async function receivePurchaseOrder(orderId: string, warehouseId: string)
       // We'll skip auto-transaction creation for now to keep it simple, 
       // or we could add an "Accounts Payable" entry if we had that module.
     });
+    kickSiteHook();
 
     try {
       revalidatePath('/dashboard/suppliers/orders');

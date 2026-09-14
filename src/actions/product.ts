@@ -9,6 +9,7 @@ import { generateProductBarcode, ensureUniqueBarcode } from '@/lib/barcode-utils
 import { ActionState, ActionResult } from '@/lib/types';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
 import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
+import { kickSiteHook } from '@/lib/site-hook';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -82,6 +83,7 @@ export async function createProduct(prevState: ActionState, formData: FormData):
     };
   }
 
+  kickSiteHook();
   revalidatePath('/dashboard/inventory/products');
   return { message: 'کالا با موفقیت ثبت شد.', success: true };
 }
@@ -168,6 +170,7 @@ export async function giftProduct(productId: string, quantity: number, recipient
 
       return { success: true, message: 'Gift processed successfully' };
     });
+    kickSiteHook();
 
     try {
       revalidatePath('/dashboard/inventory/products');
@@ -324,6 +327,7 @@ export async function updateProduct(id: string, prevState: ActionState, formData
     } else {
       await prisma.product.update({ where: { id }, data });
     }
+    kickSiteHook();
 
     // If sell price changed and product has WooCommerce ID, update WooCommerce
     if (oldProduct && oldProduct.wooId && Number(oldProduct.sellPrice) !== sellPrice) {
@@ -410,6 +414,7 @@ export async function deleteProduct(id: string) {
     await prisma.product.delete({
       where: { id },
     });
+    kickSiteHook();
 
     revalidatePath('/dashboard/inventory/products');
     return { success: true, message: 'محصول با موفقیت حذف شد.' };

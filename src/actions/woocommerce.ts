@@ -8,6 +8,7 @@ import { getSetting, getWooSettings } from './settings';
 import { Prisma } from '@prisma/client';
 import { TransactionType, ActionResult } from '@/lib/types';
 import { downloadAndSaveProductImage } from './upload';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // Helper function to get WooCommerce warehouse ID from settings
 async function getWooWarehouseId(): Promise<string | undefined> {
@@ -278,6 +279,7 @@ export async function syncProducts(): Promise<ActionResult<{ created: number; up
         }
       }
     }
+    kickSiteHook();
 
     try {
         revalidatePath('/dashboard/inventory');
@@ -1097,6 +1099,7 @@ export async function processWooOrders(wooOrders: WooOrder[]) {
         }
     }
     
+    if (createdCount > 0) kickSiteHook();
     console.log(`[PROCESS] پایان پردازش: ${createdCount} ثبت شد، ${skippedCount} رد شد، ${errorCount} خطا`);
     console.log(`[PROCESS] آمار تفصیلی: ${processedCount} پردازش شد، ${existingOrdersCount} سفارش تکراری، ${emptyLineItemsCount} بدون line_items، ${noItemsCount} بدون آیتم، ${invalidTotalCount} مبلغ نامعتبر، ${existingTransactionCount} تراکنش تکراری`);
     

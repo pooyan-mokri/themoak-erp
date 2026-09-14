@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
+import { kickSiteHook } from '@/lib/site-hook';
 
 // const prisma = new PrismaClient();
 
@@ -66,6 +67,7 @@ export async function updateStock(productId: string, warehouseId: string, quanti
         quantity,
       },
     });
+    kickSiteHook();
 
     // Update stock in WooCommerce if this is the WooCommerce warehouse
     const { updateProductStockInWooCommerce } = await import('./woocommerce');
@@ -111,6 +113,7 @@ export async function adjustStock(
         },
       });
     });
+    kickSiteHook();
 
     revalidatePath('/dashboard/inventory');
     return { success: true, message: 'Stock adjusted successfully' };
@@ -167,6 +170,7 @@ export async function transferStock(
         },
       });
     });
+    kickSiteHook();
 
     revalidatePath('/dashboard/inventory');
     return { success: true, message: 'جابجایی موجودی با موفقیت انجام شد' };
@@ -236,6 +240,7 @@ export async function transferStockBatch(input: {
         });
       }
     });
+    kickSiteHook();
 
     revalidatePath('/dashboard/inventory');
     return { success: true, message: `جابجایی ${validItems.length} کالا با موفقیت انجام شد` };
