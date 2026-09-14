@@ -2,6 +2,7 @@ import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { LogoProvider } from '@/components/providers/logo-provider';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
+import { SiteHookAlerts } from '@/components/layout/site-hook-alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,8 @@ export default function DashboardLayout({
             <Header />
           </div>
           <div className="p-4 md:p-8 print:p-0">
+            {/* Stock push alerts for admins - Hidden when printing */}
+            <SiteHookAlerts />
             {/* Breadcrumb - Hidden when printing */}
             <div className="hidden md:block print:hidden">
               <DashboardBreadcrumb />
