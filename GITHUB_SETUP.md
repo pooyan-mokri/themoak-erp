@@ -42,10 +42,9 @@ git add next.config.mjs
 ```bash
 git commit -m "Initial commit: TheMoak ERP System
 
-- Complete ERP system with 13 modules
+- Complete ERP system with 12 modules
 - Sales, Inventory, Accounting, CRM, Projects
 - AI Assistant integration
-- WooCommerce integration
 - Mobile responsive design
 - Persian UI with Jalali calendar
 - Complete documentation"

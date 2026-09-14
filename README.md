@@ -44,7 +44,6 @@
 - ✅ **حقوق و دستمزد** - مدیریت کارمندان و پرداخت حقوق
 - ✅ **مدیریت وام‌ها** - وام‌های کارمندان
 - ✅ **مدیریت سهامداران** - سرمایه‌گذاری و توزیع سود
-- ✅ **یکپارچه‌سازی WooCommerce** - همگام‌سازی محصولات و سفارشات
 - ✅ **دستیار هوش مصنوعی** - چت‌بات هوشمند با قابلیت Agent
 - ✅ **گزارش‌گیری پیشرفته** - گزارش‌های فروش، مالی، موجودی
 - ✅ **بک‌آپ خودکار** - پشتیبان‌گیری دوره‌ای از دیتابیس
@@ -61,7 +60,6 @@
 - ✅ **Payroll Management** - Employee & Salary Management
 - ✅ **Loan Management** - Employee Loans
 - ✅ **Shareholder Management** - Investments & Profit Distribution
-- ✅ **WooCommerce Integration** - Product & Order Synchronization
 - ✅ **AI Assistant** - Intelligent Chatbot with Agent Capabilities
 - ✅ **Advanced Reporting** - Sales, Financial, Inventory Reports
 - ✅ **Automatic Backup** - Periodic Database Backup
@@ -154,11 +152,6 @@ DATABASE_URL="postgresql://username:password@localhost:5432/themoak_erp?schema=p
 NEXTAUTH_SECRET="your-secret-key-here"
 NEXTAUTH_URL="http://localhost:3000"
 AUTH_SECRET="your-secret-key-here"
-
-# Optional: WooCommerce Integration
-WOOCOMMERCE_URL="https://your-store.com"
-WOOCOMMERCE_CONSUMER_KEY="ck_..."
-WOOCOMMERCE_CONSUMER_SECRET="cs_..."
 
 # Optional: AI Assistant (OpenAI, Anthropic, Gemini, Groq)
 OPENAI_API_KEY="sk-..."
@@ -290,14 +283,7 @@ npm start
 - توزیع سود
 - برداشت‌ها
 
-### 12. WooCommerce Integration
-**Route**: `/dashboard/woocommerce`
-
-- همگام‌سازی محصولات
-- همگام‌سازی سفارشات
-- مدیریت تنظیمات
-
-### 13. دستیار هوش مصنوعی / AI Assistant
+### 12. دستیار هوش مصنوعی / AI Assistant
 **Route**: `/dashboard/assistant`
 
 - چت‌بات هوشمند
@@ -305,7 +291,7 @@ npm start
 - انجام عملیات (ایجاد مشتری، ثبت هزینه)
 - پشتیبانی از OpenAI, Anthropic, Gemini, Groq
 
-### 14. گزارش‌گیری / Reporting
+### 13. گزارش‌گیری / Reporting
 **Route**: `/dashboard/reports`, `/dashboard/reporting`
 
 - گزارش‌های فروش
@@ -314,13 +300,12 @@ npm start
 - گزارش‌های پروژه
 - خروجی Excel
 
-### 15. تنظیمات / Settings
+### 14. تنظیمات / Settings
 **Route**: `/dashboard/settings`
 
 - مدیریت کاربران
 - نقش‌ها و دسترسی‌ها
 - تنظیمات شرکت
-- تنظیمات WooCommerce
 - تنظیمات AI
 - بک‌آپ
 
@@ -360,7 +345,6 @@ For complete documentation, refer to the following files:
 - **bcryptjs** - Password Hashing
 
 ### Integrations
-- **WooCommerce REST API** - E-commerce Integration
 - **OpenAI API** - AI Assistant
 - **Anthropic API** - AI Assistant
 - **Google Gemini API** - AI Assistant

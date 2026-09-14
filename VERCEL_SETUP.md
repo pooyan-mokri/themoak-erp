@@ -31,13 +31,6 @@ Or use this online: https://generate-secret.vercel.app/32
 AUTH_URL=https://your-production-domain.vercel.app
 ```
 
-### 4. WooCommerce (Optional)
-```
-WOOCOMMERCE_URL=https://your-woocommerce-site.com
-WOOCOMMERCE_CONSUMER_KEY=ck_xxxxxxxxxxxxx
-WOOCOMMERCE_CONSUMER_SECRET=cs_xxxxxxxxxxxxx
-```
-
 ## Setting Environment Variables on Vercel
 
 1. Go to your Vercel project dashboard

@@ -35,7 +35,6 @@
 - ✅ **تقویم شمسی** / Jalali Calendar Support
 - ✅ **چند ارز** / Multi-Currency Support
 - ✅ **چند انباره** / Multi-Warehouse Support
-- ✅ **یکپارچه‌سازی WooCommerce** / WooCommerce Integration
 - ✅ **دستیار هوش مصنوعی** / AI Assistant
 - ✅ **واکنش‌گرا** / Responsive Design
 - ✅ **Dark Mode** / حالت تاریک
@@ -131,11 +130,6 @@ DATABASE_URL="postgresql://username:password@localhost:5432/themoak_erp?schema=p
 NEXTAUTH_SECRET="your-secret-key-here-min-32-chars"
 NEXTAUTH_URL="http://localhost:3000"
 AUTH_SECRET="your-secret-key-here-min-32-chars"
-
-# Optional: WooCommerce Integration
-WOOCOMMERCE_URL="https://your-store.com"
-WOOCOMMERCE_CONSUMER_KEY="ck_..."
-WOOCOMMERCE_CONSUMER_SECRET="cs_..."
 
 # Optional: AI Assistant
 OPENAI_API_KEY="sk-..."
@@ -495,29 +489,7 @@ DRAFT → PENDING_PAYMENT → PAID → IN_PRODUCTION → ARRIVED → RECEIVED
 
 ---
 
-### 10. یکپارچه‌سازی WooCommerce / WooCommerce Integration
-
-**Route**: `/dashboard/woocommerce`
-
-#### ویژگی‌ها / Features
-
-- **همگام‌سازی محصولات**: همگام‌سازی محصولات از WooCommerce
-- **همگام‌سازی سفارشات**: همگام‌سازی سفارشات از WooCommerce
-- **مدیریت اتصال**: مدیریت تنظیمات اتصال به WooCommerce
-
-#### تنظیمات / Configuration
-
-1. به `/dashboard/settings` بروید
-2. بخش "تنظیمات WooCommerce" را پیدا کنید
-3. اطلاعات زیر را وارد کنید:
-   - URL فروشگاه WooCommerce
-   - Consumer Key
-   - Consumer Secret
-   - انبار پیش‌فرض برای محصولات
-
----
-
-### 11. دستیار هوش مصنوعی / AI Assistant
+### 10. دستیار هوش مصنوعی / AI Assistant
 
 **Route**: `/dashboard/assistant`
 
@@ -549,7 +521,7 @@ DRAFT → PENDING_PAYMENT → PAID → IN_PRODUCTION → ARRIVED → RECEIVED
 
 ---
 
-### 12. گزارش‌گیری / Reporting
+### 11. گزارش‌گیری / Reporting
 
 **Route**: `/dashboard/reports`, `/dashboard/reporting`
 
@@ -563,7 +535,7 @@ DRAFT → PENDING_PAYMENT → PAID → IN_PRODUCTION → ARRIVED → RECEIVED
 
 ---
 
-### 13. تنظیمات / Settings
+### 12. تنظیمات / Settings
 
 **Route**: `/dashboard/settings`
 
@@ -572,7 +544,7 @@ DRAFT → PENDING_PAYMENT → PAID → IN_PRODUCTION → ARRIVED → RECEIVED
 - **مدیریت کاربران**: ایجاد و مدیریت کاربران سیستم
 - **نقش‌ها و دسترسی‌ها**: مدیریت نقش‌ها و دسترسی‌ها
 - **تنظیمات شرکت**: اطلاعات شرکت
-- **تنظیمات WooCommerce**: اتصال به WooCommerce
+- **انبار پیش‌فرض برگشت موجودی**: انباری که هنگام لغو فروشی که انبار اقلامش ثبت نشده، موجودی به آن برمی‌گردد
 - **تنظیمات AI**: تنظیمات دستیار هوش مصنوعی
 - **بک‌آپ**: پشتیبان‌گیری از دیتابیس
 
