@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { generateProductBarcodeAction } from '@/actions/product';
+import { barcodeFormatFor, isStandardBarcode } from '@/lib/barcode-format';
+import { BarcodeDisplay } from './barcode-display';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { Barcode, Download, Printer, RefreshCw } from 'lucide-react';
@@ -23,16 +25,16 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const barcodeRef = useRef<HTMLDivElement>(null);
 
-  const handleGenerate = async () => {
-    if (product.barcode) {
-      if (!confirm('این محصول قبلاً بارکد دارد. آیا می‌خواهید بارکد جدید تولید کنید؟')) {
+  const handleGenerate = async (replace: boolean) => {
+    if (replace) {
+      if (!confirm('با ساخت بارکد جدید، برچسب‌های چاپ‌شدهٔ قبلی این کالا دیگر خوانده نمی‌شوند. ادامه می‌دهید؟')) {
         return;
       }
     }
 
     setIsGenerating(true);
     try {
-      const result = await generateProductBarcodeAction(product.id);
+      const result = await generateProductBarcodeAction(product.id, replace);
       if (result.success) {
         toast.success(result.message);
         router.refresh();
@@ -90,7 +92,7 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
             </CardDescription>
           </div>
           {!product.barcode && (
-            <Button onClick={handleGenerate} disabled={isGenerating} size="sm">
+            <Button onClick={() => handleGenerate(false)} disabled={isGenerating} size="sm">
               {isGenerating ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -114,6 +116,9 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
                 <div className="font-semibold text-sm">{product.name}</div>
                 <div className="text-xs text-muted-foreground mt-1">SKU: {product.sku}</div>
               </div>
+              <div className="w-56 max-w-full mb-2">
+                <BarcodeDisplay barcode={product.barcode} format={barcodeFormatFor(product.barcode)} />
+              </div>
               <div className="font-mono text-2xl font-bold tracking-wider text-center mb-4">
                 {product.barcode}
               </div>
@@ -121,6 +126,11 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
                 بارکد یکتا
               </div>
             </div>
+            {!isStandardBarcode(product.barcode) && (
+              <p className="text-sm text-center text-amber-600">
+                این بارکد استاندارد نیست؛ برای خوانده شدن بهتر، «تولید مجدد» را بزنید.
+              </p>
+            )}
             <div className="flex gap-2 justify-center">
               <Button onClick={handlePrint} variant="outline">
                 <Printer className="h-4 w-4 mr-2" />
@@ -130,7 +140,7 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
                 <Download className="h-4 w-4 mr-2" />
                 دانلود SVG
               </Button>
-              <Button onClick={handleGenerate} variant="outline" disabled={isGenerating}>
+              <Button onClick={() => handleGenerate(true)} variant="outline" disabled={isGenerating}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 تولید مجدد
               </Button>

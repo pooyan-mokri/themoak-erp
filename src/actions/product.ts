@@ -4,8 +4,10 @@ import { PrismaClient } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { generateProductBarcode, ensureUniqueBarcode } from '@/lib/barcode-utils';
+import { generateUniqueBarcode } from '@/lib/barcode-utils';
+import { barcodeFormatFor, isStandardBarcode, type BarcodeFormat } from '@/lib/barcode-format';
 import { ActionState, ActionResult } from '@/lib/types';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
 import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
@@ -54,8 +56,7 @@ export async function createProduct(prevState: ActionState, formData: FormData):
 
   try {
     // Generate unique barcode if not provided
-    const baseBarcode = generateProductBarcode(sku);
-    const barcode = await ensureUniqueBarcode(baseBarcode);
+    const barcode = await generateUniqueBarcode();
 
     await prisma.product.create({
       data: {
@@ -212,8 +213,7 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
         });
       } else {
         // Create new product with barcode
-        const baseBarcode = generateProductBarcode(String(p.sku));
-        const barcode = await ensureUniqueBarcode(baseBarcode);
+        const barcode = await generateUniqueBarcode();
         
         await prisma.product.create({
           data: {
@@ -337,8 +337,16 @@ export async function updateProduct(id: string, prevState: ActionState, formData
   return { message: 'کالا با موفقیت ویرایش شد.', success: true };
 }
 
-// Generate or update barcode for existing products
-export async function generateProductBarcodeAction(productId: string) {
+// Generate or update barcode for existing products. With replace, an existing barcode is swapped for a new one.
+export async function generateProductBarcodeAction(
+  productId: string,
+  replace = false,
+): Promise<{ success: boolean; message: string; barcode?: string }> {
+  const session = await auth();
+  if (!session?.user) {
+    return { success: false, message: 'دسترسی غیرمجاز' };
+  }
+
   try {
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -348,23 +356,29 @@ export async function generateProductBarcodeAction(productId: string) {
       return { success: false, message: 'محصول یافت نشد.' };
     }
 
-    if (product.barcode) {
+    if (product.barcode && !replace) {
       return { success: false, message: 'این محصول قبلاً بارکد دارد.' };
     }
 
-    const baseBarcode = generateProductBarcode(product.sku);
-    const barcode = await ensureUniqueBarcode(baseBarcode);
+    const barcode = await generateUniqueBarcode();
 
-    await prisma.product.update({
-      where: { id: productId },
+    // Write only over the barcode read above, so a code issued meanwhile (a second click, another tab) and the
+    // labels already printed with it stay valid.
+    const { count } = await prisma.product.updateMany({
+      where: { id: productId, barcode: product.barcode },
       data: { barcode },
     });
+    if (count === 0) {
+      return { success: false, message: 'بارکد این کالا هم‌زمان تغییر کرد؛ صفحه را تازه کنید.' };
+    }
 
     revalidatePath(`/dashboard/inventory/products/${productId}`);
     revalidatePath('/dashboard/inventory/products');
     return {
       success: true,
-      message: 'بارکد با موفقیت تولید شد.',
+      message: product.barcode
+        ? 'بارکد جدید ساخته شد؛ برچسب‌های قبلی این کالا دیگر خوانده نمی‌شوند.'
+        : 'بارکد با موفقیت تولید شد.',
       barcode,
     };
   } catch (error: unknown) {
@@ -374,6 +388,151 @@ export async function generateProductBarcodeAction(productId: string) {
       message: 'خطا در تولید بارکد. لطفاً دوباره تلاش کنید.',
     };
   }
+}
+
+async function requireSignedIn() {
+  const session = await auth();
+  if (!session?.user) throw new Error('Unauthorized');
+}
+
+/** Products whose barcode is missing or not standard (isStandardBarcode), without the SITE-UNKNOWN placeholder. */
+async function productsWithNonStandardBarcode() {
+  const products: Array<{ id: string; barcode: string | null }> = await prisma.product.findMany({
+    where: { sku: { not: SITE_UNKNOWN_SKU } },
+    select: { id: true, barcode: true },
+  });
+  return products.filter((product) => !isStandardBarcode(product.barcode));
+}
+
+export async function countNonStandardBarcodes(): Promise<number> {
+  await requireSignedIn();
+  return (await productsWithNonStandardBarcode()).length;
+}
+
+const BARCODE_REPLACE_BATCH = 100;
+
+/**
+ * Give every product counted by countNonStandardBarcodes a new in-store EAN-13 (admin only); its old labels stop
+ * scanning. Each batch is one transaction. A product whose barcode changed after it was read is skipped, and stays
+ * counted if its code is still non-standard.
+ */
+export async function replaceNonStandardBarcodes(): Promise<{
+  success: boolean;
+  message: string;
+  replaced?: number;
+  /** The products given a new code, so their labels can be printed next. */
+  replacedIds?: string[];
+}> {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند بارکدها را یک‌جا عوض کند.' };
+  }
+
+  const replacedIds: string[] = [];
+  try {
+    const products = await productsWithNonStandardBarcode();
+    for (let i = 0; i < products.length; i += BARCODE_REPLACE_BATCH) {
+      const batch = products.slice(i, i + BARCODE_REPLACE_BATCH);
+      // generateUniqueBarcode sees saved codes only, so keep this batch's unsaved codes distinct too.
+      const codes = new Set<string>();
+      while (codes.size < batch.length) codes.add(await generateUniqueBarcode());
+      const batchCodes = [...codes];
+      const batchIds: string[] = await prisma.$transaction(async (tx: any) => {
+        const ids: string[] = [];
+        for (let j = 0; j < batch.length; j++) {
+          const { id, barcode } = batch[j];
+          if ((await tx.product.updateMany({ where: { id, barcode }, data: { barcode: batchCodes[j] } })).count === 1) {
+            ids.push(id);
+          }
+        }
+        return ids;
+      }, { maxWait: 10_000, timeout: 60_000 });
+      replacedIds.push(...batchIds);
+    }
+    const replaced = replacedIds.length;
+    return {
+      success: true,
+      message: `بارکد استاندارد برای ${replaced.toLocaleString('fa-IR')} کالا ساخته شد.`,
+      replaced,
+      replacedIds,
+    };
+  } catch (error: unknown) {
+    console.error('Error replacing barcodes:', error);
+    return {
+      success: false,
+      message: `خطا در ساخت بارکدها؛ تا این لحظه بارکد ${replacedIds.length.toLocaleString('fa-IR')} کالا عوض شد. لطفاً دوباره تلاش کنید.`,
+      replaced: replacedIds.length,
+      replacedIds,
+    };
+  } finally {
+    revalidatePath('/dashboard/inventory/products');
+  }
+}
+
+const LABEL_ROWS_CAP = 2000;
+
+export type ProductForLabel = {
+  id: string;
+  name: string;
+  sku: string;
+  webId: string | null;
+  barcode: string | null;
+  format: BarcodeFormat | null;
+  quantity: number | null;
+};
+
+/**
+ * Products for printing labels, ordered by name, at most 2000. quantity is the stock in warehouseId (null without
+ * one), and inStockOnly applies only with a warehouseId. The SITE-UNKNOWN placeholder is left out.
+ */
+export async function getProductsForLabels(input: {
+  search?: string;
+  warehouseId?: string;
+  inStockOnly?: boolean;
+  nonStandardOnly?: boolean;
+}): Promise<ProductForLabel[]> {
+  await requireSignedIn();
+  const search = input.search?.trim();
+  const warehouseId = input.warehouseId || undefined;
+
+  const where: Record<string, unknown> = { sku: { not: SITE_UNKNOWN_SKU } };
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { sku: { contains: search, mode: 'insensitive' } },
+      { webId: { contains: search, mode: 'insensitive' } },
+      { barcode: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+  if (warehouseId && input.inStockOnly) {
+    where.inventory = { some: { warehouseId, quantity: { gt: 0 } } };
+  }
+
+  const products: Array<
+    Omit<ProductForLabel, 'format' | 'quantity'> & { inventory?: Array<{ quantity: number }> }
+  > = await prisma.product.findMany({
+    where,
+    orderBy: [{ name: 'asc' }, { sku: 'asc' }],
+    // The barcode check cannot run in the query, so with nonStandardOnly the cap applies after filtering.
+    take: input.nonStandardOnly ? undefined : LABEL_ROWS_CAP,
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      webId: true,
+      barcode: true,
+      inventory: warehouseId ? { where: { warehouseId }, select: { quantity: true } } : false,
+    },
+  });
+
+  return products
+    .filter((product) => !input.nonStandardOnly || !isStandardBarcode(product.barcode))
+    .slice(0, LABEL_ROWS_CAP)
+    .map(({ inventory, ...product }) => ({
+      ...product,
+      format: product.barcode ? barcodeFormatFor(product.barcode) : null,
+      quantity: warehouseId ? (inventory?.[0]?.quantity ?? 0) : null,
+    }));
 }
 
 export async function deleteProduct(id: string) {

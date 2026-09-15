@@ -17,7 +17,8 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
 
   useEffect(() => {
     // Check if we're on a product detail page (with or without /barcode)
-    const isProductDetailPage = pathname.match(/\/products\/[^/]+$/);
+    // /products/labels is the bulk label page, not a product.
+    const isProductDetailPage = pathname.match(/\/products\/[^/]+$/) && !pathname.endsWith('/products/labels');
     const isBarcodePage = pathname.includes('/products/') && pathname.endsWith('/barcode');
     
     // Check if we're on a warehouse detail page

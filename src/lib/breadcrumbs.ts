@@ -62,6 +62,7 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'new': 'جدید',
     'edit': 'ویرایش',
     'barcode': 'بارکد',
+    'labels': 'چاپ گروهی برچسب',
     'print': 'چاپ',
   };
   

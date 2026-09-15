@@ -1,62 +1,17 @@
 import { prisma } from '@/lib/prisma';
+import { randomInStoreEan13 } from '@/lib/barcode-format';
 
-// Calculate UPC-A check digit
-function calculateUPCACheckDigit(barcode: string): number {
-  let sumOdd = 0;
-  let sumEven = 0;
-  const digits = barcode.substring(0, 11).split('').map(Number);
-  for (let i = 0; i < digits.length; i++) {
-    if ((i + 1) % 2 !== 0) {
-      sumOdd += digits[i];
-    } else {
-      sumEven += digits[i];
-    }
+const MAX_TRIES = 20;
+
+/**
+ * A barcode for a product: a random in-store EAN-13 that no product has yet. It is not built from the SKU, whose
+ * digits every colour of a model shares.
+ */
+export async function generateUniqueBarcode(client = prisma, random: () => number = Math.random): Promise<string> {
+  for (let i = 0; i < MAX_TRIES; i++) {
+    const barcode = randomInStoreEan13(random);
+    const taken = await client.product.findUnique({ where: { barcode }, select: { id: true } });
+    if (!taken) return barcode;
   }
-  const total = (sumOdd * 3) + sumEven;
-  const remainder = total % 10;
-  return remainder === 0 ? 0 : 10 - remainder;
+  throw new Error(`No unused barcode found in ${MAX_TRIES} tries`);
 }
-
-// Generate unique barcode for product (UPC/EAN compatible - 12 or 13 digits)
-export function generateProductBarcode(sku: string): string {
-  // Extract numeric part from SKU
-  const numericPart = sku.replace(/[^0-9]/g, '');
-  
-  // Generate a unique numeric barcode (12 digits for UPC-A)
-  // Use SKU numeric part + random digits to make it unique
-  let baseNumber = numericPart || Math.floor(Math.random() * 1000000).toString();
-  
-  // Pad to 11 digits for UPC-A format (before check digit)
-  const padded = baseNumber.padStart(11, '0');
-  
-  // Calculate check digit for UPC-A (12th digit)
-  const checkDigit = calculateUPCACheckDigit(padded);
-  
-  return padded + checkDigit.toString();
-}
-
-// Ensure unique barcode
-export async function ensureUniqueBarcode(baseBarcode: string): Promise<string> {
-  let barcode = baseBarcode;
-  let attempts = 0;
-  const maxAttempts = 10;
-
-  while (attempts < maxAttempts) {
-    const existing = await prisma.product.findUnique({
-      where: { barcode },
-    });
-
-    if (!existing) {
-      return barcode;
-    }
-
-    // If exists, add random suffix
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    barcode = `${baseBarcode}-${random}`;
-    attempts++;
-  }
-
-  // Fallback: use timestamp
-  return `${baseBarcode}-${Date.now().toString().slice(-6)}`;
-}
-

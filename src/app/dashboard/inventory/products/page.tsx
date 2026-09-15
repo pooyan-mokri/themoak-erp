@@ -1,7 +1,7 @@
 import { getProducts } from '@/actions/product';
 import { ProductTable } from '@/components/inventory/product-table';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Barcode, Plus } from 'lucide-react';
 import Link from 'next/link';
 
 import { ProductActions } from '@/components/inventory/product-actions';
@@ -15,6 +15,11 @@ export default async function ProductsPage() {
         <h1 className="text-3xl font-bold tracking-tight">تعریف کالا</h1>
         <div className="flex gap-2">
           <ProductActions products={products} />
+          <Link href="/dashboard/inventory/products/labels">
+            <Button variant="outline">
+              <Barcode className="mr-2 h-4 w-4" /> چاپ گروهی بارکد
+            </Button>
+          </Link>
           <Link href="/dashboard/inventory/web-ids">
             <Button variant="outline">شناسه‌های سایت</Button>
           </Link>

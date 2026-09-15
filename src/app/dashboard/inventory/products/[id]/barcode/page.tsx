@@ -1,6 +1,7 @@
 import { getProductDetail } from '@/actions/product-detail';
 import { notFound } from 'next/navigation';
 import { BarcodePrintWrapper } from '@/components/inventory/barcode-print-wrapper';
+import { barcodeFormatFor } from '@/lib/barcode-format';
 
 export default async function ProductBarcodePrintPage({
   params,
@@ -16,90 +17,15 @@ export default async function ProductBarcodePrintPage({
   // TypeScript doesn't recognize that notFound() never returns, so we assert here
   const productData = product;
 
-  // Calculate UPC-A check digit
-  function calculateUPCACheckDigit(barcode: string): number {
-    let sumOdd = 0;
-    let sumEven = 0;
-    const digits = barcode.substring(0, 11).split('').map(Number);
-    for (let i = 0; i < digits.length; i++) {
-      if ((i + 1) % 2 !== 0) {
-        sumOdd += digits[i];
-      } else {
-        sumEven += digits[i];
-      }
-    }
-    const total = (sumOdd * 3) + sumEven;
-    const remainder = total % 10;
-    return remainder === 0 ? 0 : 10 - remainder;
-  }
-
-  // Calculate EAN-13 check digit
-  function calculateEAN13CheckDigit(barcode: string): number {
-    let sum = 0;
-    const digits = barcode.substring(0, 12).split('').map(Number);
-    for (let i = 0; i < digits.length; i++) {
-      sum += digits[i] * (i % 2 === 0 ? 1 : 3);
-    }
-    const remainder = sum % 10;
-    return remainder === 0 ? 0 : 10 - remainder;
-  }
-
-  // Generate UPC/EAN compatible barcode with valid check digit
-  const barcodeValue = productData.barcode!.replace(/[^0-9]/g, ''); // Remove non-numeric characters
-  let formattedBarcode = barcodeValue;
-  let barcodeFormat = 'CODE128'; // Default to CODE128 which is more flexible
-  
-  if (barcodeValue.length === 12) {
-    // Check if it's a valid UPC-A (has correct check digit)
-    const dataPart = barcodeValue.substring(0, 11);
-    const checkDigit = calculateUPCACheckDigit(dataPart);
-    if (parseInt(barcodeValue[11]) === checkDigit) {
-      barcodeFormat = 'UPC';
-      formattedBarcode = barcodeValue;
-    } else {
-      // Fix check digit
-      formattedBarcode = dataPart + checkDigit.toString();
-      barcodeFormat = 'UPC';
-    }
-  } else if (barcodeValue.length === 13) {
-    // Check if it's a valid EAN-13 (has correct check digit)
-    const dataPart = barcodeValue.substring(0, 12);
-    const checkDigit = calculateEAN13CheckDigit(dataPart);
-    if (parseInt(barcodeValue[12]) === checkDigit) {
-      barcodeFormat = 'EAN13';
-      formattedBarcode = barcodeValue;
-    } else {
-      // Fix check digit
-      formattedBarcode = dataPart + checkDigit.toString();
-      barcodeFormat = 'EAN13';
-    }
-  } else if (barcodeValue.length < 12) {
-    // Pad to 11 digits, calculate check digit for UPC-A
-    const padded = barcodeValue.padStart(11, '0');
-    const checkDigit = calculateUPCACheckDigit(padded);
-    formattedBarcode = padded + checkDigit.toString();
-    barcodeFormat = 'UPC';
-  } else if (barcodeValue.length < 13) {
-    // Pad to 12 digits, calculate check digit for EAN-13
-    const padded = barcodeValue.padStart(12, '0');
-    const checkDigit = calculateEAN13CheckDigit(padded);
-    formattedBarcode = padded + checkDigit.toString();
-    barcodeFormat = 'EAN13';
-  } else {
-    // If too long, truncate to 12 digits and use EAN-13
-    const truncated = barcodeValue.substring(0, 12);
-    const checkDigit = calculateEAN13CheckDigit(truncated);
-    formattedBarcode = truncated + checkDigit.toString();
-    barcodeFormat = 'EAN13';
-  }
+  // Print exactly the stored code: the count scanner looks up Product.barcode as it is.
+  const barcode = productData.barcode!;
 
   return (
     <BarcodePrintWrapper
       productName={productData.name}
       sku={productData.sku}
-      barcode={formattedBarcode}
-      format={barcodeFormat as 'UPC' | 'EAN13' | 'CODE128'}
+      barcode={barcode}
+      format={barcodeFormatFor(barcode)}
     />
   );
 }
-
