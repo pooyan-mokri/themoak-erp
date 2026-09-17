@@ -15,6 +15,15 @@ export async function sendMessage(conversationId: string, userMessage: string) {
       return { success: false, message: 'غیرمجاز' };
     }
 
+    // Only the signed-in user's own conversation.
+    const ownConversation = await prisma.aIConversation.findFirst({
+      where: { id: conversationId, userId: session.user.id },
+      select: { id: true },
+    });
+    if (!ownConversation) {
+      return { success: false, message: 'مکالمه یافت نشد' };
+    }
+
     // Get AI settings
     const settings = await readAISettingsWithKey();
     if (!settings || !settings.enabled) {

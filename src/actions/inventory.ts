@@ -5,10 +5,12 @@ import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
 export async function getInventoryByProduct(productId: string) {
+  await requirePermission('stock.view');
   try {
     const inventory = await prisma.inventory.findMany({
       where: { productId },
@@ -27,29 +29,36 @@ export async function getInventoryByProduct(productId: string) {
 }
 
 export async function getInventoryByWarehouse(warehouseId: string) {
+  await requirePermission('stock.view');
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     const inventory = await prisma.inventory.findMany({
       where: { warehouseId },
       include: { product: true },
       orderBy: { product: { name: 'asc' } }
     });
-    return inventory.map((inv: any) => ({
-      ...inv,
-      product: {
-        ...inv.product,
-        costPrice: Number(inv.product.costPrice),
-        sellPrice: Number(inv.product.sellPrice),
-        image: inv.product.image ?? undefined,
-        wooId: inv.product.wooId ?? undefined,
-        barcode: inv.product.barcode ?? undefined,
-      },
-    }));
+    return inventory.map((inv: any) => {
+      const { costPrice, sellPrice, ...product } = inv.product;
+      return {
+        ...inv,
+        product: {
+          ...product,
+          ...(canSeeCost && { costPrice: Number(costPrice) }),
+          ...(canSeeSellPrice && { sellPrice: Number(sellPrice) }),
+          image: inv.product.image ?? undefined,
+          wooId: inv.product.wooId ?? undefined,
+          barcode: inv.product.barcode ?? undefined,
+        },
+      };
+    });
   } catch (error) {
     throw new Error('Failed to fetch warehouse inventory');
   }
 }
 
 export async function updateStock(productId: string, warehouseId: string, quantity: number) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     await prisma.inventory.upsert({
       where: {
@@ -84,6 +93,8 @@ export async function adjustStock(
   referenceId?: string,
   tags: string[] = [],
 ) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     await prisma.$transaction(async (tx: any) => {
       await tx.inventory.upsert({
@@ -124,6 +135,8 @@ export async function transferStock(
   referenceId?: string,
   tags: string[] = [],
 ) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     await prisma.$transaction(async (tx: any) => {
       // 1. Check source stock
@@ -183,6 +196,8 @@ export async function transferStockBatch(input: {
   tags?: string[];
   note?: string;
 }) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   const { fromWarehouseId, toWarehouseId, items, tags = [], note } = input;
 
   if (!fromWarehouseId || !toWarehouseId) {
@@ -243,6 +258,8 @@ export async function transferStockBatch(input: {
 }
 
 export async function getWarehouseDashboardStats() {
+  await requirePermission('stock.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const [
       totalWarehouses,
@@ -255,14 +272,19 @@ export async function getWarehouseDashboardStats() {
       prisma.inventory.count({
         where: { quantity: { lte: 10 } } // Assuming 10 is low stock threshold
       }),
-      prisma.inventory.findMany({
-        include: { product: true }
-      })
+      // Stock value is quantity × cost: only loaded for roles that may see cost.
+      canSeeCost
+        ? prisma.inventory.findMany({
+            include: { product: true }
+          })
+        : [],
     ]);
 
-    const totalValue = totalInventoryValue.reduce((sum: any, item: any) => {
-      return sum + (item.quantity * Number(item.product.costPrice || 0));
-    }, 0);
+    const totalValue = canSeeCost
+      ? totalInventoryValue.reduce((sum: any, item: any) => {
+          return sum + (item.quantity * Number(item.product.costPrice || 0));
+        }, 0)
+      : null;
 
     return {
       totalWarehouses,
@@ -276,7 +298,7 @@ export async function getWarehouseDashboardStats() {
       totalWarehouses: 0,
       totalProducts: 0,
       lowStockItems: 0,
-      totalValue: 0
+      totalValue: canSeeCost ? 0 : null
     };
   }
 }

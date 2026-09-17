@@ -25,7 +25,7 @@ import {
   type SiteShipTo,
   type SiteStatusEvent,
 } from '@/lib/site-sale-data';
-import { syncInvoiceWithOrder } from '@/actions/invoice';
+import { syncInvoiceWithOrder } from '@/lib/sales-records';
 
 export type SiteSaleResult = { status: 200 | 422; body: Record<string, unknown> };
 

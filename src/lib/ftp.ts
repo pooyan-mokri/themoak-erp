@@ -1,5 +1,5 @@
-'use server';
-
+// Server-only helpers for src/actions/upload.ts and src/actions/ftp.ts, which check access first.
+// Deliberately not a 'use server' file: that would make every export a public endpoint.
 import { Client } from 'basic-ftp';
 import { Readable } from 'stream';
 import { readSystemSetting } from '@/lib/system-settings';

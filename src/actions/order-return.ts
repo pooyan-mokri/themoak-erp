@@ -5,7 +5,8 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
-import { syncInvoiceWithOrder } from './invoice';
+import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
 
@@ -19,6 +20,8 @@ const OrderReturnSchema = z.object({
 });
 
 export async function returnOrderItem(prevState: any, formData: FormData) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return { message: denied.message, success: false };
   const validatedFields = OrderReturnSchema.safeParse({
     orderId: formData.get('orderId'),
     orderItemId: formData.get('orderItemId'),
@@ -301,6 +304,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
 }
 
 export async function getAllOrderReturns(limit = 200) {
+  await requirePermission('sales.view');
   try {
     const returns = await prisma.orderReturn.findMany({
       include: {
@@ -331,6 +335,8 @@ export async function getAllOrderReturns(limit = 200) {
 }
 
 export async function getOrderReturns(orderId: string) {
+  await requirePermission('sales.view');
+  const [canSeeCost, canSeeBalance] = await Promise.all([hasPermission('cost.view'), hasPermission('finance.view')]);
   try {
     const returns = await prisma.orderReturn.findMany({
       where: { orderId },
@@ -352,19 +358,9 @@ export async function getOrderReturns(orderId: string) {
       orderItem: ret.orderItem ? {
         ...ret.orderItem,
         price: Number(ret.orderItem.price),
-        product: ret.orderItem.product ? {
-          ...ret.orderItem.product,
-          costPrice: Number(ret.orderItem.product.costPrice),
-          sellPrice: Number(ret.orderItem.product.sellPrice),
-          image: ret.orderItem.product.image ?? undefined,
-          wooId: ret.orderItem.product.wooId ?? undefined,
-          barcode: ret.orderItem.product.barcode ?? undefined,
-        } : undefined,
+        product: ret.orderItem.product ? productForViewer(ret.orderItem.product, canSeeCost) : undefined,
       } : undefined,
-      account: ret.account ? {
-        ...ret.account,
-        balance: Number(ret.account.balance),
-      } : undefined,
+      account: ret.account ? accountForViewer(ret.account, canSeeBalance) : undefined,
       transaction: ret.transaction ? {
         ...ret.transaction,
         amount: Number(ret.transaction.amount),

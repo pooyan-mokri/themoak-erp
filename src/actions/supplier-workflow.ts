@@ -4,9 +4,15 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { TransactionType, Currency, ActionResult } from '@/lib/types';
 import { z } from 'zod';
+import { checkPermission } from '@/lib/access';
 
 // Workflow Actions
 export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
+  // Moving an order along is procurement work; marking it paid is a payment.
+  const denied = await checkPermission(
+    newStatus === 'PAID' || newStatus === 'PARTIALLY_PAID' ? 'finance.manage' : ['stock.manage', 'finance.manage'],
+  );
+  if (denied) return denied;
   try {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: orderId }
@@ -48,6 +54,8 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
 }
 
 export async function recordPurchasePayment(orderId: string, accountId: string): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
   try {
     await prisma.$transaction(async (tx: any) => {
       const order = await tx.purchaseOrder.findUnique({
@@ -181,6 +189,8 @@ export async function recordPurchasePartialPayment(input: {
   date?: string;         // ISO string from the Jalali picker
   description?: string;
 }): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
   const { orderId, accountId, amount, date, description } = input;
 
   if (!accountId) return { success: false, message: 'لطفا حساب پرداخت را انتخاب کنید.' };
@@ -322,6 +332,9 @@ const arrivalCostsSchema = z.array(z.object({
 }));
 
 export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeof arrivalCostsSchema>, accountId: string): Promise<ActionResult> {
+  // Adds landed costs to the order and pays them from an account.
+  const denied = (await checkPermission('cost.edit')) ?? (await checkPermission('finance.manage'));
+  if (denied) return denied;
   try {
     const validatedCosts = arrivalCostsSchema.parse(arrivalCosts);
 

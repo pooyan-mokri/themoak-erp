@@ -1,10 +1,11 @@
 import { getSuppliers } from '@/actions/supplier';
 import { SupplierList } from '@/components/suppliers/supplier-list';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function SuppliersManagementPage() {
   await requireRouteAccess('/dashboard/suppliers');
   const { data: suppliers, error } = await getSuppliers();
+  const canCreate = await hasPermission(['stock.manage', 'finance.manage']);
 
   if (error) {
     return (
@@ -17,7 +18,7 @@ export default async function SuppliersManagementPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">مدیریت تامین‌کنندگان</h1>
-      <SupplierList suppliers={suppliers || []} />
+      <SupplierList suppliers={suppliers || []} canCreate={canCreate} />
     </div>
   );
 }

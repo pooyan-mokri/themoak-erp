@@ -3,8 +3,18 @@
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { Prisma } from '@prisma/client';
+import { hasPermission, requirePermission } from '@/lib/access';
 
+// Older purchase receipts wrote the landed cost into the movement note.
+const LANDED_COST_NOTE = / - قیمت تمام‌شده هر واحد: .*$/;
+
+/**
+ * Quantities for stock.view. Cost, stock value and purchase prices need cost.view;
+ * sell prices and sale amounts need sales.view.
+ */
 export async function getWarehouseDetail(warehouseId: string) {
+  await requirePermission('stock.view');
+  const [canSeeCost, canSeeSales] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     console.log('Fetching warehouse detail for ID:', warehouseId);
     // Get warehouse info
@@ -33,10 +43,12 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Calculate statistics
     const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
-    const totalValue = inventory.reduce(
-  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
-      0
-    );
+    const totalValue = canSeeCost
+      ? inventory.reduce(
+          (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
+          0
+        )
+      : null;
     const uniqueProducts = inventory.length;
     const itemsWithStock = inventory.filter((item: any) => item.quantity > 0).length;
     const itemsOutOfStock = inventory.filter((item: any) => item.quantity === 0).length;
@@ -156,9 +168,9 @@ export async function getWarehouseDetail(warehouseId: string) {
             productName: item.product.name,
             sku: item.product.sku || '',
             quantity: item.quantity,
-            costPrice: Number(item.product.costPrice),
-            sellPrice: Number(item.product.sellPrice),
-            totalValue: item.quantity * Number(item.product.costPrice),
+            costPrice: canSeeCost ? Number(item.product.costPrice) : null,
+            sellPrice: canSeeSales ? Number(item.product.sellPrice) : null,
+            totalValue: canSeeCost ? item.quantity * Number(item.product.costPrice) : null,
             productType: item.product.productType,
           };
         } catch (err: any) {
@@ -178,8 +190,8 @@ export async function getWarehouseDetail(warehouseId: string) {
             id: item.id,
             productName: item.product.name,
             quantity: item.quantity,
-            price: Number(item.price),
-            total: item.quantity * Number(item.price),
+            price: canSeeSales ? Number(item.price) : null,
+            total: canSeeSales ? item.quantity * Number(item.price) : null,
             orderNumber: item.order.number,
             customerName: item.order.customer?.name || 'مشتری عمومی',
             orderDate: formatJalaliDateTime(item.order.createdAt),
@@ -202,8 +214,8 @@ export async function getWarehouseDetail(warehouseId: string) {
             id: item.id,
             productName: item.product.name,
             quantity: item.quantity,
-            price: Number(item.unitCost),
-            total: item.quantity * Number(item.unitCost),
+            price: canSeeCost ? Number(item.unitCost) : null,
+            total: canSeeCost ? item.quantity * Number(item.unitCost) : null,
             orderNumber: item.purchaseOrder.number,
             supplierName: item.purchaseOrder.supplier?.name || 'نامشخص',
             orderDate: formatJalaliDateTime(item.purchaseOrder.createdAt),
@@ -272,7 +284,7 @@ export async function getWarehouseDetail(warehouseId: string) {
         date: formatJalaliDateTime(m.createdAt),
         reference: m.referenceId ?? typeLabel[m.type] ?? m.type,
         counterpart,
-        note: m.note ?? '',
+        note: canSeeCost ? (m.note ?? '') : (m.note ?? '').replace(LANDED_COST_NOTE, ''),
       };
     });
 
@@ -282,10 +294,12 @@ export async function getWarehouseDetail(warehouseId: string) {
       return item.quantity < 10 && item.quantity > 0;
     });
 
-    // Get top products by value
-    const topProductsByValue = [...formattedInventory]
-      .sort((a: any, b: any) => b.totalValue - a.totalValue)
-      .slice(0, 10);
+    // Get top products by value (a ranking by cost, so none without cost.view)
+    const topProductsByValue = canSeeCost
+      ? [...formattedInventory]
+          .sort((a: any, b: any) => b.totalValue - a.totalValue)
+          .slice(0, 10)
+      : [];
 
     return {
       warehouse: {

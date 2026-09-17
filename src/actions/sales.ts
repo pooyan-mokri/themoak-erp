@@ -17,6 +17,8 @@ import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { balanceEffect } from '@/lib/balance-reconciliation';
 import { WEBSITE_ORDER_LOCKED, readSiteOrderData } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { accountForViewer, productForViewer } from '@/lib/sales-records';
 
 // const prisma = new PrismaClient();
 
@@ -43,6 +45,8 @@ interface OrderData {
 }
 
 export async function createOrder(data: OrderData) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate, tags = [], invoiceAccountId } = data;
   const orderDate = saleDate ? new Date(saleDate) : new Date();
 
@@ -223,6 +227,8 @@ export async function createOrder(data: OrderData) {
 }
 
 export async function getOrders() {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const orders = await prisma.order.findMany({
       include: {
@@ -269,14 +275,7 @@ export async function getOrders() {
       items: order.items.map((item: any) => ({
         ...item,
         price: Number(item.price),
-        product: item.product ? {
-          ...item.product,
-          costPrice: Number(item.product.costPrice),
-          sellPrice: Number(item.product.sellPrice),
-          image: item.product.image ?? undefined,
-          wooId: item.product.wooId ?? undefined,
-          barcode: item.product.barcode ?? undefined,
-        } : undefined,
+        product: item.product ? productForViewer(item.product, canSeeCost) : undefined,
       })),
     }));
   } catch (error) {
@@ -287,6 +286,8 @@ export async function getOrders() {
 
 // Record payment for an unpaid or partially paid order
 export async function recordOrderPayment(orderId: string, accountId: string, amount: number) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -359,6 +360,8 @@ export async function recordOrderPayment(orderId: string, accountId: string, amo
 }
 
 export async function getOrder(id: string) {
+  await requirePermission('sales.view');
+  const [canSeeCost, canSeeBalance] = await Promise.all([hasPermission('cost.view'), hasPermission('finance.view')]);
   try {
     const order = await prisma.order.findUnique({
       where: { id },
@@ -450,14 +453,7 @@ export async function getOrder(id: string) {
           returns: undefined,
           exchanges: undefined,
           exchangeItems: undefined,
-          product: item.product ? {
-            ...item.product,
-            costPrice: Number(item.product.costPrice),
-            sellPrice: Number(item.product.sellPrice),
-            image: item.product.image ?? undefined,
-            wooId: item.product.wooId ?? undefined,
-            barcode: item.product.barcode ?? undefined,
-          } : undefined,
+          product: item.product ? productForViewer(item.product, canSeeCost) : undefined,
         };
       }),
       transaction: order.transaction ? {
@@ -474,10 +470,7 @@ export async function getOrder(id: string) {
         receiptUrl: order.transaction.receiptUrl ?? undefined,
         shareholderId: order.transaction.shareholderId ?? undefined,
         employeeId: order.transaction.employeeId ?? undefined,
-        account: order.transaction.account ? {
-          ...order.transaction.account,
-          balance: Number(order.transaction.account.balance),
-        } : undefined,
+        account: order.transaction.account ? accountForViewer(order.transaction.account, canSeeBalance) : undefined,
       } : undefined,
       invoice: order.invoice ? {
         ...order.invoice,
@@ -504,6 +497,8 @@ export async function cancelOrder(orderId: string): Promise<{
   success: boolean;
   message: string;
 }> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     // Get order with all relations
     const order = await prisma.order.findUnique({

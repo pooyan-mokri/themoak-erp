@@ -13,13 +13,20 @@ import { MyTasksWidget } from '@/components/dashboard/my-tasks-widget';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ShoppingCart, Package, DollarSign, Gift, Bot } from 'lucide-react';
 import Link from 'next/link';
+import { hasPermission } from '@/lib/access';
 
 export default async function DashboardPage() {
+  // Every signed-in user opens the dashboard: load only the cards the role may see.
+  const [canSeeFinance, canSeeStock] = await Promise.all([
+    hasPermission('finance.view'),
+    hasPermission('stock.view'),
+  ]);
+
   // Fetch all dashboard data in parallel
   const [financials, sales, lowStockItems, recentActivity, userTasks] = await Promise.all([
-    getDashboardFinancials(),
-    getDashboardSales(),
-    getLowStockItems(),
+    canSeeFinance ? getDashboardFinancials() : null,
+    canSeeFinance ? getDashboardSales() : null,
+    canSeeStock ? getLowStockItems() : null,
     getRecentActivity(),
     getUserTasks(),
   ]);
@@ -73,18 +80,20 @@ export default async function DashboardPage() {
       </div>
 
       {/* Financial Overview */}
-      <FinancialCards financials={financials} />
+      {financials && <FinancialCards financials={financials} />}
 
       {/* Sales Analytics & Alerts - 2 Column Layout */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left Column: Sales Chart */}
-        <div>
-          <SalesChart sales={sales} />
-        </div>
+        {sales && (
+          <div>
+            <SalesChart sales={sales} />
+          </div>
+        )}
 
         {/* Right Column: Alerts & Activity */}
         <div className="space-y-6">
-          <LowStockAlert items={lowStockItems} />
+          {lowStockItems && <LowStockAlert items={lowStockItems} />}
           <MyTasksWidget tasks={userTasks} />
         </div>
       </div>

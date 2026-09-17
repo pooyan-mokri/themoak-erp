@@ -37,9 +37,13 @@ const initialState = {
 interface ProductFormProps {
   initialData?: any;
   onSuccess?: () => void;
+  /** Without it the cost field is left out, and the server keeps the stored cost. */
+  canEditCost: boolean;
+  /** Without it the sell price field is left out, and the server keeps the stored price. */
+  canSeeSellPrice: boolean;
 }
 
-export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
+export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPrice }: ProductFormProps) {
   const updateProductWithId = initialData ? updateProduct.bind(null, initialData.id) : undefined;
   const action = initialData ? updateProductWithId : createProduct;
   
@@ -122,33 +126,37 @@ export function ProductForm({ initialData, onSuccess }: ProductFormProps) {
               <input type="hidden" name="productType" value={productType} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.productType && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.productType}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="costPrice">قیمت خرید (تومان)</Label>
-              <Input 
-                id="costPrice" 
-                name="costPrice" 
-                type="number" 
-                min="0" 
-                required 
-                defaultValue={initialData ? Number(initialData.costPrice) : undefined}
-              />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sellPrice">
-                قیمت فروش (تومان)
-                {productType === 'SALEABLE' && ' *'}
-              </Label>
-              <Input 
-                id="sellPrice" 
-                name="sellPrice" 
-                type="number" 
-                min="0" 
-                required={productType === 'SALEABLE'}
-                defaultValue={initialData ? Number(initialData.sellPrice) : undefined}
-              />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice}</p>}
-            </div>
+            {canEditCost && (
+              <div className="space-y-2">
+                <Label htmlFor="costPrice">قیمت خرید (تومان)</Label>
+                <Input 
+                  id="costPrice" 
+                  name="costPrice" 
+                  type="number" 
+                  min="0" 
+                  required 
+                  defaultValue={initialData ? Number(initialData.costPrice) : undefined}
+                />
+                {(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice}</p>}
+              </div>
+            )}
+            {canSeeSellPrice && (
+              <div className="space-y-2">
+                <Label htmlFor="sellPrice">
+                  قیمت فروش (تومان)
+                  {productType === 'SALEABLE' && ' *'}
+                </Label>
+                <Input 
+                  id="sellPrice" 
+                  name="sellPrice" 
+                  type="number" 
+                  min="0" 
+                  required={productType === 'SALEABLE'}
+                  defaultValue={initialData ? Number(initialData.sellPrice) : undefined}
+                />
+                {(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice}</p>}
+              </div>
+            )}
             <WebIdField
               initialWebId={initialData?.webId}
               error={(state.errors as Record<string, string[] | undefined> | undefined)?.webId}

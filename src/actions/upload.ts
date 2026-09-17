@@ -5,8 +5,12 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { readSystemSetting } from '@/lib/system-settings';
 import { uploadToFTP, deleteFromFTP } from '@/lib/ftp';
+import { checkPermission, requirePermission } from '@/lib/access';
 
+// Receipts are attached to expenses, withdrawals and transfers.
 export async function uploadReceipt(formData: FormData) {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
   try {
     const file = formData.get('file') as File;
 
@@ -107,6 +111,8 @@ export async function uploadReceipt(formData: FormData) {
 }
 
 export async function deleteReceipt(url: string) {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
   try {
     // Check if it's an FTP URL
     if (url.startsWith('ftp:')) {
@@ -139,6 +145,7 @@ export async function deleteReceipt(url: string) {
  * Get viewable URL for a receipt (handles both local and FTP)
  */
 export async function getReceiptViewUrl(url: string): Promise<string> {
+  await requirePermission('finance.view');
   if (url.startsWith('ftp:')) {
     // For FTP, you may need to construct a web-accessible URL
     // This depends on your FTP server setup (e.g., if it's accessible via HTTP)
@@ -150,6 +157,8 @@ export async function getReceiptViewUrl(url: string): Promise<string> {
 }
 
 export async function uploadProductImage(formData: FormData) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const file = formData.get('file') as File;
 
@@ -202,6 +211,8 @@ export async function uploadProductImage(formData: FormData) {
 }
 
 export async function deleteProductImage(url: string) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     // Extract filename from URL
     const filename = url.split('/').pop();

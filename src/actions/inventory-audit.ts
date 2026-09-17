@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { ActionResult, ActionState } from '@/lib/types';
 import { kickSiteHook } from '@/lib/site-hook';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 
 // Generate unique audit number
 function generateAuditNumber(): string {
@@ -22,6 +23,18 @@ function generateTagBarcode(auditId: string, index: number, productBarcode?: str
     return productBarcode;
   }
   return `TAG-${auditId.substring(0, 8)}-${index.toString().padStart(6, '0')}`;
+}
+
+// Counts and quantity differences are stock.view; an item's discrepancy value and its product's cost price need
+// cost.view, the sell price sales.view. Drops what the caller may not see from an audit item.
+function withoutHiddenMoney(item: any, canSeeCost: boolean, canSeeSellPrice: boolean) {
+  const { discrepancyValue, product, ...rest } = item;
+  let shownProduct = product;
+  if (product) {
+    const { costPrice, sellPrice, ...productRest } = product;
+    shownProduct = { ...productRest, ...(canSeeCost && { costPrice }), ...(canSeeSellPrice && { sellPrice }) };
+  }
+  return { ...rest, ...(canSeeCost && { discrepancyValue }), product: shownProduct };
 }
 
 // A refusal found inside a transaction: thrown so everything rolls back, then shown to the user as it is.
@@ -60,6 +73,8 @@ export async function createInventoryAudit(
   prevState: ActionState<{ auditId: string }>,
   formData: FormData
 ): Promise<ActionResult<{ auditId: string }>> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     console.log('=== createInventoryAudit START ===');
     const session = await auth();
@@ -135,6 +150,8 @@ export async function createInventoryAudit(
 
 // 2. Pre-Audit: Freeze Inventory (Create Snapshot)
 export async function freezeInventory(auditId: string): Promise<ActionResult<{ snapshotCount: number }>> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -227,6 +244,8 @@ export async function generateAuditTags(
   tagType: string = 'SHELF',
   count?: number
 ): Promise<ActionResult<{ tagCount: number }>> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -284,6 +303,8 @@ export async function addAuditTeamMember(
   userId: string,
   role: string = 'COUNTER'
 ): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -343,6 +364,8 @@ export async function addAuditTeamMember(
 
 // 5. Pre-Audit: Remove Team Member
 export async function removeAuditTeamMember(auditId: string, userId: string): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -387,6 +410,8 @@ export async function removeAuditTeamMember(auditId: string, userId: string): Pr
 
 // Get Audit Details
 export async function getInventoryAudit(auditId: string) {
+  await requirePermission('stock.view');
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
@@ -417,7 +442,7 @@ export async function getInventoryAudit(auditId: string) {
     return {
       ...audit,
       description: audit.description ?? undefined,
-      items: audit.items.map((item: any) => ({
+      items: audit.items.map((item: any) => withoutHiddenMoney({
         ...item,
         countedQuantity1: item.countedQuantity1 ?? undefined,
         countedQuantity2: item.countedQuantity2 ?? undefined,
@@ -439,7 +464,7 @@ export async function getInventoryAudit(auditId: string) {
           wooId: item.product.wooId ?? undefined,
           barcode: item.product.barcode ?? undefined,
         } : undefined,
-      })),
+      }, canSeeCost, canSeeSellPrice)),
     };
   } catch (error: unknown) {
     console.error('Error fetching inventory audit:', error);
@@ -449,6 +474,7 @@ export async function getInventoryAudit(auditId: string) {
 
 // Get All Audits
 export async function getInventoryAudits(warehouseId?: string) {
+  await requirePermission('stock.view');
   try {
     const where: Prisma.InventoryAuditWhereInput = {};
     if (warehouseId) {
@@ -495,6 +521,8 @@ export async function recordCount(
   countRound: 1 | 2 | 3 = 1,
   notes?: string
 ): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -605,6 +633,8 @@ export async function saveAuditCounts(
   round: 1 | 2 | 3,
   saves: Array<{ productId: string; count: number | null; base: number | null }>
 ): Promise<SaveAuditCountsResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -704,6 +734,8 @@ export async function setFinalQuantity(
   productId: string,
   finalQuantity: number
 ): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -785,6 +817,8 @@ export async function setFinalQuantity(
 
 // 8b. Execution: Finalise every counted item from its latest round
 export async function finalizeAllFromLastCount(auditId: string): Promise<ActionResult<{ finalizedCount: number }>> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -847,6 +881,8 @@ export async function setZeroForUncounted(
   auditId: string,
   productIds: string[]
 ): Promise<ActionResult<{ updatedCount: number }>> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -909,6 +945,8 @@ export async function setZeroForUncounted(
 
 // 9. Post-Audit: Calculate Discrepancies
 export async function calculateDiscrepancies(auditId: string): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -973,6 +1011,8 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
 
 // 10. Post-Audit: Get Discrepancy Report
 export async function getDiscrepancyReport(auditId: string) {
+  if (!(await hasPermission('stock.view'))) return undefined;
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -1005,16 +1045,21 @@ export async function getDiscrepancyReport(auditId: string) {
       return undefined;
     }
 
-    const totalDiscrepancyValue = audit.items.reduce(
-  (sum: any, item: any) => sum + Number(item.discrepancyValue || 0),
-      0
-    );
+    const totalDiscrepancyValue = canSeeCost
+      ? audit.items.reduce(
+          (sum: any, item: any) => sum + Number(item.discrepancyValue || 0),
+          0
+        )
+      : null;
 
     const shortageCount = audit.items.filter((item: any) => (item.discrepancy || 0) < 0).length;
     const excessCount = audit.items.filter((item: any) => (item.discrepancy || 0) > 0).length;
 
     return {
-      audit,
+      audit: {
+        ...audit,
+        items: audit.items.map((item: any) => withoutHiddenMoney(item, canSeeCost, canSeeSellPrice)),
+      },
       totalDiscrepancyValue,
       shortageCount,
       excessCount,
@@ -1140,6 +1185,8 @@ export async function issueAdjustmentDocuments(
 
 // 12. Post-Audit: Get Performance Report
 export async function getPerformanceReport(auditId: string) {
+  if (!(await hasPermission('stock.view'))) return undefined;
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     const audit = await prisma.inventoryAudit.findUnique({
       where: { id: auditId },
@@ -1186,7 +1233,10 @@ export async function getPerformanceReport(auditId: string) {
     });
 
     return {
-      audit,
+      audit: {
+        ...audit,
+        items: audit.items.map((item: any) => withoutHiddenMoney(item, canSeeCost, canSeeSellPrice)),
+      },
       statistics: {
         totalItems,
         countedItems,

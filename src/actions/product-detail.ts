@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { hasPermission, requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
@@ -11,6 +12,8 @@ import { formatJalaliDate } from '@/lib/date-utils';
  * Get complete product details with all analytics
  */
 export async function getProductDetail(productId: string) {
+  await requirePermission('stock.view');
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -20,8 +23,8 @@ export async function getProductDetail(productId: string) {
         sku: true,
         barcode: true,
         productType: true,
-        costPrice: true,
-        sellPrice: true,
+        costPrice: canSeeCost,
+        sellPrice: canSeeSellPrice,
         image: true,
         imageUrl: true,
         siteUrl: true,
@@ -44,7 +47,6 @@ export async function getProductDetail(productId: string) {
     const availableStock = product.inventory
       .filter((inv: any) => !inv.warehouse.isVirtual)
       .reduce((sum: any, inv: any) => sum + inv.quantity, 0);
-    const stockValue = totalStock * Number(product.costPrice);
 
     return {
       id: product.id,
@@ -54,11 +56,11 @@ export async function getProductDetail(productId: string) {
       image: product.image ?? undefined,
       imageUrl: product.imageUrl ?? undefined,
       siteUrl: product.siteUrl ?? undefined,
-      costPrice: Number(product.costPrice),
-      sellPrice: Number(product.sellPrice),
+      ...(canSeeCost ? { costPrice: Number(product.costPrice) } : {}),
+      ...(canSeeSellPrice ? { sellPrice: Number(product.sellPrice) } : {}),
       totalStock,
       availableStock,
-      stockValue,
+      ...(canSeeCost ? { stockValue: totalStock * Number(product.costPrice) } : {}),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     };
@@ -72,6 +74,7 @@ export async function getProductDetail(productId: string) {
  * Get stock breakdown by warehouse
  */
 export async function getProductStockBreakdown(productId: string) {
+  await requirePermission('stock.view');
   try {
     const inventory = await prisma.inventory.findMany({
       where: { productId },
@@ -97,6 +100,8 @@ export async function getProductStockBreakdown(productId: string) {
  * Get product sales analytics
  */
 export async function getProductSalesAnalytics(productId: string) {
+  await requirePermission('stock.view');
+  const canSeeSellPrice = await hasPermission('sales.view');
   try {
     // Get all order items for this product
     const orderItems = await prisma.orderItem.findMany({
@@ -134,8 +139,8 @@ export async function getProductSalesAnalytics(productId: string) {
 
     return {
       totalUnitsSold,
-      totalRevenue,
-      avgSellingPrice,
+      // Money from sell prices: units and velocity only, without sales.view.
+      ...(canSeeSellPrice ? { totalRevenue, avgSellingPrice } : {}),
       velocityPerWeek: weeksSinceFirstSale > 0 ? totalUnitsSold / weeksSinceFirstSale : 0,
       velocityPerMonth: monthsSinceFirstSale > 0 ? totalUnitsSold / monthsSinceFirstSale : 0,
       velocityPerYear: yearsSinceFirstSale > 0 ? totalUnitsSold / yearsSinceFirstSale : 0
@@ -157,6 +162,7 @@ export async function getProductSalesAnalytics(productId: string) {
  * Get product movement history
  */
 export async function getProductMovementHistory(productId: string, limit: number = 20) {
+  await requirePermission('stock.view');
   try {
     // Get sales from orders
     const sales = await prisma.orderItem.findMany({
@@ -242,6 +248,8 @@ export async function getProductMovementHistory(productId: string, limit: number
  * Get sales history for chart (last N months)
  */
 export async function getProductSalesHistory(productId: string, months: number = 12) {
+  await requirePermission('stock.view');
+  const canSeeSellPrice = await hasPermission('sales.view');
   try {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
@@ -286,7 +294,7 @@ export async function getProductSalesHistory(productId: string, months: number =
       .map(([month, data]) => ({
         month,
         units: data.units,
-        revenue: data.revenue
+        ...(canSeeSellPrice ? { revenue: data.revenue } : {}),
       }))
       .sort((a: any, b: any) => a.month.localeCompare(b.month));
   } catch (error) {

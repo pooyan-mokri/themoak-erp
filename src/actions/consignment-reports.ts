@@ -2,8 +2,12 @@
 
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { hasPermission, requirePermission } from '@/lib/access';
 
+/** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     // Get all consignment partners
     const partners = await prisma.warehouse.findMany({
@@ -92,11 +96,13 @@ export async function getConsignmentReport() {
       // Calculate unpaid commissions
       const unpaidCommissions = totalCommissions - paidCommissions;
 
-      // Calculate inventory value
-      const inventoryValue = partner.inventory.reduce((sum: any, inv: any) => {
-        const costPrice = Number(inv.product.costPrice || 0);
-        return sum + inv.quantity * costPrice;
-      }, 0);
+      // Calculate inventory value (at cost)
+      const inventoryValue = canSeeCost
+        ? partner.inventory.reduce((sum: any, inv: any) => {
+            const costPrice = Number(inv.product.costPrice || 0);
+            return sum + inv.quantity * costPrice;
+          }, 0)
+        : null;
 
       const inventoryQuantity = partner.inventory.reduce(
   (sum: any, inv: any) => sum + inv.quantity,
@@ -141,15 +147,18 @@ export async function getConsignmentReport() {
             taxId: order.customer.taxId ?? undefined,
             segment: order.customer.segment ?? undefined,
           } : undefined,
-          items: order.items.map((item: any) => ({
-            ...item,
-            product: item.product ? {
-              ...item.product,
-              image: item.product.image ?? undefined,
-              wooId: item.product.wooId ?? undefined,
-              barcode: item.product.barcode ?? undefined,
-            } : undefined,
-          })),
+          items: order.items.map((item: any) => {
+            const { costPrice, ...productWithoutCost } = item.product ?? {};
+            return {
+              ...item,
+              product: item.product ? {
+                ...(canSeeCost ? item.product : productWithoutCost),
+                image: item.product.image ?? undefined,
+                wooId: item.product.wooId ?? undefined,
+                barcode: item.product.barcode ?? undefined,
+              } : undefined,
+            };
+          }),
         })), // Last 10 orders
       };
     }).filter((p: any): p is NonNullable<typeof p> => p !== null);
@@ -172,10 +181,12 @@ export async function getConsignmentReport() {
   (sum: any, p: any) => sum + (p?.unpaidCommissions || 0),
         0
       ),
-      totalInventoryValue: partnerStats.reduce(
-  (sum: any, p: any) => sum + (p?.inventoryValue || 0),
-        0
-      ),
+      totalInventoryValue: canSeeCost
+        ? partnerStats.reduce(
+            (sum: any, p: any) => sum + (p?.inventoryValue || 0),
+            0
+          )
+        : null,
       totalInventoryQuantity: partnerStats.reduce(
   (sum: any, p: any) => sum + (p?.inventoryQuantity || 0),
         0
@@ -199,7 +210,7 @@ export async function getConsignmentReport() {
         totalCommissions: 0,
         paidCommissions: 0,
         unpaidCommissions: 0,
-        totalInventoryValue: 0,
+        totalInventoryValue: canSeeCost ? 0 : null,
         totalInventoryQuantity: 0,
         totalOrders: 0,
       },

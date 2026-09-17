@@ -1,8 +1,11 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { requirePermission } from '@/lib/access';
 
+// Stock values at cost throughout; only the cost.view inventory reports page reads it.
 export async function getInventoryReport() {
+  await requirePermission('cost.view');
   try {
     // Get all saleable products with inventory
     const saleableProducts = await prisma.product.findMany({

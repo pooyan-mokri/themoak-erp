@@ -3,17 +3,16 @@ import { WarehouseForm } from '@/components/inventory/warehouse-form';
 import { WarehouseList } from '@/components/inventory/warehouse-list';
 import { prisma } from '@/lib/prisma';
 import { DEFAULT_SITE_WAREHOUSE_NAME, pickWithDefault, readSiteConnection } from '@/lib/site-connection';
-import { auth } from '@/auth';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Archive } from 'lucide-react';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function WarehousesPage() {
   await requireRouteAccess('/dashboard/inventory');
   const warehouses = await getWarehouses();
-  const session = await auth();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
+  const canManageStock = await hasPermission('stock.manage');
 
   // Total stock per warehouse (sum of inventory quantities). Min/max reveal a
   // non-zero row inside a zero sum (+4 of one product, -4 of another), which
@@ -55,13 +54,16 @@ export default async function WarehousesPage() {
         </Link>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
-          <WarehouseForm />
-        </div>
+        {canManageStock && (
+          <div className="md:col-span-1">
+            <WarehouseForm />
+          </div>
+        )}
         <div className="md:col-span-2">
           <WarehouseList
             warehouses={warehouses}
             isAdmin={isAdmin}
+            canEdit={canManageStock}
             stockByWarehouse={stockByWarehouse}
             nonZeroStock={nonZeroStock}
             siteWarehouseId={siteWarehouseId}

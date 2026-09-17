@@ -4,7 +4,7 @@ import { FixedAsset } from '@/lib/types';
 import { PostDepreciationButton } from '@/components/accounting/post-depreciation-button';
 
 import { formatJalaliDate } from '@/lib/date-utils';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 type AssetWithCurrentValue = Omit<FixedAsset, 'currentValue' | 'purchasePrice' | 'salvageValue' | 'quantity'> & {
   currentValue: number;
   purchasePrice: number;
@@ -15,17 +15,20 @@ type AssetWithCurrentValue = Omit<FixedAsset, 'currentValue' | 'purchasePrice' |
 export default async function AssetsPage() {
   await requireRouteAccess('/dashboard/accounting');
   const assets = await getAssets();
+  const canManageFinance = await hasPermission('finance.manage');
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">دارایی‌های ثابت</h1>
-        <Link
-          href="/dashboard/accounting/assets/new"
-          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-        >
-          ثبت دارایی جدید
-        </Link>
+        {canManageFinance && (
+          <Link
+            href="/dashboard/accounting/assets/new"
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+          >
+            ثبت دارایی جدید
+          </Link>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -78,7 +81,7 @@ export default async function AssetsPage() {
                     {asset.usefulLife}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <PostDepreciationButton assetId={asset.id} />
+                    {canManageFinance && <PostDepreciationButton assetId={asset.id} />}
                   </td>
                 </tr>
               ))

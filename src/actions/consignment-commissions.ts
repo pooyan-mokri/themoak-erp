@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { requirePermission } from '@/lib/access';
 
 /**
  * "طلب از همکار" — outstanding NET amount partners owe us. Partners deduct
@@ -11,6 +12,7 @@ import { Prisma } from '@prisma/client';
  * an expense at creation time).
  */
 export async function getConsignmentCommissionsReport() {
+  await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
       where: {

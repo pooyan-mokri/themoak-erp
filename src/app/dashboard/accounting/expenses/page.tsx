@@ -3,11 +3,14 @@ import { getAccounts } from '@/actions/accounting';
 import { ExpenseForm } from '@/components/accounting/expense-form';
 import { ExpenseList } from '@/components/accounting/expense-list';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, hasPermission, requireRouteAccess } from '@/lib/access';
+
+// COGS and gift rows are valued at product cost (the same rule as getTransactions).
+const COST_CATEGORIES = ['COGS', 'Marketing - Gift', 'Marketing/Gift'];
 
 async function getExpenses() {
   try {
+    const canSeeCost = await hasPermission('cost.view');
     const expenses = await prisma.transaction.findMany({
       where: {
         type: 'EXPENSE',
@@ -25,15 +28,20 @@ async function getExpenses() {
       include: {
         account: true,
         employee: true,
+        marketingGift: { select: { id: true } },
       },
       orderBy: { date: 'desc' },
       take: 100 // Increased limit for better filtering
     });
 
+    // The row stays listed; a role without cost.view gets no amount for a COGS or gift row.
+    const hidesCost = (expense: any) =>
+      !canSeeCost && (COST_CATEGORIES.includes(expense.category ?? '') || !!expense.marketingGift);
+
     return expenses.map((expense: any) => ({
       ...expense,
-      amount: Number(expense.amount),
-      amountInToman: Number(expense.amountInToman),
+      amount: hidesCost(expense) ? null : Number(expense.amount),
+      amountInToman: hidesCost(expense) ? null : Number(expense.amountInToman),
       rateSnapshot: Number(expense.rateSnapshot),
       description: expense.description ?? undefined,
       category: expense.category ?? undefined,
@@ -70,8 +78,7 @@ export default async function ExpensesPage() {
   await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   const expenses = await getExpenses();
-  const session = await auth();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
 
   return (
     <div className="space-y-6">

@@ -3,6 +3,7 @@
 import { PrismaClient } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
+import { requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
@@ -54,6 +55,8 @@ interface ProductAnalytics {
 }
 
 export async function getProductAnalytics(productId: string): Promise<ProductAnalytics | undefined> {
+  // Revenue, average cost, profit and margin together: only a profit viewer sees them.
+  await requirePermission('profit.view');
   try {
     // Get product details
     const product = await prisma.product.findUnique({
@@ -170,6 +173,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
 }
 
 export async function getProductSalesByWarehouse(productId: string) {
+  await requirePermission('sales.view');
   try {
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -211,6 +215,7 @@ export async function getProductSalesByWarehouse(productId: string) {
 }
 
 export async function getProductStockByWarehouse(productId: string) {
+  await requirePermission('stock.view');
   try {
     const inventory = await prisma.inventory.findMany({
       where: { productId },

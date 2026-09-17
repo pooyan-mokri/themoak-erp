@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { generateUniqueBarcode } from '@/lib/barcode-utils';
 import { barcodeFormatFor, isStandardBarcode, type BarcodeFormat } from '@/lib/barcode-format';
 import { ActionState, ActionResult } from '@/lib/types';
@@ -23,6 +24,9 @@ const ProductSchema = z.object({
 });
 
 export async function createProduct(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
+  const [canEditCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.edit'), hasPermission('sales.view')]);
   const imageValue = formData.get('image');
   const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : undefined;
 
@@ -64,8 +68,9 @@ export async function createProduct(prevState: ActionState, formData: FormData):
         sku,
         barcode,
         productType,
-        costPrice,
-        sellPrice,
+        // No cost field without cost.edit, no sell price without sales.view: those start at 0.
+        costPrice: canEditCost ? costPrice : 0,
+        sellPrice: canSeeSellPrice ? sellPrice : 0,
         image: validatedImage || undefined,
         webId,
       },
@@ -87,9 +92,26 @@ export async function createProduct(prevState: ActionState, formData: FormData):
 }
 
 export async function getProducts() {
+  await requirePermission(['stock.view', 'sales.view']);
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     const products = await prisma.product.findMany({
       orderBy: { createdAt: 'desc' },
+      // A price the caller may not see never leaves the database.
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        barcode: true,
+        productType: true,
+        costPrice: canSeeCost,
+        sellPrice: canSeeSellPrice,
+        image: true,
+        wooId: true,
+        webId: true,
+        imageUrl: true,
+        siteUrl: true,
+      },
     });
     // Convert Decimal to number for client components
     return products.map((product: any) => ({
@@ -98,8 +120,8 @@ export async function getProducts() {
       sku: product.sku,
       barcode: product.barcode ?? undefined,
       productType: product.productType,
-      costPrice: Number(product.costPrice),
-      sellPrice: Number(product.sellPrice),
+      ...(canSeeCost ? { costPrice: Number(product.costPrice) } : {}),
+      ...(canSeeSellPrice ? { sellPrice: Number(product.sellPrice) } : {}),
       image: product.image ?? undefined,
       wooId: product.wooId ?? undefined,
       webId: product.webId ?? undefined,
@@ -113,6 +135,9 @@ export async function getProducts() {
 }
 
 export async function giftProduct(productId: string, quantity: number, recipient: string, note?: string) {
+  // A gift takes stock and books its cost as an expense: it needs both.
+  const denied = (await checkPermission('stock.manage')) ?? (await checkPermission('finance.manage'));
+  if (denied) return denied;
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       // 1. Find product to get cost price
@@ -184,6 +209,9 @@ export async function giftProduct(productId: string, quantity: number, recipient
 }
 
 export async function importProducts(products: Array<Record<string, unknown>>) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return { ...denied, successCount: 0, errorCount: 0 };
+  const [canEditCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.edit'), hasPermission('sales.view')]);
   let successCount = 0;
   let errorCount = 0;
 
@@ -205,8 +233,9 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
           where: { sku: String(p.sku) },
           data: {
             name: String(p.name),
-            costPrice: Number(p.costPrice) || 0,
-            sellPrice: Number(p.sellPrice) || 0,
+            // A price the importer may not set keeps its stored value.
+            ...(canEditCost ? { costPrice: Number(p.costPrice) || 0 } : {}),
+            ...(canSeeSellPrice ? { sellPrice: Number(p.sellPrice) || 0 } : {}),
             image: typeof p.image === 'string' ? p.image : undefined,
             // Don't update barcode if it exists
           },
@@ -220,8 +249,8 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
             name: String(p.name),
             sku: String(p.sku),
             barcode,
-            costPrice: Number(p.costPrice) || 0,
-            sellPrice: Number(p.sellPrice) || 0,
+            costPrice: canEditCost ? Number(p.costPrice) || 0 : 0,
+            sellPrice: canSeeSellPrice ? Number(p.sellPrice) || 0 : 0,
             image: typeof p.image === 'string' ? p.image : undefined,
           },
         });
@@ -238,6 +267,9 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
 }
 
 export async function updateProduct(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
+  const [canEditCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.edit'), hasPermission('sales.view')]);
   const imageValue = formData.get('image');
   const image = imageValue && imageValue.toString().trim() ? imageValue.toString().trim() : undefined;
 
@@ -303,8 +335,10 @@ export async function updateProduct(id: string, prevState: ActionState, formData
       name,
       sku,
       productType,
-      costPrice,
-      sellPrice,
+      // The form has no field for a price the user may not set (z.coerce made the
+      // missing value 0), so the stored price stays.
+      ...(canEditCost ? { costPrice } : {}),
+      ...(canSeeSellPrice ? { sellPrice } : {}),
       image: validatedImage || undefined,
       // A new or cleared webId invalidates the photo and link that came with the
       // old one; the next catalogue sync refills them for the new webId.
@@ -342,10 +376,8 @@ export async function generateProductBarcodeAction(
   productId: string,
   replace = false,
 ): Promise<{ success: boolean; message: string; barcode?: string }> {
-  const session = await auth();
-  if (!session?.user) {
-    return { success: false, message: 'دسترسی غیرمجاز' };
-  }
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
 
   try {
     const product = await prisma.product.findUnique({
@@ -491,7 +523,7 @@ export async function getProductsForLabels(input: {
   inStockOnly?: boolean;
   nonStandardOnly?: boolean;
 }): Promise<ProductForLabel[]> {
-  await requireSignedIn();
+  await requirePermission('stock.view');
   const search = input.search?.trim();
   const warehouseId = input.warehouseId || undefined;
 
@@ -536,6 +568,8 @@ export async function getProductsForLabels(input: {
 }
 
 export async function deleteProduct(id: string) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     // Check for inventory
     const inventoryCount = await prisma.inventory.count({

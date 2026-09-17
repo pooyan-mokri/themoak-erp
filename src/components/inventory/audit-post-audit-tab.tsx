@@ -70,7 +70,8 @@ interface DiscrepancyReport {
   totalItems: number;
   shortageCount: number;
   excessCount: number;
-  totalDiscrepancyValue: number;
+  /** Null without cost.view. */
+  totalDiscrepancyValue: number | null;
   audit: InventoryAudit;
 }
 
@@ -99,6 +100,7 @@ interface PerformanceReport {
 interface PostAuditTabProps {
   audit: InventoryAudit;
   isAdmin: boolean;
+  canSeeCost: boolean;
 }
 
 /** Counts of this audit that the count screen kept in this browser without a confirmed save. */
@@ -111,7 +113,7 @@ function countUnsavedOnDevice(auditId: string): number {
   }
 }
 
-export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
+export function PostAuditTab({ audit, isAdmin, canSeeCost }: PostAuditTabProps) {
   const router = useRouter();
   const [discrepancyReport, setDiscrepancyReport] = useState<DiscrepancyReport | undefined>(undefined);
   const [performanceReport, setPerformanceReport] = useState<PerformanceReport | undefined>(undefined);
@@ -316,33 +318,37 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
                 </div>
                 <p className="text-2xl font-bold text-green-600">{discrepancyReport.excessCount}</p>
               </div>
-              <div className="p-4 border rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="h-4 w-4 text-red-500" />
-                  <span className="text-sm text-muted-foreground">ارزش کسری</span>
-                </div>
-                <p className="text-2xl font-bold text-red-600">
-                  {shortageValue.toLocaleString('fa-IR')} تومان
-                </p>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-muted-foreground">ارزش اضافی</span>
-                </div>
-                <p className="text-2xl font-bold text-green-600">
-                  {excessValue.toLocaleString('fa-IR')} تومان
-                </p>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">خالص (اضافی منهای کسری)</span>
-                </div>
-                <p className="text-2xl font-bold">
-                  {Number(discrepancyReport.totalDiscrepancyValue).toLocaleString('fa-IR')} تومان
-                </p>
-              </div>
+              {canSeeCost && (
+                <>
+                  <div className="p-4 border rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign className="h-4 w-4 text-red-500" />
+                      <span className="text-sm text-muted-foreground">ارزش کسری</span>
+                    </div>
+                    <p className="text-2xl font-bold text-red-600">
+                      {shortageValue.toLocaleString('fa-IR')} تومان
+                    </p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign className="h-4 w-4 text-green-500" />
+                      <span className="text-sm text-muted-foreground">ارزش اضافی</span>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {excessValue.toLocaleString('fa-IR')} تومان
+                    </p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">خالص (اضافی منهای کسری)</span>
+                    </div>
+                    <p className="text-2xl font-bold">
+                      {Number(discrepancyReport.totalDiscrepancyValue).toLocaleString('fa-IR')} تومان
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {hasDiscrepancies ? (
@@ -362,7 +368,7 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
                       <TableHead>مغایرت</TableHead>
                       {showStockColumns && <TableHead>موجودی فعلی</TableHead>}
                       {showStockColumns && <TableHead>پس از صدور</TableHead>}
-                      <TableHead>ارزش مغایرت</TableHead>
+                      {canSeeCost && <TableHead>ارزش مغایرت</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -385,9 +391,11 @@ export function PostAuditTab({ audit, isAdmin }: PostAuditTabProps) {
                           </TableCell>
                           {showStockColumns && <TableCell>{stock}</TableCell>}
                           {showStockColumns && <TableCell>{stock + discrepancy}</TableCell>}
-                          <TableCell>
-                            {Number(item.discrepancyValue || 0).toLocaleString('fa-IR')} تومان
-                          </TableCell>
+                          {canSeeCost && (
+                            <TableCell>
+                              {Number(item.discrepancyValue || 0).toLocaleString('fa-IR')} تومان
+                            </TableCell>
+                          )}
                         </TableRow>
                       );
                     })}

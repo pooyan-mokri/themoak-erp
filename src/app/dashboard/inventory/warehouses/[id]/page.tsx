@@ -7,8 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Package, DollarSign, TrendingUp, AlertTriangle, Boxes, Warehouse as WarehouseIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { auth } from '@/auth';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, hasPermission, requireRouteAccess } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,8 +28,8 @@ export default async function WarehouseDetailPage({
       notFound();
     }
 
-    const session = await auth();
-    const isAdmin = session?.user?.role === 'ADMIN';
+    const isAdmin = (await getCurrentRole()) === 'ADMIN';
+    const [canSeeCost, canSeeSales] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
 
     // TypeScript-safe: data is guaranteed to exist after notFound() check
     const { warehouse, statistics, inventory, recentOrderItems, recentPurchaseItems, recentAudits, movements, lowStockItems, topProductsByValue } = warehouseData;
@@ -94,18 +93,20 @@ export default async function WarehouseDetailPage({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ارزش کل موجودی</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {statistics.totalValue.toLocaleString('fa-IR')} تومان
-            </div>
-            <p className="text-xs text-muted-foreground">بر اساس قیمت تمام شده</p>
-          </CardContent>
-        </Card>
+        {statistics.totalValue !== null && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">ارزش کل موجودی</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statistics.totalValue.toLocaleString('fa-IR')} تومان
+              </div>
+              <p className="text-xs text-muted-foreground">بر اساس قیمت تمام شده</p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -147,6 +148,8 @@ export default async function WarehouseDetailPage({
             movements={movements}
             lowStockItems={lowStockItems}
             topProductsByValue={topProductsByValue}
+            canSeeCost={canSeeCost}
+            canSeeSales={canSeeSales}
           />
         </div>
 
@@ -185,6 +188,7 @@ export default async function WarehouseDetailPage({
           )}
 
           {/* Top Products by Value */}
+          {canSeeCost && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -214,6 +218,7 @@ export default async function WarehouseDetailPage({
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* Quick Actions */}
           <Card>

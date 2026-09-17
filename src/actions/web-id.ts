@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
 import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
 import { WEB_ID_SEED } from '@/lib/web-id-seed';
@@ -23,11 +24,6 @@ async function planAgainst(client: any): Promise<SeedPlan> {
   return planWebIdSeed(WEB_ID_SEED, products);
 }
 
-async function requireSignedIn() {
-  const session = await auth();
-  if (!session?.user) throw new Error('Unauthorized');
-}
-
 function revalidate() {
   revalidatePath('/dashboard/inventory/web-ids');
   revalidatePath('/dashboard/inventory/products');
@@ -35,7 +31,7 @@ function revalidate() {
 
 /** What seeding from the bundled file would do right now. Writes nothing. */
 export async function getWebIdSeedPreview(): Promise<SeedPlan> {
-  await requireSignedIn();
+  await requirePermission('stock.view');
   return planAgainst(prisma);
 }
 
@@ -113,15 +109,16 @@ export async function applyWebIdSeed(approved: { total: number; toSet: number })
  * Never the placeholder for unknown website lines: it must not get one.
  */
 export async function getProductsWithoutWebId(): Promise<
-  Array<{ id: string; name: string; sku: string; sellPrice: number }>
+  Array<{ id: string; name: string; sku: string; sellPrice?: number }>
 > {
-  await requireSignedIn();
+  await requirePermission('stock.view');
+  const canSeeSellPrice = await hasPermission('sales.view');
   const products = await prisma.product.findMany({
     where: { webId: null, productType: 'SALEABLE', sku: { not: SITE_UNKNOWN_SKU } },
-    select: { id: true, name: true, sku: true, sellPrice: true },
+    select: { id: true, name: true, sku: true, sellPrice: canSeeSellPrice },
     orderBy: { name: 'asc' },
   });
-  return products.map((p: any) => ({ ...p, sellPrice: Number(p.sellPrice) }));
+  return products.map((p: any) => (canSeeSellPrice ? { ...p, sellPrice: Number(p.sellPrice) } : p));
 }
 
 /**
@@ -133,8 +130,8 @@ export async function setProductWebId(
   productId: string,
   raw: string,
 ): Promise<{ success: boolean; message: string }> {
-  const session = await auth();
-  if (!session?.user) return { success: false, message: 'ابتدا وارد سیستم شوید.' };
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
 
   const input = parseWebId(raw);
   if (!input.ok) return { success: false, message: input.message };

@@ -1,6 +1,6 @@
 import { getProducts } from '@/actions/product';
 import { getCustomers } from '@/actions/customer';
-import { getAccounts } from '@/actions/accounting';
+import { getAccountOptions } from '@/actions/account-options';
 import { getWarehouses } from '@/actions/warehouse';
 import { POSInterface } from '@/components/sales/pos-interface';
 import { requireRouteAccess } from '@/lib/access';
@@ -10,7 +10,7 @@ export default async function POSPage() {
   const [products, customers, allAccounts, warehouses] = await Promise.all([
     getProducts(),
     getCustomers(),
-    getAccounts(),
+    getAccountOptions(),
     getWarehouses(),
   ]);
   

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
 import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
 import { kickSiteHook } from '@/lib/site-hook';
+import { ACCESS_DENIED_MESSAGE, checkPermission, hasPermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -33,9 +34,49 @@ const createPurchaseOrderSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+/**
+ * What a role sees of a purchase order. stock.view: supplier, items, quantities and status. cost.view: unit prices,
+ * landed and item costs. finance.view: totals, payments and their transactions. Order and arrival additional-cost
+ * amounts are part of the landed cost and of the payable alike, so either permission shows them.
+ */
+async function purchaseOrderAccess() {
+  const [cost, finance] = await Promise.all([hasPermission('cost.view'), hasPermission('finance.view')]);
+  return { cost, finance };
+}
+
+function withoutHiddenMoney(order: any, see: { cost: boolean; finance: boolean }) {
+  const { totalAmount, totalAmountInToman, paymentTransaction, paymentAccountId, arrivalAccountId, payments, paidAmountInToman, ...rest } =
+    order;
+  const seeCosts = see.cost || see.finance;
+  return {
+    ...rest,
+    ...(see.finance && { totalAmount, totalAmountInToman, paymentTransaction, paymentAccountId, arrivalAccountId }),
+    ...(see.finance && payments !== undefined && { payments, paidAmountInToman }),
+    items: order.items.map((item: any) => {
+      const { unitCost, unitCostInToman, totalCostInToman, additionalCost, additionalCostInToman, ...itemRest } = item;
+      return see.cost ? item : itemRest;
+    }),
+    additionalCosts: order.additionalCosts.map((cost: any) => {
+      const { amount, amountInToman, ...costRest } = cost;
+      return seeCosts ? cost : costRest;
+    }),
+    arrivalAdditionalCosts: order.arrivalAdditionalCosts.map((cost: any) => {
+      const { amount, amountInToman, transaction, transactionId, ...costRest } = cost;
+      return {
+        ...costRest,
+        ...(seeCosts && { amount, amountInToman }),
+        ...(see.finance && { transaction, transactionId }),
+      };
+    }),
+  };
+}
+
 // --- Actions ---
 
 export async function getSuppliers() {
+  if (!(await hasPermission(['stock.view', 'finance.view']))) {
+    return { success: false, error: ACCESS_DENIED_MESSAGE };
+  }
   try {
     const suppliers = await prisma.supplier.findMany({
       orderBy: { createdAt: 'desc' },
@@ -59,6 +100,8 @@ export async function getSuppliers() {
 }
 
 export async function createSupplier(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission(['stock.manage', 'finance.manage']);
+  if (denied) return denied;
   try {
     const rawData = {
       name: formData.get('name'),
@@ -85,13 +128,17 @@ export async function createSupplier(prevState: ActionState, formData: FormData)
 }
 
 export async function getPurchaseOrders() {
+  if (!(await hasPermission(['stock.view', 'finance.view']))) {
+    return { success: false, error: ACCESS_DENIED_MESSAGE };
+  }
+  const see = await purchaseOrderAccess();
   try {
     const orders = await prisma.purchaseOrder.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         supplier: true,
         items: {
-          include: { product: true }
+          include: { product: { select: { id: true, name: true, sku: true } } }
         },
         additionalCosts: true,
         arrivalAdditionalCosts: true,
@@ -130,7 +177,7 @@ export async function getPurchaseOrders() {
       })),
     }));
 
-    return { success: true, data: serializedOrders };
+    return { success: true, data: serializedOrders.map((order: any) => withoutHiddenMoney(order, see)) };
   } catch (error) {
     console.error('Error fetching purchase orders:', error);
     return { success: false, error: 'خطا در دریافت سفارشات خرید' };
@@ -138,6 +185,9 @@ export async function getPurchaseOrders() {
 }
 
 export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrderSchema>): Promise<ActionResult> {
+  // Sets unit prices and additional (landed) costs.
+  const denied = await checkPermission('cost.edit');
+  if (denied) return denied;
   try {
     console.log('Received data:', JSON.stringify(data, null, 2));
     const validatedData = createPurchaseOrderSchema.parse(data);
@@ -294,13 +344,17 @@ export async function createPurchaseOrder(data: z.infer<typeof createPurchaseOrd
 }
 
 export async function getPurchaseOrder(orderId: string) {
+  if (!(await hasPermission(['stock.view', 'finance.view']))) {
+    return { success: false, error: ACCESS_DENIED_MESSAGE };
+  }
+  const see = await purchaseOrderAccess();
   try {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: orderId },
       include: {
         supplier: true,
         items: {
-          include: { product: true }
+          include: { product: { select: { id: true, name: true, sku: true } } }
         },
         additionalCosts: true,
         arrivalAdditionalCosts: {
@@ -364,7 +418,7 @@ export async function getPurchaseOrder(orderId: string) {
       paidAmountInToman: (order.payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0),
     };
 
-    return { success: true, data: serializedOrder };
+    return { success: true, data: withoutHiddenMoney(serializedOrder, see) };
   } catch (error) {
     console.error('Error fetching purchase order:', error);
     return { success: false, error: 'خطا در دریافت سفارش خرید' };
@@ -376,6 +430,8 @@ export async function receivePurchaseOrderItems(
   warehouseId: string,
   receivedItems: Array<{ itemId: string; receivedQuantity: number }>
 ): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     await prisma.$transaction(async (tx: any) => {
       // 1. Get Order with products and all costs
@@ -494,7 +550,8 @@ export async function receivePurchaseOrderItems(
             }
           });
 
-          // Record the movement so the receipt (and the cost change) is auditable
+          // Record the movement so the receipt is auditable. The note stays free of the landed cost: stock
+          // roles read movement notes, and the cost is kept on the order item.
           await tx.inventoryMovement.create({
             data: {
               productId: orderItem.productId,
@@ -502,7 +559,7 @@ export async function receivePurchaseOrderItems(
               quantity: receivedItem.receivedQuantity,
               type: 'PURCHASE',
               referenceId: orderId,
-              note: `دریافت سفارش خرید #${order.number} - قیمت تمام‌شده هر واحد: ${Math.round(landedCostPerUnit).toLocaleString('fa-IR')} تومان`,
+              note: `دریافت سفارش خرید #${order.number}`,
             },
           });
         } else if (productType === 'CONSUMABLE') {
@@ -589,6 +646,8 @@ export async function receivePurchaseOrderItems(
 
 // Keep the old function for backward compatibility, but mark as deprecated
 export async function receivePurchaseOrder(orderId: string, warehouseId: string): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
   try {
     await prisma.$transaction(async (tx: any) => {
       // 1. Get Order with products

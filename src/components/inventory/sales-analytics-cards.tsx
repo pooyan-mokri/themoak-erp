@@ -6,8 +6,9 @@ import { BarChart3, DollarSign, TrendingUp, Zap } from 'lucide-react';
 interface SalesAnalyticsCardsProps {
   analytics: {
     totalUnitsSold: number;
-    totalRevenue: number;
-    avgSellingPrice: number;
+    // Both absent without sales.view.
+    totalRevenue?: number;
+    avgSellingPrice?: number;
     velocityPerWeek: number;
     velocityPerMonth: number;
     velocityPerYear: number;
@@ -34,18 +35,20 @@ export function SalesAnalyticsCards({ analytics }: SalesAnalyticsCardsProps) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">درآمد کل</CardTitle>
-          <DollarSign className="h-4 w-4 text-green-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</div>
-          <p className="text-xs text-muted-foreground">
-            از ابتدا تا کنون
-          </p>
-        </CardContent>
-      </Card>
+      {analytics.totalRevenue !== undefined && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">درآمد کل</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</div>
+            <p className="text-xs text-muted-foreground">
+              از ابتدا تا کنون
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -60,18 +63,20 @@ export function SalesAnalyticsCards({ analytics }: SalesAnalyticsCardsProps) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">میانگین قیمت</CardTitle>
-          <TrendingUp className="h-4 w-4 text-blue-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(analytics.avgSellingPrice)}</div>
-          <p className="text-xs text-muted-foreground">
-            قیمت واقعی فروش
-          </p>
-        </CardContent>
-      </Card>
+      {analytics.avgSellingPrice !== undefined && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">میانگین قیمت</CardTitle>
+            <TrendingUp className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.avgSellingPrice)}</div>
+            <p className="text-xs text-muted-foreground">
+              قیمت واقعی فروش
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

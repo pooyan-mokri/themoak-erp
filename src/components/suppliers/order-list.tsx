@@ -11,7 +11,7 @@ interface PurchaseOrder {
   id: string;
   number: number;
   supplier: { name: string };
-  totalAmount: any;
+  totalAmount?: any;
   totalAmountInToman?: any;
   status: string;
   createdAt: Date;
@@ -21,10 +21,14 @@ interface PurchaseOrder {
 interface OrderListProps {
   orders: PurchaseOrder[];
   warehouses: { id: string; name: string }[];
+  /** Order totals (finance.view). */
+  canSeeFinance: boolean;
+  /** New orders set prices (cost.edit). */
+  canCreate: boolean;
 }
 
-export function OrderList({ orders, warehouses }: OrderListProps) {
-  const columns: DataTableColumn<PurchaseOrder>[] = [
+export function OrderList({ orders, warehouses, canSeeFinance, canCreate }: OrderListProps) {
+  const allColumns: DataTableColumn<PurchaseOrder>[] = [
     {
       key: 'number',
       label: 'شماره',
@@ -87,17 +91,20 @@ export function OrderList({ orders, warehouses }: OrderListProps) {
       ),
     },
   ];
+  const columns = canSeeFinance ? allColumns : allColumns.filter((column) => column.key !== 'totalAmountInToman');
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">سفارشات خرید</h2>
-        <Link href="/dashboard/suppliers/orders/new">
-          <Button>
-            <Plus className="w-4 h-4 ml-2" />
-            سفارش جدید
-          </Button>
-        </Link>
+        {canCreate && (
+          <Link href="/dashboard/suppliers/orders/new">
+            <Button>
+              <Plus className="w-4 h-4 ml-2" />
+              سفارش جدید
+            </Button>
+          </Link>
+        )}
       </div>
 
       <DataTable

@@ -5,7 +5,7 @@ import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { auth } from '@/auth';
+import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
 import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // const prisma = new PrismaClient(); // Removed local instance
@@ -18,6 +18,19 @@ import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balan
 // Not exported: a "use server" file may only export async functions, and
 // exporting this constant failed every Next.js build.
 const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
+
+/**
+ * COGS and gift rows are valued at product cost, so their amounts are cost
+ * data (cost.view), which an accountant reading the journal may not see.
+ * Consignment books COGS as 'COGS'; a gift from the marketing module is
+ * 'Marketing - Gift' and linked from its MarketingGift; a gift from the
+ * product page is 'Marketing/Gift'.
+ */
+const COST_CATEGORIES = ['COGS', 'Marketing - Gift', 'Marketing/Gift'];
+
+function isCostRow(transaction: { category?: string | null; marketingGift?: unknown }): boolean {
+  return COST_CATEGORIES.includes(transaction.category ?? '') || !!transaction.marketingGift;
+}
 
 // --- Schemas ---
 
@@ -53,6 +66,9 @@ const ExchangeRateSchema = z.object({
 // --- Actions ---
 
 export async function createAccount(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = AccountSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -115,6 +131,7 @@ async function ensureMarketingExpensesAccount() {
 }
 
 export async function getAccounts() {
+  await requirePermission('finance.view');
   try {
     // Ensure Marketing Expenses account exists
     await ensureMarketingExpensesAccount();
@@ -135,6 +152,9 @@ export async function getAccounts() {
 }
 
 export async function updateAccount(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   // Check if this is the Marketing Expenses account and prevent name change
   const existingAccount = await prisma.account.findUnique({
     where: { id },
@@ -208,6 +228,9 @@ export async function updateAccount(id: string, prevState: ActionState, formData
 }
 
 export async function deleteAccount(id: string): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   try {
     // Check if this is the Marketing Expenses account
     const account = await prisma.account.findUnique({
@@ -241,6 +264,9 @@ export async function deleteAccount(id: string): Promise<ActionResult> {
 }
 
 export async function setExchangeRate(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = ExchangeRateSchema.safeParse({
     currency: formData.get('currency'),
     rateToToman: formData.get('rateToToman'),
@@ -275,6 +301,8 @@ export async function getLatestExchangeRates() {
     // Logic to get the latest rate for each currency
     // For simplicity, fetching all and filtering in UI or complex query
     // A better approach is distinctOn in raw SQL or grouping, but let's keep it simple for now
+    // Rates carry no balance; the supplier order pages read them too.
+    if (!(await hasPermission(['finance.view', 'stock.view']))) return [];
     try {
         const rates = await prisma.exchangeRate.findMany({
             orderBy: { date: 'desc' },
@@ -292,6 +320,9 @@ export async function getLatestExchangeRates() {
 }
 
 export async function recordExpense(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const rawProjectId = formData.get('projectId');
   const projectIdValue = rawProjectId && rawProjectId !== 'none' ? rawProjectId : undefined;
   
@@ -449,11 +480,12 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
   return { message: 'هزینه با موفقیت ثبت شد.' };
 }
 
-// --- Admin-only: edit / delete a recorded expense ---
+// --- Edit / delete a recorded expense (finance.manage) ---
+
+// --- Admin-only: edit / delete a recorded expense, correct a balance ---
 
 async function requireAdmin(): Promise<ActionResult | null> {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if ((await getCurrentRole()) !== 'ADMIN') {
     return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند این عملیات را انجام دهد.' };
   }
   return null;
@@ -498,7 +530,7 @@ function systemOwnerOf(expense: any): string | null {
 }
 
 /**
- * Delete an expense transaction (admin only).
+ * Delete an expense transaction (finance.manage).
  * Reverses the account balance change that was applied when the expense was recorded.
  */
 export async function deleteExpense(id: string): Promise<ActionResult> {
@@ -555,7 +587,7 @@ const UpdateExpenseSchema = z.object({
 });
 
 /**
- * Edit an expense transaction (admin only).
+ * Edit an expense transaction (finance.manage).
  * Reverses the old account balance effect and applies the new one atomically.
  * Preserves the original payment mode: account-paid stays account-paid,
  * employee-paid (Accounts Payable) stays employee-paid with no balance change.
@@ -670,6 +702,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
 }
 
 export async function getSalesByProduct() {
+  await requirePermission('sales.view');
   try {
     const orderItems = await prisma.orderItem.findMany({
       include: {
@@ -699,16 +732,22 @@ export async function getSalesByProduct() {
 }
 
 export async function getExpenseBreakdown() {
+  await requirePermission('finance.view');
   try {
+    const canSeeCost = await hasPermission('cost.view');
     const expenses = await prisma.transaction.findMany({
       where: {
         type: TransactionType.EXPENSE,
       },
+      include: { marketingGift: { select: { id: true } } },
     });
 
     const expenseByCategory: Record<string, number> = {};
 
     for (const expense of expenses) {
+      // COGS and gift totals are cost data.
+      if (!canSeeCost && isCostRow(expense)) continue;
+
       // Extract category from description "Category - Description"
       const description = expense.description || 'Uncategorized';
       const parts = description.split(' - ');
@@ -743,6 +782,7 @@ export async function getExpenseBreakdown() {
  * declare a number wrong on its own.
  */
 export async function getAccountReconciliation() {
+  await requirePermission('finance.view');
   try {
     // EXPENSE-type accounts hold no real money: COGS and commission stay at 0
     // by design (consignment.ts), so reconciling them only raises false alarms.
@@ -802,10 +842,8 @@ export async function adjustAccountBalance(input: {
   targetBalance: number;
   note?: string;
 }): Promise<ActionResult> {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'ADMIN') {
-    return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند موجودی را اصلاح کند.' };
-  }
+  const denied = await requireAdmin();
+  if (denied) return denied;
 
   const { accountId, targetBalance, note } = input;
   if (!Number.isFinite(targetBalance)) {
@@ -865,6 +903,7 @@ export async function adjustAccountBalance(input: {
 }
 
 export async function getEmployeeDebts() {
+  await requirePermission('payroll.view');
   try {
     // Get all employees
     const employees = await prisma.employee.findMany({
@@ -924,6 +963,7 @@ export async function getEmployeeDebts() {
  * Get detailed debt information for a specific employee
  */
 export async function getEmployeeDebtDetails(employeeId: string) {
+  await requirePermission('payroll.view');
   try {
     const employee = await prisma.employee.findUnique({
       where: { id: employeeId },
@@ -1002,6 +1042,9 @@ const PayDebtSchema = z.object({
 });
 
 export async function payEmployeeDebt(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = PayDebtSchema.safeParse({
     employeeId: formData.get('employeeId'),
     amount: formData.get('amount'),
@@ -1105,6 +1148,9 @@ const WithdrawalSchema = z.object({
 });
 
 export async function recordWithdrawal(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = WithdrawalSchema.safeParse({
     amount: formData.get('amount'),
     currency: formData.get('currency'),
@@ -1185,6 +1231,9 @@ const TransferSchema = z.object({
 });
 
 export async function recordInternalTransfer(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = TransferSchema.safeParse({
     amount: formData.get('amount'),
     fromAccountId: formData.get('fromAccountId'),
@@ -1281,6 +1330,9 @@ const DepositSchema = z.object({
 });
 
 export async function recordDeposit(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = DepositSchema.safeParse({
     amount: formData.get('amount'),
     currency: formData.get('currency'),
@@ -1357,12 +1409,15 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
 }
 
 export async function getTransactions() {
+  await requirePermission('finance.view');
   try {
+    const canSeeCost = await hasPermission('cost.view');
     const transactions = await prisma.transaction.findMany({
       orderBy: { date: 'desc' },
       include: {
         account: true,
         employee: true,
+        marketingGift: { select: { id: true } },
       },
       take: 100, // Limit to 100 most recent for now
     });
@@ -1400,10 +1455,13 @@ export async function getTransactions() {
         description = transaction.description?.replace(customerIdPattern, `سفارش فروش - مشتری: ${customerName}`) || transaction.description;
       }
 
+      // The row stays in the journal; only its cost-valued amount is withheld.
+      const hideAmount = !canSeeCost && isCostRow(transaction);
+
       return {
         ...transaction,
-        amount: Number(transaction.amount),
-        amountInToman: Number(transaction.amountInToman),
+        amount: hideAmount ? null : Number(transaction.amount),
+        amountInToman: hideAmount ? null : Number(transaction.amountInToman),
         rateSnapshot: Number(transaction.rateSnapshot),
         description: description ?? undefined,
         category: transaction.category ?? undefined,

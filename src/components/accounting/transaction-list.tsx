@@ -110,7 +110,10 @@ export function TransactionList({ transactions }: { transactions: any[] }) {
       key: 'amount',
       label: 'مبلغ',
       sortable: true,
-      render: (transaction) => (
+      render: (transaction) => transaction.amount == null ? (
+        // A COGS or gift amount, withheld from a role without cost.view.
+        <span className="text-muted-foreground">—</span>
+      ) : (
         <div className="flex flex-col">
           <span>
             {Number(transaction.amount).toLocaleString('fa-IR')} {transaction.currency}

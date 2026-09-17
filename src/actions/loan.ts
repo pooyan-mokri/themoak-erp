@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -31,6 +32,9 @@ const LoanPaymentSchema = z.object({
 // --- Actions ---
 
 export async function createLoan(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = LoanSchema.safeParse({
     borrowerId: formData.get('borrowerId'),
     amount: formData.get('amount'),
@@ -117,6 +121,9 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
 }
 
 export async function recordLoanPayment(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = LoanPaymentSchema.safeParse({
     loanId: formData.get('loanId'),
     amount: formData.get('amount'),
@@ -251,6 +258,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
 }
 
 export async function getLoans(status?: string) {
+  await requirePermission('payroll.view');
   try {
     const where = status ? { status } : {};
     
@@ -298,6 +306,7 @@ export async function getLoans(status?: string) {
 }
 
 export async function getLoanById(id: string) {
+  await requirePermission('payroll.view');
   try {
     const loan = await prisma.loan.findUnique({
       where: { id },

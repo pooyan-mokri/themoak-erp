@@ -38,7 +38,7 @@ interface PurchaseOrderItem {
   id: string;
   productId: string;
   quantity: number;
-  unitCost: number;
+  unitCost: number; // absent without cost.view, and then never read
   currency: Currency;
   unitCostInToman?: number;
   exchangeRateSnapshot?: number;
@@ -52,7 +52,7 @@ interface PurchaseOrderItem {
 interface PurchaseOrderAdditionalCost {
   id: string;
   title: string;
-  amount: number;
+  amount?: number;
   currency: Currency;
   amountInToman?: number;
   exchangeRateSnapshot?: number;
@@ -61,7 +61,7 @@ interface PurchaseOrderAdditionalCost {
 interface PurchaseOrderArrivalCost {
   id: string;
   title: string;
-  amount: number;
+  amount?: number;
   currency: Currency;
   amountInToman?: number;
   exchangeRateSnapshot?: number;
@@ -80,7 +80,7 @@ interface PurchaseOrder {
   id: string;
   number: number;
   status: string;
-  totalAmount: number;
+  totalAmount?: number;
   totalAmountInToman?: number;
   createdAt: Date | string;
   supplier: Supplier;
@@ -101,9 +101,31 @@ interface OrderDetailProps {
   order: PurchaseOrder;
   warehouses: Array<{ id: string; name: string }>;
   accounts: Array<{ id: string; name: string; currency: string }>;
+  /** Unit prices and landed cost (cost.view). */
+  canSeeCost: boolean;
+  /** Totals and payments (finance.view). */
+  canSeeFinance: boolean;
+  /** Send for payment, start production, cancel (stock.manage or finance.manage). */
+  canChangeStatus: boolean;
+  /** Record payments (finance.manage). */
+  canPay: boolean;
+  /** Record arrival with its costs (cost.edit and finance.manage). */
+  canRecordArrival: boolean;
+  /** Receive goods into a warehouse (stock.manage). */
+  canReceive: boolean;
 }
 
-export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
+export function OrderDetail({
+  order,
+  warehouses,
+  accounts,
+  canSeeCost,
+  canSeeFinance,
+  canChangeStatus,
+  canPay,
+  canRecordArrival,
+  canReceive,
+}: OrderDetailProps) {
   const router = useRouter();
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -409,14 +431,14 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
       </Card>
 
       {/* Action Buttons */}
-      {order.status !== 'RECEIVED' && order.status !== 'CANCELLED' && (
+      {order.status !== 'RECEIVED' && order.status !== 'CANCELLED' && (canChangeStatus || canPay || canRecordArrival || canReceive) && (
         <Card>
           <CardHeader>
             <CardTitle>عملیات</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {order.status === 'DRAFT' && (
+              {order.status === 'DRAFT' && canChangeStatus && (
                 <Button 
                   onClick={() => handleStatusChange('PENDING_PAYMENT')}
                   disabled={statusLoading}
@@ -425,7 +447,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                   ارسال برای پرداخت
                 </Button>
               )}
-              {(order.status === 'PENDING_PAYMENT' || order.status === 'PARTIALLY_PAID') && (
+              {(order.status === 'PENDING_PAYMENT' || order.status === 'PARTIALLY_PAID') && canPay && (
                 <Button
                   onClick={openPaymentDialog}
                   variant="default"
@@ -434,7 +456,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                   {order.status === 'PARTIALLY_PAID' ? 'ثبت پرداخت بعدی' : 'ثبت پرداخت'}
                 </Button>
               )}
-              {order.status === 'PAID' && (
+              {order.status === 'PAID' && canChangeStatus && (
                 <Button 
                   onClick={() => handleStatusChange('IN_PRODUCTION')}
                   disabled={statusLoading}
@@ -443,7 +465,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                   شروع تولید
                 </Button>
               )}
-              {order.status === 'IN_PRODUCTION' && (
+              {order.status === 'IN_PRODUCTION' && canRecordArrival && (
                 <Button 
                   onClick={() => setShowArrivalDialog(true)}
                   variant="default"
@@ -452,7 +474,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                   ثبت رسیدن به مقصد
                 </Button>
               )}
-              {order.status === 'ARRIVED' && (
+              {order.status === 'ARRIVED' && canReceive && (
                 <Button 
                   onClick={() => setShowReceiveDialog(true)}
                   variant="default"
@@ -461,7 +483,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                   دریافت کالا
                 </Button>
               )}
-              {order.status !== 'RECEIVED' && (
+              {order.status !== 'RECEIVED' && canChangeStatus && (
                 <Button 
                   onClick={() => handleStatusChange('CANCELLED')}
                   variant="destructive"
@@ -476,6 +498,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {canSeeFinance && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">مبلغ کل</CardTitle>
@@ -493,7 +516,8 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
             )}
           </CardContent>
         </Card>
-        {order.additionalCosts && order.additionalCosts.length > 0 && (
+        )}
+        {(canSeeCost || canSeeFinance) && order.additionalCosts && order.additionalCosts.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">هزینه‌های اضافی</CardTitle>
@@ -530,7 +554,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
       </div>
 
       {/* Payments history */}
-      {(order.status !== 'DRAFT' && order.status !== 'CANCELLED') && totalInToman > 0 && (
+      {canSeeFinance && (order.status !== 'DRAFT' && order.status !== 'CANCELLED') && totalInToman > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -605,11 +629,15 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                 <TableHead className="text-right">تعداد</TableHead>
                 <TableHead className="text-right">دریافت شده</TableHead>
                 <TableHead className="text-right">باقیمانده</TableHead>
-                <TableHead className="text-right">قیمت واحد</TableHead>
-                <TableHead className="text-right">ارز</TableHead>
-                <TableHead className="text-right">قیمت واحد (تومان)</TableHead>
-                <TableHead className="text-right">جمع (تومان)</TableHead>
-                <TableHead className="text-right">قیمت تمام شده (هر واحد)</TableHead>
+                {canSeeCost && (
+                  <>
+                    <TableHead className="text-right">قیمت واحد</TableHead>
+                    <TableHead className="text-right">ارز</TableHead>
+                    <TableHead className="text-right">قیمت واحد (تومان)</TableHead>
+                    <TableHead className="text-right">جمع (تومان)</TableHead>
+                    <TableHead className="text-right">قیمت تمام شده (هر واحد)</TableHead>
+                  </>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -637,13 +665,17 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                         {remaining}
                       </Badge>
                     </TableCell>
-                    <TableCell>{Number(item.unitCost).toLocaleString('fa-IR')}</TableCell>
-                    <TableCell>{getCurrencyLabel(item.currency)}</TableCell>
-                    <TableCell>{unitCostInToman.toLocaleString('fa-IR')}</TableCell>
-                    <TableCell>{totalInToman.toLocaleString('fa-IR')}</TableCell>
-                    <TableCell>
-                      <span className="font-medium">{landedCostPerUnit.toLocaleString('fa-IR')} تومان</span>
-                    </TableCell>
+                    {canSeeCost && (
+                      <>
+                        <TableCell>{Number(item.unitCost).toLocaleString('fa-IR')}</TableCell>
+                        <TableCell>{getCurrencyLabel(item.currency)}</TableCell>
+                        <TableCell>{unitCostInToman.toLocaleString('fa-IR')}</TableCell>
+                        <TableCell>{totalInToman.toLocaleString('fa-IR')}</TableCell>
+                        <TableCell>
+                          <span className="font-medium">{landedCostPerUnit.toLocaleString('fa-IR')} تومان</span>
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 );
               })}
@@ -713,6 +745,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                               placeholder="0"
                             />
                           </div>
+                          {canSeeCost && (
                           <div className="space-y-2">
                             <Label className="text-muted-foreground">قیمت تمام شده (تخمینی)</Label>
                             <div className="text-sm font-medium pt-2">
@@ -729,6 +762,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
                               )}
                             </div>
                           </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -945,7 +979,7 @@ export function OrderDetail({ order, warehouses, accounts }: OrderDetailProps) {
       </Dialog>
 
       {/* Arrival Costs Display */}
-      {order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0 && (
+      {(canSeeCost || canSeeFinance) && order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>هزینه‌های رسیدن به مقصد</CardTitle>

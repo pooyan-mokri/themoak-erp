@@ -21,7 +21,8 @@ interface Campaign {
   startDate: Date;
   endDate?: Date;
   budget?: number;
-  spentAmount: number;
+  /** Null without cost.view: the spend adds up gift costs. */
+  spentAmount: number | null;
   status: string;
   _count: {
     gifts: number;
@@ -73,7 +74,7 @@ export function CampaignList({ campaigns }: CampaignListProps) {
           <div className="space-y-4">
             {campaigns.map((campaign) => {
               const budgetPercent = campaign.budget && campaign.budget > 0
-                ? (campaign.spentAmount / campaign.budget) * 100
+                ? ((campaign.spentAmount ?? 0) / campaign.budget) * 100
                 : 0;
 
               return (
@@ -122,23 +123,29 @@ export function CampaignList({ campaigns }: CampaignListProps) {
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">بودجه:</span>
                         <div className="flex gap-4">
-                          <span>
-                            هزینه شده: <span className="font-medium text-red-600">{formatCurrency(campaign.spentAmount)}</span>
-                          </span>
+                          {campaign.spentAmount !== null && (
+                            <span>
+                              هزینه شده: <span className="font-medium text-red-600">{formatCurrency(campaign.spentAmount)}</span>
+                            </span>
+                          )}
                           <span>
                             از <span className="font-medium">{formatCurrency(campaign.budget)}</span>
                           </span>
                         </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all"
-                          style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground text-left">
-                        {budgetPercent.toFixed(1)}% استفاده شده
-                      </div>
+                      {campaign.spentAmount !== null && (
+                        <>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(budgetPercent, 100)}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground text-left">
+                            {budgetPercent.toFixed(1)}% استفاده شده
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

@@ -10,9 +10,12 @@ import { useRef, useState } from 'react';
 
 interface ProductActionsProps {
   products: any[];
+  canSeeCost: boolean;
+  canSeeSellPrice: boolean;
+  canManage: boolean;
 }
 
-export function ProductActions({ products }: ProductActionsProps) {
+export function ProductActions({ products, canSeeCost, canSeeSellPrice, canManage }: ProductActionsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
 
@@ -20,8 +23,8 @@ export function ProductActions({ products }: ProductActionsProps) {
     const data = products.map(p => ({
       name: p.name,
       sku: p.sku,
-      costPrice: Number(p.costPrice),
-      sellPrice: Number(p.sellPrice),
+      ...(canSeeCost ? { costPrice: Number(p.costPrice) } : {}),
+      ...(canSeeSellPrice ? { sellPrice: Number(p.sellPrice) } : {}),
       image: p.image,
       wooId: p.wooId
     }));
@@ -76,17 +79,21 @@ export function ProductActions({ products }: ProductActionsProps) {
         <Download className="mr-2 h-4 w-4" />
         خروجی اکسل
       </Button>
-      <Button variant="outline" onClick={handleImportClick} disabled={importing}>
-        <Upload className="mr-2 h-4 w-4" />
-        {importing ? 'در حال وارد کردن...' : 'ورود از اکسل'}
-      </Button>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileChange} 
-        className="hidden" 
-        accept=".xlsx, .xls"
-      />
+      {canManage && (
+        <>
+          <Button variant="outline" onClick={handleImportClick} disabled={importing}>
+            <Upload className="mr-2 h-4 w-4" />
+            {importing ? 'در حال وارد کردن...' : 'ورود از اکسل'}
+          </Button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            className="hidden" 
+            accept=".xlsx, .xls"
+          />
+        </>
+      )}
     </div>
   );
 }

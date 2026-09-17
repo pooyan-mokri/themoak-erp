@@ -10,9 +10,10 @@ import { PostAuditTab } from './audit-post-audit-tab';
 interface AuditDetailsTabsProps {
   audit: any; // TODO: Type this properly
   isAdmin: boolean;
+  canSeeCost: boolean;
 }
 
-export function AuditDetailsTabs({ audit, isAdmin }: AuditDetailsTabsProps) {
+export function AuditDetailsTabs({ audit, isAdmin, canSeeCost }: AuditDetailsTabsProps) {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState(() => {
     const requested = searchParams.get('tab');
@@ -42,7 +43,7 @@ export function AuditDetailsTabs({ audit, isAdmin }: AuditDetailsTabsProps) {
         <ExecutionTab audit={audit} />
       </TabsContent>
       <TabsContent value="post-audit" className="mt-6">
-        <PostAuditTab audit={audit} isAdmin={isAdmin} />
+        <PostAuditTab audit={audit} isAdmin={isAdmin} canSeeCost={canSeeCost} />
       </TabsContent>
     </Tabs>
   );

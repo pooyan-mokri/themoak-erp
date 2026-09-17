@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -26,6 +27,10 @@ const ShareholderWithdrawalSchema = z.object({
 // --- Actions ---
 
 export async function calculateShareholderProfits(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  // Distributing profit moves money and shows the profit: finance.manage and profit.view.
+  const denied = (await checkPermission('finance.manage')) ?? (await checkPermission('profit.view'));
+  if (denied) return denied;
+
   const validatedFields = CalculateProfitSchema.safeParse({
     periodStart: formData.get('periodStart'),
     periodEnd: formData.get('periodEnd'),
@@ -155,6 +160,10 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
 }
 
 export async function withdrawShareholderProfit(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  // Distributing profit moves money and shows the profit: finance.manage and profit.view.
+  const denied = (await checkPermission('finance.manage')) ?? (await checkPermission('profit.view'));
+  if (denied) return denied;
+
   const validatedFields = ShareholderWithdrawalSchema.safeParse({
     profitId: formData.get('profitId'),
     amount: formData.get('amount'),
@@ -286,6 +295,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
 }
 
 export async function getShareholderProfits(shareholderId?: string) {
+  await requirePermission('profit.view');
   try {
     const where = shareholderId ? { shareholderId } : {};
     
@@ -324,6 +334,7 @@ export async function getShareholderProfits(shareholderId?: string) {
 }
 
 export async function getShareholderProfitById(id: string) {
+  await requirePermission('profit.view');
   try {
     const profit = await prisma.shareholderProfit.findUnique({
       where: { id },

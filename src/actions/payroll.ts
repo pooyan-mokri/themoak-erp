@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -30,6 +31,9 @@ const PayrollPaymentSchema = z.object({
 // --- Actions ---
 
 export async function createPayroll(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = PayrollSchema.safeParse({
     employeeId: formData.get('employeeId'),
     amount: formData.get('amount'),
@@ -110,6 +114,9 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
 }
 
 export async function recordPayrollPayment(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = PayrollPaymentSchema.safeParse({
     payrollId: formData.get('payrollId'),
     amount: formData.get('amount'),
@@ -239,6 +246,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
 }
 
 export async function getPayrolls(employeeId?: string, status?: string) {
+  await requirePermission('payroll.view');
   try {
     const where: { employeeId?: string; status?: string } = {};
     if (employeeId) {
@@ -294,6 +302,7 @@ export async function getPayrolls(employeeId?: string, status?: string) {
 }
 
 export async function getPayrollById(id: string) {
+  await requirePermission('payroll.view');
   try {
     const payroll = await prisma.payroll.findUnique({
       where: { id },

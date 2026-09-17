@@ -28,8 +28,11 @@ after(() => prisma.$disconnect());
 const aiRow = (apiKey: string) =>
   prisma.aISettings.create({ data: { provider: 'OPENAI', apiKey, model: 'gpt-4', enabled: true, maxTokens: 1500, temperature: 0.7 } });
 
-test('getAISettings never serves the API key, to any role or to a stranger, and says whether one is set', async () => {
-  for (const role of [...NON_ADMINS, 'ADMIN']) {
+test('getAISettings never serves the API key to any role, refuses a stranger, and says whether one is set', async () => {
+  setTestRole(null);
+  await assert.rejects(getAISettings());
+
+  for (const role of [...SIGNED_IN_NON_ADMINS, 'ADMIN']) {
     setTestRole(role);
     const settings = await getAISettings();
     assert.equal('apiKey' in settings, false, `role ${role}`);
@@ -37,7 +40,7 @@ test('getAISettings never serves the API key, to any role or to a stranger, and 
   }
 
   await prisma.aISettings.updateMany({ data: { apiKey: 'sk-secret-key' } });
-  for (const role of [...NON_ADMINS, 'ADMIN']) {
+  for (const role of [...SIGNED_IN_NON_ADMINS, 'ADMIN']) {
     setTestRole(role);
     const settings = await getAISettings();
     assert.equal('apiKey' in settings, false, `role ${role}`);

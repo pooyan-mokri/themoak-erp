@@ -3,19 +3,24 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { ACCESS_DENIED_MESSAGE, hasPermission } from '@/lib/access';
+import type { Permission } from '@/lib/permissions';
 
 export interface AgentTool {
   name: string;
   description: string;
+  /** Who may run the tool (any of). Its result is trimmed further by the caller's other permissions. */
+  permission: Permission | readonly Permission[];
   parameters: Record<string, any>;
   execute: (params: any) => Promise<any>;
 }
 
 // Define available tools for the AI agent
-export const agentTools: AgentTool[] = [
+const tools: AgentTool[] = [
   {
     name: 'get_inventory_summary',
     description: 'دریافت خلاصه موجودی انبار - تعداد کل محصولات، ارزش کل، محصولات با موجودی کم',
+    permission: 'stock.view',
     parameters: {
       warehouseId: 'string (optional) - شناسه انبار',
     },
@@ -39,7 +44,7 @@ export const agentTools: AgentTool[] = [
           success: true,
           totalProducts: inventory.length,
           totalItems,
-          totalValue,
+          ...((await hasPermission('cost.view')) ? { totalValue } : {}),
           lowStockCount: lowStockItems.length,
           lowStockItems: lowStockItems.slice(0, 10).map((item: any) => ({
             product: item.product.name,
@@ -59,6 +64,7 @@ export const agentTools: AgentTool[] = [
   {
     name: 'get_sales_summary',
     description: 'دریافت خلاصه فروش - کل فروش، تعداد سفارشات، میانگین فروش در یک بازه زمانی',
+    permission: 'finance.view',
     parameters: {
       days: 'number (optional) - تعداد روزهای گذشته (پیش‌فرض: 30)',
     },
@@ -104,6 +110,7 @@ export const agentTools: AgentTool[] = [
   {
     name: 'get_customer_info',
     description: 'دریافت اطلاعات مشتری - نام، تلفن، بدهی، تاریخچه خرید',
+    permission: 'sales.view',
     parameters: {
       customerId: 'string - شناسه مشتری',
     },
@@ -144,6 +151,7 @@ export const agentTools: AgentTool[] = [
   {
     name: 'search_products',
     description: 'جستجوی محصولات - بر اساس نام یا SKU. اگر query خالی باشد، همه محصولات را برمی‌گرداند',
+    permission: 'stock.view',
     parameters: {
       query: 'string (optional) - عبارت جستجو. اگر خالی باشد همه محصولات نمایش داده می‌شود',
     },
@@ -165,6 +173,7 @@ export const agentTools: AgentTool[] = [
           },
           take: 20,
         });
+        const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
 
         return {
           success: true,
@@ -173,8 +182,8 @@ export const agentTools: AgentTool[] = [
             id: product.id,
             name: product.name,
             sku: product.sku || 'ندارد',
-            costPrice: Number(product.costPrice),
-            sellPrice: Number(product.sellPrice),
+            ...(canSeeCost ? { costPrice: Number(product.costPrice) } : {}),
+            ...(canSeeSellPrice ? { sellPrice: Number(product.sellPrice) } : {}),
             stock: product.inventory.map((inv: any) => ({
               warehouse: inv.warehouse.name,
               quantity: inv.quantity,
@@ -193,6 +202,7 @@ export const agentTools: AgentTool[] = [
   {
     name: 'get_financial_summary',
     description: 'دریافت خلاصه مالی - موجودی حساب‌ها، درآمد و هزینه',
+    permission: 'finance.view',
     parameters: {
       days: 'number (optional) - تعداد روزهای گذشته (پیش‌فرض: 30)',
     },
@@ -230,13 +240,14 @@ export const agentTools: AgentTool[] = [
         })),
         totalIncome,
         totalExpense,
-        netProfit: totalIncome - totalExpense,
+        ...((await hasPermission('profit.view')) ? { netProfit: totalIncome - totalExpense } : {}),
       };
     },
   },
   {
     name: 'create_customer',
     description: 'ایجاد مشتری جدید',
+    permission: 'sales.manage',
     parameters: {
       name: 'string - نام مشتری',
       phone: 'string (optional) - شماره تلفن',
@@ -263,6 +274,7 @@ export const agentTools: AgentTool[] = [
   {
     name: 'record_expense',
     description: 'ثبت هزینه جدید',
+    permission: 'finance.manage',
     parameters: {
       amount: 'number - مبلغ هزینه',
       description: 'string - شرح هزینه',
@@ -322,8 +334,21 @@ export const agentTools: AgentTool[] = [
   },
 ];
 
-// Get system context for AI
+/** The tools, each refusing (in Persian) a signed-in user without its permission. */
+export const agentTools: AgentTool[] = tools.map((tool) => ({
+  ...tool,
+  execute: async (params: any) =>
+    (await hasPermission(tool.permission)) ? tool.execute(params) : { success: false, error: ACCESS_DENIED_MESSAGE },
+}));
+
+// Get system context for AI: only the balances and tools the signed-in user may see.
 export async function getSystemContext() {
+  const usableTools: AgentTool[] = [];
+  for (const tool of agentTools) {
+    if (await hasPermission(tool.permission)) usableTools.push(tool);
+  }
+  const canSeeBalances = await hasPermission('finance.view');
+
   const [
     productsCount,
     customersCount,
@@ -335,10 +360,12 @@ export async function getSystemContext() {
     prisma.customer.count(),
     prisma.order.count(),
     prisma.warehouse.count(),
-    prisma.account.findMany({
-      where: { type: { in: ['BANK', 'CASH'] } },
-      select: { name: true, balance: true },
-    }),
+    canSeeBalances
+      ? prisma.account.findMany({
+          where: { type: { in: ['BANK', 'CASH'] } },
+          select: { name: true, balance: true },
+        })
+      : [],
   ]);
 
   return {
@@ -362,7 +389,7 @@ export async function getSystemContext() {
       name: acc.name,
       balance: Number(acc.balance),
     })),
-    availableTools: agentTools.map((tool: any) => ({
+    availableTools: usableTools.map((tool: any) => ({
       name: tool.name,
       description: tool.description,
     })),

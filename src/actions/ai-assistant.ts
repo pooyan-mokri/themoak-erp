@@ -7,11 +7,17 @@ import { revalidatePath } from 'next/cache';
 // Get or create AI settings. Served to every signed-in user, so never with the
 // API key, only whether one is set. Server code reads the key from @/lib/ai-settings.
 export async function getAISettings() {
+  const session = await auth();
+  if (!session?.user) {
+    throw new Error('Unauthorized');
+  }
+
   try {
     // Check if AISettings table exists by trying to find first record
     let settings = await prisma.aISettings.findFirst().catch(() => null);
     
-    if (!settings) {
+    // Only an admin's visit writes the default row; anyone else just gets the defaults.
+    if (!settings && session.user.role === 'ADMIN') {
       // Create default settings
       try {
         settings = await prisma.aISettings.create({
@@ -26,19 +32,22 @@ export async function getAISettings() {
         });
       } catch (createError) {
         console.error('Error creating AI settings:', createError);
-        // Return default settings if creation fails
-        return {
-          id: 'default',
-          provider: 'OPENAI' as any,
-          hasApiKey: false,
-          model: 'gpt-4',
-          enabled: false,
-          maxTokens: 1500,
-          temperature: 0.7,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
       }
+    }
+
+    if (!settings) {
+      // Return default settings if there is no row
+      return {
+        id: 'default',
+        provider: 'OPENAI' as any,
+        hasApiKey: false,
+        model: 'gpt-4',
+        enabled: false,
+        maxTokens: 1500,
+        temperature: 0.7,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     }
     
     const { apiKey, ...rest } = settings;
@@ -168,8 +177,9 @@ export async function getConversationMessages(conversationId: string) {
       throw new Error('Unauthorized');
     }
 
+    // Only the signed-in user's own conversation.
     const messages = await prisma.aIMessage.findMany({
-      where: { conversationId },
+      where: { conversationId, conversation: { userId: session.user.id } },
       orderBy: { createdAt: 'asc' },
       include: {
         actions: true,
@@ -191,9 +201,13 @@ export async function deleteConversation(conversationId: string) {
       throw new Error('Unauthorized');
     }
 
-    await prisma.aIConversation.delete({
-      where: { id: conversationId },
+    // Only the signed-in user's own conversation.
+    const { count } = await prisma.aIConversation.deleteMany({
+      where: { id: conversationId, userId: session.user.id },
     });
+    if (count === 0) {
+      return { success: false, message: 'مکالمه یافت نشد' };
+    }
 
     revalidatePath('/dashboard/assistant');
     return { success: true, message: 'مکالمه حذف شد' };

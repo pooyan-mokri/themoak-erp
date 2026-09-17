@@ -8,7 +8,8 @@ interface ProductSalesChartProps {
   salesHistory: Array<{
     month: string;
     units: number;
-    revenue: number;
+    /** Absent without sales.view. */
+    revenue?: number;
   }>;
 }
 
@@ -16,6 +17,7 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(amount);
   };
+  const showRevenue = salesHistory.some((month) => month.revenue !== undefined);
 
   // Convert YYYY-MM to Persian month name
   const getMonthLabel = (monthStr: string) => {
@@ -55,13 +57,15 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
               tickFormatter={(value) => value.toString()}
               style={{ fontSize: '12px' }}
             />
-            <YAxis 
-              yAxisId="right"
-              orientation="right"
-              stroke="#82ca9d"
-              tickFormatter={(value) => formatCurrency(value)}
-              style={{ fontSize: '12px' }}
-            />
+            {showRevenue && (
+              <YAxis 
+                yAxisId="right"
+                orientation="right"
+                stroke="#82ca9d"
+                tickFormatter={(value) => formatCurrency(value)}
+                style={{ fontSize: '12px' }}
+              />
+            )}
             <Tooltip
               formatter={(value: number, name: string) => {
                 if (name === 'units') return [value + ' عدد', 'تعداد'];
@@ -78,7 +82,7 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
               }}
             />
             <Bar yAxisId="left" dataKey="units" fill="#8884d8" name="units" />
-            <Bar yAxisId="right" dataKey="revenue" fill="#82ca9d" name="revenue" />
+            {showRevenue && <Bar yAxisId="right" dataKey="revenue" fill="#82ca9d" name="revenue" />}
           </BarChart>
         </ResponsiveContainer>
       </CardContent>

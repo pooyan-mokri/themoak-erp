@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
+import { requirePermission } from '@/lib/access';
 
 // Financial Reports
 
@@ -10,6 +11,7 @@ import { TransactionType } from '@prisma/client';
  * Shows Income vs Expenses over a period
  */
 export async function getProfitLossReport(startDate: Date, endDate: Date) {
+  await requirePermission('profit.view');
   try {
     const transactions = await prisma.transaction.findMany({
       where: {
@@ -94,6 +96,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
  * Shows current financial position: Assets vs Liabilities
  */
 export async function getBalanceSheet(date: Date) {
+  await requirePermission('profit.view');
   try {
     // Assets
     const cashAccounts = await prisma.account.findMany({
@@ -177,6 +180,7 @@ export async function getBalanceSheet(date: Date) {
  */
 
 export async function getSalesByProduct(startDate: Date, endDate: Date) {
+  await requirePermission('sales.view');
   try {
     const orderItems = await prisma.orderItem.findMany({
       where: {
@@ -221,6 +225,7 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
 }
 
 export async function getSalesByCustomer(startDate: Date, endDate: Date) {
+  await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
       where: {
@@ -268,6 +273,7 @@ export async function getSalesOverTime(
   endDate: Date,
   interval: 'day' | 'week' | 'month' = 'month'
 ) {
+  await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
       where: {
@@ -324,6 +330,7 @@ export async function getSalesOverTime(
  */
 
 export async function getStockTurnoverReport() {
+  await requirePermission('cost.view');
   try {
     // Stock turnover = Cost of Goods Sold / Average Inventory Value
     // For simplicity, we'll calculate based on sales in last 90 days
@@ -410,6 +417,7 @@ export async function getStockTurnoverReport() {
 }
 
 export async function getInventoryAgingReport() {
+  await requirePermission('cost.view');
   try {
     // This would ideally track when each inventory item was received
     // For now, we'll use product creation date as a proxy

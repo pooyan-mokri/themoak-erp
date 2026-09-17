@@ -216,7 +216,7 @@ export function ExpenseList({ expenses, isAdmin = false, accounts = [] }: { expe
                       {expense.description}
                     </TableCell>
                     <TableCell className="font-semibold">
-                      {Number(expense.amount).toLocaleString('fa-IR')}
+                      {expense.amount == null ? '—' : Number(expense.amount).toLocaleString('fa-IR')}
                     </TableCell>
                     <TableCell>{expense.currency}</TableCell>
                     <TableCell>
@@ -237,33 +237,36 @@ export function ExpenseList({ expenses, isAdmin = false, accounts = [] }: { expe
                     )}
                     {isAdmin && (
                       <TableCell className="text-left">
-                        <div className="flex justify-end gap-1">
-                          <ExpenseEditDialog expense={expense} accounts={accounts} />
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>حذف هزینه</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  آیا از حذف این هزینه اطمینان دارید؟ موجودی حساب مربوطه به‌صورت خودکار اصلاح می‌شود. این عملیات قابل بازگشت نیست.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>انصراف</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDelete(expense.id)}
-                                  className="bg-red-600 hover:bg-red-700"
-                                >
-                                  حذف
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
+                        {/* A withheld cost amount cannot be edited blind. */}
+                        {expense.amount != null && (
+                          <div className="flex justify-end gap-1">
+                            <ExpenseEditDialog expense={expense} accounts={accounts} />
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>حذف هزینه</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    آیا از حذف این هزینه اطمینان دارید؟ موجودی حساب مربوطه به‌صورت خودکار اصلاح می‌شود. این عملیات قابل بازگشت نیست.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>انصراف</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(expense.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    حذف
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>

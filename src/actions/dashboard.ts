@@ -2,6 +2,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
+import { requirePermission } from '@/lib/access';
 
 import { prisma } from '@/lib/prisma';
 
@@ -11,6 +12,7 @@ import { prisma } from '@/lib/prisma';
  * Dashboard Financial Overview
  */
 export async function getDashboardFinancials() {
+  await requirePermission('finance.view');
   try {
     // Total Balance (all bank/cash accounts)
     const accounts = await prisma.account.findMany({
@@ -77,6 +79,7 @@ export async function getDashboardFinancials() {
  * Dashboard Sales Data
  */
 export async function getDashboardSales() {
+  await requirePermission('finance.view');
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -203,6 +206,7 @@ export async function getDashboardSales() {
  * Low Stock Items (Below threshold)
  */
 export async function getLowStockItems(threshold: number = 10) {
+  await requirePermission('stock.view');
   try {
     const lowStockProducts = await prisma.product.findMany({
       include: {

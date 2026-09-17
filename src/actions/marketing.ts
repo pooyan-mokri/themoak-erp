@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { kickSiteHook } from '@/lib/site-hook';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -56,6 +57,10 @@ const MarketingCampaignSchema = z.object({
 // --- Actions ---
 
 export async function createMarketingGift(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+  // The shortfall message names the account balance and the gift's cost.
+  const canSeeAmounts = (await hasPermission('finance.view')) && (await hasPermission('cost.view'));
   const campaignIdValue = formData.get('campaignId');
   
   const validatedFields = MarketingGiftSchema.safeParse({
@@ -149,7 +154,9 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
         const accountBalance = Number(account.balance);
         if (accountBalance < totalCost) {
           throw new Error(
-            `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalCost.toLocaleString('fa-IR')} تومان`
+            canSeeAmounts
+              ? `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalCost.toLocaleString('fa-IR')} تومان`
+              : `موجودی حساب "${account.name}" کافی نیست.`
           );
         }
       }
@@ -244,12 +251,15 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
   return { message: 'هدیه بازاریابی با موفقیت ثبت شد.', success: true };
 }
 
+// Gift cost (at cost price) and a campaign's spend, which adds gift costs up, need cost.view.
 export async function getMarketingGifts() {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const gifts = await prisma.marketingGift.findMany({
       include: {
-        product: true,
-        account: true,
+        product: { select: { id: true, name: true, sku: true, image: true, wooId: true, barcode: true } },
+        account: { select: { id: true, name: true } },
         campaign: true,
       },
       orderBy: {
@@ -257,27 +267,30 @@ export async function getMarketingGifts() {
       },
     });
 
-    return gifts.map((gift: any) => ({
-      ...gift,
-      costPrice: Number(gift.costPrice),
-      totalCost: Number(gift.totalCost || 0),
-      reason: gift.reason ?? undefined,
-      notes: gift.notes ?? undefined,
-      campaignId: gift.campaignId ?? undefined,
-      recipientName: gift.recipientName ?? undefined,
-      product: gift.product ? {
-        ...gift.product,
-        image: gift.product.image ?? undefined,
-        wooId: gift.product.wooId ?? undefined,
-        barcode: gift.product.barcode ?? undefined,
-      } : undefined,
-      campaign: gift.campaign ? {
-        ...gift.campaign,
-        description: gift.campaign.description ?? undefined,
-        endDate: gift.campaign.endDate ?? undefined,
-        budget: gift.campaign.budget ? Number(gift.campaign.budget) : undefined,
-      } : undefined,
-    }));
+    return gifts.map((gift: any) => {
+      const { costPrice, totalCost, ...rest } = gift;
+      const { spentAmount, ...campaign } = gift.campaign ?? {};
+      return {
+        ...rest,
+        ...(canSeeCost && { costPrice: Number(costPrice), totalCost: Number(totalCost || 0) }),
+        reason: gift.reason ?? undefined,
+        notes: gift.notes ?? undefined,
+        campaignId: gift.campaignId ?? undefined,
+        recipientName: gift.recipientName ?? undefined,
+        product: gift.product ? {
+          ...gift.product,
+          image: gift.product.image ?? undefined,
+          wooId: gift.product.wooId ?? undefined,
+          barcode: gift.product.barcode ?? undefined,
+        } : undefined,
+        campaign: gift.campaign ? {
+          ...(canSeeCost ? gift.campaign : campaign),
+          description: gift.campaign.description ?? undefined,
+          endDate: gift.campaign.endDate ?? undefined,
+          budget: gift.campaign.budget ? Number(gift.campaign.budget) : undefined,
+        } : undefined,
+      };
+    });
   } catch (error) {
     console.error('Error fetching marketing gifts:', error);
     return [];
@@ -285,6 +298,8 @@ export async function getMarketingGifts() {
 }
 
 export async function createMarketingCampaign(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validatedFields = MarketingCampaignSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description') || undefined,
@@ -330,6 +345,8 @@ export async function createMarketingCampaign(prevState: ActionState, formData: 
 }
 
 export async function getMarketingCampaigns() {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const campaigns = await prisma.marketingCampaign.findMany({
       include: {
@@ -347,7 +364,7 @@ export async function getMarketingCampaigns() {
       description: campaign.description ?? undefined,
       endDate: campaign.endDate ?? undefined,
       budget: campaign.budget ? Number(campaign.budget) : undefined,
-      spentAmount: Number(campaign.spentAmount),
+      spentAmount: canSeeCost ? Number(campaign.spentAmount) : null,
     }));
   } catch (error) {
     console.error('Error fetching marketing campaigns:', error);
@@ -356,6 +373,8 @@ export async function getMarketingCampaigns() {
 }
 
 export async function getMarketingStats() {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const gifts = await prisma.marketingGift.findMany({
       include: {
@@ -390,6 +409,23 @@ export async function getMarketingStats() {
   (sum: any, c: any) => sum + Number(c.spentAmount),
       0
     );
+
+    if (!canSeeCost) {
+      return {
+        totalGifts,
+        totalQuantity,
+        totalCost: null,
+        giftsByProduct: Object.entries(giftsByProduct)
+          .map(([name, data]: [string, any]) => ({ name, quantity: data.quantity, cost: null }))
+          .sort((a: any, b: any) => b.quantity - a.quantity)
+          .slice(0, 10),
+        totalCampaigns: campaigns.length,
+        activeCampaigns,
+        totalBudget,
+        totalSpent: null,
+        remainingBudget: null,
+      };
+    }
 
     return {
       totalGifts,

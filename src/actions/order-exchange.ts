@@ -5,7 +5,8 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
-import { syncInvoiceWithOrder } from './invoice';
+import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
 
@@ -20,6 +21,8 @@ const OrderExchangeSchema = z.object({
 });
 
 export async function exchangeOrderItem(prevState: any, formData: FormData) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return { message: denied.message, success: false };
   const validatedFields = OrderExchangeSchema.safeParse({
     orderId: formData.get('orderId'),
     originalItemId: formData.get('originalItemId'),
@@ -382,6 +385,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
 }
 
 export async function getAllOrderExchanges(limit = 200) {
+  await requirePermission('sales.view');
   try {
     const exchanges = await prisma.orderExchange.findMany({
       include: {
@@ -413,6 +417,8 @@ export async function getAllOrderExchanges(limit = 200) {
 }
 
 export async function getOrderExchanges(orderId: string) {
+  await requirePermission('sales.view');
+  const [canSeeCost, canSeeBalance] = await Promise.all([hasPermission('cost.view'), hasPermission('finance.view')]);
   try {
     const exchanges = await prisma.orderExchange.findMany({
       where: { orderId },
@@ -435,22 +441,13 @@ export async function getOrderExchanges(orderId: string) {
       transactionId: ex.transactionId ?? undefined,
       originalItem: ex.originalItem ? {
         ...ex.originalItem,
-        product: ex.originalItem.product ? {
-          ...ex.originalItem.product,
-          image: ex.originalItem.product.image ?? undefined,
-          wooId: ex.originalItem.product.wooId ?? undefined,
-          barcode: ex.originalItem.product.barcode ?? undefined,
-        } : undefined,
+        product: ex.originalItem.product ? productForViewer(ex.originalItem.product, canSeeCost) : undefined,
       } : undefined,
       exchangeItem: ex.exchangeItem ? {
         ...ex.exchangeItem,
-        product: ex.exchangeItem.product ? {
-          ...ex.exchangeItem.product,
-          image: ex.exchangeItem.product.image ?? undefined,
-          wooId: ex.exchangeItem.product.wooId ?? undefined,
-          barcode: ex.exchangeItem.product.barcode ?? undefined,
-        } : undefined,
+        product: ex.exchangeItem.product ? productForViewer(ex.exchangeItem.product, canSeeCost) : undefined,
       } : undefined,
+      account: ex.account ? accountForViewer(ex.account, canSeeBalance) : undefined,
       transaction: ex.transaction ? {
         ...ex.transaction,
         description: ex.transaction.description ?? undefined,

@@ -4,48 +4,10 @@ import { PrismaClient } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
 
 // const prisma = new PrismaClient();
-
-/**
- * Resync an existing invoice to its order's current totals.
- * Used after a return / exchange has changed Order.totalAmount or
- * Order.paidAmount so the invoice doesn't keep showing pre-return values.
- *
- * Pass a Prisma transaction client (`tx`) to run inside an existing
- * transaction; otherwise it runs against the global prisma client.
- *
- * Silently no-ops when the order has no invoice.
- */
-export async function syncInvoiceWithOrder(orderId: string, client: any = prisma) {
-  const invoice = await client.invoice.findUnique({ where: { orderId } });
-  if (!invoice) return;
-
-  const order = await client.order.findUnique({
-    where: { id: orderId },
-    select: { totalAmount: true, discount: true, paidAmount: true },
-  });
-  if (!order) return;
-
-  const subtotal = Number(order.totalAmount);
-  const discount = Number(order.discount);
-  const tax = Number(invoice.tax);
-  const total = subtotal - discount + tax;
-  const paidAmount = Number(order.paidAmount);
-
-  let status: string = 'PAID';
-  if (paidAmount < total) {
-    status = paidAmount > 0 ? 'PARTIAL' : 'UNPAID';
-  }
-  if (status !== 'PAID' && new Date(invoice.dueDate) < new Date()) {
-    status = 'OVERDUE';
-  }
-
-  await client.invoice.update({
-    where: { id: invoice.id },
-    data: { subtotal, discount, total, paidAmount, status },
-  });
-}
 
 // Generate unique invoice number in format: INV-{YEAR}-{SEQUENTIAL}
 async function generateInvoiceNumber(): Promise<string> {
@@ -77,6 +39,8 @@ async function generateInvoiceNumber(): Promise<string> {
 const CANCELLED_ORDER_MESSAGE = 'برای سفارش لغوشده نمی‌توان فاکتور صادر کرد.';
 
 export async function createInvoiceFromOrder(orderId: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     // Check if invoice already exists
     const existingInvoice = await prisma.invoice.findUnique({
@@ -188,6 +152,7 @@ export async function createInvoiceFromOrder(orderId: string) {
 }
 
 export async function getInvoices() {
+  await requirePermission('sales.view');
   try {
     const invoices = await prisma.invoice.findMany({
       include: {
@@ -227,6 +192,8 @@ export async function getInvoices() {
 }
 
 export async function getInvoiceById(id: string) {
+  await requirePermission('sales.view');
+  const [canSeeCost, canSeeBalance] = await Promise.all([hasPermission('cost.view'), hasPermission('finance.view')]);
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id },
@@ -260,16 +227,16 @@ export async function getInvoiceById(id: string) {
         items: invoice.order.items.map((item: any) => ({
           ...item,
           price: Number(item.price),
+          product: productForViewer(item.product, canSeeCost),
         })),
         transaction: invoice.order.transaction ? {
           ...invoice.order.transaction,
           amount: Number(invoice.order.transaction.amount),
           amountInToman: Number(invoice.order.transaction.amountInToman),
           rateSnapshot: Number(invoice.order.transaction.rateSnapshot),
-          account: invoice.order.transaction.account ? {
-            ...invoice.order.transaction.account,
-            balance: Number(invoice.order.transaction.account.balance),
-          } : undefined,
+          account: invoice.order.transaction.account
+            ? accountForViewer(invoice.order.transaction.account, canSeeBalance)
+            : undefined,
         } : undefined,
       } : undefined,
     };
@@ -280,6 +247,8 @@ export async function getInvoiceById(id: string) {
 }
 
 export async function recordInvoicePayment(invoiceId: string, amount: number, accountId: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -361,6 +330,7 @@ export async function recordInvoicePayment(invoiceId: string, amount: number, ac
 }
 
 export async function getARAgingReport() {
+  await requirePermission('finance.view');
   try {
     // Get all orders with unpaid/partial payment status (excluding CANCELLED)
     // این همان منبع اطلاعات تاریخچه فروش است - باید یکسان باشند
@@ -430,6 +400,8 @@ export async function getARAgingReport() {
 }
 
 export async function updateInvoiceStatus() {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     // Update overdue invoices
     const overdueInvoices = await prisma.invoice.findMany({

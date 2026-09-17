@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
 import { DEFAULT_SITE_WAREHOUSE_NAME, pickWithDefault, readSiteConnection } from '@/lib/site-connection';
 import { kickSiteHook } from '@/lib/site-hook';
 
@@ -17,6 +17,8 @@ const WarehouseSchema = z.object({
 });
 
 export async function createWarehouse(prevState: any, formData: FormData) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return { message: denied.message };
   const validatedFields = WarehouseSchema.safeParse({
     name: formData.get('name'),
     isVirtual: formData.get('isVirtual') === 'on',
@@ -48,7 +50,9 @@ export async function createWarehouse(prevState: any, formData: FormData) {
   return { message: 'انبار با موفقیت ثبت شد.' };
 }
 
+// Warehouse names feed stock, sales (POS, orders, consignment, marketing) and site settings pickers.
 export async function getWarehouses(includeArchived = false) {
+  await requirePermission(['stock.view', 'sales.view', 'settings.manage']);
   try {
     const warehouses = await prisma.warehouse.findMany({
       // Archived warehouses are hidden from every selector/list by default.
@@ -65,6 +69,7 @@ export async function getWarehouses(includeArchived = false) {
 }
 
 export async function getArchivedWarehouses() {
+  await requirePermission('stock.view');
   try {
     const warehouses = await prisma.warehouse.findMany({
       where: { isArchived: true },
@@ -81,6 +86,7 @@ export async function getArchivedWarehouses() {
 }
 
 export async function getWarehouseById(id: string) {
+  await requirePermission('stock.view');
   try {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id },
@@ -96,6 +102,8 @@ export async function getWarehouseById(id: string) {
 }
 
 export async function updateWarehouse(id: string, prevState: any, formData: FormData) {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return { message: denied.message };
   const validatedFields = WarehouseSchema.safeParse({
     name: formData.get('name'),
     isVirtual: formData.get('isVirtual') === 'on',
@@ -160,8 +168,7 @@ async function removalBlocker(id: string): Promise<string | null> {
 
 export async function deleteWarehouse(id: string) {
   // Admin only
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if ((await getCurrentRole()) !== 'ADMIN') {
     return { message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند انبار را حذف کند.', success: false };
   }
 
@@ -197,8 +204,7 @@ export async function deleteWarehouse(id: string) {
  * (with their movement history) and can be restored.
  */
 export async function archiveWarehouse(id: string) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if ((await getCurrentRole()) !== 'ADMIN') {
     return { message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند انبار را آرشیو کند.', success: false };
   }
 
@@ -225,8 +231,7 @@ export async function archiveWarehouse(id: string) {
  * Restore an archived warehouse (admin only).
  */
 export async function unarchiveWarehouse(id: string) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if ((await getCurrentRole()) !== 'ADMIN') {
     return { message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند انبار را بازگرداند.', success: false };
   }
 

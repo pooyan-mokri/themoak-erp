@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -30,6 +31,9 @@ const ShareholderDepositSchema = z.object({
 // --- Actions ---
 
 export async function createShareholder(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = ShareholderSchema.safeParse({
     name: formData.get('name'),
     percentage: formData.get('percentage'),
@@ -89,6 +93,9 @@ export async function createShareholder(prevState: ActionState, formData: FormDa
 }
 
 export async function updateShareholder(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = ShareholderSchema.safeParse({
     name: formData.get('name'),
     percentage: formData.get('percentage'),
@@ -157,6 +164,9 @@ export async function updateShareholder(id: string, prevState: ActionState, form
 }
 
 export async function deleteShareholder(id: string): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   try {
     // Check if shareholder has transactions
     const transactions = await prisma.transaction.findMany({
@@ -187,6 +197,7 @@ export async function deleteShareholder(id: string): Promise<ActionResult> {
 }
 
 export async function getShareholders() {
+  await requirePermission('finance.view');
   try {
     const shareholders = await prisma.shareholder.findMany({
       orderBy: { createdAt: 'desc' },
@@ -212,6 +223,7 @@ export async function getShareholders() {
 }
 
 export async function getShareholderById(id: string) {
+  await requirePermission('finance.view');
   try {
     const shareholder = await prisma.shareholder.findUnique({
       where: { id },
@@ -243,6 +255,9 @@ export async function getShareholderById(id: string) {
  * When shareholder deposits money, the company receives it but owes it back as a debt
  */
 export async function depositShareholderFunds(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = ShareholderDepositSchema.safeParse({
     shareholderId: formData.get('shareholderId'),
     accountId: formData.get('accountId'),
@@ -375,6 +390,9 @@ const ShareholderWithdrawalSchema = z.object({
 });
 
 export async function withdrawShareholderFunds(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+
   const validatedFields = ShareholderWithdrawalSchema.safeParse({
     shareholderId: formData.get('shareholderId'),
     accountId: formData.get('accountId'),
@@ -508,6 +526,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
  * Returns negative value = shareholder owes company (Accounts Receivable)
  */
 export async function getShareholderBalance(shareholderId: string): Promise<number> {
+  await requirePermission('finance.view');
   try {
     // Get all INCOME transactions (deposits - company owes shareholder)
     const deposits = await prisma.transaction.findMany({
@@ -549,6 +568,7 @@ export async function getShareholderBalance(shareholderId: string): Promise<numb
  * Get all shareholders with their debt/receivable balances
  */
 export async function getShareholdersWithBalance() {
+  await requirePermission('finance.view');
   try {
     const shareholders = await prisma.shareholder.findMany({
       orderBy: { name: 'asc' },

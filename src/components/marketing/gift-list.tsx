@@ -19,8 +19,8 @@ interface Gift {
   campaign?: {
     name: string;
   };
-  costPrice: number;
-  totalCost: number;
+  costPrice?: number;
+  totalCost?: number;
   reason?: string;
   notes?: string;
   date: Date | string;
@@ -28,9 +28,10 @@ interface Gift {
 
 interface GiftListProps {
   gifts: Gift[];
+  canSeeCost: boolean;
 }
 
-export function GiftList({ gifts }: GiftListProps) {
+export function GiftList({ gifts, canSeeCost }: GiftListProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fa-IR').format(Math.round(amount)) + ' تومان';
   };
@@ -39,7 +40,7 @@ export function GiftList({ gifts }: GiftListProps) {
     return new Intl.NumberFormat('fa-IR').format(num);
   };
 
-  const columns: DataTableColumn<Gift>[] = [
+  const allColumns: DataTableColumn<Gift>[] = [
     {
       key: 'date',
       label: 'تاریخ',
@@ -89,7 +90,7 @@ export function GiftList({ gifts }: GiftListProps) {
       label: 'هزینه کل',
       sortable: true,
       render: (gift) => (
-        <span className="font-bold text-red-600">{formatCurrency(gift.totalCost)}</span>
+        <span className="font-bold text-red-600">{formatCurrency(gift.totalCost ?? 0)}</span>
       ),
     },
     {
@@ -99,6 +100,7 @@ export function GiftList({ gifts }: GiftListProps) {
       render: (gift) => <span className="text-sm text-muted-foreground">{gift.reason || '-'}</span>,
     },
   ];
+  const columns = canSeeCost ? allColumns : allColumns.filter((column) => column.key !== 'totalCost');
 
   return (
     <Card>

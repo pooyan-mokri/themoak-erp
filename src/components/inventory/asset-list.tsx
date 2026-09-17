@@ -27,9 +27,11 @@ interface Asset {
 
 interface AssetListProps {
   assets: Asset[];
+  /** Post depreciation and delete (finance.manage). */
+  canManage: boolean;
 }
 
-export function AssetList({ assets }: AssetListProps) {
+export function AssetList({ assets, canManage }: AssetListProps) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | undefined>(undefined);
 
@@ -77,7 +79,7 @@ export function AssetList({ assets }: AssetListProps) {
     return { depreciation, depreciationPercent };
   };
 
-  const columns: DataTableColumn<Asset>[] = [
+  const allColumns: DataTableColumn<Asset>[] = [
     {
       key: 'name',
       label: 'نام دارایی',
@@ -178,6 +180,7 @@ export function AssetList({ assets }: AssetListProps) {
       ),
     },
   ];
+  const columns = canManage ? allColumns : allColumns.filter((column) => column.key !== 'actions');
 
   return (
     <DataTable

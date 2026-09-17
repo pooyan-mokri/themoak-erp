@@ -36,7 +36,8 @@ interface ConsignmentReportProps {
       totalCommissions: number;
       paidCommissions: number;
       unpaidCommissions: number;
-      inventoryValue: number;
+      /** Null without cost.view. */
+      inventoryValue: number | null;
       inventoryQuantity: number;
       productCount: number;
       orderCount: number;
@@ -50,7 +51,8 @@ interface ConsignmentReportProps {
       totalCommissions: number;
       paidCommissions: number;
       unpaidCommissions: number;
-      totalInventoryValue: number;
+      /** Null without cost.view. */
+      totalInventoryValue: number | null;
       totalInventoryQuantity: number;
       totalOrders: number;
     };
@@ -109,18 +111,20 @@ export function ConsignmentReport({ reportData }: ConsignmentReportProps) {
           </CardContent>
         </Card>
 
-        <Card className="animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ارزش موجودی امانی</CardTitle>
-            <Package className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(reportData.grandTotals.totalInventoryValue)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              ارزش موجودی در انبارهای امانی
-            </p>
-          </CardContent>
-        </Card>
+        {reportData.grandTotals.totalInventoryValue !== null && (
+          <Card className="animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">ارزش موجودی امانی</CardTitle>
+              <Package className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(reportData.grandTotals.totalInventoryValue)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                ارزش موجودی در انبارهای امانی
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Additional Summary Cards */}
@@ -212,10 +216,12 @@ export function ConsignmentReport({ reportData }: ConsignmentReportProps) {
                     <p className="text-xs text-muted-foreground">طلب</p>
                     <p className="text-lg font-bold text-orange-600">{formatCurrency(partner.totalDebt)}</p>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">ارزش موجودی</p>
-                    <p className="text-lg font-bold text-blue-600">{formatCurrency(partner.inventoryValue)}</p>
-                  </div>
+                  {partner.inventoryValue !== null && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">ارزش موجودی</p>
+                      <p className="text-lg font-bold text-blue-600">{formatCurrency(partner.inventoryValue)}</p>
+                    </div>
+                  )}
                 </div>
 
                 {partner.commissionRate && (

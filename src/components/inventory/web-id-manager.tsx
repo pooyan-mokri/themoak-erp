@@ -23,7 +23,7 @@ import {
 import { applyWebIdSeed, setProductWebId } from '@/actions/web-id';
 import { SEED_STATUS_LABEL, type SeedPlan } from '@/lib/web-id-seed-plan';
 
-type MissingProduct = { id: string; name: string; sku: string; sellPrice: number };
+type MissingProduct = { id: string; name: string; sku: string; sellPrice?: number };
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 

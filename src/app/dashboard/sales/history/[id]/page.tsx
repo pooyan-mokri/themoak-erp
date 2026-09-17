@@ -1,5 +1,5 @@
 import { getOrder } from '@/actions/sales';
-import { getAccounts } from '@/actions/accounting';
+import { getAccountOptions } from '@/actions/account-options';
 import { getWarehouses } from '@/actions/warehouse';
 import { getOrderReturns } from '@/actions/order-return';
 import { getOrderExchanges } from '@/actions/order-exchange';
@@ -12,7 +12,7 @@ export default async function OrderDetailsPage({ params }: { params: { id: strin
   await requireRouteAccess('/dashboard/sales');
   const [order, allAccounts, allWarehouses, returns, exchanges] = await Promise.all([
     getOrder(params.id),
-    getAccounts(),
+    getAccountOptions(),
     getWarehouses(),
     getOrderReturns(params.id),
     getOrderExchanges(params.id),

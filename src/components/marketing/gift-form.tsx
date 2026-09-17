@@ -31,7 +31,7 @@ interface GiftFormProps {
     id: string;
     name: string;
     sku: string;
-    costPrice: number;
+    costPrice?: number;
   }>;
   accounts: Array<{
     id: string;
@@ -46,6 +46,8 @@ interface GiftFormProps {
     id: string;
     name: string;
   }>;
+  /** Gift cost is at cost price (cost.view). */
+  canSeeCost: boolean;
 }
 
 interface CartItem {
@@ -54,7 +56,7 @@ interface CartItem {
   warehouseId: string;
 }
 
-export function GiftForm({ products, accounts, campaigns = [], warehouses }: GiftFormProps) {
+export function GiftForm({ products, accounts, campaigns = [], warehouses, canSeeCost }: GiftFormProps) {
   const [state, dispatch] = useFormState(createMarketingGift, initialState);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
@@ -165,7 +167,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                     ))}
                   </SelectContent>
                 </Select>
-                {selectedProduct && (
+                {selectedProduct && canSeeCost && (
                   <p className="text-xs text-muted-foreground">
                     قیمت تمام شده: {new Intl.NumberFormat('fa-IR').format(Number(selectedProduct.costPrice))} تومان
                   </p>
@@ -231,7 +233,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-base md:text-sm truncate">{product?.name || 'نامشخص'}</div>
                         <div className="text-sm md:text-xs text-muted-foreground mt-1">
-                          {warehouse?.name} - {item.quantity} عدد - {new Intl.NumberFormat('fa-IR').format(itemCost)} تومان
+                          {warehouse?.name} - {item.quantity} عدد{canSeeCost && ` - ${new Intl.NumberFormat('fa-IR').format(itemCost)} تومان`}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -268,14 +270,16 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses }: Gif
                   );
                 })}
               </div>
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-base md:text-sm">هزینه کل:</span>
-                  <span className="font-bold text-xl md:text-lg text-red-600">
-                    {new Intl.NumberFormat('fa-IR').format(totalCost)} تومان
-                  </span>
+              {canSeeCost && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-base md:text-sm">هزینه کل:</span>
+                    <span className="font-bold text-xl md:text-lg text-red-600">
+                      {new Intl.NumberFormat('fa-IR').format(totalCost)} تومان
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

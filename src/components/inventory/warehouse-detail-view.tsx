@@ -21,9 +21,9 @@ interface InventoryItem {
   productName: string;
   sku: string;
   quantity: number;
-  costPrice: number;
-  sellPrice: number;
-  totalValue: number;
+  costPrice: number | null;
+  sellPrice: number | null;
+  totalValue: number | null;
   productType: string;
 }
 
@@ -31,8 +31,8 @@ interface OrderItem {
   id: string;
   productName: string;
   quantity: number;
-  price: number;
-  total: number;
+  price: number | null;
+  total: number | null;
   orderNumber: number;
   customerName: string;
   orderDate: string;
@@ -42,8 +42,8 @@ interface PurchaseItem {
   id: string;
   productName: string;
   quantity: number;
-  price: number;
-  total: number;
+  price: number | null;
+  total: number | null;
   orderNumber: number;
   supplierName: string;
   orderDate: string;
@@ -76,17 +76,21 @@ interface WarehouseDetailViewProps {
   movements: Movement[];
   lowStockItems: InventoryItem[];
   topProductsByValue: InventoryItem[];
+  canSeeCost: boolean;
+  canSeeSales: boolean;
 }
 
-function exportToExcel(inventory: InventoryItem[], warehouseName: string) {
+function exportToExcel(inventory: InventoryItem[], warehouseName: string, canSeeCost: boolean) {
   import('xlsx').then((XLSX) => {
     const rows = inventory.map((item) => ({
       'نام محصول': item.productName,
       'کد کالا (SKU)': item.sku,
       'نوع': item.productType === 'SALEABLE' ? 'قابل فروش' : item.productType === 'FIXED_ASSET' ? 'دارایی ثابت' : 'کالای مصرفی',
       'تعداد موجود': item.quantity,
-      'قیمت تمام شده': item.costPrice,
-      'ارزش کل': item.totalValue,
+      ...(canSeeCost && {
+        'قیمت تمام شده': item.costPrice,
+        'ارزش کل': item.totalValue,
+      }),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -95,7 +99,7 @@ function exportToExcel(inventory: InventoryItem[], warehouseName: string) {
   });
 }
 
-function exportToPdf(inventory: InventoryItem[], warehouseName: string) {
+function exportToPdf(inventory: InventoryItem[], warehouseName: string, canSeeCost: boolean) {
   const rows = inventory
     .map(
       (item, i) =>
@@ -104,8 +108,8 @@ function exportToPdf(inventory: InventoryItem[], warehouseName: string) {
           <td>${item.productName}</td>
           <td>${item.sku}</td>
           <td>${item.quantity.toLocaleString('fa-IR')}</td>
-          <td>${item.costPrice.toLocaleString('fa-IR')}</td>
-          <td>${item.totalValue.toLocaleString('fa-IR')}</td>
+          ${canSeeCost ? `<td>${(item.costPrice ?? 0).toLocaleString('fa-IR')}</td>
+          <td>${(item.totalValue ?? 0).toLocaleString('fa-IR')}</td>` : ''}
         </tr>`
     )
     .join('');
@@ -116,7 +120,7 @@ function exportToPdf(inventory: InventoryItem[], warehouseName: string) {
     th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}
     th{background:#f0f0f0}h2{text-align:center}</style></head>
     <body><h2>موجودی انبار: ${warehouseName}</h2>
-    <table><thead><tr><th>#</th><th>نام محصول</th><th>SKU</th><th>تعداد</th><th>قیمت تمام شده</th><th>ارزش کل</th></tr></thead>
+    <table><thead><tr><th>#</th><th>نام محصول</th><th>SKU</th><th>تعداد</th>${canSeeCost ? '<th>قیمت تمام شده</th><th>ارزش کل</th>' : ''}</tr></thead>
     <tbody>${rows}</tbody></table></body></html>`;
   const win = window.open('', '_blank');
   if (win) {
@@ -135,6 +139,8 @@ export function WarehouseDetailView({
   movements,
   lowStockItems,
   topProductsByValue,
+  canSeeCost,
+  canSeeSales,
 }: WarehouseDetailViewProps) {
   return (
     <Tabs defaultValue="inventory" className="w-full">
@@ -169,7 +175,7 @@ export function WarehouseDetailView({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => exportToExcel(inventory, warehouseName)}
+                onClick={() => exportToExcel(inventory, warehouseName, canSeeCost)}
                 disabled={inventory.length === 0}
               >
                 <FileSpreadsheet className="h-4 w-4 ml-2" />
@@ -178,7 +184,7 @@ export function WarehouseDetailView({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => exportToPdf(inventory, warehouseName)}
+                onClick={() => exportToPdf(inventory, warehouseName, canSeeCost)}
                 disabled={inventory.length === 0}
               >
                 <FileText className="h-4 w-4 ml-2" />
@@ -200,8 +206,8 @@ export function WarehouseDetailView({
                       <TableHead className="text-right">کد کالا</TableHead>
                       <TableHead className="text-right">نوع</TableHead>
                       <TableHead className="text-right">تعداد</TableHead>
-                      <TableHead className="text-right">قیمت تمام شده</TableHead>
-                      <TableHead className="text-right">ارزش کل</TableHead>
+                      {canSeeCost && <TableHead className="text-right">قیمت تمام شده</TableHead>}
+                      {canSeeCost && <TableHead className="text-right">ارزش کل</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -240,10 +246,12 @@ export function WarehouseDetailView({
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{formatCurrency(item.costPrice)}</TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(item.totalValue)}
-                        </TableCell>
+                        {canSeeCost && <TableCell>{formatCurrency(item.costPrice ?? 0)}</TableCell>}
+                        {canSeeCost && (
+                          <TableCell className="font-medium">
+                            {formatCurrency(item.totalValue ?? 0)}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -333,7 +341,7 @@ export function WarehouseDetailView({
                       <TableHead className="text-right">مشتری</TableHead>
                       <TableHead className="text-right">شماره سفارش</TableHead>
                       <TableHead className="text-right">تاریخ</TableHead>
-                      <TableHead className="text-right">مبلغ</TableHead>
+                      {canSeeSales && <TableHead className="text-right">مبلغ</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -348,9 +356,11 @@ export function WarehouseDetailView({
                         <TableCell className="text-xs text-muted-foreground">
                           {item.orderDate}
                         </TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(item.total)}
-                        </TableCell>
+                        {canSeeSales && (
+                          <TableCell className="font-medium">
+                            {formatCurrency(item.total ?? 0)}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -382,7 +392,7 @@ export function WarehouseDetailView({
                       <TableHead className="text-right">تامین‌کننده</TableHead>
                       <TableHead className="text-right">شماره سفارش</TableHead>
                       <TableHead className="text-right">تاریخ</TableHead>
-                      <TableHead className="text-right">مبلغ</TableHead>
+                      {canSeeCost && <TableHead className="text-right">مبلغ</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -397,9 +407,11 @@ export function WarehouseDetailView({
                         <TableCell className="text-xs text-muted-foreground">
                           {item.orderDate}
                         </TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(item.total)}
-                        </TableCell>
+                        {canSeeCost && (
+                          <TableCell className="font-medium">
+                            {formatCurrency(item.total ?? 0)}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

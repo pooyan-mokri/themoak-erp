@@ -29,8 +29,8 @@ interface Product {
   sku: string;
   barcode?: string;
   productType?: string;
-  costPrice: any; // Decimal
-  sellPrice: any; // Decimal
+  costPrice?: any; // Decimal; absent without cost.view
+  sellPrice?: any; // Decimal; absent without sales.view
   wooId?: number;
   webId?: string;
   image?: string;
@@ -40,6 +40,11 @@ interface Product {
 
 interface ProductTableProps {
   products: Product[];
+  canSeeCost: boolean;
+  canSeeSellPrice: boolean;
+  canEditCost: boolean;
+  canManage: boolean;
+  canGift: boolean;
 }
 
 const getProductTypeLabel = (type?: string) => {
@@ -62,7 +67,7 @@ const getProductTypeBadge = (type?: string) => {
   return badges[type || 'SALEABLE'] || badges.OTHER;
 };
 
-export function ProductTable({ products }: ProductTableProps) {
+export function ProductTable({ products, canSeeCost, canSeeSellPrice, canEditCost, canManage, canGift }: ProductTableProps) {
   const columns: DataTableColumn<Product>[] = [
     {
       key: 'name',
@@ -128,18 +133,18 @@ export function ProductTable({ products }: ProductTableProps) {
         </Badge>
       ),
     },
-    {
+    ...(canSeeCost ? [{
       key: 'costPrice',
       label: 'قیمت خرید',
       sortable: true,
-      render: (product) => `${Number(product.costPrice).toLocaleString('fa-IR')} تومان`,
-    },
-    {
+      render: (product: Product) => `${Number(product.costPrice).toLocaleString('fa-IR')} تومان`,
+    }] : []),
+    ...(canSeeSellPrice ? [{
       key: 'sellPrice',
       label: 'قیمت فروش',
       sortable: true,
-      render: (product) => `${Number(product.sellPrice).toLocaleString('fa-IR')} تومان`,
-    },
+      render: (product: Product) => `${Number(product.sellPrice).toLocaleString('fa-IR')} تومان`,
+    }] : []),
     {
       key: 'wooId',
       label: 'ووکامرس (قدیمی)',
@@ -151,13 +156,21 @@ export function ProductTable({ products }: ProductTableProps) {
           <span className="text-gray-500 text-xs bg-gray-100 px-2 py-1 rounded-full">داخلی</span>
         ),
     },
-    {
+    ...(canManage ? [{
       key: 'actions',
       label: 'عملیات',
       sortable: false,
       className: 'text-right',
-      render: (product) => <ProductActions product={product} />,
-    },
+      render: (product: Product) => (
+        <ProductActions
+          product={product}
+          canEditCost={canEditCost}
+          canSeeSellPrice={canSeeSellPrice}
+          canManage={canManage}
+          canGift={canGift}
+        />
+      ),
+    }] : []),
   ];
 
   return (
@@ -187,7 +200,19 @@ export function ProductTable({ products }: ProductTableProps) {
   );
 }
 
-function ProductActions({ product }: { product: Product }) {
+function ProductActions({
+  product,
+  canEditCost,
+  canSeeSellPrice,
+  canManage,
+  canGift,
+}: {
+  product: Product;
+  canEditCost: boolean;
+  canSeeSellPrice: boolean;
+  canManage: boolean;
+  canGift: boolean;
+}) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -207,46 +232,52 @@ function ProductActions({ product }: { product: Product }) {
 
   return (
     <div className="flex items-center gap-2">
-      <GiftProductDialog productId={product.id} productName={product.name} />
+      {canGift && <GiftProductDialog productId={product.id} productName={product.name} />}
       
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <Edit className="h-4 w-4 text-blue-500" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>ویرایش محصول</DialogTitle>
-          </DialogHeader>
-          <ProductForm 
-            initialData={product} 
-            onSuccess={() => setIsEditOpen(false)} 
-          />
-        </DialogContent>
-      </Dialog>
+      {canManage && (
+        <>
+          <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Edit className="h-4 w-4 text-blue-500" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>ویرایش محصول</DialogTitle>
+              </DialogHeader>
+              <ProductForm 
+                initialData={product} 
+                onSuccess={() => setIsEditOpen(false)} 
+                canEditCost={canEditCost}
+                canSeeSellPrice={canSeeSellPrice}
+              />
+            </DialogContent>
+          </Dialog>
 
-      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <AlertDialogTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <Trash className="h-4 w-4 text-red-500" />
-          </Button>
-        </AlertDialogTrigger>
-          <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>آیا از حذف این کالا اطمینان دارید؟</AlertDialogTitle>
-            <AlertDialogDescription>
-              این عملیات قابل بازگشت نیست. در صورت وجود موجودی یا سفارش، امکان حذف وجود ندارد.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>انصراف</AlertDialogCancel>
-            <AlertDialogAction onClick={(e: React.MouseEvent) => { e.preventDefault(); handleDelete(); }} disabled={isDeleting}>
-              {isDeleting ? 'در حال حذف...' : 'حذف'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Trash className="h-4 w-4 text-red-500" />
+              </Button>
+            </AlertDialogTrigger>
+              <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>آیا از حذف این کالا اطمینان دارید؟</AlertDialogTitle>
+                <AlertDialogDescription>
+                  این عملیات قابل بازگشت نیست. در صورت وجود موجودی یا سفارش، امکان حذف وجود ندارد.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>انصراف</AlertDialogCancel>
+                <AlertDialogAction onClick={(e: React.MouseEvent) => { e.preventDefault(); handleDelete(); }} disabled={isDeleting}>
+                  {isDeleting ? 'در حال حذف...' : 'حذف'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { PrismaClient, DepreciationMethod, FixedAsset } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // Use z.enum instead of z.nativeEnum to avoid runtime issues
 const FixedAssetSchema = z.object({
@@ -28,6 +29,8 @@ const FixedAssetSchema = z.object({
 });
 
 export async function createAsset(prevState: any, formData: FormData) {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return { message: denied.message };
   const validatedFields = FixedAssetSchema.safeParse({
     name: formData.get('name'),
     assetType: formData.get('assetType'),
@@ -74,6 +77,7 @@ export async function createAsset(prevState: any, formData: FormData) {
 }
 
 export async function getAssets() {
+  await requirePermission('finance.view');
   try {
     const assets = await prisma.fixedAsset.findMany({
       orderBy: { createdAt: 'desc' },
@@ -119,6 +123,8 @@ function calculateCurrentValue(asset: FixedAsset) {
 }
 
 export async function postDepreciation(assetId: string) {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
   try {
     const asset = await prisma.fixedAsset.findUnique({
       where: { id: assetId },
@@ -184,6 +190,8 @@ export async function postDepreciation(assetId: string) {
 }
 
 export async function deleteAsset(assetId: string) {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
   try {
     await prisma.fixedAsset.delete({
       where: { id: assetId },

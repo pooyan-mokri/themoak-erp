@@ -14,10 +14,11 @@ import { ProductSalesChart } from '@/components/inventory/product-sales-chart';
 import { MovementHistory } from '@/components/inventory/movement-history';
 import { ProductBarcode } from '@/components/inventory/product-barcode';
 import { notFound } from 'next/navigation';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   await requireRouteAccess('/dashboard/inventory');
+  const [canSeeCost, canSeeSellPrice] = await Promise.all([hasPermission('cost.view'), hasPermission('sales.view')]);
   try {
     // Fetch product first to check if it exists
     const productData = await getProductDetail(params.id);
@@ -41,8 +42,6 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
     const stockBreakdownData = stockBreakdown.status === 'fulfilled' ? stockBreakdown.value : [];
     const salesAnalyticsData = salesAnalytics.status === 'fulfilled' ? salesAnalytics.value : {
       totalUnitsSold: 0,
-      totalRevenue: 0,
-      avgSellingPrice: 0,
       velocityPerWeek: 0,
       velocityPerMonth: 0,
       velocityPerYear: 0
@@ -61,7 +60,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
       {/* KPI Cards Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         <StockKPICards product={product} />
-        <FinancialKPICards product={product} />
+        {(canSeeCost || canSeeSellPrice) && <FinancialKPICards product={product} />}
       </div>
 
       {/* Stock Breakdown */}

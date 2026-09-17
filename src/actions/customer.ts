@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { accountForViewer, productForViewer } from '@/lib/sales-records';
 
 // const prisma = new PrismaClient();
 
@@ -16,6 +18,8 @@ const CustomerSchema = z.object({
 });
 
 export async function createCustomer(prevState: any, formData: FormData) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return { message: denied.message };
   const validatedFields = CustomerSchema.safeParse({
     name: formData.get('name')?.toString() || '',
     phone: formData.get('phone')?.toString() || undefined,
@@ -58,6 +62,8 @@ export async function createCustomer(prevState: any, formData: FormData) {
 }
 
 export async function updateCustomer(id: string, prevState: any, formData: FormData) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return { message: denied.message };
   const validatedFields = CustomerSchema.safeParse({
     name: formData.get('name')?.toString() || '',
     phone: formData.get('phone')?.toString() || undefined,
@@ -97,6 +103,8 @@ export async function updateCustomer(id: string, prevState: any, formData: FormD
 }
 
 export async function deleteCustomer(id: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     // Check for orders
     const orderCount = await prisma.order.count({
@@ -121,6 +129,7 @@ export async function deleteCustomer(id: string) {
 }
 
 export async function getCustomers() {
+  await requirePermission('sales.view');
   try {
     const customers = await prisma.customer.findMany({
       orderBy: { createdAt: 'desc' },
@@ -143,6 +152,8 @@ export async function getCustomers() {
 }
 
 export async function getCustomer(id: string) {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const customer = await prisma.customer.findUnique({
       where: { id },
@@ -192,6 +203,7 @@ export async function getCustomer(id: string) {
         items: order.items.map((item: any) => ({
           ...item,
           price: Number(item.price),
+          product: item.product ? productForViewer(item.product, canSeeCost) : undefined,
         })),
       })),
     };
@@ -201,6 +213,8 @@ export async function getCustomer(id: string) {
 }
 
 export async function updateCustomerNotes(id: string, notes: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.customer.update({
       where: { id },
@@ -221,6 +235,7 @@ export async function updateCustomerNotes(id: string, notes: string) {
 // CRM Enhancement Functions
 
 export async function getCustomersWithDebt() {
+  await requirePermission('sales.view');
   try {
     const customers = await prisma.customer.findMany({
       include: {
@@ -267,6 +282,8 @@ export async function getCustomersWithDebt() {
 }
 
 export async function getCustomerById(id: string) {
+  await requirePermission('sales.view');
+  const [canSeeCost, canSeeBalance] = await Promise.all([hasPermission('cost.view'), hasPermission('finance.view')]);
   try {
     const customer = await prisma.customer.findUnique({
       where: { id },
@@ -328,14 +345,7 @@ export async function getCustomerById(id: string) {
         items: order.items.map((item: any) => ({
           ...item,
           price: Number(item.price),
-          product: item.product ? {
-            ...item.product,
-            costPrice: Number(item.product.costPrice),
-            sellPrice: Number(item.product.sellPrice),
-            image: item.product.image ?? undefined,
-            wooId: item.product.wooId ?? undefined,
-            barcode: item.product.barcode ?? undefined,
-          } : undefined,
+          product: item.product ? productForViewer(item.product, canSeeCost) : undefined,
         })),
         transaction: order.transaction ? {
           ...order.transaction,
@@ -351,10 +361,7 @@ export async function getCustomerById(id: string) {
           receiptUrl: order.transaction.receiptUrl ?? undefined,
           shareholderId: order.transaction.shareholderId ?? undefined,
           employeeId: order.transaction.employeeId ?? undefined,
-          account: order.transaction.account ? {
-            ...order.transaction.account,
-            balance: Number(order.transaction.account.balance),
-          } : undefined,
+          account: order.transaction.account ? accountForViewer(order.transaction.account, canSeeBalance) : undefined,
         } : undefined,
         invoice: order.invoice ? {
           ...order.invoice,
@@ -405,6 +412,7 @@ export async function getCustomerById(id: string) {
 }
 
 export async function calculateCustomerDebt(customerId: string): Promise<number> {
+  await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
       where: {
@@ -430,6 +438,7 @@ export async function calculateCustomerDebt(customerId: string): Promise<number>
 }
 
 export async function getCustomerStats(customerId: string) {
+  await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
       where: { customerId },
@@ -473,6 +482,8 @@ export async function getCustomerStats(customerId: string) {
 }
 
 export async function updateCustomerCredit(id: string, creditLimit: number, paymentTerms: number) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.customer.update({
       where: { id },
@@ -491,6 +502,8 @@ export async function updateCustomerCredit(id: string, creditLimit: number, paym
 }
 
 export async function updateCustomerSegment(id: string, segment?: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.customer.update({
       where: { id },

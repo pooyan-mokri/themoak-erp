@@ -19,16 +19,17 @@ interface InventoryItem {
   product: {
     name: string;
     sku: string;
-    costPrice: any;
-    sellPrice: any;
+    costPrice?: any;
+    sellPrice?: any;
   };
 }
 
 interface StockListProps {
   inventory: InventoryItem[];
+  canSeeCost: boolean;
 }
 
-export function StockList({ inventory }: StockListProps) {
+export function StockList({ inventory, canSeeCost }: StockListProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredInventory = inventory.filter((item) =>
@@ -55,15 +56,15 @@ export function StockList({ inventory }: StockListProps) {
               <TableHead className="text-right">نام کالا</TableHead>
               <TableHead className="text-right">کد (SKU)</TableHead>
               <TableHead className="text-right">موجودی</TableHead>
-              <TableHead className="text-right">ارزش واحد (خرید)</TableHead>
-              <TableHead className="text-right">ارزش کل</TableHead>
+              {canSeeCost && <TableHead className="text-right">ارزش واحد (خرید)</TableHead>}
+              {canSeeCost && <TableHead className="text-right">ارزش کل</TableHead>}
               <TableHead className="text-right">وضعیت</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredInventory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={canSeeCost ? 6 : 4} className="text-center py-8 text-muted-foreground">
                   کالایی یافت نشد.
                 </TableCell>
               </TableRow>
@@ -77,12 +78,16 @@ export function StockList({ inventory }: StockListProps) {
                       {item.quantity}
                     </span>
                   </TableCell>
-                  <TableCell>
-                    {new Intl.NumberFormat('fa-IR').format(Number(item.product.costPrice))}
-                  </TableCell>
-                  <TableCell>
-                    {new Intl.NumberFormat('fa-IR').format(Number(item.product.costPrice) * item.quantity)}
-                  </TableCell>
+                  {canSeeCost && (
+                    <TableCell>
+                      {new Intl.NumberFormat('fa-IR').format(Number(item.product.costPrice))}
+                    </TableCell>
+                  )}
+                  {canSeeCost && (
+                    <TableCell>
+                      {new Intl.NumberFormat('fa-IR').format(Number(item.product.costPrice) * item.quantity)}
+                    </TableCell>
+                  )}
                   <TableCell>
                     {item.quantity <= 0 ? (
                       <Badge variant="destructive">ناموجود</Badge>

@@ -5,10 +5,12 @@ import { PrismaClient } from '@prisma/client';
 import { TransactionType, Currency } from '@/lib/types';
 
 import { prisma } from '@/lib/prisma';
+import { requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
 export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
+  await requirePermission('profit.view');
   try {
     const whereClause: { date?: { gte: Date; lte: Date } } = {};
     if (startDate && endDate) {
@@ -46,6 +48,7 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
 }
 
 export async function getBalanceSheet() {
+  await requirePermission('profit.view');
   try {
     // 1. Cash & Bank Balances
     // EXPENSE-type accounts (Marketing Expenses, COGS, commission) are P&L
@@ -131,6 +134,7 @@ export async function getBalanceSheet() {
 }
 
 export async function getSalesPerformance() {
+  await requirePermission('sales.view');
   try {
     // Top Selling Products
     const orderItems = await prisma.orderItem.findMany({
@@ -170,6 +174,7 @@ export async function getSalesPerformance() {
 }
 
 export async function getSalesByCustomer() {
+  await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
       where: { status: 'COMPLETED' },
@@ -205,6 +210,7 @@ export async function getSalesByCustomer() {
 }
 
 export async function getInventoryValuation() {
+  await requirePermission('cost.view');
   try {
     const inventory = await prisma.inventory.findMany({
       include: {

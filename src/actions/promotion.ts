@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
@@ -23,6 +24,8 @@ const PromotionSchema = z.object({
 });
 
 export async function createPromotion(prevState: any, formData: FormData) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return { message: denied.message };
   const validatedFields = PromotionSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -70,6 +73,7 @@ export async function createPromotion(prevState: any, formData: FormData) {
 }
 
 export async function getPromotions() {
+  await requirePermission('sales.view');
   try {
     const promotions = await prisma.promotion.findMany({
       orderBy: { createdAt: 'desc' },
@@ -92,6 +96,7 @@ export async function getPromotions() {
 }
 
 export async function getActivePromotions() {
+  await requirePermission('sales.view');
   try {
     const now = new Date();
     const promotions = await prisma.promotion.findMany({
@@ -127,6 +132,7 @@ export async function getActivePromotions() {
 }
 
 export async function getPromotionById(id: string) {
+  await requirePermission('sales.view');
   try {
     const promotion = await prisma.promotion.findUnique({
       where: { id },
@@ -150,6 +156,8 @@ export async function getPromotionById(id: string) {
 }
 
 export async function applyPromotion(promotionId: string, orderTotal: number) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     const promotion = await prisma.promotion.findUnique({
       where: { id: promotionId },
@@ -201,6 +209,8 @@ export async function applyPromotion(promotionId: string, orderTotal: number) {
 }
 
 export async function incrementPromotionUsage(promotionId: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.promotion.update({
       where: { id: promotionId },
@@ -219,6 +229,8 @@ export async function incrementPromotionUsage(promotionId: string) {
 }
 
 export async function deactivatePromotion(id: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.promotion.update({
       where: { id },
@@ -234,6 +246,8 @@ export async function deactivatePromotion(id: string) {
 }
 
 export async function deletePromotion(id: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.promotion.delete({
       where: { id },
@@ -249,6 +263,8 @@ export async function deletePromotion(id: string) {
 
 // Gift product to customer (moved from inventory)
 export async function giftProductToCustomer(customerId: string, productId: string, quantity: number, warehouseId: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     // Check inventory
     const inventory = await prisma.inventory.findFirst({

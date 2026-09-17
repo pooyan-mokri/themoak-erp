@@ -1,10 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Truck, ShoppingCart, PackagePlus } from 'lucide-react';
 import Link from 'next/link';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function SuppliersDashboard() {
   await requireRouteAccess('/dashboard/suppliers');
+  const canCreateOrder = await hasPermission('cost.edit');
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">مدیریت زنجیره تامین</h1>
@@ -44,6 +45,7 @@ export default async function SuppliersDashboard() {
           </Card>
         </Link>
 
+        {canCreateOrder && (
         <Link href="/dashboard/suppliers/orders/new">
           <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -60,6 +62,7 @@ export default async function SuppliersDashboard() {
             </CardContent>
           </Card>
         </Link>
+        )}
       </div>
     </div>
   );

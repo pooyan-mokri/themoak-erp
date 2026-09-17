@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requirePermission } from '@/lib/access';
 
 interface DateRange {
   startDate?: Date;
@@ -9,6 +10,7 @@ interface DateRange {
 }
 
 export async function getSalesAnalytics(range?: DateRange) {
+  await requirePermission('finance.view');
   const startDate = range?.startDate || new Date(new Date().setDate(new Date().getDate() - 90));
   const endDate = range?.endDate || new Date();
 

@@ -5,6 +5,7 @@ import { Currency, TransactionType } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -23,6 +24,9 @@ const CurrencyExchangeSchema = z.object({
 // --- Actions ---
 
 export async function exchangeCurrency(prevState: any, formData: FormData) {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return { ...denied, errors: {} };
+
   const validatedFields = CurrencyExchangeSchema.safeParse({
     sourceAccountId: formData.get('sourceAccountId'),
     targetAccountId: formData.get('targetAccountId'),
@@ -217,6 +221,7 @@ export async function exchangeCurrency(prevState: any, formData: FormData) {
 }
 
 export async function getCurrencyExchangeHistory() {
+  await requirePermission('finance.view');
   try {
     const transactions = await prisma.transaction.findMany({
       where: {

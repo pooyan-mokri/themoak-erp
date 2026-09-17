@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { recordOrderPayment } from '@/actions/sales';
-import { getAccounts } from '@/actions/accounting';
+import { getAccountOptions } from '@/actions/account-options';
 
 type OrderWithDetails = {
   id: string;
@@ -55,7 +55,7 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
   useEffect(() => {
     if (open) {
       // Load accounts
-      getAccounts().then((data) => {
+      getAccountOptions().then((data) => {
         const paymentAccounts = data.filter(
           (a: any) => a.type === 'BANK' || a.type === 'CASH'
         );

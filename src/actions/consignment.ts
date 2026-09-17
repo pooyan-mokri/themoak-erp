@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
@@ -54,6 +55,8 @@ const BatchSettlementSchema = z.object({
 // --- Actions ---
 
 export async function createConsignmentPartner(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validatedFields = PartnerSchema.safeParse({
     name: formData.get('name'),
     phone: formData.get('phone') || undefined,
@@ -100,6 +103,8 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
 }
 
 export async function updateConsignmentPartner(partnerId: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validatedFields = PartnerSchema.safeParse({
     name: formData.get('name'),
     phone: formData.get('phone') || undefined,
@@ -157,6 +162,8 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
 }
 
 export async function transferStock(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validatedFields = TransferSchema.safeParse({
     sourceWarehouseId: formData.get('sourceWarehouseId'),
     targetWarehouseId: formData.get('targetWarehouseId'),
@@ -251,6 +258,8 @@ export async function transferStockBatch(input: {
   targetWarehouseId: string;
   items: Array<{ productId: string; quantity: number }>;
 }): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const { sourceWarehouseId, targetWarehouseId, items } = input;
 
   if (!sourceWarehouseId || !targetWarehouseId) {
@@ -326,6 +335,8 @@ export async function recordConsignmentSales(input: {
   saleDate: string; // ISO date or YYYY-MM-DD
   items: Array<{ productId: string; quantity: number; unitPrice: number }>;
 }): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validated = BatchSettlementSchema.safeParse(input);
   if (!validated.success) {
     return {
@@ -585,6 +596,7 @@ export async function recordConsignmentSales(input: {
 }
 
 export async function getConsignmentPartners() {
+    await requirePermission('sales.view');
     try {
         const partners = await prisma.warehouse.findMany({
             where: { isVirtual: true, customerId: { not: null }, isArchived: false },
@@ -610,6 +622,7 @@ export async function getConsignmentPartners() {
 }
 
 export async function getConsignmentPartnerById(warehouseId: string) {
+    await requirePermission('sales.view');
     try {
         const warehouse = await prisma.warehouse.findUnique({
             where: { id: warehouseId },
@@ -636,6 +649,8 @@ export async function getConsignmentPartnerById(warehouseId: string) {
 }
 
 export async function getPendingSettlements() {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const orders = await prisma.order.findMany({
       where: {
@@ -676,10 +691,14 @@ export async function getPendingSettlements() {
         commissionAmount,
         commissionRate,
         discount: order.discount ? Number(order.discount) : undefined,
-        items: order.items.map((item: any) => ({
-          ...item,
-          price: Number(item.price),
-        })),
+        items: order.items.map((item: any) => {
+          const { costPrice, ...product } = item.product;
+          return {
+            ...item,
+            price: Number(item.price),
+            product: canSeeCost ? item.product : product,
+          };
+        }),
       };
     });
   } catch (error) {
@@ -703,6 +722,8 @@ const PaymentSchema = z.object({
  * If no amount is provided, the full remaining balance is paid.
  */
 export async function paySettlement(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validatedFields = PaymentSchema.safeParse({
     orderId: formData.get('orderId'),
     accountId: formData.get('accountId'),
@@ -822,6 +843,8 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
 export async function deleteConsignmentOrder(
   orderId: string,
 ): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   try {
     await prisma.$transaction(async (tx: any) => {
       const order = await tx.order.findUnique({
@@ -926,6 +949,8 @@ export async function returnConsignmentStock(input: {
   targetWarehouseId: string;
   items: Array<{ productId: string; quantity: number }>;
 }): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
   const validated = ReturnSchema.safeParse(input);
   if (!validated.success) {
     return {
@@ -1020,6 +1045,8 @@ export async function returnConsignmentStock(input: {
  * (gross sales, partner commission, our net share, received, balance).
  */
 export async function getPartnerStatement(partnerWarehouseId: string) {
+  await requirePermission('sales.view');
+  const canSeeCost = await hasPermission('cost.view');
   try {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: partnerWarehouseId },
@@ -1078,10 +1105,13 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
     // still in stock, sold, or returned. Robust even when historical TRANSFER
     // movements were never recorded.
     const sentQty = currentStockQty + soldQty + returnedQty;
-    const currentStockValue = warehouse.inventory.reduce(
-      (s: number, inv: any) => s + inv.quantity * Number(inv.product.costPrice || 0),
-      0,
-    );
+    // Stock at cost: null without cost.view.
+    const currentStockValue = canSeeCost
+      ? warehouse.inventory.reduce(
+          (s: number, inv: any) => s + inv.quantity * Number(inv.product.costPrice || 0),
+          0,
+        )
+      : null;
 
     let grossSales = 0;
     let commissionTotal = 0;

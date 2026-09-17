@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { AuditDetailsTabs } from '@/components/inventory/audit-details-tabs';
 import { BackButton } from '@/components/ui/back-button';
 import { auth } from '@/auth';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 // Issuing adjustments runs from this page: one transaction with a few writes per adjusted item.
 export const maxDuration = 60;
@@ -23,6 +23,7 @@ export default async function InventoryAuditDetailsPage({
 
     const session = await auth();
     const isAdmin = session?.user?.role === 'ADMIN';
+    const canSeeCost = await hasPermission('cost.view');
 
     return (
       <div className="space-y-6">
@@ -34,7 +35,7 @@ export default async function InventoryAuditDetailsPage({
           </p>
         </div>
 
-        <AuditDetailsTabs audit={audit} isAdmin={isAdmin} />
+        <AuditDetailsTabs audit={audit} isAdmin={isAdmin} canSeeCost={canSeeCost} />
       </div>
     );
   } catch (error) {

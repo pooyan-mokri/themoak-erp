@@ -1,9 +1,9 @@
 import { getProducts } from '@/actions/product';
-import { getAccounts } from '@/actions/accounting';
+import { getAccountOptions } from '@/actions/account-options';
 import { getMarketingCampaigns } from '@/actions/marketing';
 import { getWarehouses } from '@/actions/warehouse';
 import { GiftForm } from '@/components/marketing/gift-form';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 // Filter only active campaigns
 async function getActiveCampaigns() {
@@ -13,26 +13,21 @@ async function getActiveCampaigns() {
 
 export default async function NewGiftPage() {
   await requireRouteAccess('/dashboard/marketing');
-  const [products, accounts, allCampaigns, warehouses] = await Promise.all([
+  const [products, accounts, allCampaigns, warehouses, canSeeCost] = await Promise.all([
     getProducts(),
-    getAccounts(),
+    getAccountOptions(),
     getMarketingCampaigns(),
     getWarehouses(),
+    hasPermission('cost.view'),
   ]);
 
   // Filter only active/planned campaigns
   const campaigns = allCampaigns.filter((c: any) => c.status === 'ACTIVE' || c.status === 'PLANNED');
 
   // Convert Decimal to number for client
-  const productsWithNumbers = products.map((product: any) => ({
-    ...product,
-    costPrice: Number(product.costPrice || 0),
-  }));
-
-  const accountsWithNumbers = accounts.map((account: any) => ({
-    ...account,
-    balance: Number(account.balance),
-  }));
+  const productsWithNumbers = products.map((product: any) =>
+    canSeeCost ? { ...product, costPrice: Number(product.costPrice || 0) } : product,
+  );
 
   return (
     <div className="space-y-6">
@@ -45,9 +40,10 @@ export default async function NewGiftPage() {
 
       <GiftForm
         products={productsWithNumbers}
-        accounts={accountsWithNumbers}
+        accounts={accounts}
         campaigns={campaigns}
         warehouses={warehouses}
+        canSeeCost={canSeeCost}
       />
     </div>
   );

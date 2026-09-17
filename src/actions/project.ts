@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { ActionState, ActionResult } from '@/lib/types';
+import { checkPermission, getCurrentRole } from '@/lib/access';
 
 const ProjectSchema = z.object({
   name: z.string().min(1, 'نام پروژه الزامی است'),
@@ -26,6 +27,9 @@ const TaskSchema = z.object({
 });
 
 export async function createProject(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('projects.manage');
+  if (denied) return denied;
+
   const validatedFields = ProjectSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
@@ -68,6 +72,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
 }
 
 export async function getProjects() {
+  if (!(await getCurrentRole())) return [];
   try {
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: 'desc' },
@@ -90,6 +95,7 @@ export async function getProjects() {
 }
 
 export async function getProjectById(id: string) {
+  if (!(await getCurrentRole())) return undefined;
   try {
     const project = await prisma.project.findUnique({
       where: { id },
@@ -141,6 +147,7 @@ export async function getProjectById(id: string) {
 }
 
 export async function getProjectsForCalendar() {
+  if (!(await getCurrentRole())) return [];
   try {
     const projects = await prisma.project.findMany({
       include: {
@@ -195,6 +202,9 @@ export async function getProjectsForCalendar() {
 }
 
 export async function createTask(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('projects.manage');
+  if (denied) return denied;
+
   const validatedFields = TaskSchema.safeParse({
     title: formData.get('title'),
     description: formData.get('description'),
@@ -254,6 +264,9 @@ export async function createTask(prevState: ActionState, formData: FormData): Pr
 }
 
 export async function updateTaskStatus(taskId: string, status: string, projectId: string) {
+  const denied = await checkPermission('projects.manage');
+  if (denied) return denied;
+
   try {
     await prisma.task.update({
       where: { id: taskId },
@@ -268,6 +281,9 @@ export async function updateTaskStatus(taskId: string, status: string, projectId
 }
 
 export async function deleteTask(taskId: string, projectId: string) {
+  const denied = await checkPermission('projects.manage');
+  if (denied) return denied;
+
   try {
     await prisma.task.delete({
       where: { id: taskId },
@@ -281,6 +297,9 @@ export async function deleteTask(taskId: string, projectId: string) {
 }
 
 export async function updateProject(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('projects.manage');
+  if (denied) return denied;
+
   const validatedFields = ProjectSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description'),
@@ -325,6 +344,9 @@ export async function updateProject(id: string, prevState: ActionState, formData
 }
 
 export async function updateTask(taskId: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+    const denied = await checkPermission('projects.manage');
+    if (denied) return denied;
+
     console.log('=== updateTask START ===');
     console.log('taskId:', taskId);
     

@@ -25,6 +25,8 @@ interface Warehouse {
 interface WarehouseListProps {
   warehouses: Warehouse[];
   isAdmin?: boolean;
+  /** May edit warehouses (stock.manage). */
+  canEdit?: boolean;
   stockByWarehouse?: Record<string, number>;
   /** Warehouses holding any non-zero row, even when +4 and -4 sum to 0. */
   nonZeroStock?: Record<string, boolean>;
@@ -34,7 +36,7 @@ interface WarehouseListProps {
 
 const SITE_WAREHOUSE_HINT = 'انبار فروش سایت است؛ اول در «تنظیمات › اتصال سایت» انبار دیگری انتخاب کنید';
 
-export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = {}, nonZeroStock = {}, siteWarehouseId = null }: WarehouseListProps) {
+export function WarehouseList({ warehouses, isAdmin = false, canEdit = false, stockByWarehouse = {}, nonZeroStock = {}, siteWarehouseId = null }: WarehouseListProps) {
   const handleDelete = async (id: string) => {
     if (confirm('آیا از حذف این انبار اطمینان دارید؟')) {
       const result = await deleteWarehouse(id);
@@ -101,7 +103,7 @@ export function WarehouseList({ warehouses, isAdmin = false, stockByWarehouse = 
               </TableCell>
               <TableCell className="text-left">
                 <div className="flex justify-end gap-2">
-                  <WarehouseEditDialog warehouse={warehouse} />
+                  {canEdit && <WarehouseEditDialog warehouse={warehouse} />}
                   {isAdmin && (
                     <Button
                       variant="ghost"

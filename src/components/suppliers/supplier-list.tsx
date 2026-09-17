@@ -25,19 +25,23 @@ interface Supplier {
 
 interface SupplierListProps {
   suppliers: Supplier[];
+  /** stock.manage or finance.manage */
+  canCreate: boolean;
 }
 
-export function SupplierList({ suppliers }: SupplierListProps) {
+export function SupplierList({ suppliers, canCreate }: SupplierListProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">لیست تامین‌کنندگان</h2>
-        <Link href="/dashboard/suppliers/new">
-          <Button>
-            <Plus className="w-4 h-4 ml-2" />
-            تامین‌کننده جدید
-          </Button>
-        </Link>
+        {canCreate && (
+          <Link href="/dashboard/suppliers/new">
+            <Button>
+              <Plus className="w-4 h-4 ml-2" />
+              تامین‌کننده جدید
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="border rounded-lg">

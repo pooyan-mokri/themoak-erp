@@ -3,18 +3,23 @@ import { GiftList } from '@/components/marketing/gift-list';
 import { Button } from '@/components/ui/button';
 import { Gift } from 'lucide-react';
 import Link from 'next/link';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function GiftsPage() {
   await requireRouteAccess('/dashboard/marketing');
   const gifts = await getMarketingGifts();
+  const canSeeCost = await hasPermission('cost.view');
 
-  // Convert dates and numbers
-  const giftsWithNumbers = gifts.map((gift: any) => ({
-    ...gift,
-    costPrice: Number(gift.costPrice || 0),
-    totalCost: Number(gift.totalCost || 0),
-  }));
+  // Convert dates and numbers (the cost is absent without cost.view)
+  const giftsWithNumbers = gifts.map((gift: any) =>
+    canSeeCost
+      ? {
+          ...gift,
+          costPrice: Number(gift.costPrice || 0),
+          totalCost: Number(gift.totalCost || 0),
+        }
+      : gift,
+  );
 
   return (
     <div className="space-y-6">
@@ -33,7 +38,7 @@ export default async function GiftsPage() {
         </Link>
       </div>
 
-      <GiftList gifts={giftsWithNumbers} />
+      <GiftList gifts={giftsWithNumbers} canSeeCost={canSeeCost} />
     </div>
   );
 }

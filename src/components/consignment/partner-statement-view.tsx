@@ -94,9 +94,11 @@ export function PartnerStatementView({ partners }: { partners: Partner[] }) {
                 <div className="text-2xl font-bold">
                   {fmt(statement.logistics.currentStockQty)} عدد
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  ارزش: {fmt(statement.logistics.currentStockValue)} تومان
-                </p>
+                {statement.logistics.currentStockValue !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    ارزش: {fmt(statement.logistics.currentStockValue)} تومان
+                  </p>
+                )}
               </CardContent>
             </Card>
             <Card>

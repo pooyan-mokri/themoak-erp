@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { ActionState, ActionResult } from '@/lib/types';
 import { auth } from '@/auth';
+import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 
 // const prisma = new PrismaClient();
 
@@ -23,6 +24,9 @@ const LeadSchema = z.object({
 });
 
 export async function createLead(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   const validatedFields = LeadSchema.safeParse({
     name: formData.get('name'),
     company: formData.get('company'),
@@ -64,6 +68,7 @@ export async function createLead(prevState: ActionState, formData: FormData): Pr
 }
 
 export async function getLeads() {
+  await requirePermission('sales.view');
   try {
     const leads = await prisma.lead.findMany({
       include: {
@@ -94,6 +99,7 @@ export async function getLeads() {
 }
 
 export async function getLeadById(id: string) {
+  await requirePermission('sales.view');
   try {
     const lead = await prisma.lead.findUnique({
       where: { id },
@@ -120,6 +126,9 @@ export async function getLeadById(id: string) {
 }
 
 export async function updateLeadStatus(id: string, status: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   try {
     await prisma.lead.update({
       where: { id },
@@ -135,6 +144,9 @@ export async function updateLeadStatus(id: string, status: string) {
 }
 
 export async function convertLeadToCustomer(leadId: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -184,6 +196,9 @@ const DealSchema = z.object({
 });
 
 export async function createDeal(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   const validatedFields = DealSchema.safeParse({
     title: formData.get('title'),
     customerId: formData.get('customerId'),
@@ -223,6 +238,7 @@ export async function createDeal(prevState: ActionState, formData: FormData): Pr
 }
 
 export async function getDeals() {
+  await requirePermission('sales.view');
   try {
     const deals = await prisma.deal.findMany({
       include: {
@@ -256,6 +272,7 @@ export async function getDeals() {
 }
 
 export async function getDealById(id: string) {
+  await requirePermission('sales.view');
   try {
     const deal = await prisma.deal.findUnique({
       where: { id },
@@ -290,6 +307,9 @@ export async function getDealById(id: string) {
 }
 
 export async function updateDealStage(id: string, stage: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   try {
     const updateData: { stage: string; actualClose?: Date; probability?: number } = { stage };
 
@@ -331,6 +351,9 @@ const TicketSchema = z.object({
 });
 
 export async function createTicket(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   const validatedFields = TicketSchema.safeParse({
     customerId: formData.get('customerId'),
     subject: formData.get('subject'),
@@ -366,6 +389,7 @@ export async function createTicket(prevState: ActionState, formData: FormData): 
 }
 
 export async function getTickets() {
+  await requirePermission('sales.view');
   try {
     const tickets = await prisma.supportTicket.findMany({
       include: {
@@ -396,6 +420,7 @@ export async function getTickets() {
 }
 
 export async function getTicketById(id: string) {
+  await requirePermission('sales.view');
   try {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id },
@@ -430,6 +455,9 @@ export async function getTicketById(id: string) {
 }
 
 export async function updateTicketStatus(id: string, status: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   try {
     await prisma.supportTicket.update({
       where: { id },
@@ -445,6 +473,9 @@ export async function updateTicketStatus(id: string, status: string) {
 }
 
 export async function assignTicket(id: string, assignedTo: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   try {
     await prisma.supportTicket.update({
       where: { id },
@@ -460,6 +491,9 @@ export async function assignTicket(id: string, assignedTo: string) {
 }
 
 export async function resolveTicket(id: string, resolution: string) {
+  const denied = await checkPermission('sales.manage');
+  if (denied) return denied;
+
   try {
     await prisma.supportTicket.update({
       where: { id },
@@ -477,7 +511,20 @@ export async function resolveTicket(id: string, resolution: string) {
   }
 }
 
+const NO_CRM_STATS = {
+  totalCustomers: 0,
+  activeDealsCount: 0,
+  activeDealsValue: 0,
+  openTicketsCount: 0,
+  recentLeads: [],
+  recentDeals: [],
+  topCustomers: [],
+  recentActivity: []
+};
+
 export async function getCRMDashboardStats() {
+  // Customers, deal values and revenue: for sales viewers only.
+  if (!(await hasPermission('sales.view'))) return NO_CRM_STATS;
   try {
     // Every user's activity: for an admin only.
     const session = await auth();
@@ -560,16 +607,7 @@ export async function getCRMDashboardStats() {
     };
   } catch (error) {
     console.error('Error fetching CRM stats:', error);
-    return {
-      totalCustomers: 0,
-      activeDealsCount: 0,
-      activeDealsValue: 0,
-      openTicketsCount: 0,
-      recentLeads: [],
-      recentDeals: [],
-      topCustomers: [],
-      recentActivity: []
-    };
+    return NO_CRM_STATS;
   }
 }
 

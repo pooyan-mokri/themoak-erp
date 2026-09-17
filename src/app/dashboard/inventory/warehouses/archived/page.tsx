@@ -1,16 +1,14 @@
 import { getArchivedWarehouses } from '@/actions/warehouse';
 import { WarehouseArchivedList } from '@/components/inventory/warehouse-archived-list';
-import { auth } from '@/auth';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, requireRouteAccess } from '@/lib/access';
 
 export default async function ArchivedWarehousesPage() {
   await requireRouteAccess('/dashboard/inventory');
   const warehouses = await getArchivedWarehouses();
-  const session = await auth();
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
 
   return (
     <div className="space-y-6">

@@ -14,7 +14,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
+import { getCurrentRole, requirePermission } from '@/lib/access';
 import { revalidatePath } from 'next/cache';
 import { restoreOrderItemStock, restorableQuantity } from '@/lib/restore-warehouse';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
@@ -39,6 +39,7 @@ export type LostStockOrder = {
 };
 
 export async function getUnrestoredCancelledOrders(): Promise<LostStockOrder[]> {
+  await requirePermission('stock.view');
   try {
     const orders = await prisma.order.findMany({
       where: {
@@ -102,8 +103,7 @@ export async function getUnrestoredCancelledOrders(): Promise<LostStockOrder[]> 
  * be credited twice.
  */
 export async function repairCancelledOrderStock(orderId: string): Promise<ActionResult> {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'ADMIN') {
+  if ((await getCurrentRole()) !== 'ADMIN') {
     return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند موجودی را ترمیم کند.' };
   }
 

@@ -173,7 +173,7 @@ test('generateProductBarcodeAction refuses to replace a barcode unless asked, an
   assert.equal(isValidEan13(String(first.barcode)), true);
 });
 
-test('generateProductBarcodeAction needs a session, and never overwrites a barcode issued meanwhile', async () => {
+test('generateProductBarcodeAction needs stock.manage, and never overwrites a barcode issued meanwhile', async () => {
   const legacy = await product('310/BLACK', LEGACY);
 
   setTestRole(null);
@@ -182,6 +182,10 @@ test('generateProductBarcodeAction needs a session, and never overwrites a barco
   assert.equal(await barcodeOf(legacy.id), LEGACY);
 
   setTestRole('USER');
+  assert.equal((await generateProductBarcodeAction(legacy.id, true)).success, false, 'issuing a barcode needs stock.manage');
+  assert.equal(await barcodeOf(legacy.id), LEGACY);
+
+  setTestRole('WAREHOUSE');
   beforeQuery.fn = async (params) => {
     if (params.model === 'Product' && params.action === 'updateMany') {
       beforeQuery.fn = null;

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { ActionState, ActionResult } from '@/lib/types';
+import { checkPermission, requirePermission } from '@/lib/access';
 
 // --- Schemas ---
 
@@ -22,6 +23,9 @@ const EmployeeSchema = z.object({
 // --- Actions ---
 
 export async function createEmployee(prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
     nationalId: formData.get('nationalId') || undefined,
@@ -99,6 +103,9 @@ export async function createEmployee(prevState: ActionState, formData: FormData)
 }
 
 export async function updateEmployee(id: string, prevState: ActionState, formData: FormData): Promise<ActionResult> {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
     nationalId: formData.get('nationalId') || undefined,
@@ -180,6 +187,9 @@ export async function updateEmployee(id: string, prevState: ActionState, formDat
 }
 
 export async function deleteEmployee(id: string) {
+  const denied = await checkPermission('payroll.manage');
+  if (denied) return denied;
+
   try {
     // Check if employee has loans
     const loans = await prisma.loan.findMany({
@@ -209,6 +219,7 @@ export async function deleteEmployee(id: string) {
 }
 
 export async function getEmployees() {
+  await requirePermission('payroll.view');
   try {
     const employees = await prisma.employee.findMany({
       orderBy: { createdAt: 'desc' },
@@ -232,6 +243,7 @@ export async function getEmployees() {
 }
 
 export async function getEmployeeById(id: string) {
+  await requirePermission('payroll.view');
   try {
     const employee = await prisma.employee.findUnique({
       where: { id },
