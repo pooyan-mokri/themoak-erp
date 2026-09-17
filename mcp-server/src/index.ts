@@ -5,7 +5,9 @@
  *
  * Config (env vars):
  *   ERP_API_URL    — e.g. https://themoak-erp.vercel.app
- *   ERP_API_SECRET — Bearer token (same value set in Vercel)
+ *   ERP_API_SECRET — Bearer token: the ERP's full key, the same value as
+ *                    ERP_API_SECRET in Vercel. Not ERP_SITE_API_SECRET: that is
+ *                    the website's key, and every tool here would get 403 with it.
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';

@@ -21,6 +21,16 @@ openssl rand -base64 32
 
 یک بار Redeploy کن.
 
+ERP دو کلید داره (جزئیات در `docs/erp-api.md` بخش ۳):
+
+| کلید | کی استفاده می‌کنه | به چی می‌رسه |
+|------|------------------|--------------|
+| `ERP_API_SECRET` | **همین MCP** و اکشن ChatGPT | همهٔ اکشن‌ها |
+| `ERP_SITE_API_SECRET` | **فقط سرور سایت** (themoak.com) | فقط `warehouses`، `stock`، `createSale`، `setSaleStatus` |
+
+در MCP همیشه `ERP_API_SECRET` رو بذار؛ با کلید سایت همهٔ ابزارها `403` می‌گیرن.
+کلید کامل رو هیچ‌وقت در سایت ننویس، و دو مقدار باید با هم فرق داشته باشن.
+
 ### مرحله ۲ — نصب خودکار
 
 ```bash
@@ -89,5 +99,6 @@ https://themoak-erp.vercel.app/openapi.json
 |------|--------|
 | Claude ابزار ERP نشون نمیده | Restart کن Claude Desktop |
 | خطای `401 Unauthorized` | مطمئن شو Secret در Vercel و config یکیه |
+| خطای `403 Forbidden for this key` | در config کلید سایت (`ERP_SITE_API_SECRET`) رو گذاشتی؛ `ERP_API_SECRET` رو بذار |
 | خطای `No exchange rate for USD` | نرخ ارز رو در ERP → نرخ ارز اضافه کن |
 | نصب مجدد | دوباره همون script رو اجرا کن |

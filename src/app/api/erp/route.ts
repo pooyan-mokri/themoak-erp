@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
@@ -9,23 +10,65 @@ import { kickSiteHook } from '@/lib/site-hook';
 export const maxDuration = 30;
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
-function authenticate(req: NextRequest): boolean {
-  const secret = process.env.ERP_API_SECRET;
-  if (!secret) return false; // secret must be set
+// Two keys (docs/erp-api.md):
+//   ERP_API_SECRET      — the owner's full key (MCP tools): every action.
+//   ERP_SITE_API_SECRET — the website's key: only the four actions below.
+// They must differ. If both hold the same value the caller gets the full key.
+const SITE_GET_ACTIONS = ['warehouses', 'stock'];
+const SITE_POST_ACTIONS = ['createSale', 'setSaleStatus'];
+
+type ApiKey = 'full' | 'site';
+
+function bearerMatches(auth: string, secret: string | undefined): boolean {
+  if (!secret) return false; // an unset or empty secret matches nothing
+  const given = Buffer.from(auth);
+  const expected = Buffer.from(`Bearer ${secret}`);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+function authenticate(req: NextRequest): ApiKey | null {
   const auth = req.headers.get('authorization') ?? '';
-  return auth === `Bearer ${secret}`;
+  const full = bearerMatches(auth, process.env.ERP_API_SECRET);
+  const site = bearerMatches(auth, process.env.ERP_SITE_API_SECRET);
+  if (full) return 'full';
+  return site ? 'site' : null;
 }
 
 function unauthorized() {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
 
+function forbidden() {
+  return NextResponse.json({ error: 'Forbidden for this key' }, { status: 403 });
+}
+
 // ── GET /api/erp?action=<action>&... ─────────────────────────────────────────
+const GET_ACTIONS = [
+  'summary',
+  'accounts',
+  'transactions',
+  'orders',
+  'settlements',
+  'loans',
+  'search',
+  'warehouses',
+  'stock',
+];
+
+// The site reads 404 as "the ERP does not have this action yet".
+function unknownGetAction() {
+  return NextResponse.json({ error: 'Unknown action', availableActions: GET_ACTIONS }, { status: 404 });
+}
+
 export async function GET(req: NextRequest) {
-  if (!authenticate(req)) return unauthorized();
+  const key = authenticate(req);
+  if (!key) return unauthorized();
 
   const { searchParams } = req.nextUrl;
   const action = searchParams.get('action') ?? '';
+  // The site key runs nothing outside its list: a real action is 403, any other still 404.
+  if (key === 'site' && !SITE_GET_ACTIONS.includes(action))
+    return GET_ACTIONS.includes(action) ? forbidden() : unknownGetAction();
 
   try {
     switch (action) {
@@ -301,25 +344,8 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // The site reads 404 as "the ERP does not have this action yet".
       default:
-        return NextResponse.json(
-          {
-            error: 'Unknown action',
-            availableActions: [
-              'summary',
-              'accounts',
-              'transactions',
-              'orders',
-              'settlements',
-              'loans',
-              'search',
-              'warehouses',
-              'stock',
-            ],
-          },
-          { status: 404 },
-        );
+        return unknownGetAction();
     }
   } catch (err: any) {
     console.error('[ERP API]', err);
@@ -335,7 +361,8 @@ function unknownPostAction() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!authenticate(req)) return unauthorized();
+  const key = authenticate(req);
+  if (!key) return unauthorized();
   // The spec writes the address as /api/erp?action=…, so the action may come
   // there instead of in the body. The body's wins when both name one.
   const queryAction = req.nextUrl.searchParams.get('action');
@@ -351,11 +378,16 @@ export async function POST(req: NextRequest) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     // An action the ERP does not have is 404, whatever body came with it.
     if (queryAction && !POST_ACTIONS.includes(queryAction)) return unknownPostAction();
+    // A real action this key may not call is 403, whatever body came with it.
+    if (key === 'site' && queryAction && !SITE_POST_ACTIONS.includes(queryAction)) return forbidden();
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 422 });
   }
 
   const { action: bodyAction, ...fields } = body;
   const action = bodyAction ?? queryAction;
+  // The site key runs nothing outside its list: a real action is 403, any other still 404.
+  if (key === 'site' && !SITE_POST_ACTIONS.includes(action))
+    return POST_ACTIONS.includes(action) ? forbidden() : unknownPostAction();
 
   try {
     switch (action) {
