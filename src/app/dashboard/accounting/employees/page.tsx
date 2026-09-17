@@ -1,7 +1,9 @@
 import { getEmployees } from '@/actions/employee';
 import { EmployeesWrapper } from '@/components/accounting/employees-wrapper';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function EmployeesPage() {
+  await requireRouteAccess('/dashboard/accounting/employees');
   const employees = await getEmployees();
 
   return (

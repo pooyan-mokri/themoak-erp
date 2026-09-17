@@ -1,7 +1,9 @@
 import { getSuppliers } from '@/actions/supplier';
 import { SupplierList } from '@/components/suppliers/supplier-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function SuppliersManagementPage() {
+  await requireRouteAccess('/dashboard/suppliers');
   const { data: suppliers, error } = await getSuppliers();
 
   if (error) {

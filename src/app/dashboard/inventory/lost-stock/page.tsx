@@ -4,8 +4,10 @@ import { auth } from '@/auth';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, AlertTriangle } from 'lucide-react';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function LostStockPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const orders = await getUnrestoredCancelledOrders();
   const session = await auth();
   const isAdmin = session?.user?.role === 'ADMIN';

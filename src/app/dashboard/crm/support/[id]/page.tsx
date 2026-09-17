@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import { TicketActions } from '@/components/crm/ticket-actions';
 
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requireRouteAccess } from '@/lib/access';
 
 const getPriorityColor = (priority: string) => {
   switch (priority) {
@@ -40,6 +41,7 @@ const getStatusLabel = (status: string) => {
 };
 
 export default async function TicketDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/crm');
   const ticket = await getTicketById(params.id);
 
   if (!ticket) {

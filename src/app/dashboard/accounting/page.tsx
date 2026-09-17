@@ -2,8 +2,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calculator, CreditCard, DollarSign, Receipt, Users, HandCoins, UserCircle, Wallet, TrendingDown, TrendingUp, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, ScaleIcon } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
-export default function AccountingPage() {
+export default async function AccountingPage() {
+  await requireRouteAccess('/dashboard/accounting');
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">حسابداری و مالی</h1>

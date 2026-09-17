@@ -64,6 +64,7 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'barcode': 'بارکد',
     'labels': 'چاپ گروهی برچسب',
     'print': 'چاپ',
+    'no-access': 'عدم دسترسی',
   };
   
   // Build breadcrumb items

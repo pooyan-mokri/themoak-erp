@@ -1,7 +1,9 @@
 import { getAccounts } from '@/actions/accounting';
 import { DepositForm } from '@/components/accounting/deposit-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewDepositPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
 
   return (

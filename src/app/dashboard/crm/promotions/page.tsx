@@ -3,8 +3,10 @@ import { PromotionList } from '@/components/crm/promotion-list';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function PromotionsPage() {
+  await requireRouteAccess('/dashboard/crm');
   const promotions = await getPromotions();
 
   return (

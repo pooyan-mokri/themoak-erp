@@ -3,8 +3,10 @@ import { CRMCustomerList } from '@/components/crm/customer-list';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CRMCustomersPage() {
+  await requireRouteAccess('/dashboard/crm');
   const customers = await getCustomersWithDebt();
 
   return (

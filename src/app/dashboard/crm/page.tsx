@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { faIR } from 'date-fns/locale';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CRMDashboardPage() {
+  await requireRouteAccess('/dashboard/crm');
   const stats = await getCRMDashboardStats();
 
   return (

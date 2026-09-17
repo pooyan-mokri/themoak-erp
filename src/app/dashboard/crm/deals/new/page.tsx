@@ -1,7 +1,9 @@
 import { getCustomers } from '@/actions/customer';
 import { DealForm } from '@/components/crm/deal-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewDealPage() {
+  await requireRouteAccess('/dashboard/crm');
   const customers = await getCustomers();
 
   return (

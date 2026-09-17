@@ -7,8 +7,10 @@ import { notFound } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { PrintOrderActions } from '@/components/sales/print-order-actions';
 import { formatShipTo, readSiteOrderData } from '@/lib/site-sale-data';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function PrintOrderPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/sales');
   const order = await prisma.order.findUnique({
     where: { id: params.id },
     include: {

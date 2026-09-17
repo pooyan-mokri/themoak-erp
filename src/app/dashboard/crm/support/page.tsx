@@ -3,8 +3,10 @@ import { TicketList } from '@/components/crm/ticket-list';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function SupportPage() {
+  await requireRouteAccess('/dashboard/crm');
   const tickets = await getTickets();
 
   return (

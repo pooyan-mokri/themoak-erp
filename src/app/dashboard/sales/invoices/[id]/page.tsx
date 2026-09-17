@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requireRouteAccess } from '@/lib/access';
 export default async function InvoiceDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/sales');
   const invoice = await getInvoiceById(params.id);
 
   if (!invoice) {

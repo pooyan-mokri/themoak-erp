@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Role } from '@prisma/client';
+import { ROLES, ROLE_LABELS, describeRole } from '@/lib/permissions';
+import { useState } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 
 const initialState = {
@@ -30,6 +31,7 @@ const initialState = {
 
 export function UserForm() {
   const [state, dispatch] = useFormState(createUser, initialState);
+  const [role, setRole] = useState('USER');
 
   return (
     <Card>
@@ -55,18 +57,21 @@ export function UserForm() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="role">نقش کاربری</Label>
-            <Select name="role" required defaultValue="USER">
+            <Select name="role" required value={role} onValueChange={setRole}>
               <SelectTrigger>
                 <SelectValue placeholder="انتخاب نقش" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="USER">کاربر عادی</SelectItem>
-                <SelectItem value="ADMIN">مدیر سیستم</SelectItem>
-                <SelectItem value="ACCOUNTANT">حسابدار</SelectItem>
-                <SelectItem value="SALES">فروشنده</SelectItem>
-                <SelectItem value="WAREHOUSE">انباردار</SelectItem>
+                {ROLES.map((value) => (
+                  <SelectItem key={value} value={value}>{ROLE_LABELS[value]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <div className="space-y-0.5 text-xs text-muted-foreground">
+              {describeRole(role).map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
           </div>
           {state.message && (
             <div className={`text-sm p-2 rounded ${state.message.includes('موفقیت') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>

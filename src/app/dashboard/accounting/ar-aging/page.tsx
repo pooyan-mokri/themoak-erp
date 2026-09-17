@@ -1,7 +1,9 @@
 import { getARAgingReport } from '@/actions/invoice';
 import { ARAgingReport } from '@/components/accounting/ar-aging-report';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ARAgingPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const reportData = await getARAgingReport();
 
   return (

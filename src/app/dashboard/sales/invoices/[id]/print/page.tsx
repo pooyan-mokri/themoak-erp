@@ -2,7 +2,9 @@ import { getInvoiceById } from '@/actions/invoice';
 import { notFound } from 'next/navigation';
 
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requireRouteAccess } from '@/lib/access';
 export default async function PrintInvoicePage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/sales');
   const invoice = await getInvoiceById(params.id);
 
   if (!invoice) {

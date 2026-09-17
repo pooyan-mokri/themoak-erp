@@ -1,8 +1,10 @@
 import { getProducts } from '@/actions/product';
 import { getWarehouses } from '@/actions/warehouse';
 import { AdjustmentForm } from '@/components/inventory/adjustment-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function AdjustmentsPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const products = await getProducts();
   const warehouses = await getWarehouses();
 

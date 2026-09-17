@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requireRouteAccess } from '@/lib/access';
 export default async function DealDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/crm');
   const deal = await getDealById(params.id);
 
   if (!deal) {

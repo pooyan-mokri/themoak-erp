@@ -1,11 +1,13 @@
 import { getOrders } from '@/actions/sales';
 import { OrderList } from '@/components/sales/order-list';
+import { requireRouteAccess } from '@/lib/access';
 
 /**
  * صفحه تاریخچه سفارشات فروش
  * شامل امکانات: جستجو، فیلتر، ثبت پرداخت، لغو سفارش، دانلود Excel
  */
 export default async function SalesHistoryPage() {
+  await requireRouteAccess('/dashboard/sales');
   const orders = await getOrders();
 
   return (

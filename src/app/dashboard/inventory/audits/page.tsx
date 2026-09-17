@@ -6,8 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { Plus, Package, Calendar, Users } from 'lucide-react';
 import { CreateAuditDialog } from '@/components/inventory/create-audit-dialog';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function InventoryAuditsPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const audits = await getInventoryAudits();
   const warehouses = await getWarehouses();
 

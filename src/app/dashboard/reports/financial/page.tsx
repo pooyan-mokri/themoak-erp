@@ -3,12 +3,14 @@ import { ProfitLossReport } from '@/components/reports/profit-loss-report';
 import { BalanceSheetReport } from '@/components/reports/balance-sheet-report';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function FinancialReportsPage({
   searchParams,
 }: {
   searchParams: { from?: string; to?: string };
 }) {
+  await requireRouteAccess('/dashboard/reports/financial');
   // Default to current month if no dates provided
   const now = new Date();
   const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);

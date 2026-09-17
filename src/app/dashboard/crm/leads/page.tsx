@@ -3,8 +3,10 @@ import { LeadList } from '@/components/crm/lead-list';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function LeadsPage() {
+  await requireRouteAccess('/dashboard/crm');
   const leads = await getLeads();
 
   return (

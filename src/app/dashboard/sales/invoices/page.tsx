@@ -3,8 +3,10 @@ import { InvoiceList } from '@/components/sales/invoice-list';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function InvoicesPage() {
+  await requireRouteAccess('/dashboard/sales');
   const invoices = await getInvoices();
 
   return (

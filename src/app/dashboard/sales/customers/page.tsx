@@ -1,8 +1,10 @@
 import { getCustomers } from '@/actions/customer';
 import { CustomerForm } from '@/components/sales/customer-form';
 import { CustomerList } from '@/components/sales/customer-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CustomersPage() {
+  await requireRouteAccess('/dashboard/sales');
   const customers = await getCustomers();
 
   return (

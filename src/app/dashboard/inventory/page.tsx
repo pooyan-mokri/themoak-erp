@@ -2,8 +2,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, Warehouse, Building2, BarChart3, ClipboardCheck, PackageSearch } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
-export default function InventoryPage() {
+export default async function InventoryPage() {
+  await requireRouteAccess('/dashboard/inventory');
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">مدیریت موجودی و انبار</h1>

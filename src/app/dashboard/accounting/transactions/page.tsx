@@ -1,7 +1,9 @@
 import { getTransactions } from '@/actions/accounting';
 import { TransactionList } from '@/components/accounting/transaction-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function TransactionsPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const transactions = await getTransactions();
 
   return (

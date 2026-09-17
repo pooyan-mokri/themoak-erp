@@ -985,6 +985,7 @@ model AIAction {
 
 enum Role {
   ADMIN
+  AUDITOR
   ACCOUNTANT
   WAREHOUSE
   SALES

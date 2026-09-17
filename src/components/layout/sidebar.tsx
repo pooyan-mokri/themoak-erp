@@ -22,7 +22,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
+import { canAccessRoute, NAV_WHILE_LOADING } from '@/lib/permissions';
 import { Logo } from './logo';
 
 const routes = [
@@ -113,6 +114,11 @@ const routes = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session, status } = useSession();
+  // Until the session loads, show nothing a role might not be allowed to see.
+  const visibleRoutes = routes.filter((route) =>
+    status === 'loading' ? NAV_WHILE_LOADING.includes(route.href) : canAccessRoute(session?.user?.role, route.href),
+  );
 
   return (
     <div className="flex flex-col h-full bg-[#111827] text-white">
@@ -126,7 +132,7 @@ export function Sidebar() {
       {/* Scrollable routes */}
       <ScrollArea className="flex-1 px-3 py-4">
         <div className="space-y-1">
-          {routes.map((route) => (
+          {visibleRoutes.map((route) => (
             <Link
               key={route.href}
               href={route.href}

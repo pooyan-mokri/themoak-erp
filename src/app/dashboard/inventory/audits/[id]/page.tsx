@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { AuditDetailsTabs } from '@/components/inventory/audit-details-tabs';
 import { BackButton } from '@/components/ui/back-button';
 import { auth } from '@/auth';
+import { requireRouteAccess } from '@/lib/access';
 
 // Issuing adjustments runs from this page: one transaction with a few writes per adjusted item.
 export const maxDuration = 60;
@@ -12,6 +13,7 @@ export default async function InventoryAuditDetailsPage({
 }: {
   params: { id: string };
 }) {
+  await requireRouteAccess('/dashboard/inventory');
   try {
     const audit = await getInventoryAudit(params.id);
 

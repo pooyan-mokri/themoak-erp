@@ -2,8 +2,10 @@ import { getPayrolls } from '@/actions/payroll';
 import { getEmployees } from '@/actions/employee';
 import { getAccounts } from '@/actions/accounting';
 import { PayrollWrapper } from '@/components/accounting/payroll-wrapper';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function PayrollPage() {
+  await requireRouteAccess('/dashboard/accounting/payroll');
   const payrolls = await getPayrolls();
   const employees = await getEmployees();
   const accounts = await getAccounts();

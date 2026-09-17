@@ -1,7 +1,9 @@
 import { getAccounts } from '@/actions/accounting';
 import { WithdrawalForm } from '@/components/accounting/withdrawal-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewWithdrawalPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   return (
     <div className="space-y-6">

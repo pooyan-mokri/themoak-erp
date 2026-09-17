@@ -3,8 +3,10 @@ import { getEmployees } from '@/actions/employee';
 import { getAccounts } from '@/actions/accounting';
 import { LoanForm } from '@/components/accounting/loan-form';
 import { LoanList } from '@/components/accounting/loan-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function LoansPage() {
+  await requireRouteAccess('/dashboard/accounting/loans');
   const loans = await getLoans();
   const employees = await getEmployees();
   const accounts = await getAccounts();

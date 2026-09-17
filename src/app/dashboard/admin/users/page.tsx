@@ -6,8 +6,10 @@ import { UserForm } from '@/components/admin/user-form';
 import { UserList } from '@/components/admin/user-list';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function AdminUsersPage() {
+  await requireRouteAccess('/dashboard/admin');
   const session = await auth();
 
   // Check if user is admin - handle both string and enum comparison

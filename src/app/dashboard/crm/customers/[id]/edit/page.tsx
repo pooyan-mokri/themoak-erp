@@ -1,8 +1,10 @@
 import { getCustomerById } from '@/actions/customer';
 import { EditCustomerWrapper } from '@/components/crm/edit-customer-wrapper';
 import { notFound } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function EditCustomerPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/crm');
   const customer = await getCustomerById(params.id);
 
   if (!customer) {

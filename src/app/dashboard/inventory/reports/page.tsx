@@ -1,7 +1,9 @@
 import { getInventoryReport } from '@/actions/inventory-reports';
 import { InventoryReport } from '@/components/inventory/inventory-report';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function InventoryReportsPage() {
+  await requireRouteAccess('/dashboard/inventory/reports');
   const report = await getInventoryReport();
 
   return (

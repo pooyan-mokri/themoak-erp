@@ -4,8 +4,10 @@ import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import { OrderDetail } from '@/components/suppliers/order-detail';
 import { BackButton } from '@/components/ui/back-button';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/suppliers');
   const { data: order } = await getPurchaseOrder(params.id);
   const warehouses = await prisma.warehouse.findMany({
     where: { isVirtual: false, isArchived: false }

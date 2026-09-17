@@ -1,7 +1,9 @@
 import { getLatestExchangeRates } from '@/actions/accounting';
 import { ExchangeRateManager } from '@/components/accounting/exchange-rate-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ExchangeRatesPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const rates = await getLatestExchangeRates();
 
   return (

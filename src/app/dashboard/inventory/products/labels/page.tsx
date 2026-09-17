@@ -3,11 +3,13 @@ import { countNonStandardBarcodes } from '@/actions/product';
 import { getWarehouses } from '@/actions/warehouse';
 import { BackButton } from '@/components/ui/back-button';
 import { BarcodeLabelsView } from '@/components/inventory/barcode-labels-view';
+import { requireRouteAccess } from '@/lib/access';
 
 // Replacing non-standard barcodes runs from this page: one write per product.
 export const maxDuration = 60;
 
 export default async function ProductLabelsPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const session = await auth();
   const isAdmin = session?.user?.role === 'ADMIN';
 

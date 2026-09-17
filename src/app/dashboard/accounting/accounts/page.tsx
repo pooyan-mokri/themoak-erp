@@ -2,8 +2,10 @@
 import { getAccounts } from '@/actions/accounting';
 import { AccountForm } from '@/components/accounting/account-form';
 import { AccountList } from '@/components/accounting/account-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function AccountsPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
 
   return (

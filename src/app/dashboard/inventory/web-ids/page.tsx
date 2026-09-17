@@ -1,8 +1,10 @@
 import { auth } from '@/auth';
 import { getProductsWithoutWebId, getWebIdSeedPreview } from '@/actions/web-id';
 import { WebIdManager } from '@/components/inventory/web-id-manager';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function WebIdsPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const [preview, missing, session] = await Promise.all([
     getWebIdSeedPreview(),
     getProductsWithoutWebId(),

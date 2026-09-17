@@ -1,8 +1,10 @@
 import { getSalesAnalytics } from '@/actions/sales-analytics';
 import { SalesAnalyticsDashboard } from '@/components/sales/sales-analytics-dashboard';
 import { BackButton } from '@/components/ui/back-button';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function SalesAnalyticsPage() {
+  await requireRouteAccess('/dashboard/sales/analytics');
   const analytics = await getSalesAnalytics();
 
   return (

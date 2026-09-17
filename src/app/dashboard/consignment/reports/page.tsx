@@ -1,7 +1,9 @@
 import { getConsignmentReport } from '@/actions/consignment-reports';
 import { ConsignmentReport } from '@/components/consignment/consignment-report';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ConsignmentReportsPage() {
+  await requireRouteAccess('/dashboard/consignment');
   const reportData = await getConsignmentReport();
 
   return (

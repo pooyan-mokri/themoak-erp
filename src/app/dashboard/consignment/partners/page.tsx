@@ -1,8 +1,10 @@
 import { getConsignmentPartners } from '@/actions/consignment';
 import { PartnerForm } from '@/components/consignment/partner-form';
 import { PartnerList } from '@/components/consignment/partner-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function PartnersPage() {
+  await requireRouteAccess('/dashboard/consignment');
   const partners = await getConsignmentPartners();
 
   return (

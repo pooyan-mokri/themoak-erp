@@ -9,8 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { DollarSign } from 'lucide-react';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ShareholdersPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const shareholders = await getShareholders();
   const shareholdersWithBalance = await getShareholdersWithBalance();
   const accounts = await getAccounts();

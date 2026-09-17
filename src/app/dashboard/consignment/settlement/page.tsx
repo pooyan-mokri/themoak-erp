@@ -3,10 +3,12 @@ import { getProducts } from '@/actions/product';
 import { getAccounts } from '@/actions/accounting';
 import { SettlementForm } from '@/components/consignment/settlement-form';
 import { SettlementList } from '@/components/consignment/settlement-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettlementPage() {
+  await requireRouteAccess('/dashboard/consignment');
   const partners = await getConsignmentPartners();
   const products = await getProducts();
   const pendingSettlements = await getPendingSettlements();

@@ -1,8 +1,10 @@
 import { getEmployeeDebts, getAccounts } from '@/actions/accounting';
 import { EmployeeDebtList } from '@/components/accounting/employee-debt-list';
 import { PayDebtDialog } from '@/components/accounting/pay-debt-dialog';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function EmployeeDebtsPage() {
+  await requireRouteAccess('/dashboard/accounting/employee-debts');
   const debts = await getEmployeeDebts();
   const accounts = await getAccounts();
 

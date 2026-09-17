@@ -2,8 +2,10 @@ import { getSuppliers } from '@/actions/supplier';
 import { getInventoryByProduct } from '@/actions/inventory'; // We need a way to get products
 import { OrderForm } from '@/components/suppliers/order-form';
 import { prisma } from '@/lib/prisma';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewOrderPage() {
+  await requireRouteAccess('/dashboard/suppliers');
   const { data: suppliers } = await getSuppliers();
   const products = await prisma.product.findMany();
 

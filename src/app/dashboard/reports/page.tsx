@@ -2,8 +2,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { BarChart3, TrendingUp, Package } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  await requireRouteAccess('/dashboard/reports');
   return (
     <div className="space-y-6">
       <div>

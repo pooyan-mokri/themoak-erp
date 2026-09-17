@@ -1,7 +1,9 @@
 import { getAccounts } from '@/actions/accounting';
 import { TransferForm } from '@/components/accounting/transfer-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewTransferPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   return (
     <div className="space-y-6">

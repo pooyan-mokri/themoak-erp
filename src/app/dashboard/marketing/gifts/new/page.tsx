@@ -3,6 +3,7 @@ import { getAccounts } from '@/actions/accounting';
 import { getMarketingCampaigns } from '@/actions/marketing';
 import { getWarehouses } from '@/actions/warehouse';
 import { GiftForm } from '@/components/marketing/gift-form';
+import { requireRouteAccess } from '@/lib/access';
 
 // Filter only active campaigns
 async function getActiveCampaigns() {
@@ -11,6 +12,7 @@ async function getActiveCampaigns() {
 }
 
 export default async function NewGiftPage() {
+  await requireRouteAccess('/dashboard/marketing');
   const [products, accounts, allCampaigns, warehouses] = await Promise.all([
     getProducts(),
     getAccounts(),

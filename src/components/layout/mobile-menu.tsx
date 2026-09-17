@@ -22,7 +22,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
+import { canAccessRoute, NAV_WHILE_LOADING } from '@/lib/permissions';
 import {
   Sheet,
   SheetContent,
@@ -118,6 +119,11 @@ interface MobileMenuProps {
 
 export function MobileMenu({ open, onOpenChange }: MobileMenuProps) {
   const pathname = usePathname();
+  const { data: session, status } = useSession();
+  // Until the session loads, show nothing a role might not be allowed to see.
+  const visibleRoutes = routes.filter((route) =>
+    status === 'loading' ? NAV_WHILE_LOADING.includes(route.href) : canAccessRoute(session?.user?.role, route.href),
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -132,7 +138,7 @@ export function MobileMenu({ open, onOpenChange }: MobileMenuProps) {
         <div className="flex flex-col h-[calc(100vh-80px)]">
           <ScrollArea className="flex-1 p-3">
             <div className="space-y-1">
-              {routes.map((route) => (
+              {visibleRoutes.map((route) => (
                 <Link
                   key={route.href}
                   href={route.href}

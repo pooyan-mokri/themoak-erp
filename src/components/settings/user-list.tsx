@@ -8,6 +8,7 @@ import { UserForm } from './user-form';
 import { deleteUser } from '@/actions/user';
 import { toast } from 'sonner';
 import { Role } from '@/lib/types';
+import { ROLES, ROLE_LABELS } from '@/lib/permissions';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
@@ -44,25 +45,17 @@ export function UserList({ users }: UserListProps) {
   const getRoleBadge = (role: Role) => {
     const styles = {
       [Role.ADMIN]: 'bg-red-100 text-red-800 hover:bg-red-200',
+      [Role.AUDITOR]: 'bg-teal-100 text-teal-800 hover:bg-teal-200',
       [Role.ACCOUNTANT]: 'bg-blue-100 text-blue-800 hover:bg-blue-200',
       [Role.SALES]: 'bg-green-100 text-green-800 hover:bg-green-200',
       [Role.WAREHOUSE]: 'bg-orange-100 text-orange-800 hover:bg-orange-200',
       [Role.PROJECT_MANAGER]: 'bg-purple-100 text-purple-800 hover:bg-purple-200',
       [Role.USER]: 'bg-gray-100 text-gray-800 hover:bg-gray-200',
     };
-    
-    const labels = {
-      [Role.ADMIN]: 'مدیر سیستم',
-      [Role.ACCOUNTANT]: 'حسابدار',
-      [Role.SALES]: 'فروشنده',
-      [Role.WAREHOUSE]: 'انباردار',
-      [Role.PROJECT_MANAGER]: 'مدیر پروژه',
-      [Role.USER]: 'کاربر عادی',
-    };
 
     return (
       <Badge variant="outline" className={styles[role]}>
-        {labels[role]}
+        {ROLE_LABELS[role]}
       </Badge>
     );
   };
@@ -140,14 +133,7 @@ export function UserList({ users }: UserListProps) {
           {
             key: 'role',
             label: 'نقش',
-            options: [
-              { value: Role.ADMIN, label: 'مدیر سیستم' },
-              { value: Role.ACCOUNTANT, label: 'حسابدار' },
-              { value: Role.SALES, label: 'فروشنده' },
-              { value: Role.WAREHOUSE, label: 'انباردار' },
-              { value: Role.PROJECT_MANAGER, label: 'مدیر پروژه' },
-              { value: Role.USER, label: 'کاربر عادی' },
-            ],
+            options: ROLES.map((value) => ({ value, label: ROLE_LABELS[value] })),
           },
         ]}
         defaultSort={{ key: 'createdAt', direction: 'desc' }}

@@ -1,15 +1,17 @@
 import { Metadata } from 'next';
+import { requireRouteAccess } from '@/lib/access';
 
 export const metadata: Metadata = {
   title: 'CRM Dashboard | TheMoak ERP',
   description: 'Customer Relationship Management Dashboard',
 };
 
-export default function CRMLayout({
+export default async function CRMLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await requireRouteAccess('/dashboard/crm');
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">

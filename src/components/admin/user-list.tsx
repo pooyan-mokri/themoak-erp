@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Role } from '@prisma/client';
+import { ROLES, ROLE_LABELS } from '@/lib/permissions';
 import { MoreHorizontal, Trash } from 'lucide-react';
 
 import { formatJalaliDate } from '@/lib/date-utils';
@@ -55,7 +56,7 @@ export function UserList({ users }: UserListProps) {
               <TableCell className="font-medium">{user.name}</TableCell>
               <TableCell>{user.email}</TableCell>
               <TableCell>
-                <Badge variant="outline">{user.role}</Badge>
+                <Badge variant="outline">{ROLE_LABELS[user.role as Role] ?? user.role}</Badge>
               </TableCell>
               <TableCell>
                 {formatJalaliDate(user.createdAt)}
@@ -69,18 +70,11 @@ export function UserList({ users }: UserListProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.ADMIN)}>
-                      تغییر به مدیر
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.ACCOUNTANT)}>
-                      تغییر به حسابدار
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.SALES)}>
-                      تغییر به فروشنده
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleRoleChange(user.id, Role.WAREHOUSE)}>
-                      تغییر به انباردار
-                    </DropdownMenuItem>
+                    {ROLES.map((value) => (
+                      <DropdownMenuItem key={value} onClick={() => handleRoleChange(user.id, value)}>
+                        تغییر به {ROLE_LABELS[value]}
+                      </DropdownMenuItem>
+                    ))}
                     <DropdownMenuItem
                       onClick={() => handleDelete(user.id)}
                       className="text-red-600"

@@ -4,6 +4,7 @@ import { FixedAsset } from '@/lib/types';
 import { PostDepreciationButton } from '@/components/accounting/post-depreciation-button';
 
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requireRouteAccess } from '@/lib/access';
 type AssetWithCurrentValue = Omit<FixedAsset, 'currentValue' | 'purchasePrice' | 'salvageValue' | 'quantity'> & {
   currentValue: number;
   purchasePrice: number;
@@ -12,6 +13,7 @@ type AssetWithCurrentValue = Omit<FixedAsset, 'currentValue' | 'purchasePrice' |
 };
 
 export default async function AssetsPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const assets = await getAssets();
 
   return (

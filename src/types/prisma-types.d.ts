@@ -7,6 +7,7 @@ declare module '@prisma/client' {
   // Enums from schema
   export enum Role {
     ADMIN = 'ADMIN',
+    AUDITOR = 'AUDITOR',
     ACCOUNTANT = 'ACCOUNTANT',
     WAREHOUSE = 'WAREHOUSE',
     SALES = 'SALES',

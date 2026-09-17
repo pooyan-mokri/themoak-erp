@@ -5,8 +5,10 @@ import { WarehouseStats } from '@/components/inventory/warehouse-stats';
 import { TransferForm } from '@/components/inventory/transfer-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeftRight } from 'lucide-react';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function WarehouseConsolePage() {
+  await requireRouteAccess('/dashboard/inventory');
   const [stats, warehouses, products] = await Promise.all([
     getWarehouseDashboardStats(),
     getWarehouses(),

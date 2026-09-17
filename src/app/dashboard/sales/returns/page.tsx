@@ -6,8 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { BackButton } from '@/components/ui/back-button';
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ReturnsHistoryPage() {
+  await requireRouteAccess('/dashboard/sales');
   const [returns, exchanges] = await Promise.all([
     getAllOrderReturns(),
     getAllOrderExchanges(),

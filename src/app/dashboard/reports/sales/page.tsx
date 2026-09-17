@@ -1,12 +1,14 @@
 import { getSalesByProduct, getSalesByCustomer, getSalesOverTime } from '@/actions/reports';
 import { SalesReport } from '@/components/reports/sales-report';
 import { Card } from '@/components/ui/card';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function SalesReportsPage({
   searchParams,
 }: {
   searchParams: { from?: string; to?: string };
 }) {
+  await requireRouteAccess('/dashboard/reports/sales');
   // Default to last 3 months
   const now = new Date();
   const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 2, 1);

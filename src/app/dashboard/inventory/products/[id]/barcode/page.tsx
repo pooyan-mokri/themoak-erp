@@ -2,12 +2,14 @@ import { getProductDetail } from '@/actions/product-detail';
 import { notFound } from 'next/navigation';
 import { BarcodePrintWrapper } from '@/components/inventory/barcode-print-wrapper';
 import { barcodeFormatFor } from '@/lib/barcode-format';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ProductBarcodePrintPage({
   params,
 }: {
   params: { id: string };
 }) {
+  await requireRouteAccess('/dashboard/inventory');
   const product = await getProductDetail(params.id);
 
   if (!product || !product.barcode) {

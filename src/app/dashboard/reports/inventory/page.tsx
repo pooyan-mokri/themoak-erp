@@ -2,8 +2,10 @@ import { getStockTurnoverReport, getInventoryAgingReport } from '@/actions/repor
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function InventoryReportsPage() {
+  await requireRouteAccess('/dashboard/reports/inventory');
   const [stockTurnover, inventoryAging] = await Promise.all([
     getStockTurnoverReport(),
     getInventoryAgingReport(),

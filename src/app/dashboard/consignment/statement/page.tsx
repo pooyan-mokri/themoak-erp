@@ -1,9 +1,11 @@
 import { getConsignmentPartners } from '@/actions/consignment';
 import { PartnerStatementView } from '@/components/consignment/partner-statement-view';
+import { requireRouteAccess } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PartnerStatementPage() {
+  await requireRouteAccess('/dashboard/consignment');
   const partners = await getConsignmentPartners();
 
   return (

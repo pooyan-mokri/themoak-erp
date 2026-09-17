@@ -1,7 +1,9 @@
 import { getCustomers } from '@/actions/customer';
 import { TicketForm } from '@/components/crm/ticket-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewTicketPage() {
+  await requireRouteAccess('/dashboard/crm');
   const customers = await getCustomers();
   
   return (

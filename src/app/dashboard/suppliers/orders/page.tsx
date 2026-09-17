@@ -1,8 +1,10 @@
 import { getPurchaseOrders } from '@/actions/supplier';
 import { OrderList } from '@/components/suppliers/order-list';
 import { prisma } from '@/lib/prisma';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function OrdersPage() {
+  await requireRouteAccess('/dashboard/suppliers');
   const { data: orders } = await getPurchaseOrders();
   const warehouses = await prisma.warehouse.findMany({
     where: { isVirtual: false, isArchived: false }

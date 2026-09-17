@@ -8,8 +8,10 @@ import { CustomerTicketsTab } from '@/components/crm/customer-tickets-tab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BackButton } from '@/components/ui/back-button';
 import { notFound } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/crm');
   const customer = await getCustomerById(params.id);
 
   if (!customer) {

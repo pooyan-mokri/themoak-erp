@@ -1,8 +1,10 @@
 import { getWarehouses } from '@/actions/warehouse';
 import { getProducts } from '@/actions/product';
 import { TransferForm } from '@/components/consignment/transfer-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function TransferPage() {
+  await requireRouteAccess('/dashboard/consignment');
   const warehouses = await getWarehouses();
   const products = await getProducts();
 

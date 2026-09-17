@@ -8,6 +8,7 @@ import { ArrowRight, Package, DollarSign, TrendingUp, AlertTriangle, Boxes, Ware
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/auth';
+import { requireRouteAccess } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ export default async function WarehouseDetailPage({
 }: {
   params: { id: string };
 }) {
+  await requireRouteAccess('/dashboard/inventory');
   console.log('WarehouseDetailPage called with params:', params);
   
   try {

@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function WarehouseDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/inventory');
   const [warehouse, inventory] = await Promise.all([
     getWarehouseById(params.id),
     getInventoryByWarehouse(params.id),

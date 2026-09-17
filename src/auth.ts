@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { Role } from '@prisma/client';
+import type { JWT } from 'next-auth/jwt';
 
 // Debug logging
 console.log('[AUTH DEBUG] Initializing auth.ts');
@@ -24,6 +25,20 @@ async function getUser(email: string) {
     console.error('[AUTH DEBUG] Failed to fetch user:', error);
     throw new Error('Failed to fetch user.');
   }
+}
+
+/**
+ * The role is copied into the JWT at login. Re-read it whenever the session is
+ * read, so a role change applies on the next request and a deleted user's
+ * session ends without waiting for a logout. Returning null makes Auth.js treat
+ * the request as signed out (and clear the cookie where it can set one).
+ * Middleware runs auth.config.ts on Edge, without Prisma, and never calls this.
+ */
+export async function withCurrentRole(token: JWT): Promise<JWT | null> {
+  if (!token.id) return null;
+  const user = await prisma.user.findUnique({ where: { id: token.id }, select: { role: true } });
+  if (!user) return null;
+  return { ...token, role: user.role };
 }
 
 const authSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
@@ -97,11 +112,12 @@ try {
       console.log('[AUTH DEBUG] JWT callback called');
       console.log('[AUTH DEBUG] User:', !!user);
       if (user) {
-        token.id = user.id;
+        token.id = user.id as string; // authorize() always returns the id
         token.role = user.role;
         console.log('[AUTH DEBUG] JWT token created for:', user.email);
+        return token;
       }
-      return token;
+      return withCurrentRole(token);
     },
   },
 });

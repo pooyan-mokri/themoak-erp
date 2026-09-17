@@ -4,8 +4,10 @@ import { auth } from '@/auth';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ArchivedWarehousesPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const warehouses = await getArchivedWarehouses();
   const session = await auth();
   const isAdmin = session?.user?.role === 'ADMIN';

@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { formatJalaliDate } from '@/lib/date-utils';
+import { requireRouteAccess } from '@/lib/access';
 export default async function LeadDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/crm');
   const lead = await getLeadById(params.id);
 
   if (!lead) {

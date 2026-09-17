@@ -1,8 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Truck, ShoppingCart, PackagePlus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
-export default function SuppliersDashboard() {
+export default async function SuppliersDashboard() {
+  await requireRouteAccess('/dashboard/suppliers');
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">مدیریت زنجیره تامین</h1>

@@ -2,8 +2,10 @@ import { getBalanceSheet, getProfitAndLoss, getSalesPerformance } from '@/action
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ArrowDownIcon, ArrowUpIcon, TrendingUp } from 'lucide-react';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ReportsPage() {
+  await requireRouteAccess('/dashboard/accounting/reports');
   const pl = await getProfitAndLoss();
   const bs = await getBalanceSheet();
   const sales = await getSalesPerformance();

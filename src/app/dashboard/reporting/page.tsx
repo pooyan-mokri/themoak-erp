@@ -8,8 +8,10 @@ import { SalesByProduct } from '@/components/reporting/sales-by-product';
 import { ExpenseBreakdown } from '@/components/reporting/expense-breakdown';
 import { SalesByCustomer } from '@/components/reporting/sales-by-customer';
 import { InventoryValuation } from '@/components/reporting/inventory-valuation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ReportingPage() {
+  await requireRouteAccess('/dashboard/reporting');
   const profitLossData = await getProfitAndLoss();
   const balanceSheetData = await getBalanceSheet();
   const salesData = await getSalesPerformance();

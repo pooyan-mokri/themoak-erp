@@ -3,8 +3,10 @@ import { GiftList } from '@/components/marketing/gift-list';
 import { Button } from '@/components/ui/button';
 import { Gift } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function GiftsPage() {
+  await requireRouteAccess('/dashboard/marketing');
   const gifts = await getMarketingGifts();
 
   // Convert dates and numbers

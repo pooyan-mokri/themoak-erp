@@ -2,8 +2,10 @@ import { getCustomer } from '@/actions/customer';
 import { CustomerNotes } from '@/components/sales/customer-notes';
 import { OrderList } from '@/components/sales/order-list';
 import { notFound } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/sales');
   const customer = await getCustomer(params.id);
 
   if (!customer) {

@@ -2,8 +2,10 @@ import { getAccounts } from '@/actions/accounting';
 import { getProjects } from '@/actions/project';
 import { getEmployees } from '@/actions/employee';
 import { ExpenseForm } from '@/components/accounting/expense-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewExpensePage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   const projects = await getProjects();
   const employees = await getEmployees();

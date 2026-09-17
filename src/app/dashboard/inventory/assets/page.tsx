@@ -1,8 +1,10 @@
 import { getAssets } from '@/actions/fixed-assets';
 import { AssetList } from '@/components/inventory/asset-list';
 import { AssetForm } from '@/components/inventory/asset-form';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function AssetsPage() {
+  await requireRouteAccess('/dashboard/inventory/assets');
   const assets = await getAssets();
 
   return (

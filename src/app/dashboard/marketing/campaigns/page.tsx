@@ -1,8 +1,10 @@
 import { getMarketingCampaigns } from '@/actions/marketing';
 import { CampaignForm } from '@/components/marketing/campaign-form';
 import { CampaignList } from '@/components/marketing/campaign-list';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CampaignsPage() {
+  await requireRouteAccess('/dashboard/marketing');
   const campaigns = await getMarketingCampaigns();
 
   return (

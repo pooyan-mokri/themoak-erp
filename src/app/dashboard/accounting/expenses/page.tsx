@@ -4,6 +4,7 @@ import { ExpenseForm } from '@/components/accounting/expense-form';
 import { ExpenseList } from '@/components/accounting/expense-list';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { requireRouteAccess } from '@/lib/access';
 
 async function getExpenses() {
   try {
@@ -66,6 +67,7 @@ async function getExpenses() {
 }
 
 export default async function ExpensesPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   const expenses = await getExpenses();
   const session = await auth();

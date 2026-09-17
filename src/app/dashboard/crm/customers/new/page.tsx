@@ -1,12 +1,14 @@
 import { CustomerForm } from '@/components/sales/customer-form';
 import { getLeadById } from '@/actions/crm';
 import { redirect } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewCustomerPage({
   searchParams,
 }: {
   searchParams: { leadId?: string };
 }) {
+  await requireRouteAccess('/dashboard/crm');
   let initialData = undefined;
 
   if (searchParams.leadId) {

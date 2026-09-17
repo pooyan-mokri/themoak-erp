@@ -14,8 +14,10 @@ import { ProductSalesChart } from '@/components/inventory/product-sales-chart';
 import { MovementHistory } from '@/components/inventory/movement-history';
 import { ProductBarcode } from '@/components/inventory/product-barcode';
 import { notFound } from 'next/navigation';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
+  await requireRouteAccess('/dashboard/inventory');
   try {
     // Fetch product first to check if it exists
     const productData = await getProductDetail(params.id);

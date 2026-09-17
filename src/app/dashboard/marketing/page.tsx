@@ -2,8 +2,10 @@ import { getMarketingStats } from '@/actions/marketing';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Gift, TrendingUp, DollarSign, Package, Megaphone } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function MarketingPage() {
+  await requireRouteAccess('/dashboard/marketing');
   const stats = await getMarketingStats();
 
   const formatCurrency = (amount: number) => {

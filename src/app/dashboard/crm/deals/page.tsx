@@ -3,8 +3,10 @@ import { DealKanban } from '@/components/crm/deal-kanban';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function DealsPage() {
+  await requireRouteAccess('/dashboard/crm');
   const deals = await getDeals();
 
   return (

@@ -5,8 +5,10 @@ import { Barcode, Plus } from 'lucide-react';
 import Link from 'next/link';
 
 import { ProductActions } from '@/components/inventory/product-actions';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ProductsPage() {
+  await requireRouteAccess('/dashboard/inventory');
   const products = await getProducts();
 
   return (

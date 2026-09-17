@@ -4,8 +4,10 @@ import { auth } from '@/auth';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Info } from 'lucide-react';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function ReconciliationPage() {
+  await requireRouteAccess('/dashboard/accounting');
   const rows = await getAccountReconciliation();
   const session = await auth();
   const isAdmin = session?.user?.role === 'ADMIN';

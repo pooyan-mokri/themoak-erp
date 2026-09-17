@@ -3,8 +3,10 @@ import { getCurrencyExchangeHistory } from '@/actions/currency-exchange';
 import { CurrencyExchangeForm } from '@/components/accounting/currency-exchange-form';
 import { CurrencyExchangeHistory } from '@/components/accounting/currency-exchange-history';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { requireRouteAccess } from '@/lib/access';
 
 export default async function CurrencyExchangePage() {
+  await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   const history = await getCurrencyExchangeHistory();
 

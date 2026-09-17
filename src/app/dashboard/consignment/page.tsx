@@ -1,8 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Truck, FileCheck, DollarSign, BarChart3, Undo2, FileText } from 'lucide-react';
 import Link from 'next/link';
+import { requireRouteAccess } from '@/lib/access';
 
-export default function ConsignmentPage() {
+export default async function ConsignmentPage() {
+  await requireRouteAccess('/dashboard/consignment');
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">مدیریت امانی</h1>

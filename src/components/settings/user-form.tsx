@@ -21,6 +21,7 @@ import {
 import { createUser, updateUser } from '@/actions/user';
 import { toast } from 'sonner';
 import { Role } from '@/lib/types';
+import { ROLES, ROLE_LABELS, describeRole } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
 
 interface UserFormProps {
@@ -144,15 +145,17 @@ export function UserForm({ open, onOpenChange, user }: UserFormProps) {
                   <SelectValue placeholder="انتخاب نقش" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={Role.ADMIN}>مدیر سیستم</SelectItem>
-                  <SelectItem value={Role.ACCOUNTANT}>حسابدار</SelectItem>
-                  <SelectItem value={Role.SALES}>فروشنده</SelectItem>
-                  <SelectItem value={Role.WAREHOUSE}>انباردار</SelectItem>
-                  <SelectItem value={Role.PROJECT_MANAGER}>مدیر پروژه</SelectItem>
-                  <SelectItem value={Role.USER}>کاربر عادی</SelectItem>
+                  {ROLES.map((value) => (
+                    <SelectItem key={value} value={value}>{ROLE_LABELS[value]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <input type="hidden" name="role" value={role} />
+              <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                {describeRole(role).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
             </div>
           </div>
           
