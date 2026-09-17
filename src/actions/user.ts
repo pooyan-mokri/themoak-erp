@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { Role } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { logActivity } from './activity';
+import { logActivity } from '@/lib/activity-log';
 import { hashPassword, verifyPassword, getCurrentUser } from '@/lib/auth-utils';
 
 import { prisma } from '@/lib/prisma';

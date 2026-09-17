@@ -244,6 +244,10 @@ export async function getLowStockItems(threshold: number = 10) {
  */
 export async function getRecentActivity(limit: number = 5) {
   try {
+    // Every user's activity: for an admin only.
+    const session = await auth();
+    if (!session?.user || session.user.role !== 'ADMIN') return [];
+
     const activities = await prisma.activityLog.findMany({
       take: limit,
       orderBy: {

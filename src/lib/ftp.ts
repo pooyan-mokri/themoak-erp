@@ -2,7 +2,7 @@
 
 import { Client } from 'basic-ftp';
 import { Readable } from 'stream';
-import { getSetting } from '@/actions/settings';
+import { readSystemSetting } from '@/lib/system-settings';
 
 interface FTPCredentials {
   host: string;
@@ -18,7 +18,7 @@ interface FTPCredentials {
  * Get FTP client with credentials from settings
  */
 async function getFTPClient(): Promise<Client> {
-  const ftpCreds = (await getSetting('ftp_credentials')) as
+  const ftpCreds = (await readSystemSetting('ftp_credentials')) as
     | FTPCredentials
     | undefined;
 
@@ -43,7 +43,7 @@ export async function testFTPConnection(): Promise<{
 }> {
   let client: Client | null = null;
   try {
-    const ftpCreds = (await getSetting('ftp_credentials')) as
+    const ftpCreds = (await readSystemSetting('ftp_credentials')) as
       | FTPCredentials
       | undefined;
 
@@ -146,7 +146,7 @@ export async function uploadToFTP(
 ): Promise<{ url: string; path: string }> {
   let client: Client | null = null;
   try {
-    const ftpCreds = (await getSetting('ftp_credentials')) as
+    const ftpCreds = (await readSystemSetting('ftp_credentials')) as
       | FTPCredentials
       | undefined;
 
@@ -219,7 +219,7 @@ export async function uploadToFTP(
 export async function deleteFromFTP(filePath: string): Promise<void> {
   let client: Client | null = null;
   try {
-    const ftpCreds = (await getSetting('ftp_credentials')) as
+    const ftpCreds = (await readSystemSetting('ftp_credentials')) as
       | FTPCredentials
       | undefined;
 

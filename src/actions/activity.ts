@@ -11,38 +11,30 @@
 import { PrismaClient } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 // const prisma = new PrismaClient();
 
-export async function logActivity(userId: string | undefined, action: string, details: string) {
-  try {
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        action,
-        details,
-      },
-    });
-  } catch (error) {
-    console.error('Failed to log activity:', error);
-  }
-}
+// logActivity lives in @/lib/activity-log: an export here would be a server action anyone could call.
 
+/** Every user's activity: for an admin only, and never with the password hash. */
 export async function getRecentActivities() {
+  const session = await auth();
+  if (!session?.user || session.user.role !== 'ADMIN') {
+    return [];
+  }
+
   try {
     const activities = await prisma.activityLog.findMany({
       take: 20,
       orderBy: { createdAt: 'desc' },
-      include: { user: true },
+      include: { user: { select: { id: true, name: true, email: true, role: true } } },
     });
 
     return activities.map((activity: any) => ({
       ...activity,
       userId: activity.userId ?? undefined,
-      user: activity.user ? {
-        ...activity.user,
-        phone: activity.user.phone ?? undefined,
-      } : undefined,
+      user: activity.user ?? undefined,
     }));
   } catch (error) {
     return [];

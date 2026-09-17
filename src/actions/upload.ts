@@ -3,7 +3,7 @@
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
-import { getSetting } from './settings';
+import { readSystemSetting } from '@/lib/system-settings';
 import { uploadToFTP, deleteFromFTP } from '@/lib/ftp';
 
 export async function uploadReceipt(formData: FormData) {
@@ -32,7 +32,7 @@ export async function uploadReceipt(formData: FormData) {
     const buffer = Buffer.from(bytes);
 
     // Check if FTP is configured
-    const ftpCredentials = await getSetting('ftp_credentials');
+    const ftpCredentials = await readSystemSetting('ftp_credentials');
 
     if (ftpCredentials) {
       try {

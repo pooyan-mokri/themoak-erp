@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { ActionState, ActionResult } from '@/lib/types';
+import { auth } from '@/auth';
 
 // const prisma = new PrismaClient();
 
@@ -478,6 +479,10 @@ export async function resolveTicket(id: string, resolution: string) {
 
 export async function getCRMDashboardStats() {
   try {
+    // Every user's activity: for an admin only.
+    const session = await auth();
+    const isAdmin = session?.user?.role === 'ADMIN';
+
     const [
       totalCustomers,
       activeDealsCount,
@@ -520,7 +525,7 @@ export async function getCRMDashboardStats() {
         }
       }),
       // Recent 10 activity logs
-      prisma.activityLog.findMany({
+      !isAdmin ? Promise.resolve([]) : prisma.activityLog.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: {

@@ -4,8 +4,20 @@ import { getUsers } from '@/actions/user';
 import { ActivityFeed } from '@/components/admin/activity-feed';
 import { UserForm } from '@/components/admin/user-form';
 import { UserList } from '@/components/admin/user-list';
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 
 export default async function AdminUsersPage() {
+  const session = await auth();
+
+  // Check if user is admin - handle both string and enum comparison
+  const userRole = session?.user?.role;
+  const isAdmin = userRole === 'ADMIN' || String(userRole) === 'ADMIN';
+
+  if (!isAdmin) {
+    redirect('/dashboard/settings/profile');
+  }
+
   const users = await getUsers();
   const activities = await getRecentActivities();
 

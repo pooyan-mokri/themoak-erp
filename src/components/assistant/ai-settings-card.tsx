@@ -14,7 +14,7 @@ import { Settings, Save } from 'lucide-react';
 interface AISettingsCardProps {
   settings: {
     provider: string;
-    apiKey: string;
+    hasApiKey: boolean;
     model: string;
     enabled: boolean;
     maxTokens: number;
@@ -25,7 +25,8 @@ interface AISettingsCardProps {
 export function AISettingsCard({ settings }: AISettingsCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [provider, setProvider] = useState(settings.provider);
-  const [apiKey, setApiKey] = useState(settings.apiKey);
+  // The stored key never reaches the browser: this holds only a new key, and empty keeps the stored one.
+  const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(settings.model);
   const [enabled, setEnabled] = useState(settings.enabled);
   const [maxTokens, setMaxTokens] = useState(settings.maxTokens);
@@ -46,6 +47,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
 
       if (result.success) {
         toast.success(result.message);
+        setApiKey('');
         setIsOpen(false);
       } else {
         toast.error(result.message);
@@ -121,11 +123,17 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
 
           <div className="space-y-2">
             <Label>API Key</Label>
+            <p className="text-sm text-muted-foreground">
+              {settings.hasApiKey
+                ? 'کلید API تنظیم شده است. برای تغییر، کلید جدید را وارد کنید؛ اگر خالی بماند، همان کلید قبلی حفظ می‌شود.'
+                : 'کلید API تنظیم نشده است.'}
+            </p>
             <Input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder={settings.hasApiKey ? 'کلید جدید (اختیاری)' : 'sk-...'}
+              autoComplete="new-password"
             />
           </div>
 
@@ -176,7 +184,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={loading || !apiKey}
+              disabled={loading || (!apiKey && !settings.hasApiKey)}
             >
               <Save className="h-4 w-4 ml-2" />
               ذخیره تنظیمات

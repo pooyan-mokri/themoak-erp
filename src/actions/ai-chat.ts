@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { createAIProvider } from '@/lib/ai-providers';
+import { readAISettingsWithKey } from '@/lib/ai-settings';
 import { agentTools, getSystemContext } from '@/lib/ai-agent';
 import { buildSystemPrompt } from '@/lib/ai-system-prompt';
 import { revalidatePath } from 'next/cache';
@@ -15,7 +16,7 @@ export async function sendMessage(conversationId: string, userMessage: string) {
     }
 
     // Get AI settings
-    const settings = await prisma.aISettings.findFirst();
+    const settings = await readAISettingsWithKey();
     if (!settings || !settings.enabled) {
       return { success: false, message: 'دستیار هوش مصنوعی فعال نیست' };
     }

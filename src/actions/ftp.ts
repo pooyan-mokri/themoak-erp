@@ -1,7 +1,8 @@
 'use server';
 
 import { testFTPConnection } from '@/lib/ftp';
-import { getSetting, saveSetting } from './settings';
+import { saveSetting } from './settings';
+import { readSystemSetting } from '@/lib/system-settings';
 import { auth } from '@/auth';
 import { Role } from '@prisma/client';
 
@@ -37,7 +38,7 @@ export async function getFTPCredentials() {
   }
 
   try {
-    const creds = await getSetting('ftp_credentials');
+    const creds = await readSystemSetting('ftp_credentials');
     return creds as
       | {
           host: string;

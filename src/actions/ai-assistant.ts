@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 
-// Get or create AI settings
+// Get or create AI settings. Served to every signed-in user, so never with the
+// API key, only whether one is set. Server code reads the key from @/lib/ai-settings.
 export async function getAISettings() {
   try {
     // Check if AISettings table exists by trying to find first record
@@ -29,7 +30,7 @@ export async function getAISettings() {
         return {
           id: 'default',
           provider: 'OPENAI' as any,
-          apiKey: '',
+          hasApiKey: false,
           model: 'gpt-4',
           enabled: false,
           maxTokens: 1500,
@@ -40,14 +41,15 @@ export async function getAISettings() {
       }
     }
     
-    return settings;
+    const { apiKey, ...rest } = settings;
+    return { ...rest, hasApiKey: Boolean(apiKey) };
   } catch (error) {
     console.error('Error fetching AI settings:', error);
     // Return default settings instead of throwing
     return {
       id: 'default',
       provider: 'OPENAI' as any,
-      apiKey: '',
+      hasApiKey: false,
       model: 'gpt-4',
           enabled: false,
           maxTokens: 1500,
@@ -61,7 +63,8 @@ export async function getAISettings() {
 // Update AI settings
 export async function updateAISettings(data: {
   provider: 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ';
-  apiKey: string;
+  /** Empty keeps the stored key: the form is never sent it. */
+  apiKey?: string;
   model: string;
   enabled: boolean;
   maxTokens?: number;
@@ -80,7 +83,7 @@ export async function updateAISettings(data: {
         where: { id: settings.id },
         data: {
           provider: data.provider,
-          apiKey: data.apiKey,
+          ...(data.apiKey ? { apiKey: data.apiKey } : {}),
           model: data.model,
           enabled: data.enabled,
           maxTokens: data.maxTokens || 1500,
@@ -91,7 +94,7 @@ export async function updateAISettings(data: {
       await prisma.aISettings.create({
         data: {
           provider: data.provider,
-          apiKey: data.apiKey,
+          apiKey: data.apiKey || '',
           model: data.model,
           enabled: data.enabled,
           maxTokens: data.maxTokens || 1500,

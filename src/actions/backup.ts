@@ -8,7 +8,8 @@ import { promisify } from 'util';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { revalidatePath } from 'next/cache';
-import { saveSetting, getSetting } from './settings';
+import { saveSetting } from './settings';
+import { readSystemSetting } from '@/lib/system-settings';
 
 const execAsync = promisify(exec);
 
@@ -112,7 +113,7 @@ export async function getBackupSettings() {
       return undefined;
     }
 
-    return await getSetting('backup_settings');
+    return await readSystemSetting('backup_settings');
   } catch (error) {
     console.error('Error fetching backup settings:', error);
     return undefined;
@@ -146,7 +147,12 @@ export async function saveBackupSettings(settings: {
 // Get last backup info
 export async function getLastBackup() {
   try {
-    return await getSetting('last_backup');
+    const session = await auth();
+    if (!session?.user || session.user.role !== Role.ADMIN) {
+      return undefined;
+    }
+
+    return await readSystemSetting('last_backup');
   } catch (error) {
     return undefined;
   }
