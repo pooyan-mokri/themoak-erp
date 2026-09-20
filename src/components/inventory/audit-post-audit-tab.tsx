@@ -513,7 +513,8 @@ export function PostAuditTab({ audit, isAdmin, canSeeCost }: PostAuditTabProps) 
                       </div>
                       {(issueSummary.notFinal > 0 || issueSummary.notCounted > 0) && (
                         <p className="text-red-600">
-                          تا هر دو صفر نشوند، صدور انجام نمی‌شود. در «حین عملیات» این آیتم‌ها را بشمارید، نهایی کنید یا صفر ثبت کنید.
+                          تا هر دو صفر نشوند، صدور انجام نمی‌شود. در «حین عملیات» این آیتم‌ها را بشمارید، نهایی کنید، یا برایشان
+                          «موجودی سیستم» (بدون تغییر موجودی) یا «۰» ثبت کنید.
                         </p>
                       )}
                       {issueSummary.countChanged > 0 && (

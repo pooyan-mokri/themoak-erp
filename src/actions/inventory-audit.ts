@@ -941,6 +941,76 @@ export async function setZeroForUncounted(
   }
 }
 
+/**
+ * 8d. Execution: Keep the system quantity for listed items that nobody counted.
+ * The final quantity becomes the system quantity, so the discrepancy is zero and
+ * issuing leaves their stock untouched. This is how one item gets corrected without
+ * counting the whole warehouse: count that item, keep the system number for the rest.
+ */
+export async function acceptSystemForUncounted(
+  auditId: string,
+  productIds: string[]
+): Promise<ActionResult<{ updatedCount: number }>> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, message: 'لطفاً وارد سیستم شوید.' };
+    }
+
+    const audit = await prisma.inventoryAudit.findUnique({
+      where: { id: auditId },
+      select: { id: true, createdBy: true, status: true },
+    });
+
+    if (!audit) {
+      return { success: false, message: 'انبارگردانی یافت نشد.' };
+    }
+
+    if (!(await mayWorkOnAudit(audit, session.user, 'canApprove'))) {
+      return { success: false, message: 'شما مجوز تأیید ندارید. لطفاً از بخش "پیش از عملیات" خود را به تیم اضافه کنید.' };
+    }
+
+    if (audit.status !== 'IN_PROGRESS') {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
+
+    // One statement, under the audit lock: nothing changes while or after the audit is issued.
+    let updatedCount = 0;
+    const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      updatedCount = await tx.$executeRaw`
+        UPDATE "InventoryAuditItem" AS i
+           SET "finalQuantity" = i."systemQuantity",
+               "discrepancy" = 0,
+               "discrepancyValue" = 0,
+               "updatedAt" = now() AT TIME ZONE 'UTC'
+          FROM "InventoryAudit" AS a
+         WHERE a."id" = i."auditId" AND a."status" = 'IN_PROGRESS'
+           AND i."auditId" = ${auditId} AND i."productId" = ANY(${productIds})
+           AND i."finalQuantity" IS NULL
+           AND i."countedQuantity1" IS NULL AND i."countedQuantity2" IS NULL AND i."countedQuantity3" IS NULL`;
+    });
+
+    if (!inProgress) {
+      return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
+    }
+
+    revalidatePath(`/dashboard/inventory/audits/${auditId}`);
+    return {
+      success: true,
+      message: `موجودی سیستم برای ${updatedCount} آیتم شمارش‌نشده ثبت شد. موجودی این آیتم‌ها تغییر نمی‌کند.`,
+      data: { updatedCount },
+    };
+  } catch (error: unknown) {
+    console.error('Error keeping the system quantity for uncounted items:', error);
+    return {
+      success: false,
+      message: 'خطا در ثبت مقدار نهایی. لطفاً دوباره تلاش کنید.',
+    };
+  }
+}
+
 // ==================== POST-AUDIT TASKS ====================
 
 // 9. Post-Audit: Calculate Discrepancies

@@ -18,6 +18,7 @@ import {
   saveAuditCounts,
   setFinalQuantity,
   setZeroForUncounted,
+  acceptSystemForUncounted,
 } from '@/actions/inventory-audit';
 
 // The audit actions log every step, and every refusal these tests provoke on purpose.
@@ -189,6 +190,66 @@ test('issue: refused while an item is counted but not final, or has system stock
   assert.equal(issued.success, true, issued.message);
   assert.deepEqual(issued.data, { adjustedCount: 3, unitsUp: 0, unitsDown: 5 });
   assert.deepEqual(await stock(), { p0: 1, p1: 2, p2: 0, p3: 0 });
+});
+
+test('accept system: one frame is corrected while every other keeps its stock', async () => {
+  await seed(4);
+  const a = await startAudit();
+  // Only p1 is counted: the owner wants that one number changed, not a whole count.
+  ok(await saveAuditCounts(a, 1, [{ productId: 'p1', count: 5, base: null }]));
+  assert.equal((await finalizeAllFromLastCount(a)).success, true);
+
+  const kept = await acceptSystemForUncounted(a, ['p0', 'p1', 'p2', 'p3']);
+  assert.equal(kept.success, true, kept.message);
+  assert.equal(kept.data!.updatedCount, 3, 'the counted frame keeps the counted number');
+  assert.match(kept.message ?? '', /موجودی سیستم برای 3 آیتم/);
+  assert.deepEqual(await finals(a), [
+    ['p0', 2, 0, 0],
+    ['p1', 5, 3, 3 * 1500],
+    ['p2', 2, 0, 0],
+    ['p3', 2, 0, 0],
+  ]);
+
+  const issued = await issueAdjustmentDocuments(a);
+  assert.equal(issued.success, true, issued.message);
+  assert.deepEqual(issued.data, { adjustedCount: 1, unitsUp: 3, unitsDown: 0 });
+  assert.deepEqual(await stock(), { p0: 2, p1: 5, p2: 2, p3: 2 });
+  assert.equal(await prisma.inventoryMovement.count(), 1);
+});
+
+test('accept system: leaves a counted or already final item alone, and refuses once the audit is over', async () => {
+  await seed(3);
+  const a = await startAudit();
+  ok(await saveAuditCounts(a, 1, [{ productId: 'p0', count: 9, base: null }]));
+  assert.equal((await setFinalQuantity(a, 'p1', 7)).success, true);
+
+  const kept = await acceptSystemForUncounted(a, ['p0', 'p1', 'p2']);
+  assert.equal(kept.data!.updatedCount, 1);
+  const p0 = await auditItem(a, 'p0');
+  assert.equal(p0.finalQuantity, null, 'a counted item still needs its final quantity');
+  assert.equal((await auditItem(a, 'p1')).finalQuantity, 7, 'an item with a final quantity is not overwritten');
+  assert.equal((await auditItem(a, 'p2')).finalQuantity, 2);
+
+  assert.equal((await finalizeAllFromLastCount(a)).success, true);
+  assert.equal((await issueAdjustmentDocuments(a)).success, true);
+  const afterIssue = await acceptSystemForUncounted(a, ['p0', 'p1', 'p2']);
+  assert.equal(afterIssue.success, false);
+  assert.equal(afterIssue.message, 'انبارگردانی در حال انجام نیست.');
+});
+
+test('accept system: refused for a role that may not change stock', async () => {
+  await seed(2);
+  const a = await startAudit();
+  for (const role of ['AUDITOR', 'SALES', 'ACCOUNTANT', null]) {
+    setTestRole(role);
+    const refused = await acceptSystemForUncounted(a, ['p0', 'p1']);
+    assert.equal(refused.success, false, String(role));
+  }
+  setTestRole('ADMIN');
+  assert.deepEqual(
+    (await finals(a)).map((row) => row[1]),
+    [null, null],
+  );
 });
 
 test('issue: a failure part-way rolls everything back, and a retry applies each item once', async () => {

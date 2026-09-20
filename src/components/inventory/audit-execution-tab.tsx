@@ -5,7 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { finalizeAllFromLastCount, setFinalQuantity, setZeroForUncounted } from '@/actions/inventory-audit';
+import {
+  acceptSystemForUncounted,
+  finalizeAllFromLastCount,
+  setFinalQuantity,
+  setZeroForUncounted,
+} from '@/actions/inventory-audit';
 import { toast } from 'sonner';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, ListChecks, Search } from 'lucide-react';
@@ -245,6 +250,22 @@ function AuditItemsList({ auditId, items, round, queue }: ItemsListProps) {
     void run(() => setZeroForUncounted(auditId, targets.map((item) => item.productId)));
   };
 
+  const handleAcceptSystem = (targets: ListItem[]) => {
+    const names = targets
+      .slice(0, 40)
+      .map((item) => `«${item.product.name}» (${item.systemQuantity})`)
+      .join('\n');
+    const more = targets.length > 40 ? `\nو ${targets.length - 40} کالای دیگر` : '';
+    const question =
+      targets.length === 1
+        ? `موجودی سیستم «${targets[0].product.name}» برابر ${targets[0].systemQuantity} به عنوان مقدار نهایی ثبت شود؟ موجودی این کالا تغییر نمی‌کند.`
+        : `موجودی سیستم این ${targets.length} کالای شمارش‌نشده به عنوان مقدار نهایی ثبت شود؟ موجودی آن‌ها تغییر نمی‌کند.\n\n${names}${more}`;
+    if (!confirm(question)) {
+      return;
+    }
+    void run(() => acceptSystemForUncounted(auditId, targets.map((item) => item.productId)));
+  };
+
   return (
     <Card>
       <CardHeader className="p-4 sm:p-6">
@@ -282,6 +303,14 @@ function AuditItemsList({ auditId, items, round, queue }: ItemsListProps) {
           ))}
         </div>
 
+        {filter === 'uncounted' && shown.length > 0 && (
+          <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+            تا وقتی این آیتم‌ها مقدار نهایی نگیرند، اسناد اصلاحی صادر نمی‌شود. «موجودی سیستم» یعنی موجودی همان است که
+            سیستم می‌گوید و دست نمی‌خورد؛ «۰» یعنی کالا در انبار نیست و موجودی‌اش صفر می‌شود. پس اگر فقط موجودی یک کالا
+            را می‌خواهید عوض کنید، همان یک کالا را بشمارید و برای بقیه «موجودی سیستم» را ثبت کنید.
+          </p>
+        )}
+
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
@@ -294,9 +323,14 @@ function AuditItemsList({ auditId, items, round, queue }: ItemsListProps) {
             نهایی کردن همه از آخرین شمارش
           </Button>
           {filter === 'uncounted' && shown.length > 0 && (
-            <Button type="button" variant="destructive" disabled={busy} onClick={() => handleZero(shown)}>
-              ثبت ۰ برای همهٔ این‌ها
-            </Button>
+            <>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => handleAcceptSystem(shown)}>
+                ثبت موجودی سیستم برای همهٔ این‌ها
+              </Button>
+              <Button type="button" variant="destructive" disabled={busy} onClick={() => handleZero(shown)}>
+                ثبت ۰ برای همهٔ این‌ها
+              </Button>
+            </>
           )}
         </div>
 
@@ -399,7 +433,16 @@ function AuditItemsList({ auditId, items, round, queue }: ItemsListProps) {
                   </div>
                 )}
                 {filter === 'uncounted' && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => handleAcceptSystem([item])}
+                      title="ثبت موجودی سیستم به عنوان مقدار نهایی: موجودی تغییر نمی‌کند"
+                    >
+                      موجودی سیستم
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
