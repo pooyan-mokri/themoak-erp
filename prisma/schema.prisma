@@ -123,6 +123,8 @@ model Transaction {
   shareholderId         String?
   employeeId            String?
   customerId            String?
+  /// The two legs of one currency exchange share this id.
+  exchangeGroupId       String?
   LoanPayment           LoanPayment?
   marketingGift         MarketingGift?
   orders                Order[]
@@ -141,6 +143,7 @@ model Transaction {
   shareholder           Shareholder?               @relation(fields: [shareholderId], references: [id])
 
   @@index([customerId])
+  @@index([exchangeGroupId])
 }
 
 model Product {

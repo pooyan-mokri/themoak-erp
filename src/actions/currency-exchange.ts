@@ -5,7 +5,8 @@ import { Currency, TransactionType } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { checkPermission, requirePermission } from '@/lib/access';
+import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
+import { randomUUID } from 'node:crypto';
 
 // --- Schemas ---
 
@@ -20,6 +21,265 @@ const CurrencyExchangeSchema = z.object({
   date: z.string().optional(),
   description: z.string().optional(),
 });
+
+const EXCHANGE_CATEGORY = 'Currency Exchange';
+
+/**
+ * One exchange is two transactions: the money leaving the source account and the
+ * money arriving in the target one. Both legs carry the same exchangeGroupId.
+ *
+ * Exchanges recorded before that column existed have none, so they are paired by
+ * creation time: the two legs are written in one database transaction, a
+ * millisecond apart. The old code paired them by `date`, which the form stores
+ * without a time, so two exchanges on the same day could be shown mixed up.
+ */
+const LEGACY_PAIR_WINDOW_MS = 5000;
+
+type ExchangeRow = {
+  id: string;
+  type: string;
+  accountId: string | null;
+  amount: unknown;
+  currency: Currency;
+  rateSnapshot: unknown;
+  date: Date;
+  createdAt: Date;
+  description: string | null;
+  exchangeGroupId: string | null;
+};
+
+type ExchangePair = { source?: ExchangeRow; target?: ExchangeRow };
+
+/** Groups exchange rows into pairs, newest first. A leg without a partner is returned alone. */
+function pairExchangeRows<T extends ExchangeRow>(rows: T[]): Array<{ source?: T; target?: T }> {
+  const byGroup = new Map<string, { source?: T; target?: T }>();
+  const legacy: T[] = [];
+  const pairs: Array<{ source?: T; target?: T }> = [];
+
+  for (const row of rows) {
+    if (!row.exchangeGroupId) {
+      legacy.push(row);
+      continue;
+    }
+    let pair = byGroup.get(row.exchangeGroupId);
+    if (!pair) {
+      pair = {};
+      byGroup.set(row.exchangeGroupId, pair);
+      pairs.push(pair);
+    }
+    if (row.type === TransactionType.EXPENSE) pair.source = row;
+    else pair.target = row;
+  }
+
+  // Oldest first, so each leg meets the partner written beside it.
+  const unpaired = [...legacy].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const taken = new Set<string>();
+  for (const [index, row] of unpaired.entries()) {
+    if (taken.has(row.id)) continue;
+    const partner = unpaired
+      .slice(index + 1)
+      .find(
+        (other) =>
+          !taken.has(other.id) &&
+          other.type !== row.type &&
+          other.accountId !== row.accountId &&
+          other.createdAt.getTime() - row.createdAt.getTime() <= LEGACY_PAIR_WINDOW_MS,
+      );
+    taken.add(row.id);
+    if (partner) taken.add(partner.id);
+    const legs = [row, partner].filter(Boolean) as T[];
+    pairs.push({
+      source: legs.find((leg) => leg.type === TransactionType.EXPENSE),
+      target: legs.find((leg) => leg.type === TransactionType.INCOME),
+    });
+  }
+
+  const at = (pair: { source?: T; target?: T }) => (pair.source ?? pair.target)!.date.getTime();
+  return pairs.sort((a, b) => at(b) - at(a));
+}
+
+/** A refusal meant for the user, not a crash. */
+class ExchangeRefusal extends Error {}
+
+/** The legs of the exchange `id` names, which is either a group id or one leg's id. */
+async function loadExchange(tx: any, id: string): Promise<ExchangePair & { groupId: string | null }> {
+  const found = await tx.transaction.findMany({
+    where: { category: EXCHANGE_CATEGORY, OR: [{ exchangeGroupId: id }, { id }] },
+  });
+  if (found.length === 0) throw new ExchangeRefusal('سند معامله ارز یافت نشد.');
+
+  const groupId: string | null = found[0].exchangeGroupId ?? null;
+  let legs: ExchangeRow[] = found;
+  if (groupId) {
+    legs = await tx.transaction.findMany({ where: { exchangeGroupId: groupId } });
+  } else {
+    // A leg written before exchangeGroupId existed: take the nearest opposite leg beside it.
+    const anchor = legs[0];
+    const near: ExchangeRow[] = await tx.transaction.findMany({
+      where: {
+        category: EXCHANGE_CATEGORY,
+        exchangeGroupId: null,
+        id: { not: anchor.id },
+        type: anchor.type === TransactionType.EXPENSE ? TransactionType.INCOME : TransactionType.EXPENSE,
+        createdAt: {
+          gte: new Date(anchor.createdAt.getTime() - LEGACY_PAIR_WINDOW_MS),
+          lte: new Date(anchor.createdAt.getTime() + LEGACY_PAIR_WINDOW_MS),
+        },
+      },
+    });
+    const apart = (row: ExchangeRow) => Math.abs(row.createdAt.getTime() - anchor.createdAt.getTime());
+    const partner = near
+      .filter((row) => row.accountId !== anchor.accountId)
+      .sort((a, b) => apart(a) - apart(b))[0];
+    legs = partner ? [anchor, partner] : [anchor];
+  }
+
+  return {
+    source: legs.find((leg) => leg.type === TransactionType.EXPENSE),
+    target: legs.find((leg) => leg.type === TransactionType.INCOME),
+    groupId,
+  };
+}
+
+/** Undo what a leg did to its account's balance. */
+async function reverseLeg(tx: any, leg?: ExchangeRow) {
+  if (!leg?.accountId) return;
+  const amount = new Prisma.Decimal(leg.amount as any);
+  await tx.account.update({
+    where: { id: leg.accountId },
+    data: leg.type === TransactionType.EXPENSE ? { balance: { increment: amount } } : { balance: { decrement: amount } },
+  });
+}
+
+/** Editing or deleting a recorded exchange stays with the admin, like a recorded expense. */
+async function requireAdmin(): Promise<{ success: false; message: string; errors: {} } | null> {
+  if ((await getCurrentRole()) !== 'ADMIN') {
+    return {
+      success: false,
+      message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند سند معامله ارز را ویرایش یا حذف کند.',
+      errors: {},
+    };
+  }
+  return null;
+}
+
+/**
+ * Writes one exchange: the two legs and the two balances, inside `tx`.
+ * With `existing`, the legs of that exchange are rewritten instead of created,
+ * so an edit keeps the same documents. The caller reverses the old balances first.
+ */
+async function applyExchange(
+  tx: any,
+  input: z.infer<typeof CurrencyExchangeSchema>,
+  groupId: string,
+  existing?: ExchangePair,
+) {
+  const {
+    sourceAccountId,
+    targetAccountId,
+    sourceAmount,
+    targetAmount,
+    sourceCurrency,
+    targetCurrency,
+    exchangeRate,
+    date,
+    description,
+  } = input;
+
+  const sourceAccount = await tx.account.findUnique({ where: { id: sourceAccountId } });
+  const targetAccount = await tx.account.findUnique({ where: { id: targetAccountId } });
+  if (!sourceAccount || !targetAccount) {
+    throw new ExchangeRefusal('حساب یافت نشد.');
+  }
+  if (sourceAccount.currency !== sourceCurrency) {
+    throw new ExchangeRefusal(`حساب مبدا باید از نوع ${sourceCurrency} باشد، اما ${sourceAccount.currency} است.`);
+  }
+  if (targetAccount.currency !== targetCurrency) {
+    throw new ExchangeRefusal(`حساب مقصد باید از نوع ${targetCurrency} باشد، اما ${targetAccount.currency} است.`);
+  }
+  if (Number(sourceAccount.balance) < sourceAmount) {
+    throw new ExchangeRefusal(
+      `موجودی حساب مبدا کافی نیست. موجودی: ${Number(sourceAccount.balance)}, مبلغ مورد نیاز: ${sourceAmount}`,
+    );
+  }
+
+  // Both legs in Toman, for reports that add different currencies together.
+  let sourceAmountInToman: number;
+  let targetAmountInToman: number;
+  if (sourceCurrency === Currency.TOMAN) {
+    // Buying foreign currency: the Toman side is the value of both legs.
+    sourceAmountInToman = sourceAmount;
+    targetAmountInToman = sourceAmount;
+  } else if (targetCurrency === Currency.TOMAN) {
+    // Selling foreign currency: the rate is Toman per unit.
+    sourceAmountInToman = sourceAmount * exchangeRate;
+    targetAmountInToman = targetAmount;
+  } else {
+    // Foreign to foreign: value each leg with its own stored rate.
+    const sourceRate = await tx.exchangeRate.findFirst({ where: { currency: sourceCurrency }, orderBy: { date: 'desc' } });
+    const targetRate = await tx.exchangeRate.findFirst({ where: { currency: targetCurrency }, orderBy: { date: 'desc' } });
+    if (!sourceRate || !targetRate) {
+      throw new ExchangeRefusal('نرخ تبدیل برای ارزهای انتخابی یافت نشد.');
+    }
+    sourceAmountInToman = Number(sourceAmount) * Number(sourceRate.rateToToman);
+    targetAmountInToman = Number(targetAmount) * Number(targetRate.rateToToman);
+  }
+
+  const transactionDate = date ? new Date(date) : new Date();
+  const leg = (
+    type: TransactionType,
+    accountId: string,
+    amount: number,
+    currency: Currency,
+    amountInToman: number,
+    fallbackDescription: string,
+  ) => ({
+    type,
+    accountId,
+    amount: new Prisma.Decimal(amount),
+    currency,
+    rateSnapshot: new Prisma.Decimal(exchangeRate),
+    amountInToman: new Prisma.Decimal(amountInToman),
+    description: description || fallbackDescription,
+    date: transactionDate,
+    category: EXCHANGE_CATEGORY,
+    exchangeGroupId: groupId,
+  });
+
+  const sourceData = leg(
+    TransactionType.EXPENSE,
+    sourceAccountId,
+    sourceAmount,
+    sourceCurrency,
+    sourceAmountInToman,
+    `خرید ${targetCurrency} - فروش ${sourceCurrency} - نرخ: ${exchangeRate}`,
+  );
+  const targetData = leg(
+    TransactionType.INCOME,
+    targetAccountId,
+    targetAmount,
+    targetCurrency,
+    targetAmountInToman,
+    `فروش ${sourceCurrency} - خرید ${targetCurrency} - نرخ: ${exchangeRate}`,
+  );
+
+  for (const [data, old] of [
+    [sourceData, existing?.source],
+    [targetData, existing?.target],
+  ] as const) {
+    if (old) await tx.transaction.update({ where: { id: old.id }, data });
+    else await tx.transaction.create({ data });
+  }
+
+  await tx.account.update({
+    where: { id: sourceAccountId },
+    data: { balance: { decrement: new Prisma.Decimal(sourceAmount) } },
+  });
+  await tx.account.update({
+    where: { id: targetAccountId },
+    data: { balance: { increment: new Prisma.Decimal(targetAmount) } },
+  });
+}
 
 // --- Actions ---
 
@@ -79,135 +339,12 @@ export async function exchangeCurrency(prevState: any, formData: FormData) {
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      // 1. Get source and target accounts
-      const sourceAccount = await tx.account.findUnique({
-        where: { id: sourceAccountId },
-      });
-
-      const targetAccount = await tx.account.findUnique({
-        where: { id: targetAccountId },
-      });
-
-      if (!sourceAccount || !targetAccount) {
-        throw new Error('حساب یافت نشد.');
-      }
-
-      // 2. Validate currency types match accounts
-      if (sourceAccount.currency !== sourceCurrency) {
-        throw new Error(
-          `حساب مبدا باید از نوع ${sourceCurrency} باشد، اما ${sourceAccount.currency} است.`
-        );
-      }
-
-      if (targetAccount.currency !== targetCurrency) {
-        throw new Error(
-          `حساب مقصد باید از نوع ${targetCurrency} باشد، اما ${targetAccount.currency} است.`
-        );
-      }
-
-      // 3. Check sufficient balance in source account
-      if (Number(sourceAccount.balance) < sourceAmount) {
-        throw new Error(
-          `موجودی حساب مبدا کافی نیست. موجودی: ${Number(sourceAccount.balance)}, مبلغ مورد نیاز: ${sourceAmount}`
-        );
-      }
-
-      // 4. Calculate amounts in Toman for transactions
-      // Exchange rate represents: 1 unit of source currency = exchangeRate units of target currency
-      let sourceAmountInToman: number;
-      let targetAmountInToman: number;
-
-      if (sourceCurrency === Currency.TOMAN) {
-        // Buying foreign currency: source is TOMAN, target is foreign
-        // exchangeRate = targetAmount / sourceAmount (e.g., 0.024 USD / 1000 TOMAN = 0.000024)
-        sourceAmountInToman = sourceAmount;
-        // To convert targetAmount (foreign) to TOMAN: targetAmount / exchangeRate = sourceAmount
-        targetAmountInToman = sourceAmount; // They should be equal in value
-      } else if (targetCurrency === Currency.TOMAN) {
-        // Selling foreign currency: source is foreign, target is TOMAN
-        // exchangeRate = targetAmount / sourceAmount (e.g., 42000 TOMAN / 1 USD = 42000)
-        sourceAmountInToman = sourceAmount * exchangeRate;
-        targetAmountInToman = targetAmount;
-      } else {
-        // Foreign to foreign: need to convert both through TOMAN
-        // Get exchange rates for both currencies to TOMAN
-        const sourceRate = await tx.exchangeRate.findFirst({
-          where: { currency: sourceCurrency },
-          orderBy: { date: 'desc' },
-        });
-        const targetRate = await tx.exchangeRate.findFirst({
-          where: { currency: targetCurrency },
-          orderBy: { date: 'desc' },
-        });
-        
-        if (!sourceRate || !targetRate) {
-          throw new Error('نرخ تبدیل برای ارزهای انتخابی یافت نشد.');
-        }
-        
-        sourceAmountInToman = Number(sourceAmount) * Number(sourceRate.rateToToman);
-        targetAmountInToman = Number(targetAmount) * Number(targetRate.rateToToman);
-      }
-
-      const transactionDate = date ? new Date(date) : new Date();
-
-      // 5. Create transaction for source account (EXPENSE/OUTGOING)
-      const sourceTransaction = await tx.transaction.create({
-        data: {
-          type: TransactionType.EXPENSE,
-          amount: new Prisma.Decimal(sourceAmount),
-          currency: sourceCurrency,
-          rateSnapshot: new Prisma.Decimal(exchangeRate),
-          amountInToman: new Prisma.Decimal(sourceAmountInToman),
-          accountId: sourceAccountId,
-          description:
-            description ||
-            `خرید ${targetCurrency} - فروش ${sourceCurrency} - نرخ: ${exchangeRate}`,
-          date: transactionDate,
-          category: 'Currency Exchange',
-        },
-      });
-
-      // 6. Create transaction for target account (INCOME/INCOMING)
-      const targetTransaction = await tx.transaction.create({
-        data: {
-          type: TransactionType.INCOME,
-          amount: new Prisma.Decimal(targetAmount),
-          currency: targetCurrency,
-          rateSnapshot: new Prisma.Decimal(exchangeRate),
-          amountInToman: new Prisma.Decimal(targetAmountInToman),
-          accountId: targetAccountId,
-          description:
-            description ||
-            `فروش ${sourceCurrency} - خرید ${targetCurrency} - نرخ: ${exchangeRate}`,
-          date: transactionDate,
-          category: 'Currency Exchange',
-        },
-      });
-
-      // 7. Update source account balance (decrement)
-      await tx.account.update({
-        where: { id: sourceAccountId },
-        data: {
-          balance: {
-            decrement: new Prisma.Decimal(sourceAmount),
-          },
-        },
-      });
-
-      // 8. Update target account balance (increment)
-      await tx.account.update({
-        where: { id: targetAccountId },
-        data: {
-          balance: {
-            increment: new Prisma.Decimal(targetAmount),
-          },
-        },
-      });
+      await applyExchange(tx, validatedFields.data, randomUUID());
     });
   } catch (error: any) {
     console.error('Error in currency exchange:', error);
     return {
-      message: error.message || 'خطا در انجام معامله ارز.',
+      message: error instanceof ExchangeRefusal ? error.message : 'خطا در انجام معامله ارز.',
       errors: {},
       success: false,
     };
@@ -220,86 +357,134 @@ export async function exchangeCurrency(prevState: any, formData: FormData) {
   return { message: 'معامله ارز با موفقیت انجام شد.', success: true };
 }
 
-export async function getCurrencyExchangeHistory() {
+/** The checks that do not need the database, shared by recording and editing. */
+function pairingProblem(input: z.infer<typeof CurrencyExchangeSchema>): string | null {
+  if (input.sourceAccountId === input.targetAccountId) return 'حساب مبدا و مقصد نمی‌توانند یکسان باشند.';
+  if (input.sourceCurrency === input.targetCurrency) return 'ارز حساب مبدا و مقصد باید متفاوت باشند.';
+  return null;
+}
+
+/**
+ * Correct a recorded exchange. The old amounts are taken back off both accounts
+ * and the new ones applied, in one transaction, so the balances end up as if the
+ * exchange had been recorded this way in the first place.
+ */
+export async function updateCurrencyExchange(input: {
+  id: string;
+  sourceAccountId: string;
+  targetAccountId: string;
+  sourceAmount: number;
+  targetAmount: number;
+  sourceCurrency: Currency;
+  targetCurrency: Currency;
+  exchangeRate: number;
+  date?: string;
+  description?: string;
+}): Promise<{ success: boolean; message: string }> {
+  const denied = await requireAdmin();
+  if (denied) return { success: false, message: denied.message };
+
+  const validatedFields = CurrencyExchangeSchema.safeParse(input);
+  if (!validatedFields.success) {
+    const first = Object.values(validatedFields.error.flatten().fieldErrors)[0]?.[0];
+    return { success: false, message: first ?? 'لطفا فیلدهای الزامی را پر کنید.' };
+  }
+
+  const problem = pairingProblem(validatedFields.data);
+  if (problem) return { success: false, message: problem };
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const existing = await loadExchange(tx, input.id);
+      await reverseLeg(tx, existing.source);
+      await reverseLeg(tx, existing.target);
+      await applyExchange(tx, validatedFields.data, existing.groupId ?? randomUUID(), existing);
+    });
+  } catch (error: unknown) {
+    console.error('Error editing currency exchange:', error);
+    return {
+      success: false,
+      message: error instanceof ExchangeRefusal ? error.message : 'خطا در ویرایش معامله ارز.',
+    };
+  }
+
+  revalidatePath('/dashboard', 'layout');
+  return { success: true, message: 'سند معامله ارز اصلاح شد و موجودی حساب‌ها به‌روز شد.' };
+}
+
+/** Remove a recorded exchange and give both accounts their money back. */
+export async function deleteCurrencyExchange(id: string) {
+  const denied = await requireAdmin();
+  if (denied) return { success: false, message: denied.message };
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const existing = await loadExchange(tx, id);
+      await reverseLeg(tx, existing.source);
+      await reverseLeg(tx, existing.target);
+      const ids = [existing.source?.id, existing.target?.id].filter(Boolean) as string[];
+      await tx.transaction.deleteMany({ where: { id: { in: ids } } });
+    });
+  } catch (error: any) {
+    console.error('Error deleting currency exchange:', error);
+    return {
+      success: false,
+      message: error instanceof ExchangeRefusal ? error.message : 'خطا در حذف معامله ارز.',
+    };
+  }
+
+  revalidatePath('/dashboard', 'layout');
+  return { success: true, message: 'سند معامله ارز حذف شد و موجودی حساب‌ها به حالت قبل برگشت.' };
+}
+
+export type ExchangeHistoryRow = {
+  /** What edit and delete take: the exchange's group id, or the id of its only leg. */
+  id: string;
+  date: Date;
+  sourceAccountId: string | null;
+  targetAccountId: string | null;
+  sourceAccount: string | null;
+  targetAccount: string | null;
+  sourceAmount: number | null;
+  targetAmount: number | null;
+  sourceCurrency: Currency | null;
+  targetCurrency: Currency | null;
+  exchangeRate: number;
+  description?: string;
+  /** False when only one leg of the exchange is in the books. */
+  complete: boolean;
+};
+
+export async function getCurrencyExchangeHistory(): Promise<ExchangeHistoryRow[]> {
   await requirePermission('finance.view');
   try {
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        category: 'Currency Exchange',
-      },
-      include: {
-        account: true,
-      },
-      orderBy: {
-        date: 'desc',
-      },
+    const rows = await prisma.transaction.findMany({
+      where: { category: EXCHANGE_CATEGORY },
+      include: { account: { select: { id: true, name: true } } },
+      orderBy: { date: 'desc' },
     });
 
-    // Group transactions by date and pair them (source + target)
-    const exchanges: Array<{
-      id: string;
-      date: Date;
-      sourceAccount: string;
-      targetAccount: string;
-      sourceAmount: number;
-      targetAmount: number;
-      sourceCurrency: Currency;
-      targetCurrency: Currency;
-      exchangeRate: number;
-      description?: string;
-    }> = [];
-
-    const processedIds = new Set<string>();
-
-    for (const transaction of transactions) {
-      if (processedIds.has(transaction.id)) continue;
-
-      // Find the paired transaction (same date, same category, different account)
-      const pairedTransaction = transactions.find(
-  (t: any) =>
-          t.id !== transaction.id &&
-          !processedIds.has(t.id) &&
-          t.category === 'Currency Exchange' &&
-          t.date.getTime() === transaction.date.getTime() &&
-          t.accountId !== transaction.accountId
-      );
-
-      if (pairedTransaction && transaction.account && pairedTransaction.account) {
-        // Determine which is source and which is target based on transaction type
-        const sourceTx =
-          transaction.type === TransactionType.EXPENSE
-            ? transaction
-            : pairedTransaction;
-        const targetTx =
-          transaction.type === TransactionType.INCOME
-            ? transaction
-            : pairedTransaction;
-
-        // Additional null check for safety
-        if (sourceTx.account && targetTx.account) {
-          exchanges.push({
-            id: transaction.id,
-            date: transaction.date,
-            sourceAccount: sourceTx.account.name,
-            targetAccount: targetTx.account.name,
-            sourceAmount: Number(sourceTx.amount),
-            targetAmount: Number(targetTx.amount),
-            sourceCurrency: sourceTx.currency,
-            targetCurrency: targetTx.currency,
-            exchangeRate: Number(sourceTx.rateSnapshot),
-            description: sourceTx.description ?? undefined,
-          });
-
-          processedIds.add(transaction.id);
-          processedIds.add(pairedTransaction.id);
-        }
-      }
-    }
-
-    return exchanges;
+    return pairExchangeRows(rows as any).map((pair) => {
+      const { source, target } = pair as { source?: any; target?: any };
+      const known = (source ?? target)!;
+      return {
+        id: known.exchangeGroupId ?? known.id,
+        date: known.date,
+        sourceAccountId: source?.accountId ?? null,
+        targetAccountId: target?.accountId ?? null,
+        sourceAccount: source?.account?.name ?? null,
+        targetAccount: target?.account?.name ?? null,
+        sourceAmount: source ? Number(source.amount) : null,
+        targetAmount: target ? Number(target.amount) : null,
+        sourceCurrency: source?.currency ?? null,
+        targetCurrency: target?.currency ?? null,
+        exchangeRate: Number(known.rateSnapshot),
+        description: known.description ?? undefined,
+        complete: Boolean(source && target),
+      };
+    });
   } catch (error) {
     console.error('Error fetching currency exchange history:', error);
     return [];
   }
 }
-

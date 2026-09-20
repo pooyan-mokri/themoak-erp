@@ -3,12 +3,14 @@ import { getCurrencyExchangeHistory } from '@/actions/currency-exchange';
 import { CurrencyExchangeForm } from '@/components/accounting/currency-exchange-form';
 import { CurrencyExchangeHistory } from '@/components/accounting/currency-exchange-history';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, requireRouteAccess } from '@/lib/access';
 
 export default async function CurrencyExchangePage() {
   await requireRouteAccess('/dashboard/accounting');
   const accounts = await getAccounts();
   const history = await getCurrencyExchangeHistory();
+  // Correcting a recorded exchange stays with the admin, like a recorded expense.
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
 
   // Convert Decimal to number for client
   const accountsWithNumbers = accounts.map((account: any) => ({
@@ -58,7 +60,7 @@ export default async function CurrencyExchangePage() {
         </Card>
       </div>
 
-      <CurrencyExchangeHistory history={history} />
+      <CurrencyExchangeHistory history={history} isAdmin={isAdmin} accounts={accountsWithNumbers} />
     </div>
   );
 }

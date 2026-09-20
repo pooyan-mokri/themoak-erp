@@ -247,7 +247,7 @@ test('accept system: refused for a role that may not change stock', async () => 
   }
   setTestRole('ADMIN');
   assert.deepEqual(
-    (await finals(a)).map((row) => row[1]),
+    (await finals(a)).map((row: any[]) => row[1]),
     [null, null],
   );
 });
