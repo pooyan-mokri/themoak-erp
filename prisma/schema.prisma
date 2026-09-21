@@ -60,6 +60,22 @@ model Account {
   transactions           Transaction[]
   purchaseOrderPayments  PurchaseOrderPayment[]
   invoiceOrders          Order[]                 @relation("OrderInvoiceAccount")
+  bankChecks             BankCheck[]
+}
+
+/// A bank-statement figure checked against the ERP: the bank balance at checkedAt, and what the ERP showed then.
+model BankCheck {
+  id          String   @id @default(cuid())
+  accountId   String
+  checkedAt   DateTime @default(now())
+  bankBalance Decimal
+  erpBalance  Decimal
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, checkedAt])
 }
 
 model ExchangeRate {
@@ -125,6 +141,12 @@ model Transaction {
   customerId            String?
   /// The two legs of one currency exchange share this id.
   exchangeGroupId       String?
+  /// The two legs of one internal transfer share this id.
+  transferGroupId       String?
+  /// The order this money belongs to: checkout, later payments, refunds, exchange differences, settlements.
+  orderId               String?
+  /// A per-form id: a submission processed twice stores one row (src/lib/request-id.ts).
+  clientRequestId       String?                    @unique
   LoanPayment           LoanPayment?
   marketingGift         MarketingGift?
   orders                Order[]
@@ -141,9 +163,12 @@ model Transaction {
   employee              Employee?                  @relation(fields: [employeeId], references: [id])
   project               Project?                   @relation(fields: [projectId], references: [id])
   shareholder           Shareholder?               @relation(fields: [shareholderId], references: [id])
+  order                 Order?                     @relation("OrderMoney", fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([customerId])
   @@index([exchangeGroupId])
+  @@index([transferGroupId])
+  @@index([orderId])
 }
 
 model Product {
@@ -423,6 +448,7 @@ model Order {
   items         OrderItem[]
   OrderReturn   OrderReturn[]
   siteRefunds   SiteRefund[]
+  moneyRows     Transaction[]           @relation("OrderMoney")
 }
 
 model OrderItem {
