@@ -17,6 +17,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { TagInput } from '@/components/ui/tag-input';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { accountLabel } from '@/lib/account-label';
 import { toast } from 'sonner';
 
 const initialState = { message: '', errors: {}, success: false };
@@ -42,6 +44,7 @@ interface Account {
   id: string;
   name: string;
   currency: string;
+  cardNumber?: string | null;
 }
 
 interface DepositFormProps {
@@ -50,7 +53,9 @@ interface DepositFormProps {
 
 export function DepositForm({ accounts }: DepositFormProps) {
   const [state, dispatch] = useFormState(recordDeposit, initialState);
-  const [currency, setCurrency] = useState('TOMAN');
+  const [requestId, renewRequestId] = useRequestId();
+  // The currency follows the chosen account; there is no default to forget.
+  const [currency, setCurrency] = useState('');
   const [accountId, setAccountId] = useState('');
   const [category, setCategory] = useState('');
   const [date, setDate] = useState<Date>(new Date());
@@ -58,23 +63,32 @@ export function DepositForm({ accounts }: DepositFormProps) {
   useEffect(() => {
     if (state.message && state.success) {
       toast.success(state.message);
-      setCurrency('TOMAN');
+      setCurrency('');
       setAccountId('');
       setCategory('');
       setDate(new Date());
+      // A new id, and a fresh form (it is keyed by the id), for the next entry.
+      renewRequestId();
     } else if (state.message && !state.success) {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, renewRequestId]);
 
   const errors = state.errors as Record<string, string[] | undefined> | undefined;
+  const selectedAccount = accounts.find((a) => a.id === accountId);
+
+  const chooseAccount = (id: string) => {
+    setAccountId(id);
+    setCurrency(accounts.find((a) => a.id === id)?.currency ?? '');
+  };
 
   return (
     <Card className="max-w-lg mx-auto">
       <CardHeader>
         <CardTitle>ثبت واریز</CardTitle>
       </CardHeader>
-      <form action={dispatch}>
+      <form key={requestId} action={dispatch}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-4">
           {/* Description */}
           <div className="space-y-2">
@@ -128,18 +142,23 @@ export function DepositForm({ accounts }: DepositFormProps) {
               )}
             </div>
           </div>
+          {selectedAccount && currency && currency !== selectedAccount.currency && (
+            <p className="text-xs text-amber-600">
+              مبلغ به {currency} وارد می‌شود و با آخرین نرخ به ارز حساب ({selectedAccount.currency}) تبدیل می‌شود.
+            </p>
+          )}
 
           {/* Account */}
           <div className="space-y-2">
             <Label>حساب مقصد *</Label>
-            <Select name="accountId" value={accountId} onValueChange={setAccountId} required>
+            <Select name="accountId" value={accountId} onValueChange={chooseAccount} required>
               <SelectTrigger>
                 <SelectValue placeholder="کدام حساب واریز شد؟" />
               </SelectTrigger>
               <SelectContent>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({a.currency})
+                    {accountLabel(a)}
                   </SelectItem>
                 ))}
               </SelectContent>

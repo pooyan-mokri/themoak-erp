@@ -9,6 +9,8 @@ import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { CASH_CHANGED_MESSAGE, lineValue, orderMoney, returnChange } from '@/lib/return-math';
 
 const OrderReturnSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -17,6 +19,8 @@ const OrderReturnSchema = z.object({
   reason: z.string().optional(),
   accountId: z.string().min(1, 'حساب الزامی است'),
   warehouseId: z.string().min(1, 'انبار الزامی است'),
+  // The refund the dialog showed; the server refuses when its own figure differs.
+  expectedCash: z.coerce.number().optional(),
 });
 
 export async function returnOrderItem(prevState: any, formData: FormData) {
@@ -29,6 +33,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
     reason: formData.get('reason') || undefined,
     accountId: formData.get('accountId'),
     warehouseId: formData.get('warehouseId'),
+    expectedCash: formData.get('expectedCash') || undefined,
   });
 
   if (!validatedFields.success) {
@@ -39,10 +44,17 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
     };
   }
 
-  const { orderId, orderItemId, quantity, reason, accountId, warehouseId } = validatedFields.data;
+  const { orderId, orderItemId, quantity, reason, accountId, warehouseId, expectedCash } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // One return or exchange at a time per order: the second re-reads what the first left.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
+
       // 1. Get order and order item
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -51,6 +63,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           items: {
             include: { product: true },
           },
+          commissions: true,
         },
       });
 
@@ -111,28 +124,20 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         throw new Error('این انبار مجازی متعلق به مشتری این سفارش نیست.');
       }
 
-      // 2. Calculate refund value of returned goods
-      const refundAmount = Number(orderItem.price) * quantity;
+      // 2. Value of the returned goods to this order: net of the partner's
+      //    commission on a consignment sale, whose total is stored net.
+      const money = orderMoney(order);
+      const refundAmount = lineValue(money, Number(orderItem.price), quantity);
 
       // 3. Recompute order totals. Cash leaves the account ONLY for the
       //    portion the customer actually overpaid relative to the new total
       //    (i.e. only what's owed back). The rest just cancels customer debt.
-      const oldTotal = Number(order.totalAmount);
-      const oldDiscount = Number(order.discount);
-      const oldPaid = Number(order.paidAmount);
-
-      const newTotal = Math.max(0, oldTotal - refundAmount);
-      const newNetOwed = Math.max(0, newTotal - oldDiscount);
-      let cashRefund = 0;
-      let newPaid = oldPaid;
-      if (oldPaid > newNetOwed) {
-        cashRefund = oldPaid - newNetOwed;
-        newPaid = newNetOwed;
+      //    The dialog shows the same figure from the same function.
+      const change = returnChange(money, refundAmount);
+      const cashRefund = change.cashOut;
+      if (expectedCash !== undefined && Math.abs(expectedCash - cashRefund) > 0.01) {
+        throw new Error(CASH_CHANGED_MESSAGE);
       }
-      const newDebt = newNetOwed - newPaid;
-      const newPaymentStatus = newDebt > 0
-        ? (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
-        : 'PAID';
 
       // 4. Cash refund leg (skipped entirely when nothing leaves the account)
       let transactionId: string | undefined;
@@ -171,6 +176,8 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
             amountInToman: new Prisma.Decimal(cashRefund),
             accountId,
             customerId: order.customerId ?? undefined,
+            orderId,
+            clientRequestId: requestId ?? undefined,
             description: `عودت کالا - سفارش #${order.number} - ${customerLabel} - ${orderItem.product.name}`,
             category: 'Return',
             date: new Date(),
@@ -188,9 +195,9 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       await tx.order.update({
         where: { id: orderId },
         data: {
-          totalAmount: new Prisma.Decimal(newTotal),
-          paidAmount: new Prisma.Decimal(newPaid),
-          paymentStatus: newPaymentStatus,
+          totalAmount: new Prisma.Decimal(change.newTotal),
+          paidAmount: new Prisma.Decimal(change.newPaid),
+          paymentStatus: change.paymentStatus,
         },
       });
 
@@ -198,9 +205,9 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       //     doesn't keep displaying the pre-return total / paid amounts.
       await syncInvoiceWithOrder(orderId, tx);
 
-      // 5b. For consignment sales, scale each commission record on this
-      //     order in proportion to the new net order amount so the partner
-      //     isn't paid commission on goods that came back.
+      // 5b. For consignment sales, take the returned goods (at their gross
+      //     price, like the record) off each commission record on this
+      //     order so the partner isn't paid commission on goods that came back.
       const orderCommissions = await tx.consignmentCommission.findMany({
         where: { orderId },
       });
@@ -209,7 +216,8 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           (sum: number, c: any) => sum + Number(c.orderAmount),
           0
         );
-        const ratio = oldCommissionBase > 0 ? newNetOwed / oldCommissionBase : 0;
+        const newCommissionBase = Math.max(0, oldCommissionBase - Number(orderItem.price) * quantity);
+        const ratio = oldCommissionBase > 0 ? newCommissionBase / oldCommissionBase : 0;
         for (const commission of orderCommissions) {
           const rate = Number(commission.commissionRate);
           const newOrderAmount = Number(commission.orderAmount) * ratio;
@@ -283,7 +291,9 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           },
         });
       }
+      return 'done';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     kickSiteHook();
 
     // Inventory, POS, customer debt list, accounting reports all derive
@@ -295,12 +305,38 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       success: true,
     };
   } catch (error: any) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error returning order item:', error);
     return {
       message: error.message || 'خطا در ثبت عودت کالا.',
       success: false,
     };
   }
+}
+
+/**
+ * What the return and exchange dialogs need to show the cash exactly as the
+ * server will book it (src/lib/return-math.ts), and the account the sale was
+ * paid into, which they offer first for a refund.
+ */
+export async function getOrderMoney(orderId: string) {
+  await requirePermission('sales.view');
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { commissions: true, transaction: { include: { account: true } } },
+  });
+  if (!order) return null;
+  const checkout = order.transaction?.account;
+  let saleAccountId = checkout && (checkout.type === 'BANK' || checkout.type === 'CASH') ? checkout.id : null;
+  if (!saleAccountId) {
+    const payment = await prisma.transaction.findFirst({
+      where: { orderId, type: 'INCOME', account: { type: { in: ['BANK', 'CASH'] } } },
+      orderBy: { createdAt: 'desc' },
+      select: { accountId: true },
+    });
+    saleAccountId = payment?.accountId ?? null;
+  }
+  return { ...orderMoney(order), saleAccountId };
 }
 
 export async function getAllOrderReturns(limit = 200) {

@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { recordOrderPayment } from '@/actions/sales';
 import { getAccountOptions } from '@/actions/account-options';
+import { accountLabel } from '@/lib/account-label';
+import { useRequestId } from '@/components/ui/request-id';
 
 type OrderWithDetails = {
   id: string;
@@ -47,6 +49,12 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
   const [selectedAccount, setSelectedAccount] = useState('');
   const [amount, setAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requestId, renewRequestId] = useRequestId();
+
+  // One dialog serves every order in the list: a payment to another order is another submission.
+  useEffect(() => {
+    renewRequestId();
+  }, [order.id, renewRequestId]);
 
   const totalAmount = Number(order.totalAmount) - Number(order.discount || 0);
   const paidAmount = Number(order.paidAmount || 0);
@@ -85,11 +93,12 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
     }
 
     setIsSubmitting(true);
-    const result = await recordOrderPayment(order.id, selectedAccount, paymentAmount);
+    const result = await recordOrderPayment(order.id, selectedAccount, paymentAmount, requestId);
     setIsSubmitting(false);
 
     if (result.success) {
-      toast.success('پرداخت با موفقیت ثبت شد.');
+      renewRequestId();
+      toast.success(result.message);
       onOpenChange(false);
       router.refresh();
     } else {
@@ -132,7 +141,7 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
               <SelectContent>
                 {accounts.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
-                    {account.name}
+                    {accountLabel(account)}
                   </SelectItem>
                 ))}
               </SelectContent>

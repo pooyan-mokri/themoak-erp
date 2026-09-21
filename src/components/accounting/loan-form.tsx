@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState = {
   message: '',
@@ -27,6 +28,7 @@ interface Account {
   id: string;
   name: string;
   currency: string;
+  cardNumber?: string | null;
 }
 
 interface LoanFormProps {
@@ -84,7 +86,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               <SelectContent>
                 {accounts.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
-                    {account.name} ({account.currency})
+                    {accountLabel(account)}
                   </SelectItem>
                 ))}
               </SelectContent>

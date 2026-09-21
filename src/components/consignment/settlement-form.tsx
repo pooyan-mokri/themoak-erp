@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/card';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRequestId } from '@/components/ui/request-id';
 
 interface Partner {
   id: string;
@@ -54,6 +55,8 @@ export function SettlementForm({ partners, products }: SettlementFormProps) {
     { productId: '', quantity: '1', unitPrice: '' },
   ]);
   const [isPending, startTransition] = useTransition();
+  // Kept across a failed attempt, so a retry of the same report is booked once.
+  const [requestId, renewRequestId] = useRequestId();
 
   const selectedPartner = partners.find((p) => p.id === partnerWarehouseId);
   const commissionRate = selectedPartner?.customer?.commissionRate ?? 0;
@@ -90,13 +93,20 @@ export function SettlementForm({ partners, products }: SettlementFormProps) {
       return;
     }
     startTransition(async () => {
-      const result = await recordConsignmentSales({
+      const report = {
         partnerWarehouseId,
         saleDate: saleDate.toISOString().slice(0, 10),
         items: cleaned,
-      });
+        requestId,
+      };
+      let result = await recordConsignmentSales(report);
+      // The same lines are already on that day's invoice: book them again only on purpose.
+      if (!result.success && result.data?.repeatOf && window.confirm(result.message ?? '')) {
+        result = await recordConsignmentSales({ ...report, confirmRepeat: true });
+      }
       if (result.success) {
         toast.success(result.message);
+        renewRequestId();
         setItems([{ productId: '', quantity: '1', unitPrice: '' }]);
       } else {
         toast.error(result.message || 'خطا در ثبت فروش');

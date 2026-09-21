@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
 
 // --- Schemas ---
 
@@ -59,8 +60,6 @@ const MarketingCampaignSchema = z.object({
 export async function createMarketingGift(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
-  // The shortfall message names the account balance and the gift's cost.
-  const canSeeAmounts = (await hasPermission('finance.view')) && (await hasPermission('cost.view'));
   const campaignIdValue = formData.get('campaignId');
   
   const validatedFields = MarketingGiftSchema.safeParse({
@@ -148,28 +147,24 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
         throw new Error('حساب یافت نشد.');
       }
 
-      // Check balance only for BANK/CASH accounts. EXPENSE accounts track
-      // accumulated spend and don't require pre-existing balance.
-      if (account.type === 'BANK' || account.type === 'CASH') {
-        const accountBalance = Number(account.balance);
-        if (accountBalance < totalCost) {
-          throw new Error(
-            canSeeAmounts
-              ? `موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalCost.toLocaleString('fa-IR')} تومان`
-              : `موجودی حساب "${account.name}" کافی نیست.`
-          );
-        }
+      // A gift is stock given away at cost, not money leaving a bank: it goes on
+      // an EXPENSE account (which tracks spend and needs no balance), never on a
+      // bank or cash account whose balance has to match the bank.
+      if (account.type !== 'EXPENSE') {
+        throw new Error(`هدیه فقط روی حساب هزینه ثبت می‌شود؛ «${account.name}» حساب هزینه نیست.`);
       }
 
       // 3. Create transaction for marketing expense
       const transactionDate = date ? new Date(date) : new Date();
       const productNames = validatedItems.map((item: any) => `${item.product.name} (${item.quantity} عدد)`).join('، ');
+      // The cost is in Toman; the account is kept in its own currency.
+      const booked = await inAccountCurrency(tx, account, totalCost);
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
-          amount: new Prisma.Decimal(totalCost),
-          currency: 'TOMAN',
-          rateSnapshot: new Prisma.Decimal(1),
+          amount: new Prisma.Decimal(booked.amount),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(booked.rate),
           amountInToman: new Prisma.Decimal(totalCost),
           accountId,
           description: `هزینه بازاریابی - هدیه: ${productNames}${recipientName ? ` - گیرنده: ${recipientName}` : ''}${reason ? ` - دلیل: ${reason}` : ''}`,
@@ -183,7 +178,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
         where: { id: accountId },
         data: {
           balance: {
-            decrement: new Prisma.Decimal(totalCost),
+            decrement: new Prisma.Decimal(booked.amount),
           },
         },
       });

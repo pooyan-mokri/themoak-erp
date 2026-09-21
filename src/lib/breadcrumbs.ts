@@ -59,12 +59,16 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'payroll': 'حقوق و دستمزد',
     'loans': 'وام‌ها',
     'currency-exchange': 'خرید و فروش ارز',
+    'transfers': 'انتقال وجه',
+    'deposits': 'واریزها',
+    'withdrawals': 'پرداخت‌ها',
     'new': 'جدید',
     'edit': 'ویرایش',
     'barcode': 'بارکد',
     'labels': 'چاپ گروهی برچسب',
     'print': 'چاپ',
     'no-access': 'عدم دسترسی',
+    'site-review': 'پرداخت‌های سایت برای بررسی',
   };
   
   // Build breadcrumb items

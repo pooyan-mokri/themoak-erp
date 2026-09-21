@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
-import { returnOrderItem } from '@/actions/order-return';
+import { getOrderMoney, returnOrderItem } from '@/actions/order-return';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,9 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
+import { lineValue, returnChange, type OrderMoney } from '@/lib/return-math';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
   message: '',
@@ -47,6 +50,7 @@ interface ReturnItemDialogProps {
     id: string;
     name: string;
     currency: string;
+    cardNumber?: string | null;
   }>;
   warehouses: Array<{
     id: string;
@@ -68,8 +72,30 @@ export function ReturnItemDialog({
   const [quantity, setQuantity] = useState<string>('1');
   const [accountId, setAccountId] = useState<string>('');
   const [warehouseId, setWarehouseId] = useState<string>(warehouses[0]?.id || '');
+  const [money, setMoney] = useState<(OrderMoney & { saleAccountId: string | null }) | null>(null);
+  const [requestId, renewRequestId] = useRequestId();
 
-  const refundAmount = (Number(quantity) || 0) * Number(orderItem.price);
+  // The order's current money, so the refund below is the one the server will book.
+  useEffect(() => {
+    if (!open) return;
+    setMoney(null);
+    getOrderMoney(orderId)
+      .then((loaded) => {
+        setMoney(loaded);
+        const saleAccountId = loaded?.saleAccountId;
+        if (saleAccountId && accounts.some((account) => account.id === saleAccountId)) {
+          setAccountId((current) => current || saleAccountId);
+        }
+      })
+      .catch(() => toast.error('خطا در بارگذاری مبالغ سفارش'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, orderId]);
+
+  // Same arithmetic as the server (src/lib/return-math.ts).
+  const refundAmount = money ? lineValue(money, Number(orderItem.price), Number(quantity) || 0) : 0;
+  const cashRefund = money ? returnChange(money, refundAmount).cashOut : 0;
+  // The server needs an account on every return; with no cash moving, none is shown or charged.
+  const postedAccountId = accountId || money?.saleAccountId || accounts[0]?.id || '';
   const lastMessageRef = useRef<string>('');
 
   useEffect(() => {
@@ -79,6 +105,7 @@ export function ReturnItemDialog({
       
       if (state.success) {
         toast.success(state.message);
+        renewRequestId();
         setQuantity('1');
         setAccountId('');
         setWarehouseId(warehouses[0]?.id || '');
@@ -110,6 +137,9 @@ export function ReturnItemDialog({
           <input type="hidden" name="orderId" value={orderId} />
           <input type="hidden" name="orderItemId" value={orderItem.id} />
           <input type="hidden" name="warehouseId" value={warehouseId} />
+          <input type="hidden" name="expectedCash" value={String(cashRefund)} />
+          <RequestIdField value={requestId} />
+          {cashRefund <= 0 && <input type="hidden" name="accountId" value={postedAccountId} />}
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -153,24 +183,27 @@ export function ReturnItemDialog({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="accountId">حساب برای بازگرداندن پول *</Label>
-              <Select name="accountId" required value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger id="accountId">
-                  <SelectValue placeholder="انتخاب حساب" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name} ({account.currency})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
-              )}
-            </div>
+            {cashRefund > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="accountId">حساب برای بازگرداندن پول *</Label>
+                <Select name="accountId" required value={accountId} onValueChange={setAccountId}>
+                  <SelectTrigger id="accountId">
+                    <SelectValue placeholder="انتخاب حساب" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {accountLabel(account)}
+                        {account.id === money?.saleAccountId ? ' — حساب دریافت این فروش' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
+                  <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="reason">علت عودت (اختیاری)</Label>
@@ -182,13 +215,30 @@ export function ReturnItemDialog({
               />
             </div>
 
-            <div className="p-3 bg-muted rounded-md">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">مبلغ بازگشتی:</span>
-                <span className="text-lg font-bold text-green-600">
-                  {refundAmount.toLocaleString('fa-IR')} تومان
-                </span>
-              </div>
+            <div className="p-3 bg-muted rounded-md space-y-2">
+              {!money ? (
+                <p className="text-sm text-muted-foreground">در حال محاسبهٔ مبلغ...</p>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">
+                      ارزش کالای برگشتی{money.commissionRate > 0 ? ' (پس از کسر کمیسیون همکار)' : ''}:
+                    </span>
+                    <span className="text-sm font-medium">{refundAmount.toLocaleString('fa-IR')} تومان</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t pt-2">
+                    <span className="text-sm font-medium">پرداخت نقدی به مشتری:</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {cashRefund.toLocaleString('fa-IR')} تومان
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-right">
+                    {cashRefund > 0
+                      ? 'این مبلغ از حساب انتخاب‌شده به مشتری برگردانده می‌شود؛ بقیه از بدهی مشتری کم می‌شود.'
+                      : 'پولی جابه‌جا نمی‌شود؛ ارزش کالا از بدهی مشتری روی این سفارش کم می‌شود.'}
+                  </p>
+                </>
+              )}
             </div>
 
             {state.message && !state.success && (
@@ -202,7 +252,7 @@ export function ReturnItemDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               انصراف
             </Button>
-            <SubmitButton />
+            <SubmitButton disabled={!money} />
           </DialogFooter>
         </form>
       </DialogContent>
@@ -210,10 +260,10 @@ export function ReturnItemDialog({
   );
 }
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending || disabled}>
       {pending ? 'در حال ثبت...' : 'ثبت عودت'}
     </Button>
   );

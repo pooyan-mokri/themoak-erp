@@ -34,6 +34,8 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ShoppingCart } from 'lucide-react';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { accountLabel } from '@/lib/account-label';
+import { useRequestId } from '@/components/ui/request-id';
 
 interface Product {
   id: string;
@@ -52,6 +54,7 @@ interface Customer {
 interface Account {
   id: string;
   name: string;
+  currency?: string;
   cardNumber?: string;
   sheba?: string;
 }
@@ -81,11 +84,14 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [discount, setDiscount] = useState<string>('0');
   const [paidAmount, setPaidAmount] = useState<string>('');
+  // True once the cashier types a paid amount: a later discount edit leaves it alone.
+  const [paidEdited, setPaidEdited] = useState(false);
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
   const [isCreditSale, setIsCreditSale] = useState(false);
   const [saleDate, setSaleDate] = useState<Date>(new Date());
   const [orderTags, setOrderTags] = useState<string[]>([]);
   const [invoiceAccountId, setInvoiceAccountId] = useState<string>('');
+  const [requestId, renewRequestId] = useRequestId();
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -129,6 +135,9 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const openCheckout = () => {
     setDiscount('0');
     setPaidAmount(totalAmount.toString());
+    setPaidEdited(false);
+    // Every sale picks its receiving account: two accounts can have nearly the same name.
+    setSelectedAccount('');
     setIsCreditSale(false);
     setSaleDate(new Date());
     setOrderTags([]);
@@ -139,7 +148,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   // Update paidAmount when discount changes
   const handleDiscountChange = (value: string) => {
     setDiscount(value);
-    if (!isCreditSale) {
+    if (!isCreditSale && !paidEdited) {
       const discountVal = Number(value) || 0;
       const newFinalAmount = totalAmount - discountVal;
       // Auto-update paidAmount to match the new final amount after discount
@@ -151,6 +160,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   // Handle credit sale toggle
   const handleCreditSaleChange = (checked: boolean) => {
     setIsCreditSale(checked);
+    setPaidEdited(false);
     if (checked) {
       // Credit sale: no payment now
       setPaidAmount('0');
@@ -198,11 +208,13 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       saleDate: saleDate.toISOString(),
       tags: orderTags,
       invoiceAccountId: invoiceAccountId || undefined,
+      requestId,
     });
 
     setIsSubmitting(false);
     if (result.success) {
-      toast.success('سفارش با موفقیت ثبت شد.');
+      renewRequestId();
+      toast.success(result.message);
       setCart([]);
       setIsCheckoutOpen(false);
       setSelectedCustomer('');
@@ -370,7 +382,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                 <SelectContent>
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.name}
+                      {accountLabel(a)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -426,8 +438,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                   <SelectContent>
                     {accounts.filter((a) => a.cardNumber || a.sheba).map((a) => (
                       <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                        {a.cardNumber && ` — ${a.cardNumber.slice(-4)}...`}
+                        {accountLabel(a)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -461,7 +472,10 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                   type="number"
                   value={paidAmount}
                   placeholder={finalAmount.toString()}
-                  onChange={(e) => setPaidAmount(e.target.value)}
+                  onChange={(e) => {
+                    setPaidAmount(e.target.value);
+                    setPaidEdited(true);
+                  }}
                   disabled={isCreditSale}
                   className="h-12 md:h-10 text-base md:text-sm"
                 />

@@ -2,9 +2,30 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { TransactionType, Currency, ActionResult } from '@/lib/types';
+import { TransactionType, ActionResult } from '@/lib/types';
 import { z } from 'zod';
 import { checkPermission } from '@/lib/access';
+import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A figure in the account's own unit, for balance messages. */
+const inUnit = (amount: number, currency: string) =>
+  `${amount.toLocaleString('fa-IR')} ${currency === 'TOMAN' ? 'تومان' : currency}`;
+
+/** True when this submission's id is already on a booked row (a repeat that arrived after the first finished). */
+async function alreadyBooked(tx: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
+
+/**
+ * Locks the purchase order, then the paying account, until the transaction
+ * ends: a second submission for the same order waits, then reads it paid (or
+ * its id already booked), and the balance check reads the balance it moves.
+ */
+async function lockOrderAndAccount(tx: any, orderId: string, accountId: string) {
+  await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
+}
 
 // Workflow Actions
 export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
@@ -53,11 +74,14 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
   }
 }
 
-export async function recordPurchasePayment(orderId: string, accountId: string): Promise<ActionResult> {
+export async function recordPurchasePayment(orderId: string, accountId: string, requestId?: string): Promise<ActionResult> {
   const denied = await checkPermission('finance.manage');
   if (denied) return denied;
+  const clientRequestId = readRequestId(requestId);
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      await lockOrderAndAccount(tx, orderId, accountId);
+      if (await alreadyBooked(tx, clientRequestId)) return 'duplicate';
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
         include: { items: true, additionalCosts: true }
@@ -109,24 +133,28 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
         }
       }
 
+      // The order is priced in Toman; the account pays in its own currency.
+      const paid = await inAccountCurrency(tx, account, totalInToman);
+
       // Check if account has sufficient balance
       const accountBalance = Number(account.balance);
-      if (accountBalance < totalInToman) {
-        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalInToman.toLocaleString('fa-IR')} تومان`);
+      if (accountBalance < paid.amount) {
+        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${inUnit(accountBalance, account.currency)}، مبلغ مورد نیاز: ${inUnit(paid.amount, account.currency)}`);
       }
 
       // Create transaction
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
-          amount: totalInToman,
-          currency: Currency.TOMAN,
-          rateSnapshot: 1,
+          amount: paid.amount,
+          currency: account.currency,
+          rateSnapshot: paid.rate,
           amountInToman: totalInToman,
           accountId: accountId,
           description: `پرداخت سفارش خرید #${order.number} به تامین‌کننده`,
           category: 'Purchase Payment',
           date: new Date(),
+          clientRequestId: clientRequestId ?? undefined,
         }
       });
 
@@ -134,7 +162,7 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
       await tx.account.update({
         where: { id: accountId },
         data: {
-          balance: { decrement: totalInToman }
+          balance: { decrement: paid.amount }
         }
       });
 
@@ -161,7 +189,9 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
           paymentTransactionId: transaction.id
         }
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
 
     revalidatePath('/dashboard/suppliers/orders');
     revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
@@ -169,6 +199,7 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
     revalidatePath('/dashboard/accounting/transactions');
     return { success: true, message: 'پرداخت با موفقیت ثبت شد' };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
     console.error('Error recording payment:', error);
     const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت';
     return { success: false, message };
@@ -178,7 +209,8 @@ export async function recordPurchasePayment(orderId: string, accountId: string):
 /**
  * Record a PARTIAL payment for a purchase order. Multiple payments are allowed,
  * each from a possibly different account, each on its own (Jalali) date.
- * Payments are made in Toman and are capped at the order's remaining balance.
+ * Payments are made in Toman and are capped at the order's remaining balance;
+ * the account pays the equivalent in its own currency.
  * When the running total reaches the order total, status becomes PAID; otherwise
  * it becomes PARTIALLY_PAID.
  */
@@ -188,16 +220,21 @@ export async function recordPurchasePartialPayment(input: {
   amount: number;        // in Toman
   date?: string;         // ISO string from the Jalali picker
   description?: string;
+  /** One submission of the payment form (src/lib/request-id.ts). */
+  requestId?: string;
 }): Promise<ActionResult> {
   const denied = await checkPermission('finance.manage');
   if (denied) return denied;
   const { orderId, accountId, amount, date, description } = input;
+  const clientRequestId = readRequestId(input.requestId);
 
   if (!accountId) return { success: false, message: 'لطفا حساب پرداخت را انتخاب کنید.' };
   if (!amount || amount <= 0) return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
+      await lockOrderAndAccount(tx, orderId, accountId);
+      if (await alreadyBooked(tx, clientRequestId)) return null;
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
         include: { items: true, additionalCosts: true, payments: true },
@@ -249,9 +286,11 @@ export async function recordPurchasePartialPayment(input: {
       }
       const payAmount = amount > remaining ? remaining : amount;
 
+      // The payment is in Toman; the account pays in its own currency.
+      const paid = await inAccountCurrency(tx, account, payAmount);
       const balance = Number(account.balance);
-      if (balance < payAmount) {
-        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${balance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${Math.round(payAmount).toLocaleString('fa-IR')} تومان`);
+      if (balance < paid.amount) {
+        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${inUnit(balance, account.currency)}، مبلغ مورد نیاز: ${inUnit(account.currency === 'TOMAN' ? Math.round(paid.amount) : paid.amount, account.currency)}`);
       }
 
       const paymentDate = date ? new Date(date) : new Date();
@@ -260,10 +299,11 @@ export async function recordPurchasePartialPayment(input: {
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
-          amount: payAmount,
-          currency: Currency.TOMAN,
-          rateSnapshot: 1,
+          amount: paid.amount,
+          currency: account.currency,
+          rateSnapshot: paid.rate,
           amountInToman: payAmount,
+          clientRequestId: clientRequestId ?? undefined,
           accountId,
           description: description?.trim()
             ? `پرداخت سفارش خرید #${order.number} - ${description.trim()}`
@@ -276,7 +316,7 @@ export async function recordPurchasePartialPayment(input: {
       // 2. Decrement account balance
       await tx.account.update({
         where: { id: accountId },
-        data: { balance: { decrement: payAmount } },
+        data: { balance: { decrement: paid.amount } },
       });
 
       // 3. Payment record
@@ -305,6 +345,7 @@ export async function recordPurchasePartialPayment(input: {
 
       return { fullyPaid, remaining: Math.max(0, totalInToman - newPaid) };
     });
+    if (!result) return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
 
     revalidatePath('/dashboard/suppliers/orders');
     revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
@@ -319,6 +360,7 @@ export async function recordPurchasePartialPayment(input: {
         : `پرداخت ثبت شد. باقیمانده: ${Math.round(result.remaining).toLocaleString('fa-IR')} تومان`,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
     console.error('Error recording partial payment:', error);
     const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت';
     return { success: false, message };
@@ -331,14 +373,22 @@ const arrivalCostsSchema = z.array(z.object({
   currency: z.enum(['TOMAN', 'USD', 'EUR', 'CNY']),
 }));
 
-export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeof arrivalCostsSchema>, accountId: string): Promise<ActionResult> {
+export async function recordArrival(
+  orderId: string,
+  arrivalCosts: z.infer<typeof arrivalCostsSchema>,
+  accountId: string,
+  requestId?: string,
+): Promise<ActionResult> {
   // Adds landed costs to the order and pays them from an account.
   const denied = (await checkPermission('cost.edit')) ?? (await checkPermission('finance.manage'));
   if (denied) return denied;
+  const clientRequestId = readRequestId(requestId);
   try {
     const validatedCosts = arrivalCostsSchema.parse(arrivalCosts);
 
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      await lockOrderAndAccount(tx, orderId, accountId);
+      if (await alreadyBooked(tx, clientRequestId)) return 'duplicate';
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId }
       });
@@ -375,38 +425,41 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
 
       // Create arrival costs and transactions
       const arrivalCostsData = [];
-      let totalArrivalCostsInToman = 0;
+      // Each cost in Toman, and what it takes from the account in the account's own currency.
+      const costs = [];
+      let totalFromAccount = 0;
 
       // First, calculate total costs to check balance
       for (const cost of validatedCosts) {
         const exchangeRate = getExchangeRate(cost.currency);
         const amountInToman = cost.amount * exchangeRate;
-        totalArrivalCostsInToman += amountInToman;
+        const paid = await inAccountCurrency(tx, account, amountInToman);
+        costs.push({ cost, exchangeRate, amountInToman, paid });
+        totalFromAccount += paid.amount;
       }
 
       // Check if account has sufficient balance for all arrival costs
       const accountBalance = Number(account.balance);
-      if (accountBalance < totalArrivalCostsInToman) {
-        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${totalArrivalCostsInToman.toLocaleString('fa-IR')} تومان`);
+      if (accountBalance < totalFromAccount) {
+        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${inUnit(accountBalance, account.currency)}، مبلغ مورد نیاز: ${inUnit(totalFromAccount, account.currency)}`);
       }
 
       // Now create transactions and arrival costs
-      for (const cost of validatedCosts) {
-        const exchangeRate = getExchangeRate(cost.currency);
-        const amountInToman = cost.amount * exchangeRate;
-
+      for (const [i, { cost, exchangeRate, amountInToman, paid }] of costs.entries()) {
         // Create transaction for this cost
         const transaction = await tx.transaction.create({
           data: {
             type: TransactionType.EXPENSE,
-            amount: amountInToman,
-            currency: Currency.TOMAN,
-            rateSnapshot: exchangeRate,
+            amount: paid.amount,
+            currency: account.currency,
+            rateSnapshot: paid.rate,
             amountInToman: amountInToman,
             accountId: accountId,
             description: `هزینه رسیدن به مقصد (${cost.title}) - سفارش خرید #${order.number}`,
             category: 'Purchase Arrival Cost',
             date: new Date(),
+            // The submission's id goes on its first row.
+            clientRequestId: i === 0 && clientRequestId ? clientRequestId : undefined,
           }
         });
 
@@ -422,11 +475,11 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
 
       // Update account balance (decrement for each cost)
       // Note: We already checked balance above, so we can safely decrement
-      if (totalArrivalCostsInToman > 0) {
+      if (totalFromAccount > 0) {
         await tx.account.update({
           where: { id: accountId },
           data: {
-            balance: { decrement: totalArrivalCostsInToman }
+            balance: { decrement: totalFromAccount }
           }
         });
       }
@@ -442,7 +495,9 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
           }
         }
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
 
     revalidatePath('/dashboard/suppliers/orders');
     revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
@@ -450,6 +505,7 @@ export async function recordArrival(orderId: string, arrivalCosts: z.infer<typeo
     revalidatePath('/dashboard/accounting/transactions');
     return { success: true, message: 'رسیدن به مقصد و هزینه‌های اضافی ثبت شد' };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
     console.error('Error recording arrival:', error);
     if (error instanceof z.ZodError) {
       return { success: false, message: error.issues[0].message };

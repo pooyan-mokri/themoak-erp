@@ -16,8 +16,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Currency } from '@/lib/types';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getAccounts } from '@/actions/accounting';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState = {
   message: '',
@@ -31,17 +33,32 @@ interface CurrencyExchangeFormProps {
     name: string;
     currency: Currency;
     balance: number;
+    cardNumber?: string | null;
   }>;
 }
 
 export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
   const [state, dispatch] = useFormState(exchangeCurrency, initialState);
+  const [requestId, renewRequestId] = useRequestId();
   const [sourceAccountId, setSourceAccountId] = useState<string>('');
   const [targetAccountId, setTargetAccountId] = useState<string>('');
   const [sourceAmount, setSourceAmount] = useState<string>('');
   const [targetAmount, setTargetAmount] = useState<string>('');
   const [exchangeRate, setExchangeRate] = useState<string>('');
   const [date, setDate] = useState<string>('');
+
+  // After a save the form is emptied and gets a new id (it is keyed by it), so
+  // the same exchange cannot be sent twice and the next one starts clean.
+  useEffect(() => {
+    if (!state.success) return;
+    setSourceAccountId('');
+    setTargetAccountId('');
+    setSourceAmount('');
+    setTargetAmount('');
+    setExchangeRate('');
+    setDate('');
+    renewRequestId();
+  }, [state, renewRequestId]);
 
   // Get selected accounts
   const sourceAccount = accounts.find((a) => a.id === sourceAccountId);
@@ -114,7 +131,8 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
       <CardHeader>
         <CardTitle>خرید و فروش ارز</CardTitle>
       </CardHeader>
-      <form action={dispatch}>
+      <form key={requestId} action={dispatch}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Source Account */}
@@ -132,7 +150,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 <SelectContent>
                   {accounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      {account.name} ({account.currency}) - موجودی:{' '}
+                      {accountLabel(account)} - موجودی:{' '}
                       {new Intl.NumberFormat('fa-IR').format(Number(account.balance))}
                     </SelectItem>
                   ))}
@@ -163,7 +181,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 <SelectContent>
                   {accounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      {account.name} ({account.currency}) - موجودی:{' '}
+                      {accountLabel(account)} - موجودی:{' '}
                       {new Intl.NumberFormat('fa-IR').format(Number(account.balance))}
                     </SelectItem>
                   ))}

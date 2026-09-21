@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState = {
   message: '',
@@ -30,6 +31,7 @@ interface Account {
   id: string;
   name: string;
   currency: string;
+  cardNumber?: string | null;
 }
 
 interface LoanPaymentFormProps {
@@ -91,7 +93,7 @@ export function LoanPaymentForm({
           <SelectContent>
             {accounts.map((account) => (
               <SelectItem key={account.id} value={account.id}>
-                {account.name} ({account.currency})
+                {accountLabel(account)}
               </SelectItem>
             ))}
           </SelectContent>

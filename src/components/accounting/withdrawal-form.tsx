@@ -12,6 +12,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { TagInput } from '@/components/ui/tag-input';
 import { ReceiptUpload } from '@/components/accounting/receipt-upload';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { accountLabel } from '@/lib/account-label';
 import { toast } from 'sonner';
 
 const initialState = { message: '', errors: {}, success: false };
@@ -38,11 +40,14 @@ interface Account {
   name: string;
   currency: string;
   balance: number;
+  cardNumber?: string | null;
 }
 
 export function WithdrawalForm({ accounts }: { accounts: Account[] }) {
   const [state, dispatch] = useFormState(recordWithdrawal, initialState);
-  const [currency, setCurrency] = useState('TOMAN');
+  const [requestId, renewRequestId] = useRequestId();
+  // The currency follows the chosen account; there is no default to forget.
+  const [currency, setCurrency] = useState('');
   const [accountId, setAccountId] = useState('');
   const [category, setCategory] = useState('');
   const [date, setDate] = useState<Date>(new Date());
@@ -52,26 +57,34 @@ export function WithdrawalForm({ accounts }: { accounts: Account[] }) {
   useEffect(() => {
     if (state.message && state.success) {
       toast.success(state.message);
-      setCurrency('TOMAN');
+      setCurrency('');
       setAccountId('');
       setCategory('');
       setDate(new Date());
       setReceiptUrl('');
       setReceiptType('');
+      // A new id, and a fresh form (it is keyed by the id), for the next entry.
+      renewRequestId();
     } else if (state.message && !state.success) {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, renewRequestId]);
 
   const errors = state.errors as Record<string, string[] | undefined> | undefined;
   const selectedAccount = accounts.find((a) => a.id === accountId);
+
+  const chooseAccount = (id: string) => {
+    setAccountId(id);
+    setCurrency(accounts.find((a) => a.id === id)?.currency ?? '');
+  };
 
   return (
     <Card className="max-w-lg mx-auto">
       <CardHeader>
         <CardTitle>ثبت پرداخت / برداشت</CardTitle>
       </CardHeader>
-      <form action={dispatch}>
+      <form key={requestId} action={dispatch}>
+        <RequestIdField value={requestId} />
         <input type="hidden" name="receiptUrl" value={receiptUrl} />
 
         <CardContent className="space-y-4">
@@ -98,25 +111,31 @@ export function WithdrawalForm({ accounts }: { accounts: Account[] }) {
             <div className="space-y-2">
               <Label>ارز *</Label>
               <Select name="currency" value={currency} onValueChange={setCurrency}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="ارز حساب" /></SelectTrigger>
                 <SelectContent>
                   {CURRENCIES.map((c) => (
                     <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {errors?.currency && <p className="text-red-500 text-sm">{errors.currency[0]}</p>}
             </div>
           </div>
+          {selectedAccount && currency && currency !== selectedAccount.currency && (
+            <p className="text-xs text-amber-600">
+              مبلغ به {currency} وارد می‌شود و با آخرین نرخ به ارز حساب ({selectedAccount.currency}) تبدیل می‌شود.
+            </p>
+          )}
 
           {/* Account */}
           <div className="space-y-2">
             <Label>حساب مبدأ *</Label>
-            <Select name="accountId" value={accountId} onValueChange={setAccountId} required>
+            <Select name="accountId" value={accountId} onValueChange={chooseAccount} required>
               <SelectTrigger><SelectValue placeholder="از کدام حساب برداشت شود؟" /></SelectTrigger>
               <SelectContent>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({a.currency}) — موجودی: {a.balance.toLocaleString('fa-IR')}
+                    {accountLabel(a)} — موجودی: {a.balance.toLocaleString('fa-IR')}
                   </SelectItem>
                 ))}
               </SelectContent>

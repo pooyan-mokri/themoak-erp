@@ -17,6 +17,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { useState, useEffect } from 'react';
 import { Minus, Plus, Trash2 } from 'lucide-react';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState: {
   message: string;
@@ -36,7 +37,9 @@ interface GiftFormProps {
   accounts: Array<{
     id: string;
     name: string;
+    type: string;
     currency: string;
+    cardNumber?: string | null;
   }>;
   campaigns?: Array<{
     id: string;
@@ -58,6 +61,8 @@ interface CartItem {
 
 export function GiftForm({ products, accounts, campaigns = [], warehouses, canSeeCost }: GiftFormProps) {
   const [state, dispatch] = useFormState(createMarketingGift, initialState);
+  // A gift is booked on an expense account, never on a bank or cash balance.
+  const expenseAccounts = accounts.filter((account) => account.type === 'EXPENSE');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
@@ -309,19 +314,22 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
               <Select 
                 name="accountId" 
                 required
-                defaultValue={accounts.find(a => a.name === 'Marketing Expenses')?.id || ''}
+                defaultValue={expenseAccounts.find(a => a.name === 'Marketing Expenses')?.id || ''}
               >
                 <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
                   <SelectValue placeholder="انتخاب حساب" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.map((account) => (
+                  {expenseAccounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
-                      {account.name} ({account.currency})
+                      {accountLabel(account)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {expenseAccounts.length === 0 && (
+                <p className="text-sm text-muted-foreground">هیچ حساب هزینه‌ای تعریف نشده است؛ اول در حسابداری یک حساب از نوع هزینه بسازید.</p>
+              )}
               {state.errors && 'accountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0] && (
                 <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}

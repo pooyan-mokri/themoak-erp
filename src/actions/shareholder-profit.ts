@@ -231,6 +231,14 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
 
     // Create withdrawal and update profit
     await prisma.$transaction(async (tx: any) => {
+      // The profit row is locked and read again, so two payouts of the same
+      // profit at once cannot both pass the check above.
+      const [current] = await tx.$queryRaw`
+        SELECT amount, withdrawn FROM "ShareholderProfit" WHERE id = ${profitId} FOR UPDATE`;
+      if (!current || amount > Number(current.amount) - Number(current.withdrawn)) {
+        throw new Error('این سود هم‌زمان برداشت شد و مبلغ درخواستی دیگر قابل برداشت نیست.');
+      }
+
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -282,7 +290,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
     revalidatePath('/dashboard/accounting/transactions');
     revalidatePath('/dashboard/accounting/accounts');
     return {
-      message: `مبلغ ${amount.toLocaleString('fa-IR')} ${account.currency} با موفقیت برداشت شد.`,
+      message: `مبلغ ${amount.toLocaleString('fa-IR')} تومان با موفقیت برداشت شد.`,
       success: true,
     };
   } catch (error: unknown) {

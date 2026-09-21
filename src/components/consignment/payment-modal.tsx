@@ -23,11 +23,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
+import { useRequestId } from '@/components/ui/request-id';
 
 interface Account {
   id: string;
   name: string;
   currency: string;
+  type?: string;
+  cardNumber?: string | null;
 }
 
 interface PaymentModalProps {
@@ -50,6 +54,10 @@ export function PaymentModal({
   const [amount, setAmount] = useState(remainingAmount.toString());
   const [paymentDate, setPaymentDate] = useState<Date>(new Date());
   const [isPending, startTransition] = useTransition();
+  const [requestId, renewRequestId] = useRequestId();
+  // A settlement is real money: only a bank or cash account can receive it.
+  const cashAccounts = accounts.filter((a) => a.type === 'BANK' || a.type === 'CASH');
+  const chosen = cashAccounts.find((a) => a.id === accountId);
 
   const handleSubmit = () => {
     if (!accountId) {
@@ -71,9 +79,11 @@ export function PaymentModal({
       fd.set('accountId', accountId);
       fd.set('amount', String(amt));
       fd.set('paymentDate', paymentDate.toISOString().slice(0, 10));
+      fd.set('requestId', requestId);
       const result = await paySettlement(undefined as any, fd);
       if (result.success) {
         toast.success(result.message);
+        renewRequestId();
         setOpen(false);
       } else {
         toast.error(result.message || 'خطا در ثبت پرداخت');
@@ -82,7 +92,14 @@ export function PaymentModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Pre-fill what is owed now, not what was owed when the page first loaded.
+        if (next) setAmount(remainingAmount.toString());
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           ثبت پرداخت
@@ -152,13 +169,18 @@ export function PaymentModal({
                 <SelectValue placeholder="انتخاب حساب" />
               </SelectTrigger>
               <SelectContent>
-                {accounts.map((a) => (
+                {cashAccounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({a.currency})
+                    {accountLabel(a)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {chosen && chosen.currency !== 'TOMAN' && (
+              <p className="text-xs text-muted-foreground">
+                مبلغ به تومان است و با آخرین نرخ ثبت‌شده به {chosen.currency} تبدیل می‌شود.
+              </p>
+            )}
           </div>
 
           <JalaliDatePicker

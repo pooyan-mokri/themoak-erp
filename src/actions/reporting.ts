@@ -6,6 +6,7 @@ import { TransactionType, Currency } from '@/lib/types';
 
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
+import { consignmentAmounts } from '@/lib/return-math';
 
 // const prisma = new PrismaClient();
 
@@ -89,20 +90,12 @@ export async function getBalanceSheet() {
         status: { not: 'CANCELLED' },
         customer: { warehouses: { some: { isVirtual: true } } },
       },
-      include: { items: true, commissions: true },
+      // Returned and exchanged units are not owed (the settlement page's arithmetic).
+      include: { items: { include: { returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } } }, commissions: true },
     });
     let accountsReceivable = 0;
     pendingOrders.forEach((order: any) => {
-      const gross = order.items.reduce(
-        (s: number, it: any) => s + it.quantity * Number(it.price),
-        0,
-      );
-      const commission = order.commissions?.[0]
-        ? Number(order.commissions[0].commissionAmount)
-        : 0;
-      const net = gross - commission;
-      const paid = Number(order.paidAmount || 0);
-      accountsReceivable += Math.max(net - paid, 0);
+      accountsReceivable += Math.max(consignmentAmounts(order).remainingAmount, 0);
     });
 
     const totalAssets =

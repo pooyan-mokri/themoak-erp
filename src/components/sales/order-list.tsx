@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 import { PaymentDialog } from './payment-dialog';
-import { cancelOrder } from '@/actions/sales';
+import { cancelOrder, getCancelOrderPreview } from '@/actions/sales';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
@@ -85,6 +85,15 @@ interface OrderListProps {
   orders: OrderWithDetails[];
 }
 
+/** One account's line in the cancel confirmation: what the cancel does to its balance. */
+function describeReversal(account: { label: string; currency: string | null; change: number; rows: number; moves: boolean }) {
+  const rows = `${account.rows.toLocaleString('fa-IR')} ردیف`;
+  if (!account.moves || account.change === 0) return `  • ${account.label}: بدون تغییر موجودی (${rows})`;
+  const unit = !account.currency || account.currency === 'TOMAN' ? 'تومان' : account.currency;
+  const direction = account.change < 0 ? 'کم می‌شود' : 'اضافه می‌شود';
+  return `  • ${account.label}: ${Math.abs(account.change).toLocaleString('fa-IR')} ${unit} ${direction} (${rows})`;
+}
+
 export function OrderList({ orders }: OrderListProps) {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -147,17 +156,29 @@ export function OrderList({ orders }: OrderListProps) {
   };
 
   const handleCancelOrder = async (order: OrderWithDetails) => {
+    // Show what the cancel will actually reverse, per account, as the server computes it.
+    const preview = await getCancelOrderPreview(order.id);
+    if (!preview.success) {
+      toast.error(preview.message);
+      return;
+    }
+    const money = preview.accounts.length === 0
+      ? `- هیچ مبلغی از این سفارش در حساب‌ها ثبت نشده است\n`
+      : `- این ردیف‌های مالی سفارش حذف و اثرشان از حساب‌ها برگردانده می‌شود:\n` +
+        preview.accounts.map(describeReversal).join('\n') + '\n';
+
     // Confirm with user
     const confirmed = window.confirm(
       `آیا مطمئن هستید که می‌خواهید سفارش #${order.number} را لغو کنید؟\n\n` +
       `این عملیات:\n` +
       `- وضعیت سفارش را به "لغو شده" تغییر می‌دهد\n` +
-      `- پرداخت‌ها را لغو و موجودی حساب را بازگردانی می‌کند\n`
+      money
     );
 
     if (!confirmed) return;
 
-    const result = await cancelOrder(order.id);
+    // Exactly the rows shown: if a payment was booked meanwhile, the server refuses.
+    const result = await cancelOrder(order.id, preview.moneyRowIds);
 
     if (result.success) {
       toast.success(result.message);

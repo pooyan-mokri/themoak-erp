@@ -19,10 +19,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
 
 interface Account {
   id: string;
   name: string;
+  currency?: string;
+  cardNumber?: string | null;
 }
 
 interface Expense {
@@ -147,7 +150,7 @@ export function ExpenseEditDialog({ expense, accounts }: { expense: Expense; acc
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>{accountLabel(a)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

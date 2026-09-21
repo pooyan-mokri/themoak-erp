@@ -1,10 +1,12 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { consignmentAmounts } from '@/lib/return-math';
 import { createSale, setSaleStatus } from '@/lib/site-sale';
 import { kickSiteHook } from '@/lib/site-hook';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
 // Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
 export const maxDuration = 30;
@@ -189,29 +191,25 @@ export async function GET(req: NextRequest) {
           },
           include: {
             customer: { select: { name: true } },
-            items: true,
+            // Returned and exchanged units are neither owed nor charged commission.
+            items: { include: { returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } } },
             commissions: true,
           },
           orderBy: { createdAt: 'desc' },
         });
         return NextResponse.json(
           orders.map((o: any) => {
-            const gross = o.items.reduce(
-              (s: number, i: any) => s + i.quantity * Number(i.price),
-              0,
-            );
-            const commission = o.commissions?.[0]
-              ? Number(o.commissions[0].commissionAmount)
-              : 0;
+            // The same arithmetic as the settlement page (src/actions/consignment.ts).
+            const amounts = consignmentAmounts(o);
             return {
               id: o.id,
               number: o.number,
               partner: o.customer?.name ?? null,
-              grossAmount: gross,
-              commissionAmount: commission,
-              netAmount: gross - commission,
-              paidAmount: Number(o.paidAmount),
-              remainingAmount: gross - commission - Number(o.paidAmount),
+              grossAmount: amounts.grossAmount,
+              commissionAmount: amounts.commissionAmount,
+              netAmount: amounts.netAmount,
+              paidAmount: amounts.paidAmount,
+              remainingAmount: amounts.remainingAmount,
               createdAt: o.createdAt,
             };
           }),
@@ -353,6 +351,109 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// ── Money writes (full key): deposit, expense, transfer ─────────────────────
+
+const CURRENCIES = ['TOMAN', 'USD', 'EUR', 'CNY'];
+
+/** A refusal the caller can fix: 422 with the message. */
+class Refused extends Error {}
+class NoRate extends Error {}
+
+type MoneyInput = { amount: number; currency: string | null; date: Date; requestId: string | null };
+
+/**
+ * The fields every money write shares, or why they are refused (422): an
+ * amount above zero, a known currency if one is given, a Gregorian date (a
+ * Jalali «1405-06-30» would be stored as the year 1405 and vanish from the
+ * journal), and the caller's requestId, which books a repeated call once.
+ */
+function readMoneyInput(fields: Record<string, unknown>): MoneyInput | string {
+  const raw = fields.amount;
+  const amount = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN;
+  if (!Number.isFinite(amount) || amount <= 0) return 'amount must be a number greater than 0.';
+
+  const currency = fields.currency == null || fields.currency === '' ? null : fields.currency;
+  if (currency !== null && (typeof currency !== 'string' || !CURRENCIES.includes(currency)))
+    return `currency must be one of ${CURRENCIES.join(', ')}; leave it out to use the account's own currency.`;
+
+  let date = new Date();
+  if (fields.date != null && fields.date !== '') {
+    const value = fields.date;
+    if (typeof value !== 'string') return 'date must be a Gregorian date string, YYYY-MM-DD.';
+    if (/^\s*1[34]\d\d(\D|$)/.test(value))
+      return `date "${value}" looks like a Jalali (Shamsi) date; send the Gregorian date, e.g. 2026-09-21.`;
+    date = new Date(value);
+    if (Number.isNaN(date.getTime())) return `date "${value}" is not a valid date; use YYYY-MM-DD.`;
+    if (date.getUTCFullYear() < 1900)
+      return `date "${value}" is before 1900; send the Gregorian date, e.g. 2026-09-21.`;
+  }
+
+  // An id the ERP cannot store would be dropped, and a retry would then book twice.
+  const requestId = readRequestId(fields.requestId);
+  if (!requestId && fields.requestId != null && fields.requestId !== '')
+    return 'requestId must be 8-64 letters, digits, - or _; leave it out to book without one.';
+
+  return { amount, currency, date, requestId };
+}
+
+/** Toman per unit of `currency`, from its latest rate. */
+async function rateToToman(client: any, currency: string): Promise<number> {
+  if (currency === 'TOMAN') return 1;
+  const r = await client.exchangeRate.findFirst({ where: { currency }, orderBy: { date: 'desc' } });
+  if (!r) throw new NoRate(`No exchange rate for ${currency}`);
+  return Number(r.rateToToman);
+}
+
+/**
+ * True when this requestId is already on a booked row: a repeat that arrives
+ * after the first call finished (the account lock makes it wait for it). A
+ * repeat that races the first is stopped by the unique column instead.
+ */
+async function alreadyBooked(tx: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
+
+/** An API transfer's text on its outgoing leg, without a leading «[ورود]». */
+function outgoingText(text: string): string {
+  return text.replace(/^(\s*\[ورود\])+/, '').trim();
+}
+
+/** One booked row as a money write answers it: the account's balance is the one after the write. */
+function rowReply(t: any, balance: unknown) {
+  return {
+    id: t.id,
+    type: t.type,
+    accountId: t.accountId,
+    amount: Number(t.amount),
+    currency: t.currency,
+    amountInToman: Number(t.amountInToman),
+    date: t.date,
+    balance: Number(balance),
+  };
+}
+
+/** A requestId already booked: the rows it booked, with each account's balance now. Nothing new is written. */
+async function repeatedReply(requestId: string) {
+  const first = await prisma.transaction.findUnique({ where: { clientRequestId: requestId } });
+  // The row carrying the id first: for a transfer, the outgoing leg, then the incoming one.
+  const rows = !first
+    ? []
+    : first.transferGroupId
+      ? [first, ...(await prisma.transaction.findMany({ where: { transferGroupId: first.transferGroupId, id: { not: first.id } } }))]
+      : [first];
+  const accounts = await prisma.account.findMany({
+    where: { id: { in: rows.map((t: any) => t.accountId).filter(Boolean) } },
+    select: { id: true, balance: true },
+  });
+  const balanceOf = (id: string) => accounts.find((a: any) => a.id === id)?.balance;
+  return NextResponse.json({
+    success: true,
+    duplicate: true,
+    message: DUPLICATE_REQUEST_MESSAGE,
+    transactions: rows.map((t: any) => rowReply(t, balanceOf(t.accountId))),
+  });
+}
+
 // ── POST /api/erp  body: { action, ...fields } ───────────────────────────────
 const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus'];
 
@@ -391,153 +492,150 @@ export async function POST(req: NextRequest) {
 
   try {
     switch (action) {
-      // ── ثبت واریز ────────────────────────────────────────────────────────────
-      case 'deposit': {
-        const { accountId, amount, currency = 'TOMAN', description, category, date } = fields;
-        if (!accountId || !amount || !description)
-          return NextResponse.json({ error: 'accountId, amount, description required' }, { status: 400 });
-
-        let rate = 1;
-        if (currency !== 'TOMAN') {
-          const r = await prisma.exchangeRate.findFirst({
-            where: { currency },
-            orderBy: { date: 'desc' },
-          });
-          if (!r) return NextResponse.json({ error: `No exchange rate for ${currency}` }, { status: 400 });
-          rate = Number(r.rateToToman);
-        }
-        const amountInToman = amount * rate;
-
-        await prisma.$transaction(async (tx: any) => {
-          const acct = await tx.account.findUnique({ where: { id: accountId } });
-          if (!acct) throw new Error('Account not found');
-          // The money lands in the account in the account's own currency.
-          const { amount: amountInAccountCurrency, rate: accountRate } =
-            await inAccountCurrency(tx, acct, amountInToman);
-
-          await tx.transaction.create({
-            data: {
-              amount: new Prisma.Decimal(amountInAccountCurrency),
-              currency: acct.currency,
-              rateSnapshot: new Prisma.Decimal(accountRate),
-              amountInToman: new Prisma.Decimal(amountInToman),
-              type: 'INCOME',
-              accountId,
-              category: category ?? 'واریز',
-              description,
-              date: date ? new Date(date) : new Date(),
-            },
-          });
-          await tx.account.update({
-            where: { id: accountId },
-            data: { balance: { increment: new Prisma.Decimal(amountInAccountCurrency) } },
-          });
-        });
-        return NextResponse.json({ success: true, message: 'واریز ثبت شد' });
-      }
-
-      // ── ثبت هزینه / پرداخت ───────────────────────────────────────────────────
+      // ── ثبت واریز / ثبت هزینه یا پرداخت ─────────────────────────────────────
+      case 'deposit':
       case 'expense': {
-        const { accountId, amount, currency = 'TOMAN', description, category, payee, date } = fields;
-        if (!accountId || !amount || !description)
+        const { accountId, description, category, payee } = fields;
+        if (!accountId || fields.amount == null || fields.amount === '' || !description)
           return NextResponse.json({ error: 'accountId, amount, description required' }, { status: 400 });
+        const input = readMoneyInput(fields);
+        if (typeof input === 'string') return NextResponse.json({ error: input }, { status: 422 });
+        const income = action === 'deposit';
 
-        let rate = 1;
-        if (currency !== 'TOMAN') {
-          const r = await prisma.exchangeRate.findFirst({
-            where: { currency },
-            orderBy: { date: 'desc' },
+        try {
+          const row = await prisma.$transaction(async (tx: any) => {
+            const [acct] = await tx.$queryRaw`SELECT id, currency, balance FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
+            if (!acct) throw new Error('Account not found');
+            if (await alreadyBooked(tx, input.requestId)) return null;
+            // The amount is in `currency`, the account's own unless the caller says otherwise.
+            const currency = input.currency ?? acct.currency;
+            const rate = await rateToToman(tx, currency);
+            const amountInToman = input.amount * rate;
+            // The money moves in the account's own currency.
+            const booked =
+              currency === acct.currency ? { amount: input.amount, rate } : await inAccountCurrency(tx, acct, amountInToman);
+            if (!income && Number(acct.balance) < booked.amount) throw new Error('Insufficient balance');
+
+            const created = await tx.transaction.create({
+              data: {
+                amount: new Prisma.Decimal(booked.amount),
+                currency: acct.currency,
+                rateSnapshot: new Prisma.Decimal(booked.rate),
+                amountInToman: new Prisma.Decimal(amountInToman),
+                type: income ? 'INCOME' : 'EXPENSE',
+                accountId,
+                category: category ?? (income ? 'واریز' : 'هزینه'),
+                description,
+                ...(income ? {} : { payee: payee ?? null }),
+                date: input.date,
+                clientRequestId: input.requestId ?? undefined,
+              },
+            });
+            const updated = await tx.account.update({
+              where: { id: accountId },
+              data: {
+                balance: income
+                  ? { increment: new Prisma.Decimal(booked.amount) }
+                  : { decrement: new Prisma.Decimal(booked.amount) },
+              },
+              select: { balance: true },
+            });
+            return rowReply(created, updated.balance);
           });
-          if (!r) return NextResponse.json({ error: `No exchange rate for ${currency}` }, { status: 400 });
-          rate = Number(r.rateToToman);
+          if (!row) return repeatedReply(input.requestId as string);
+          return NextResponse.json({
+            success: true,
+            message: income ? 'واریز ثبت شد' : 'هزینه ثبت شد',
+            transactions: [row],
+          });
+        } catch (err) {
+          if (input.requestId && isDuplicateRequest(err)) return repeatedReply(input.requestId);
+          if (err instanceof NoRate) return NextResponse.json({ error: err.message }, { status: 400 });
+          throw err;
         }
-        const amountInToman = amount * rate;
-
-        await prisma.$transaction(async (tx: any) => {
-          const acct = await tx.account.findUnique({ where: { id: accountId } });
-          if (!acct) throw new Error('Account not found');
-          // The money leaves the account in the account's own currency.
-          const { amount: amountInAccountCurrency, rate: accountRate } =
-            await inAccountCurrency(tx, acct, amountInToman);
-          if (Number(acct.balance) < amountInAccountCurrency)
-            throw new Error('Insufficient balance');
-
-          await tx.transaction.create({
-            data: {
-              amount: new Prisma.Decimal(amountInAccountCurrency),
-              currency: acct.currency,
-              rateSnapshot: new Prisma.Decimal(accountRate),
-              amountInToman: new Prisma.Decimal(amountInToman),
-              type: 'EXPENSE',
-              accountId,
-              category: category ?? 'هزینه',
-              description,
-              payee: payee ?? null,
-              date: date ? new Date(date) : new Date(),
-            },
-          });
-          await tx.account.update({
-            where: { id: accountId },
-            data: { balance: { decrement: new Prisma.Decimal(amountInAccountCurrency) } },
-          });
-        });
-        return NextResponse.json({ success: true, message: 'هزینه ثبت شد' });
       }
 
       // ── انتقال وجه داخلی ─────────────────────────────────────────────────────
       case 'transfer': {
-        const { fromAccountId, toAccountId, amount, description, date } = fields;
-        if (!fromAccountId || !toAccountId || !amount)
+        const { fromAccountId, toAccountId, description } = fields;
+        if (!fromAccountId || !toAccountId || fields.amount == null || fields.amount === '')
           return NextResponse.json({ error: 'fromAccountId, toAccountId, amount required' }, { status: 400 });
         if (fromAccountId === toAccountId)
           return NextResponse.json({ error: 'Source and destination must differ' }, { status: 400 });
+        const input = readMoneyInput(fields);
+        if (typeof input === 'string') return NextResponse.json({ error: input }, { status: 422 });
+        const amount = input.amount;
+        const text = typeof description === 'string' && description.trim() ? description : null;
 
-        await prisma.$transaction(async (tx: any) => {
-          const from = await tx.account.findUnique({ where: { id: fromAccountId } });
-          const to = await tx.account.findUnique({ where: { id: toAccountId } });
-          if (!from || !to) throw new Error('Account not found');
-          if (from.currency !== to.currency)
-            throw new Error(`Currency mismatch: ${from.currency} ≠ ${to.currency}`);
-          if (Number(from.balance) < amount)
-            throw new Error('Insufficient balance in source account');
+        try {
+          const rows = await prisma.$transaction(async (tx: any) => {
+            // Both rows, locked in a fixed order so two opposite transfers cannot deadlock.
+            const locked = await tx.$queryRaw`
+              SELECT id, name, currency, balance FROM "Account"
+              WHERE id IN (${fromAccountId}, ${toAccountId}) ORDER BY id FOR UPDATE`;
+            const from = locked.find((a: any) => a.id === fromAccountId);
+            const to = locked.find((a: any) => a.id === toAccountId);
+            if (!from || !to) throw new Error('Account not found');
+            if (await alreadyBooked(tx, input.requestId)) return null;
+            if (from.currency !== to.currency)
+              throw new Error(`Currency mismatch: ${from.currency} ≠ ${to.currency}`);
+            if (input.currency && input.currency !== from.currency)
+              throw new Refused(`currency ${input.currency} does not match the accounts' currency ${from.currency}`);
+            if (Number(from.balance) < amount)
+              throw new Error('Insufficient balance in source account');
 
-          const now = date ? new Date(date) : new Date();
-          await tx.transaction.create({
-            data: {
-              amount: new Prisma.Decimal(amount),
-              currency: from.currency,
-              rateSnapshot: new Prisma.Decimal(1),
-              amountInToman: new Prisma.Decimal(amount),
-              type: 'TRANSFER',
-              accountId: fromAccountId,
-              category: 'انتقال داخلی',
-              description: description ?? `انتقال به ${to.name}`,
-              date: now,
-            },
+            // The two legs share one id, so they read as one transfer.
+            const transferGroupId = randomUUID();
+            const debit = await tx.transaction.create({
+              data: {
+                amount: new Prisma.Decimal(amount),
+                currency: from.currency,
+                rateSnapshot: new Prisma.Decimal(1),
+                amountInToman: new Prisma.Decimal(amount),
+                type: 'TRANSFER',
+                accountId: fromAccountId,
+                category: 'انتقال داخلی',
+                // An unprefixed TRANSFER is the outgoing leg; one starting with
+                // «[ورود]» would be read as incoming (balanceEffect).
+                description: (text && outgoingText(text)) || `انتقال به ${to.name}`,
+                date: input.date,
+                transferGroupId,
+                clientRequestId: input.requestId ?? undefined,
+              },
+            });
+            const credit = await tx.transaction.create({
+              data: {
+                amount: new Prisma.Decimal(amount),
+                currency: to.currency,
+                rateSnapshot: new Prisma.Decimal(1),
+                amountInToman: new Prisma.Decimal(amount),
+                type: 'INCOME',
+                accountId: toAccountId,
+                category: 'انتقال داخلی',
+                description: text ?? `انتقال از ${from.name}`,
+                date: input.date,
+                transferGroupId,
+              },
+            });
+            const fromNow = await tx.account.update({
+              where: { id: fromAccountId },
+              data: { balance: { decrement: new Prisma.Decimal(amount) } },
+              select: { balance: true },
+            });
+            const toNow = await tx.account.update({
+              where: { id: toAccountId },
+              data: { balance: { increment: new Prisma.Decimal(amount) } },
+              select: { balance: true },
+            });
+            return [rowReply(debit, fromNow.balance), rowReply(credit, toNow.balance)];
           });
-          await tx.transaction.create({
-            data: {
-              amount: new Prisma.Decimal(amount),
-              currency: to.currency,
-              rateSnapshot: new Prisma.Decimal(1),
-              amountInToman: new Prisma.Decimal(amount),
-              type: 'INCOME',
-              accountId: toAccountId,
-              category: 'انتقال داخلی',
-              description: description ?? `انتقال از ${from.name}`,
-              date: now,
-            },
-          });
-          await tx.account.update({
-            where: { id: fromAccountId },
-            data: { balance: { decrement: new Prisma.Decimal(amount) } },
-          });
-          await tx.account.update({
-            where: { id: toAccountId },
-            data: { balance: { increment: new Prisma.Decimal(amount) } },
-          });
-        });
-        return NextResponse.json({ success: true, message: 'انتقال وجه انجام شد' });
+          if (!rows) return repeatedReply(input.requestId as string);
+          return NextResponse.json({ success: true, message: 'انتقال وجه انجام شد', transactions: rows });
+        } catch (err) {
+          if (input.requestId && isDuplicateRequest(err)) return repeatedReply(input.requestId);
+          if (err instanceof Refused) return NextResponse.json({ error: err.message }, { status: 422 });
+          throw err;
+        }
       }
 
       // ── فروش سایت ────────────────────────────────────────────────────────────

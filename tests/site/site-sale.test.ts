@@ -72,6 +72,8 @@ async function status(body: Record<string, unknown>) {
 
 let counter = 0;
 /** A body shaped exactly like docs/erp-prompt.md §3. */
+const GATEWAY_PAYMENT = { gateway: 'zibal', trackId: 'T1', refNumber: 'R1', paidAt: '2026-09-10T18:41:55.000Z', amount: 18_950_000 };
+
 function saleBody(overrides: Record<string, unknown> = {}): Record<string, any> {
   counter += 1;
   return {
@@ -99,8 +101,13 @@ function saleBody(overrides: Record<string, unknown> = {}): Record<string, any> 
     coupon: null,
     total: 18_950_000,
     currency: 'toman',
-    payment: { gateway: 'zibal', trackId: 'T1', refNumber: 'R1', paidAt: '2026-09-10T18:41:55.000Z', amount: 18_950_000 },
     ...overrides,
+    // A test that changes the payment keeps the gateway trace unless it overrides it too:
+    // a payment without a trackId books no income (src/lib/site-sale.ts).
+    payment:
+      overrides.payment === null
+        ? null
+        : { ...GATEWAY_PAYMENT, ...((overrides.payment as Record<string, unknown> | undefined) ?? {}) },
   };
 }
 

@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
-import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
+import { accountForViewer, bookOrderPayment, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
 
 // const prisma = new PrismaClient();
 
@@ -252,80 +252,36 @@ export async function recordInvoicePayment(invoiceId: string, amount: number, ac
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { order: true }
+      include: { order: { select: { number: true } } }
     });
 
     if (!invoice) {
       return { success: false, message: 'فاکتور یافت نشد.' };
     }
 
-    const newPaidAmount = Number(invoice.paidAmount) + amount;
-    const total = Number(invoice.total);
-
-    // Determine new status
-    let newStatus = 'PAID';
-    if (newPaidAmount < total) {
-      newStatus = newPaidAmount > 0 ? 'PARTIAL' : 'UNPAID';
+    if (!(amount > 0)) {
+      return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
     }
 
-    // Update invoice
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        paidAmount: newPaidAmount,
-        status: newStatus,
-      }
-    });
-
-    // Update order
-    if (invoice.orderId) {
-      const orderNewPaidAmount = Number(invoice.order.paidAmount) + amount;
-      const orderTotal = Number(invoice.order.totalAmount) - Number(invoice.order.discount);
-      let orderPaymentStatus = 'PAID';
-      if (orderNewPaidAmount < orderTotal) {
-        orderPaymentStatus = orderNewPaidAmount > 0 ? 'PARTIAL' : 'UNPAID';
-      }
-
-      await prisma.order.update({
-        where: { id: invoice.orderId },
-        data: {
-          paidAmount: orderNewPaidAmount,
-          paymentStatus: orderPaymentStatus,
-        }
-      });
-    }
-
-    // Create transaction for the payment
-    await prisma.transaction.create({
-      data: {
+    // An invoice is its order's bill: the payment is the order's payment, booked
+    // once, in one transaction, and refused beyond what the order still owes
+    // (a payment already taken on the order is not taken again here). The
+    // invoice's paid amount and status follow the order's.
+    await prisma.$transaction((tx: any) =>
+      bookOrderPayment(tx, {
+        orderId: invoice.orderId,
         accountId,
-        type: 'INCOME',
         amount,
-        currency: 'TOMAN',
-        rateSnapshot: 1,
-        amountInToman: amount,
-        description: `پرداخت فاکتور ${invoice.invoiceNumber}`,
-        category: 'Sales',
-        date: new Date(),
-      }
-    });
-
-    // Update account balance
-    await prisma.account.update({
-      where: { id: accountId },
-      data: {
-        balance: {
-          increment: amount
-        }
-      }
-    });
+        description: `پرداخت فاکتور ${invoice.invoiceNumber} - سفارش #${invoice.order.number}`,
+      }),
+    );
 
     revalidatePath('/dashboard/sales/invoices');
     revalidatePath(`/dashboard/sales/invoices/${invoiceId}`);
     return { success: true, message: 'پرداخت ثبت شد.' };
   } catch (error) {
     console.error('Error recording payment:', error);
-    return { success: false, message: 'خطا در ثبت پرداخت.' };
+    return { success: false, message: error instanceof Error ? error.message : 'خطا در ثبت پرداخت.' };
   }
 }
 

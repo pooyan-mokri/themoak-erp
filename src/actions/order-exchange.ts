@@ -9,6 +9,8 @@ import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { CASH_CHANGED_MESSAGE, exchangeChange, lineValue, orderMoney, receivableNow } from '@/lib/return-math';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -18,6 +20,10 @@ const OrderExchangeSchema = z.object({
   accountId: z.string().min(1, 'حساب الزامی است'),
   returnWarehouseId: z.string().min(1, 'انبار برگشت کالا الزامی است'),
   exchangeWarehouseId: z.string().min(1, 'انبار تحویل کالا الزامی است'),
+  // Of a positive difference, what the cashier collects now; the rest is owed on the order.
+  receivedNow: z.coerce.number().min(0, 'مبلغ دریافتی نمی‌تواند منفی باشد').optional(),
+  // The cash the dialog showed; the server refuses when its own figure differs.
+  expectedCash: z.coerce.number().optional(),
 });
 
 export async function exchangeOrderItem(prevState: any, formData: FormData) {
@@ -31,6 +37,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     accountId: formData.get('accountId'),
     returnWarehouseId: formData.get('returnWarehouseId'),
     exchangeWarehouseId: formData.get('exchangeWarehouseId'),
+    receivedNow: formData.get('receivedNow') || undefined,
+    expectedCash: formData.get('expectedCash') || undefined,
   });
 
   if (!validatedFields.success) {
@@ -41,10 +49,19 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     };
   }
 
-  const { orderId, originalItemId, exchangeProductId, quantity, accountId, returnWarehouseId, exchangeWarehouseId } = validatedFields.data;
+  const { orderId, originalItemId, exchangeProductId, quantity, accountId, returnWarehouseId, exchangeWarehouseId, receivedNow, expectedCash } = validatedFields.data;
+  // Of a negative difference, the customer gets cash back only when the cashier chooses it.
+  const refundNow = formData.get('refundNow') === '1';
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // One return or exchange at a time per order: the second re-reads what the first left.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
+
       // 1. Get order and original item
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -53,6 +70,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           items: {
             include: { product: true },
           },
+          commissions: true,
         },
       });
 
@@ -155,44 +173,37 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error(`موجودی کافی برای کالای تعویضی "${exchangeProduct.name}" در انبار انتخابی وجود ندارد.`);
       }
 
-      // 4. Calculate price difference
-      const originalPrice = Number(originalItem.price) * quantity;
-      const exchangePrice = Number(exchangeProduct.sellPrice) * quantity;
+      // 4. Calculate price difference (each side net of the partner's
+      //    commission on a consignment sale, whose total is stored net)
+      const money = orderMoney(order);
+      const originalPrice = lineValue(money, Number(originalItem.price), quantity);
+      const exchangePrice = lineValue(money, Number(exchangeProduct.sellPrice), quantity);
       const priceDifference = exchangePrice - originalPrice;
-
-      // 5. Recompute order totals.
-      //    - priceDifference > 0  → cashier collects the extra at the till
-      //      (matches existing UX where account is mandatory).
-      //    - priceDifference < 0  → only refund the portion the customer
-      //      actually overpaid relative to the new total. The rest is
-      //      absorbed by reducing the outstanding debt on the order.
-      const oldTotal = Number(order.totalAmount);
-      const oldDiscount = Number(order.discount);
-      const oldPaid = Number(order.paidAmount);
-
-      const newTotal = Math.max(0, oldTotal + priceDifference);
-      const newNetOwed = Math.max(0, newTotal - oldDiscount);
-
-      let txType: TransactionType | null = null;
-      let txAmount = 0;
-      let newPaid = oldPaid;
-
-      if (priceDifference > 0) {
-        txType = TransactionType.INCOME;
-        txAmount = priceDifference;
-        newPaid = oldPaid + priceDifference;
-      } else if (priceDifference < 0) {
-        if (oldPaid > newNetOwed) {
-          txType = TransactionType.EXPENSE;
-          txAmount = oldPaid - newNetOwed;
-          newPaid = newNetOwed;
-        }
+      // A credit the customer holds on the order pays the difference first.
+      const receivable = receivableNow(money, priceDifference);
+      if ((receivedNow ?? 0) > receivable + 0.01) {
+        throw new Error(
+          receivable < priceDifference - 0.01
+            ? `مشتری روی این سفارش اعتبار دارد؛ مبلغ دریافتی نمی‌تواند بیشتر از ${receivable.toLocaleString('fa-IR')} تومان باشد.`
+            : 'مبلغ دریافتی نمی‌تواند بیشتر از مابه‌التفاوت باشد.',
+        );
       }
 
-      const newDebt = newNetOwed - newPaid;
-      const newPaymentStatus = newDebt > 0
-        ? (newPaid > 0 ? 'PARTIAL' : 'UNPAID')
-        : 'PAID';
+      // 5. Recompute order totals (src/lib/return-math.ts; the dialog shows
+      //    the same figures from the same function).
+      //    - priceDifference > 0  → owed on the order, except what the
+      //      cashier collects now (receivedNow).
+      //    - priceDifference < 0  → only the portion the customer actually
+      //      overpaid relative to the new total can go back, and only when
+      //      the cashier chooses to refund it; otherwise it stays paid on the
+      //      order as the customer's credit.
+      const change = exchangeChange(money, priceDifference, { receivedNow, refundNow });
+      const txType: TransactionType | null =
+        change.cashIn > 0 ? TransactionType.INCOME : change.cashOut > 0 ? TransactionType.EXPENSE : null;
+      const txAmount = change.cashIn || change.cashOut;
+      if (expectedCash !== undefined && Math.abs(expectedCash - txAmount) > 0.01) {
+        throw new Error(CASH_CHANGED_MESSAGE);
+      }
 
       // 6. Cash leg (skipped when no money actually changes hands)
       let transactionId: string | undefined;
@@ -231,6 +242,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
             amountInToman: new Prisma.Decimal(txAmount),
             accountId,
             customerId: order.customerId ?? undefined,
+            orderId,
+            clientRequestId: requestId ?? undefined,
             description: `تعویض کالا - سفارش #${order.number} - ${customerLabel} - ${originalItem.product.name} → ${exchangeProduct.name}`,
             category: 'Exchange',
             date: new Date(),
@@ -250,17 +263,17 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       await tx.order.update({
         where: { id: orderId },
         data: {
-          totalAmount: new Prisma.Decimal(newTotal),
-          paidAmount: new Prisma.Decimal(newPaid),
-          paymentStatus: newPaymentStatus,
+          totalAmount: new Prisma.Decimal(change.newTotal),
+          paidAmount: new Prisma.Decimal(change.newPaid),
+          paymentStatus: change.paymentStatus,
         },
       });
 
       // 7a. Keep an issued invoice in sync with the new order totals.
       await syncInvoiceWithOrder(orderId, tx);
 
-      // 7b. For consignment sales, rescale commission records proportional
-      //     to the new net order amount.
+      // 7b. For consignment sales, move each commission record by the gross
+      //     price difference (the record is kept at gross prices).
       const orderCommissions = await tx.consignmentCommission.findMany({
         where: { orderId },
       });
@@ -269,7 +282,9 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           (sum: number, c: any) => sum + Number(c.orderAmount),
           0
         );
-        const ratio = oldCommissionBase > 0 ? newNetOwed / oldCommissionBase : 0;
+        const grossDifference = (Number(exchangeProduct.sellPrice) - Number(originalItem.price)) * quantity;
+        const newCommissionBase = Math.max(0, oldCommissionBase + grossDifference);
+        const ratio = oldCommissionBase > 0 ? newCommissionBase / oldCommissionBase : 0;
         for (const commission of orderCommissions) {
           const rate = Number(commission.commissionRate);
           const newOrderAmount = Number(commission.orderAmount) * ratio;
@@ -364,7 +379,9 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           },
         });
       }
+      return 'done';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     kickSiteHook();
 
     // Inventory, POS, customer debt list, accounting reports all derive
@@ -376,6 +393,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       success: true,
     };
   } catch (error: any) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error exchanging order item:', error);
     return {
       message: error.message || 'خطا در ثبت تعویض کالا.',

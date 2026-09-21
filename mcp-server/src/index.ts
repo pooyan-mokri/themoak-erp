@@ -10,6 +10,7 @@
  *                    the website's key, and every tool here would get 403 with it.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -52,6 +53,22 @@ async function erpPost(body: Record<string, unknown>) {
   if (!res.ok) throw new Error(`ERP API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
+
+// Shared by the three tools that move money.
+const CURRENCY = {
+  type: 'string',
+  enum: ['TOMAN', 'USD', 'EUR', 'CNY'],
+  description: "Currency of `amount`. Always pass it: check the account's currency in erp_accounts first.",
+};
+const DATE = {
+  type: 'string',
+  description: 'Gregorian date YYYY-MM-DD, e.g. 2026-09-21 (defaults to today). Never a Jalali date like 1405-06-30: it is refused.',
+};
+const REQUEST_ID = {
+  type: 'string',
+  description:
+    'Leave empty for a new entry. When retrying an entry whose result you did not see, pass the requestId from the earlier error: the ERP then books it only once. Must be 8-64 letters, digits, - or _.',
+};
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
 const TOOLS = [
@@ -113,52 +130,56 @@ const TOOLS = [
   {
     name: 'erp_deposit',
     description:
-      'Record a deposit (income) into an account. Use this when money arrives into a company account.',
+      'Record a deposit (income) into an account. Use this when money arrives into a company account. Returns the new row id, the booked amount and the account balance after it.',
     inputSchema: {
       type: 'object',
       properties: {
         accountId:   { type: 'string', description: 'Target account ID (get IDs from erp_accounts)' },
-        amount:      { type: 'number', description: 'Amount in the specified currency' },
-        currency:    { type: 'string', enum: ['TOMAN', 'USD', 'EUR', 'CNY'], default: 'TOMAN' },
+        amount:      { type: 'number', description: 'Amount in `currency`, greater than 0' },
+        currency:    CURRENCY,
         description: { type: 'string', description: 'What is this deposit for? (بابت چی)' },
         category:    { type: 'string', description: 'Optional category' },
-        date:        { type: 'string', description: 'Date YYYY-MM-DD (defaults to today)' },
+        date:        DATE,
+        requestId:   REQUEST_ID,
       },
-      required: ['accountId', 'amount', 'description'],
+      required: ['accountId', 'amount', 'currency', 'description'],
     },
   },
   {
     name: 'erp_expense',
     description:
-      'Record an expense or payment from an account. Use this when money leaves a company account.',
+      'Record an expense or payment from an account. Use this when money leaves a company account. Returns the new row id, the booked amount and the account balance after it.',
     inputSchema: {
       type: 'object',
       properties: {
         accountId:   { type: 'string', description: 'Source account ID' },
-        amount:      { type: 'number' },
-        currency:    { type: 'string', enum: ['TOMAN', 'USD', 'EUR', 'CNY'], default: 'TOMAN' },
+        amount:      { type: 'number', description: 'Amount in `currency`, greater than 0' },
+        currency:    CURRENCY,
         description: { type: 'string' },
         category:    { type: 'string' },
         payee:       { type: 'string', description: 'Who received the payment' },
-        date:        { type: 'string', description: 'YYYY-MM-DD' },
+        date:        DATE,
+        requestId:   REQUEST_ID,
       },
-      required: ['accountId', 'amount', 'description'],
+      required: ['accountId', 'amount', 'currency', 'description'],
     },
   },
   {
     name: 'erp_transfer',
     description:
-      'Transfer money between two company accounts. Both accounts must use the same currency.',
+      'Transfer money between two company accounts. Both accounts must use the same currency. Returns both row ids, the amount and both balances after it.',
     inputSchema: {
       type: 'object',
       properties: {
         fromAccountId: { type: 'string', description: 'Source account ID' },
         toAccountId:   { type: 'string', description: 'Destination account ID' },
-        amount:        { type: 'number' },
+        amount:        { type: 'number', description: 'Amount in `currency`, greater than 0' },
+        currency:      { ...CURRENCY, description: 'Currency of both accounts and of `amount`; refused if it is not theirs.' },
         description:   { type: 'string' },
-        date:          { type: 'string', description: 'YYYY-MM-DD' },
+        date:          DATE,
+        requestId:     REQUEST_ID,
       },
-      required: ['fromAccountId', 'toAccountId', 'amount'],
+      required: ['fromAccountId', 'toAccountId', 'amount', 'currency'],
     },
   },
 ];
@@ -171,8 +192,13 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
+const MONEY_ACTIONS: Record<string, string> = { erp_deposit: 'deposit', erp_expense: 'expense', erp_transfer: 'transfer' };
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
+  // One id per call that moves money, so a call that reaches the ERP twice books once;
+  // a retry passes the id back to be booked once too.
+  const requestId = name in MONEY_ACTIONS ? (typeof args.requestId === 'string' && args.requestId) || randomUUID() : null;
 
   try {
     let result: unknown;
@@ -203,13 +229,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await erpGet('search', { q: String(args.q) });
         break;
       case 'erp_deposit':
-        result = await erpPost({ action: 'deposit', ...args });
-        break;
       case 'erp_expense':
-        result = await erpPost({ action: 'expense', ...args });
-        break;
       case 'erp_transfer':
-        result = await erpPost({ action: 'transfer', ...args });
+        if (typeof args.currency !== 'string' || !args.currency) {
+          throw new Error("currency is required: look up the account's currency with erp_accounts and pass it.");
+        }
+        result = await erpPost({ action: MONEY_ACTIONS[name], ...args, currency: args.currency, requestId });
         break;
       default:
         return {
@@ -222,8 +247,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     };
   } catch (err: any) {
+    // Whether the entry was booked is unknown after a network error: say how to retry safely.
+    const retry = requestId
+      ? `\nrequestId: ${requestId} — check erp_transactions, or call again with this requestId; it is booked only once.`
+      : '';
     return {
-      content: [{ type: 'text', text: `Error: ${err.message}` }],
+      content: [{ type: 'text', text: `Error: ${err.message}${retry}` }],
       isError: true,
     };
   }

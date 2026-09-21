@@ -21,6 +21,7 @@ import {
   TAG_STOCK_SHORTAGE,
   formatShipTo,
   readSiteOrderData,
+  unrealPayment,
   type SiteOrderData,
   type SiteShipTo,
   type SiteStatusEvent,
@@ -92,7 +93,7 @@ export function normalizeMobile(raw: string): string {
   return digits;
 }
 
-function paymentStatusFor(net: number, paid: number): string {
+export function paymentStatusFor(net: number, paid: number): string {
   if (paid >= net) return 'PAID';
   return paid > 0 ? 'PARTIAL' : 'UNPAID';
 }
@@ -154,6 +155,7 @@ type SaleInput = {
     refNumber: string | null;
     paidAt: Date | null;
     amount: number;
+    sandbox: boolean;
   };
 };
 
@@ -255,6 +257,7 @@ function parseSale(body: Record<string, unknown>, reference: string): SaleInput 
       refNumber: ident(payment.refNumber),
       paidAt,
       amount: paid,
+      sandbox: payment.sandbox === true || payment.test === true,
     },
   };
 }
@@ -352,7 +355,18 @@ async function recordSale(
 
   const review: string[] = [];
   const tags = new Set<string>([input.tag ?? 'website']);
-  const paid = input.payment.amount;
+  const claimed = input.payment.amount;
+  // A test payment, or one the gateway left no trace of, is not money that
+  // arrived: the sale is recorded unpaid, for a person to look at.
+  const unreal = unrealPayment(input.payment);
+  const paid = unreal ? 0 : claimed;
+  if (unreal && claimed > 0) {
+    review.push(
+      unreal === 'sandbox'
+        ? `پرداخت ${fa(claimed)} تومانی سایت آزمایشی (sandbox) بود؛ درآمدی ثبت نشد و سفارش پرداخت‌نشده ماند.`
+        : `پرداخت ${fa(claimed)} تومانی سایت ردّی از درگاه ندارد (trackId ندارد)؛ درآمدی ثبت نشد و سفارش پرداخت‌نشده ماند. اگر پول واقعاً رسیده است، دریافت آن را در «بررسی پول سفارش‌های سایت» ثبت کنید.`,
+    );
+  }
 
   // The account before any stock row, the order POS sales lock them in.
   let account: { id: string; currency: string } | null = null;
@@ -423,8 +437,8 @@ async function recordSale(
   if (linesTotal !== (input.subtotal ?? input.total + input.discount - freightCharged)) {
     review.push('جمع قیمت اقلام (قیمت واحد × تعداد) با جمع اقلام سفارش نمی‌خواند.');
   }
-  if (paid !== input.total) {
-    review.push(`مبلغ پرداخت‌شده (${fa(paid)} تومان) با جمع سفارش (${fa(input.total)} تومان) برابر نیست.`);
+  if (claimed !== input.total) {
+    review.push(`مبلغ پرداخت‌شده (${fa(claimed)} تومان) با جمع سفارش (${fa(input.total)} تومان) برابر نیست.`);
   }
   if (review.length > 0) tags.add(TAG_NEEDS_REVIEW);
 
@@ -479,6 +493,8 @@ async function recordSale(
       paymentStatus: paymentStatusFor(input.total, paid),
       status: 'COMPLETED',
       transactionId,
+      // The income row points back at its order (Transaction.orderId).
+      moneyRows: transactionId ? { connect: [{ id: transactionId }] } : undefined,
       createdAt: input.issuedAt,
       tags: Array.from(tags),
       siteReference: input.reference,
@@ -682,13 +698,22 @@ async function applyStatus(tx: any, change: StatusChange): Promise<SiteSaleResul
         `بازپرداخت ${fa(change.refund)} تومان از ماندهٔ پرداخت (${fa(remaining)} تومان) بیشتر بود؛ ${fa(refundedNow)} تومان ثبت شد.`,
       );
     }
+    // Money leaves an account only as far as the ERP holds this order's money:
+    // none for a sale recorded unpaid (a test or untraced payment), less once a
+    // refund was already booked in the ERP.
+    const booked = Math.min(refundedNow, paid);
+    if (booked < refundedNow) {
+      review.push(
+        `از بازپرداخت ${fa(refundedNow)} تومانی سایت، ${fa(booked)} تومان از حساب کم شد؛ ERP بیش از این از پول این سفارش را نگه نداشته بود.`,
+      );
+    }
     let transactionId: string | null = null;
-    if (refundedNow > 0) {
+    if (booked > 0) {
       // Out of the account the sale's money went into.
       const account = order.transaction?.account ?? (await paymentAccount(tx));
       if (!account) throw new Error('حساب بازپرداخت سفارش سایت پیدا نشد.');
       await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${account.id} FOR UPDATE`;
-      const { amount, rate } = await inAccountCurrency(tx, account, refundedNow);
+      const { amount, rate } = await inAccountCurrency(tx, account, booked);
       const expense = await tx.transaction.create({
         data: {
           type: 'EXPENSE',
@@ -697,8 +722,9 @@ async function applyStatus(tx: any, change: StatusChange): Promise<SiteSaleResul
           amount: new Prisma.Decimal(amount),
           currency: account.currency,
           rateSnapshot: new Prisma.Decimal(rate),
-          amountInToman: new Prisma.Decimal(refundedNow),
+          amountInToman: new Prisma.Decimal(booked),
           customerId: order.customerId ?? undefined,
+          orderId: order.id,
           date: new Date(change.event.at),
           description: `بازپرداخت سفارش سایت ${reference}`,
           tags: ['website'],
@@ -724,9 +750,8 @@ async function applyStatus(tx: any, change: StatusChange): Promise<SiteSaleResul
         `جمع بازپرداخت‌ها در سایت (${fa(change.refundedTotal)} تومان) با ERP (${fa(refundedBefore + refundedNow)} تومان) نمی‌خواند.`,
       );
     }
-    const applied = Math.min(refundedNow, paid);
-    paid -= applied;
-    totalAmount = Math.max(discount, totalAmount - applied);
+    paid -= booked;
+    totalAmount = Math.max(discount, totalAmount - refundedNow);
   }
 
   const fullyRefunded = data.payment.amount > 0 && refundedBefore + refundedNow >= data.payment.amount;
@@ -736,7 +761,9 @@ async function applyStatus(tx: any, change: StatusChange): Promise<SiteSaleResul
       await tx.orderItem.updateMany({ where: { orderId: order.id }, data: { status: 'CANCELLED' } });
     }
     if (paid > 0) {
-      review.push(`سفارش لغو شد ولی ${fa(paid)} تومان از پول آن بازپرداخت نشده است.`);
+      review.push(
+        `سفارش لغو شد ولی ${fa(paid)} تومان از پول آن بازپرداخت نشده است؛ در «بررسی پول سفارش‌های سایت» بازپرداخت یا نگه‌داشتن آن را ثبت کنید.`,
+      );
     }
   }
   // A void sale owes nothing, so no reader shows debt for it.

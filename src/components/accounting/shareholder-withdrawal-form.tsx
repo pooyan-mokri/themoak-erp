@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { withdrawShareholderFunds } from '@/actions/shareholder';
+import { withdrawShareholderProfit } from '@/actions/shareholder-profit';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Currency } from '@/lib/types';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState = {
   message: '',
@@ -29,6 +31,7 @@ interface Account {
   id: string;
   name: string;
   currency: string;
+  cardNumber?: string | null;
 }
 
 interface ShareholderProfit {
@@ -46,13 +49,22 @@ interface ShareholderWithdrawalFormProps {
   onSuccess?: () => void;
 }
 
+/**
+ * Paying out a profit goes through withdrawShareholderProfit, which marks the
+ * profit as withdrawn so it cannot be paid again; without a profit it is a
+ * capital withdrawal that the shareholder owes back.
+ */
+export function withdrawalActionFor(profit?: { id: string }) {
+  return profit ? withdrawShareholderProfit : withdrawShareholderFunds;
+}
+
 export function ShareholderWithdrawalForm({
   shareholders,
   accounts,
   profit,
   onSuccess,
 }: ShareholderWithdrawalFormProps) {
-  const [state, dispatch] = useFormState(withdrawShareholderFunds, initialState);
+  const [state, dispatch] = useFormState(withdrawalActionFor(profit), initialState);
   const [shareholderId, setShareholderId] = useState<string>(profit?.shareholder.id || '');
   const [accountId, setAccountId] = useState<string>('');
   const [currency, setCurrency] = useState<string>('TOMAN');
@@ -98,9 +110,11 @@ export function ShareholderWithdrawalForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>برداشت سرمایه توسط صاحب سهام</CardTitle>
+        <CardTitle>{profit ? 'پرداخت سود به صاحب سهام' : 'برداشت سرمایه توسط صاحب سهام'}</CardTitle>
         <p className="text-sm text-muted-foreground mt-2">
-          وقتی سهامدار پول برداشت می‌کند، به سیستم بدهکار می‌شود.
+          {profit
+            ? `مبلغ به تومان از سود این دوره کم می‌شود. قابل برداشت: ${Math.round(profit.available).toLocaleString('fa-IR')} تومان`
+            : 'وقتی سهامدار پول برداشت می‌کند، به سیستم بدهکار می‌شود.'}
         </p>
       </CardHeader>
       <form action={dispatch}>
@@ -147,7 +161,7 @@ export function ShareholderWithdrawalForm({
               <SelectContent>
                 {accounts.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
-                    {account.name} ({account.currency})
+                    {accountLabel(account)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -160,13 +174,14 @@ export function ShareholderWithdrawalForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">مبلغ *</Label>
+              <Label htmlFor="amount">{profit ? 'مبلغ (تومان) *' : 'مبلغ *'}</Label>
               <Input
                 id="amount"
                 name="amount"
                 type="number"
                 step="0.01"
                 min="0"
+                max={profit ? profit.available : undefined}
                 placeholder="0"
                 required
               />
@@ -175,24 +190,27 @@ export function ShareholderWithdrawalForm({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="currency">ارز *</Label>
-              <Select name="currency" required value={currency} onValueChange={setCurrency}>
-                <SelectTrigger id="currency">
-                  <SelectValue placeholder="انتخاب ارز" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={Currency.TOMAN}>تومان</SelectItem>
-                  <SelectItem value={Currency.USD}>دلار</SelectItem>
-                  <SelectItem value={Currency.EUR}>یورو</SelectItem>
-                  <SelectItem value={Currency.CNY}>یوآن</SelectItem>
-                </SelectContent>
-              </Select>
-              <input type="hidden" name="currency" value={currency} />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.currency && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.currency?.[0]}</p>
-              )}
-            </div>
+            {/* A profit is kept in Toman; the payout is converted into the account's currency. */}
+            {!profit && (
+              <div className="space-y-2">
+                <Label htmlFor="currency">ارز *</Label>
+                <Select name="currency" required value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger id="currency">
+                    <SelectValue placeholder="انتخاب ارز" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={Currency.TOMAN}>تومان</SelectItem>
+                    <SelectItem value={Currency.USD}>دلار</SelectItem>
+                    <SelectItem value={Currency.EUR}>یورو</SelectItem>
+                    <SelectItem value={Currency.CNY}>یوآن</SelectItem>
+                  </SelectContent>
+                </Select>
+                <input type="hidden" name="currency" value={currency} />
+                {(state.errors as Record<string, string[] | undefined> | undefined)?.currency && (
+                  <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.currency?.[0]}</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

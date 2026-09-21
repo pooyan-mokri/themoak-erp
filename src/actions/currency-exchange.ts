@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { randomUUID } from 'node:crypto';
 
 // --- Schemas ---
@@ -71,27 +72,33 @@ function pairExchangeRows<T extends ExchangeRow>(rows: T[]): Array<{ source?: T;
     else pair.target = row;
   }
 
-  // Oldest first, so each leg meets the partner written beside it.
-  const unpaired = [...legacy].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  // The two legs of one exchange were written in one database transaction,
+  // milliseconds apart, so the closest possible partners are paired first: a
+  // leg of another exchange a second away never takes the partner written
+  // right beside a leg. loadExchange pairs with this same function over the
+  // same rows, so an edit or a delete acts on exactly the pair shown.
+  const byTime = [...legacy].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+  const candidates: Array<[T, T]> = [];
+  for (const [index, row] of byTime.entries()) {
+    for (const other of byTime.slice(index + 1)) {
+      if (other.createdAt.getTime() - row.createdAt.getTime() > LEGACY_PAIR_WINDOW_MS) break;
+      if (other.type !== row.type && other.accountId !== row.accountId) candidates.push([row, other]);
+    }
+  }
+  const gap = ([a, b]: [T, T]) => b.createdAt.getTime() - a.createdAt.getTime();
   const taken = new Set<string>();
-  for (const [index, row] of unpaired.entries()) {
-    if (taken.has(row.id)) continue;
-    const partner = unpaired
-      .slice(index + 1)
-      .find(
-        (other) =>
-          !taken.has(other.id) &&
-          other.type !== row.type &&
-          other.accountId !== row.accountId &&
-          other.createdAt.getTime() - row.createdAt.getTime() <= LEGACY_PAIR_WINDOW_MS,
-      );
-    taken.add(row.id);
-    if (partner) taken.add(partner.id);
-    const legs = [row, partner].filter(Boolean) as T[];
-    pairs.push({
-      source: legs.find((leg) => leg.type === TransactionType.EXPENSE),
-      target: legs.find((leg) => leg.type === TransactionType.INCOME),
-    });
+  const sideOf = (legs: T[]) => ({
+    source: legs.find((leg) => leg.type === TransactionType.EXPENSE),
+    target: legs.find((leg) => leg.type === TransactionType.INCOME),
+  });
+  for (const [a, b] of candidates.sort((x, y) => gap(x) - gap(y))) {
+    if (taken.has(a.id) || taken.has(b.id)) continue;
+    taken.add(a.id);
+    taken.add(b.id);
+    pairs.push(sideOf([a, b]));
+  }
+  for (const row of byTime) {
+    if (!taken.has(row.id)) pairs.push(sideOf([row]));
   }
 
   const at = (pair: { source?: T; target?: T }) => (pair.source ?? pair.target)!.date.getTime();
@@ -109,36 +116,42 @@ async function loadExchange(tx: any, id: string): Promise<ExchangePair & { group
   if (found.length === 0) throw new ExchangeRefusal('سند معامله ارز یافت نشد.');
 
   const groupId: string | null = found[0].exchangeGroupId ?? null;
-  let legs: ExchangeRow[] = found;
-  if (groupId) {
-    legs = await tx.transaction.findMany({ where: { exchangeGroupId: groupId } });
-  } else {
-    // A leg written before exchangeGroupId existed: take the nearest opposite leg beside it.
-    const anchor = legs[0];
-    const near: ExchangeRow[] = await tx.transaction.findMany({
-      where: {
-        category: EXCHANGE_CATEGORY,
-        exchangeGroupId: null,
-        id: { not: anchor.id },
-        type: anchor.type === TransactionType.EXPENSE ? TransactionType.INCOME : TransactionType.EXPENSE,
-        createdAt: {
-          gte: new Date(anchor.createdAt.getTime() - LEGACY_PAIR_WINDOW_MS),
-          lte: new Date(anchor.createdAt.getTime() + LEGACY_PAIR_WINDOW_MS),
-        },
-      },
+  if (!groupId) {
+    // A leg written before exchangeGroupId existed: its partner is the one the
+    // history shows beside it, found the same way from the same rows.
+    const anchor = found[0];
+    const legacy: ExchangeRow[] = await tx.transaction.findMany({
+      where: { category: EXCHANGE_CATEGORY, exchangeGroupId: null },
     });
-    const apart = (row: ExchangeRow) => Math.abs(row.createdAt.getTime() - anchor.createdAt.getTime());
-    const partner = near
-      .filter((row) => row.accountId !== anchor.accountId)
-      .sort((a, b) => apart(a) - apart(b))[0];
-    legs = partner ? [anchor, partner] : [anchor];
+    const pair = pairExchangeRows(legacy).find((legs) => legs.source?.id === anchor.id || legs.target?.id === anchor.id);
+    if (!pair) throw new ExchangeRefusal('این سند معامله ارز هم‌زمان ویرایش یا حذف شده است؛ صفحه را تازه کنید.');
+    return { ...pair, groupId };
   }
 
+  const legs: ExchangeRow[] = await tx.transaction.findMany({ where: { exchangeGroupId: groupId } });
   return {
     source: legs.find((leg) => leg.type === TransactionType.EXPENSE),
     target: legs.find((leg) => leg.type === TransactionType.INCOME),
     groupId,
   };
+}
+
+/**
+ * Lock the legs and read them again. A second correction or removal of the same
+ * exchange waits here, then sees what the first one left: legs it deleted are
+ * gone (refused, so nothing is reversed twice) and legs it rewrote are read
+ * with their new amounts.
+ */
+async function lockLegs(tx: any, pair: ExchangePair): Promise<ExchangePair> {
+  const legs = [pair.source, pair.target].filter(Boolean) as ExchangeRow[];
+  const ids = legs.map((leg) => leg.id);
+  const locked: ExchangeRow[] = await tx.$queryRaw`
+    SELECT id, type::text AS type, "accountId", amount FROM "Transaction" WHERE id = ANY(${ids}) FOR UPDATE`;
+  if (locked.length !== ids.length) {
+    throw new ExchangeRefusal('این سند معامله ارز هم‌زمان ویرایش یا حذف شده است؛ صفحه را تازه کنید.');
+  }
+  const fresh = (leg?: ExchangeRow) => leg && { ...leg, ...locked.find((row) => row.id === leg.id)! };
+  return { source: fresh(pair.source), target: fresh(pair.target) };
 }
 
 /** Undo what a leg did to its account's balance. */
@@ -173,6 +186,7 @@ async function applyExchange(
   input: z.infer<typeof CurrencyExchangeSchema>,
   groupId: string,
   existing?: ExchangePair,
+  requestId?: string | null,
 ) {
   const {
     sourceAccountId,
@@ -246,14 +260,18 @@ async function applyExchange(
     exchangeGroupId: groupId,
   });
 
-  const sourceData = leg(
-    TransactionType.EXPENSE,
-    sourceAccountId,
-    sourceAmount,
-    sourceCurrency,
-    sourceAmountInToman,
-    `خرید ${targetCurrency} - فروش ${sourceCurrency} - نرخ: ${exchangeRate}`,
-  );
+  const sourceData = {
+    ...leg(
+      TransactionType.EXPENSE,
+      sourceAccountId,
+      sourceAmount,
+      sourceCurrency,
+      sourceAmountInToman,
+      `خرید ${targetCurrency} - فروش ${sourceCurrency} - نرخ: ${exchangeRate}`,
+    ),
+    // The submission's id, on the first row it writes (src/lib/request-id.ts).
+    ...(requestId ? { clientRequestId: requestId } : {}),
+  };
   const targetData = leg(
     TransactionType.INCOME,
     targetAccountId,
@@ -307,41 +325,24 @@ export async function exchangeCurrency(prevState: any, formData: FormData) {
     };
   }
 
-  const {
-    sourceAccountId,
-    targetAccountId,
-    sourceAmount,
-    targetAmount,
-    sourceCurrency,
-    targetCurrency,
-    exchangeRate,
-    date,
-    description,
-  } = validatedFields.data;
-
-  // Validate that accounts are different
-  if (sourceAccountId === targetAccountId) {
-    return {
-      message: 'حساب مبدا و مقصد نمی‌توانند یکسان باشند.',
-      errors: {},
-      success: false,
-    };
+  // Different accounts, different currencies, amounts that agree with the rate.
+  const problem = pairingProblem(validatedFields.data);
+  if (problem) {
+    return { message: problem, errors: {}, success: false };
   }
 
-  // Validate that currencies match accounts
-  if (sourceCurrency === targetCurrency) {
-    return {
-      message: 'ارز حساب مبدا و مقصد باید متفاوت باشند.',
-      errors: {},
-      success: false,
-    };
-  }
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    if (requestId && (await prisma.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+      return { message: DUPLICATE_REQUEST_MESSAGE, errors: {}, success: true };
+    }
     await prisma.$transaction(async (tx: any) => {
-      await applyExchange(tx, validatedFields.data, randomUUID());
+      await applyExchange(tx, validatedFields.data, randomUUID(), undefined, requestId);
     });
   } catch (error: any) {
+    // The same submission a second time: it was booked once, by the first.
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, errors: {}, success: true };
     console.error('Error in currency exchange:', error);
     return {
       message: error instanceof ExchangeRefusal ? error.message : 'خطا در انجام معامله ارز.',
@@ -357,10 +358,32 @@ export async function exchangeCurrency(prevState: any, formData: FormData) {
   return { message: 'معامله ارز با موفقیت انجام شد.', success: true };
 }
 
+/** How far the Toman amount may be from foreign amount × rate: rounding, not a mis-keyed figure. */
+const RATE_TOLERANCE = 0.01;
+
 /** The checks that do not need the database, shared by recording and editing. */
 function pairingProblem(input: z.infer<typeof CurrencyExchangeSchema>): string | null {
   if (input.sourceAccountId === input.targetAccountId) return 'حساب مبدا و مقصد نمی‌توانند یکسان باشند.';
   if (input.sourceCurrency === input.targetCurrency) return 'ارز حساب مبدا و مقصد باید متفاوت باشند.';
+
+  // With a Toman side the rate is Toman per 1 unit of the foreign currency, so
+  // the two amounts must agree with it: 91 dollars at 90.91 cannot have cost
+  // 20,000,000 Toman. One of the three figures was typed wrong.
+  const buying = input.sourceCurrency === Currency.TOMAN;
+  if (buying || input.targetCurrency === Currency.TOMAN) {
+    const toman = buying ? input.sourceAmount : input.targetAmount;
+    const foreign = buying ? input.targetAmount : input.sourceAmount;
+    const foreignCurrency = buying ? input.targetCurrency : input.sourceCurrency;
+    const expected = foreign * input.exchangeRate;
+    if (Math.abs(toman - expected) > toman * RATE_TOLERANCE) {
+      const fa = (n: number) => n.toLocaleString('fa-IR', { maximumFractionDigits: 2 });
+      return (
+        `مبلغ‌ها با نرخ نمی‌خوانند: ${fa(foreign)} ${foreignCurrency} × ${fa(input.exchangeRate)} = ${fa(expected)} تومان، ` +
+        `اما مبلغ تومانی ${fa(toman)} است. نرخ باید تومان به ازای هر ۱ ${foreignCurrency} باشد ` +
+        `(با این دو مبلغ: ${fa(toman / foreign)}).`
+      );
+    }
+  }
   return null;
 }
 
@@ -395,10 +418,11 @@ export async function updateCurrencyExchange(input: {
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      const existing = await loadExchange(tx, input.id);
+      const found = await loadExchange(tx, input.id);
+      const existing = await lockLegs(tx, found);
       await reverseLeg(tx, existing.source);
       await reverseLeg(tx, existing.target);
-      await applyExchange(tx, validatedFields.data, existing.groupId ?? randomUUID(), existing);
+      await applyExchange(tx, validatedFields.data, found.groupId ?? randomUUID(), existing);
     });
   } catch (error: unknown) {
     console.error('Error editing currency exchange:', error);
@@ -419,11 +443,16 @@ export async function deleteCurrencyExchange(id: string) {
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      const existing = await loadExchange(tx, id);
+      // Locked first: a second delete of the same exchange waits, then finds the
+      // legs gone and is refused before it reverses anything.
+      const existing = await lockLegs(tx, await loadExchange(tx, id));
       await reverseLeg(tx, existing.source);
       await reverseLeg(tx, existing.target);
       const ids = [existing.source?.id, existing.target?.id].filter(Boolean) as string[];
-      await tx.transaction.deleteMany({ where: { id: { in: ids } } });
+      const { count } = await tx.transaction.deleteMany({ where: { id: { in: ids } } });
+      if (count !== ids.length) {
+        throw new ExchangeRefusal('این سند معامله ارز هم‌زمان ویرایش یا حذف شده است؛ صفحه را تازه کنید.');
+      }
     });
   } catch (error: any) {
     console.error('Error deleting currency exchange:', error);

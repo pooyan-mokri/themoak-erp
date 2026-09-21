@@ -39,7 +39,21 @@ export type SiteStatusEvent = {
   amount: number | null;
   restock: boolean | null;
   refundId: string | null;
+  /** A decision taken in the ERP (SITE_DECISION_*): why, by whom, and the money row it booked. */
+  note?: string | null;
+  by?: string | null;
+  accountId?: string | null;
+  transactionId?: string | null;
 };
+
+/**
+ * Decisions an admin records in the ERP on a website order's money
+ * (src/actions/site-review.ts), kept in its history next to the site's own
+ * events. The status is the words the order page shows.
+ */
+export const SITE_DECISION_REFUNDED = 'بازپرداخت ثبت‌شده در ERP';
+export const SITE_DECISION_KEPT = 'بدون بازپرداخت (پول نگه داشته شد)';
+export const SITE_DECISION_RECEIVED = 'دریافت پول ثبت‌شده در ERP';
 
 export type SiteOrderData = {
   issuedAt: string;
@@ -65,6 +79,8 @@ export type SiteOrderData = {
     refNumber: string | null;
     paidAt: string | null;
     amount: number;
+    /** The site said it was a test payment. Absent on orders recorded before the flag existed. */
+    sandbox?: boolean;
   };
   subtotal: number | null;
   discount: number;
@@ -75,6 +91,20 @@ export type SiteOrderData = {
   /** Why the order carries «نیازمند بررسی», in words a person can act on. */
   review: string[];
 };
+
+/**
+ * Why a website payment is not money the ERP may book as income, or null when
+ * it is. The site sends trackId only from a payment the gateway settled (with
+ * its paidAt); a payment marked by hand in the site's panel comes without one.
+ */
+export function unrealPayment(payment: {
+  gateway?: string | null;
+  trackId?: string | null;
+  sandbox?: boolean;
+}): 'sandbox' | 'untraced' | null {
+  if (payment.sandbox === true || /sandbox|test/i.test(payment.gateway ?? '')) return 'sandbox';
+  return payment.trackId ? null : 'untraced';
+}
 
 export function readSiteOrderData(value: unknown): SiteOrderData | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as SiteOrderData) : null;

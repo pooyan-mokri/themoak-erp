@@ -241,3 +241,40 @@ test('a lone exchange leg is listed as incomplete and can be removed', async () 
   assert.equal(Number((await prisma.account.findUniqueOrThrow({ where: { id: 'usd' } })).balance), 100);
   assert.equal(await prisma.transaction.count(), 0);
 });
+
+test('a lone legacy leg next to a whole exchange is removed alone, as the list shows it', async () => {
+  // An exchange sent twice (1.7 s apart) before the legs were linked; later
+  // someone removed the first copy's Toman leg by hand, giving its Toman back.
+  await buyUsd(10_000_000, 100);
+  await buyUsd(10_000_000, 100);
+  await prisma.transaction.updateMany({ data: { exchangeGroupId: null } });
+  const at = new Date('2026-09-20T10:00:00Z').getTime();
+  const [source1, source2] = await prisma.transaction.findMany({ where: { type: 'EXPENSE' }, orderBy: { createdAt: 'asc' } });
+  const [target1, target2] = await prisma.transaction.findMany({ where: { type: 'INCOME' }, orderBy: { createdAt: 'asc' } });
+  const stamp = (id: string, ms: number) =>
+    prisma.transaction.update({ where: { id }, data: { createdAt: new Date(at + ms) } });
+  await stamp(source1.id, 0);
+  await stamp(target1.id, 3);
+  await stamp(source2.id, 1_700);
+  await stamp(target2.id, 1_703);
+  await prisma.transaction.delete({ where: { id: source1.id } });
+  await prisma.account.update({ where: { id: 'toman' }, data: { balance: { increment: 10_000_000 } } });
+  assert.deepEqual(await balances(), { eur: 0, toman: 990_000_000, usd: 300 });
+
+  const listed = await getCurrencyExchangeHistory();
+  assert.equal(listed.length, 2);
+  const whole = listed.find((row) => row.complete)!;
+  const lone = listed.find((row) => !row.complete)!;
+  assert.ok(whole && lone);
+  assert.equal(lone.sourceAccount, null);
+
+  // Removing the lone dollar leg takes back only its 100 dollars; the whole exchange stays.
+  const removed = await deleteCurrencyExchange(lone.id);
+  assert.equal(removed.success, true, removed.message);
+  assert.deepEqual(await balances(), { eur: 0, toman: 990_000_000, usd: 200 });
+  const left = await getCurrencyExchangeHistory();
+  assert.equal(left.length, 1);
+  assert.equal(left[0].complete, true);
+  assert.equal(left[0].sourceAmount, 10_000_000);
+  assert.equal(left[0].targetAmount, 100);
+});

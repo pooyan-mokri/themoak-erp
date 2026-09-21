@@ -19,6 +19,8 @@ import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost
 import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { accountLabel } from '@/lib/account-label';
+import { useRequestId } from '@/components/ui/request-id';
 import { Plus, Trash2 } from 'lucide-react';
 
 type Currency = 'TOMAN' | 'USD' | 'EUR' | 'CNY';
@@ -100,7 +102,7 @@ interface ExchangeRate {
 interface OrderDetailProps {
   order: PurchaseOrder;
   warehouses: Array<{ id: string; name: string }>;
-  accounts: Array<{ id: string; name: string; currency: string }>;
+  accounts: Array<{ id: string; name: string; currency: string; cardNumber?: string | null }>;
   /** Unit prices and landed cost (cost.view). */
   canSeeCost: boolean;
   /** Totals and payments (finance.view). */
@@ -142,6 +144,9 @@ export function OrderDetail({
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+  // One id per submission of each money dialog, so a double click books once.
+  const [paymentRequestId, renewPaymentRequestId] = useRequestId();
+  const [arrivalRequestId, renewArrivalRequestId] = useRequestId();
 
   useEffect(() => {
     // Load exchange rates
@@ -294,8 +299,10 @@ export function OrderDetail({
         amount: amountNum,
         date: paymentDate.toISOString(),
         description: paymentDescription.trim() || undefined,
+        requestId: paymentRequestId,
       });
       if (result.success) {
+        renewPaymentRequestId();
         router.refresh();
         setShowPaymentDialog(false);
         setSelectedAccount('');
@@ -326,8 +333,9 @@ export function OrderDetail({
     setLoading(true);
     setError('');
     try {
-      const result = await recordArrival(order.id, validCosts, arrivalAccount);
+      const result = await recordArrival(order.id, validCosts, arrivalAccount, arrivalRequestId);
       if (result.success) {
+        renewArrivalRequestId();
         router.refresh();
         setShowArrivalDialog(false);
         setArrivalCosts([]);
@@ -819,7 +827,7 @@ export function OrderDetail({
                 <SelectContent>
                   {accounts.map((acc) => (
                     <SelectItem key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.currency})
+                      {accountLabel(acc)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -899,7 +907,7 @@ export function OrderDetail({
                 <SelectContent>
                   {accounts.map((acc) => (
                     <SelectItem key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.currency})
+                      {accountLabel(acc)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -142,7 +142,8 @@ async function marketing() {
   const warehouse = await prisma.warehouse.create({ data: { name: 'مرکزی' } });
   const product = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ/BLUE', costPrice: COST, sellPrice: SELL } });
   await prisma.inventory.create({ data: { productId: product.id, warehouseId: warehouse.id, quantity: 5 } });
-  const account = await prisma.account.create({ data: { name: 'تبلیغات', type: 'BANK', currency: 'TOMAN', balance: 1000 } });
+  // A gift is booked on an EXPENSE account only (it costs no cash).
+  const account = await prisma.account.create({ data: { name: 'تبلیغات', type: 'EXPENSE', currency: 'TOMAN', balance: 1000 } });
   const campaign = await prisma.marketingCampaign.create({
     data: { name: 'یلدا', type: 'EVENT', startDate: new Date(), budget: 1_000_000, spentAmount: 2 * COST, status: 'ACTIVE' },
   });
@@ -179,7 +180,7 @@ test('marketing: SALES sees gifts, campaigns and budgets without gift cost, spen
   await assert.rejects(getMarketingStats(), AccessDenied);
 });
 
-test('gift and campaign writes take sales.manage, and a SALES shortfall message names no amount', async () => {
+test('gift and campaign writes take sales.manage, and a gift goes on an expense account only', async () => {
   const s = await marketing();
   const gift = () =>
     createMarketingGift(
@@ -202,10 +203,15 @@ test('gift and campaign writes take sales.manage, and a SALES shortfall message 
 
   setTestRole('SALES');
   assert.equal((await createMarketingCampaign(undefined, form({ name: 'نوروز', type: 'EVENT', startDate: '2026-03-20' }))).success, true);
-  const short = await gift();
-  assert.equal(short.message, 'موجودی حساب "تبلیغات" کافی نیست.');
-  setTestRole('ADMIN');
-  assert.match((await gift()).message ?? '', /موجودی: ۱٬۰۰۰ تومان، مبلغ مورد نیاز: ۳۰۰٬۰۰۰ تومان/);
+  assert.equal((await gift()).success, true);
+
+  const bank = await prisma.account.create({ data: { name: 'بانک', type: 'BANK', currency: 'TOMAN', balance: 1_000_000_000 } });
+  const onBank = await createMarketingGift(
+    undefined,
+    form({ items: JSON.stringify([{ productId: s.product.id, quantity: 1, warehouseId: s.warehouse.id }]), recipientName: 'مشتری', accountId: bank.id, date: '2026-09-01' }),
+  );
+  assert.equal(onBank.message, 'هدیه فقط روی حساب هزینه ثبت می‌شود؛ «بانک» حساب هزینه نیست.');
+  assert.equal(Number((await prisma.account.findUniqueOrThrow({ where: { id: bank.id } })).balance), 1_000_000_000);
 });
 
 test('fixed assets: reading takes finance.view; creating, depreciating and deleting take finance.manage', async () => {

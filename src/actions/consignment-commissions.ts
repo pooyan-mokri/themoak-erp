@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
+import { consignmentAmounts } from '@/lib/return-math';
 
 /**
  * "طلب از همکار" — outstanding NET amount partners owe us. Partners deduct
@@ -22,7 +23,7 @@ export async function getConsignmentCommissionsReport() {
       },
       include: {
         customer: true,
-        items: true,
+        items: { include: { returns: true, exchanges: true } },
         commissions: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -40,16 +41,8 @@ export async function getConsignmentCommissionsReport() {
       const customerId = order.customerId as string;
       if (!customerId) continue;
 
-      const gross = order.items.reduce(
-        (s: number, it: any) => s + it.quantity * Number(it.price),
-        0,
-      );
-      const commissionAmount = order.commissions?.[0]
-        ? Number(order.commissions[0].commissionAmount)
-        : 0;
-      const net = gross - commissionAmount;
-      const paid = Number(order.paidAmount || 0);
-      const outstanding = net - paid;
+      // Counted over the units still sold, as in the settlement list.
+      const { grossAmount: gross, remainingAmount: outstanding } = consignmentAmounts(order);
       if (outstanding <= 0.01) continue;
 
       if (!customerTotals[customerId]) {

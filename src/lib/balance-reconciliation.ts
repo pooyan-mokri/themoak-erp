@@ -1,16 +1,18 @@
 /**
  * Re-derive an account's balance from its transactions.
  *
- * Account.balance is a stored running total. It should equal the account's
- * opening balance plus the signed sum of its transactions. When it does not,
- * something moved the balance without a matching transaction (or vice versa).
+ * Account.balance is a stored running total. It should equal the signed sum
+ * of the account's transactions (the opening balance is an ADJUSTMENT row
+ * «موجودی اولیه»). When it does not, something moved the balance without a
+ * matching transaction (or vice versa).
  *
  * Signing a row is not simply INCOME/EXPENSE, because transfers and
  * adjustments are recorded inconsistently:
  *
  *  - INCOME    → credit
  *  - EXPENSE   → debit
- *  - ADJUSTMENT→ the amount is stored SIGNED (see adjustAccountBalance)
+ *  - ADJUSTMENT→ the amount is stored SIGNED (see adjustAccountBalance,
+ *                createAccount and recordBalanceBaseline)
  *  - TRANSFER  → carries no direction of its own. An internal transfer made in
  *                the app writes BOTH legs as TRANSFER and marks the direction
  *                in the description ("[خروج]" out, "[ورود]" in). A transfer
@@ -18,6 +20,9 @@
  *                prefix and the credit leg as INCOME, so an unprefixed
  *                TRANSFER is always the outgoing leg.
  */
+
+// Prisma.Decimal's own class, typed in full (src/types/prisma-types.d.ts stubs Prisma.Decimal).
+import { Decimal } from '@prisma/client/runtime/library';
 
 export type ReconcilableTransaction = {
   type: string;
@@ -51,9 +56,18 @@ export function balanceEffect(tx: ReconcilableTransaction): number {
   }
 }
 
-/** Signed sum of a set of transactions. */
-export function sumBalanceEffects(transactions: ReconcilableTransaction[]): number {
-  return transactions.reduce((sum, tx) => sum + balanceEffect(tx), 0);
+/**
+ * Signed sum of a set of transactions, in exact decimal arithmetic, so that
+ * stored balance − this sum is exactly 0 when the ledger adds up (a float sum
+ * of amounts like 0.1 leaves a remainder that never goes away).
+ */
+export function sumBalanceEffects(transactions: ReconcilableTransaction[]): Decimal {
+  return transactions.reduce((sum: Decimal, tx) => {
+    // The exact amount; anything num() cannot read counts as 0, as in balanceEffect.
+    const amount = new Decimal(num(tx.amount) === 0 ? 0 : (tx.amount as Decimal.Value));
+    // balanceEffect is linear in the amount, so its value for 1 is the row's sign.
+    return sum.plus(amount.times(balanceEffect({ ...tx, amount: 1 })));
+  }, new Decimal(0));
 }
 
 /**

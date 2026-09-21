@@ -13,16 +13,20 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Currency } from '@/lib/types';
 import { ReceiptUpload } from './receipt-upload';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState = {
   message: '',
   errors: {},
+  success: false,
 };
 
 interface Account {
   id: string;
   name: string;
   currency: string;
+  cardNumber?: string | null;
 }
 
 interface Project {
@@ -38,31 +42,46 @@ interface Employee {
 export function ExpenseForm({ accounts, projects = [], employees = [] }: { accounts: Account[], projects?: Project[], employees?: Employee[] }) {
   const router = useRouter();
   const [state, dispatch] = useFormState(recordExpense, initialState);
+  const [requestId, renewRequestId] = useRequestId();
   const [receiptUrl, setReceiptUrl] = useState('');
   const [receiptType, setReceiptType] = useState('');
-  const [currency, setCurrency] = useState<string>('TOMAN');
+  // Paid from an account, the currency follows that account; there is no default to forget.
+  const [currency, setCurrency] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [paymentSource, setPaymentSource] = useState<'account' | 'employee'>('account');
   const [accountId, setAccountId] = useState<string>('');
   const [employeeId, setEmployeeId] = useState<string>('');
   const [projectId, setProjectId] = useState<string>('');
+  const selectedAccount = accounts.find((acc) => acc.id === accountId);
 
-  // Redirect to expenses list after successful submission
+  // After a save the form is emptied at once and gets a new id, so the entry
+  // cannot be sent a second time while the success message shows; then back
+  // to the expenses list.
   useEffect(() => {
-    if (state.message && state.message.includes('موفقیت')) {
+    if (state.success) {
+      setReceiptUrl('');
+      setReceiptType('');
+      setCurrency('');
+      setCategory('');
+      setPaymentSource('account');
+      setAccountId('');
+      setEmployeeId('');
+      setProjectId('');
+      renewRequestId();
       const timer = setTimeout(() => {
         router.push('/dashboard/accounting/expenses');
       }, 1000); // Wait 1 second to show success message
       return () => clearTimeout(timer);
     }
-  }, [state.message, router]);
+  }, [state, router, renewRequestId]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>ثبت هزینه جدید</CardTitle>
       </CardHeader>
-      <form action={dispatch}>
+      <form key={requestId} action={dispatch}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-5 md:space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-4">
             <div className="space-y-2">
@@ -82,7 +101,7 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
               <Label htmlFor="currency" className="text-base md:text-sm">ارز</Label>
               <Select name="currency" required value={currency} onValueChange={setCurrency}>
                 <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
-                  <SelectValue placeholder="انتخاب کنید" />
+                  <SelectValue placeholder={paymentSource === 'account' ? 'ارز حساب' : 'انتخاب کنید'} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={Currency.TOMAN}>تومان</SelectItem>
@@ -92,6 +111,11 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
                 </SelectContent>
               </Select>
               <input type="hidden" name="currency" value={currency} />
+              {selectedAccount && currency && currency !== selectedAccount.currency && (
+                <p className="text-xs text-amber-600">
+                  مبلغ به {currency} وارد می‌شود و با آخرین نرخ به ارز حساب ({selectedAccount.currency}) تبدیل می‌شود.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -118,6 +142,8 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
                 setPaymentSource(value);
                 setAccountId('');
                 setEmployeeId('');
+                // An employee's out-of-pocket expense is a Toman debt unless said otherwise.
+                setCurrency(value === 'employee' ? 'TOMAN' : '');
               }}>
                 <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
                   <SelectValue placeholder="انتخاب کنید" />
@@ -132,14 +158,22 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
             {paymentSource === 'account' && (
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="accountId" className="text-base md:text-sm">حساب پرداخت</Label>
-                <Select name="accountId" required={paymentSource === 'account'} value={accountId} onValueChange={setAccountId}>
+                <Select
+                  name="accountId"
+                  required={paymentSource === 'account'}
+                  value={accountId}
+                  onValueChange={(id) => {
+                    setAccountId(id);
+                    setCurrency(accounts.find((acc) => acc.id === id)?.currency ?? '');
+                  }}
+                >
                   <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
                     <SelectValue placeholder="انتخاب حساب" />
                   </SelectTrigger>
                   <SelectContent>
                     {accounts.map((acc) => (
                       <SelectItem key={acc.id} value={acc.id}>
-                        {acc.name} ({acc.currency})
+                        {accountLabel(acc)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -225,7 +259,7 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
           </div>
 
           {state.message && (
-            <div className={`text-sm p-2 rounded ${state.message.includes('موفقیت') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            <div className={`text-sm p-2 rounded ${state.success ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
               {state.message}
             </div>
           )}

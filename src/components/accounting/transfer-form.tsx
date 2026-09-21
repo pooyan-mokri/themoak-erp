@@ -12,8 +12,11 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { TagInput } from '@/components/ui/tag-input';
 import { ReceiptUpload } from '@/components/accounting/receipt-upload';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { accountLabel } from '@/lib/account-label';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import Link from 'next/link';
 
 const initialState = { message: '', errors: {}, success: false };
 
@@ -22,10 +25,12 @@ interface Account {
   name: string;
   currency: string;
   balance: number;
+  cardNumber?: string | null;
 }
 
 export function TransferForm({ accounts }: { accounts: Account[] }) {
   const [state, dispatch] = useFormState(recordInternalTransfer, initialState);
+  const [requestId, renewRequestId] = useRequestId();
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [date, setDate] = useState<Date>(new Date());
@@ -40,10 +45,12 @@ export function TransferForm({ accounts }: { accounts: Account[] }) {
       setDate(new Date());
       setReceiptUrl('');
       setReceiptType('');
+      // A new id, and a fresh form (it is keyed by the id), for the next entry.
+      renewRequestId();
     } else if (state.message && !state.success) {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, renewRequestId]);
 
   const errors = state.errors as Record<string, string[] | undefined> | undefined;
   const fromAccount = accounts.find((a) => a.id === fromAccountId);
@@ -59,9 +66,15 @@ export function TransferForm({ accounts }: { accounts: Account[] }) {
     <Card className="max-w-lg mx-auto">
       <CardHeader>
         <CardTitle>انتقال وجه بین حساب‌ها</CardTitle>
-        <CardDescription>فقط بین حساب‌هایی با ارز یکسان امکان‌پذیر است</CardDescription>
+        <CardDescription>
+          فقط بین حساب‌هایی با ارز یکسان امکان‌پذیر است ·{' '}
+          <Link href="/dashboard/accounting/transfers" className="underline">
+            انتقال‌های ثبت‌شده
+          </Link>
+        </CardDescription>
       </CardHeader>
-      <form action={dispatch}>
+      <form key={requestId} action={dispatch}>
+        <RequestIdField value={requestId} />
         <input type="hidden" name="receiptUrl" value={receiptUrl} />
 
         <CardContent className="space-y-4">
@@ -73,7 +86,7 @@ export function TransferForm({ accounts }: { accounts: Account[] }) {
               <SelectContent>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({a.currency}) — {a.balance.toLocaleString('fa-IR')}
+                    {accountLabel(a)} — {a.balance.toLocaleString('fa-IR')}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -101,7 +114,7 @@ export function TransferForm({ accounts }: { accounts: Account[] }) {
                 ) : (
                   eligibleTargets.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({a.currency}) — {a.balance.toLocaleString('fa-IR')}
+                      {accountLabel(a)} — {a.balance.toLocaleString('fa-IR')}
                     </SelectItem>
                   ))
                 )}

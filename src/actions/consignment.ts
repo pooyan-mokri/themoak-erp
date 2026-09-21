@@ -9,7 +9,10 @@ import { prisma } from '@/lib/prisma';
 import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
-import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
+import { balanceEffect, inAccountCurrency } from '@/lib/balance-reconciliation';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
 
 // const prisma = new PrismaClient();
 
@@ -329,12 +332,20 @@ export async function transferStockBatch(input: {
  *   - Order.totalAmount = NET amount we are owed (gross − commission)
  *   - ConsignmentCommission records the gross & commission split for reporting
  *   - Commission is marked isPaid=true at creation (partner auto-deducted it)
+ *
+ * Each call books its own COGS and commission expense rows, so the same
+ * report must not be booked twice: a submission sent again (a retry after an
+ * error, a double click) carries the same requestId and is answered without
+ * writing, and lines that are all already on the day's order are refused
+ * until the user confirms them (confirmRepeat) as a genuinely new report.
  */
 export async function recordConsignmentSales(input: {
   partnerWarehouseId: string;
   saleDate: string; // ISO date or YYYY-MM-DD
   items: Array<{ productId: string; quantity: number; unitPrice: number }>;
-}): Promise<ActionResult> {
+  requestId?: string;
+  confirmRepeat?: boolean;
+}): Promise<ActionResult<{ repeatOf: number }>> {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
   const validated = BatchSettlementSchema.safeParse(input);
@@ -346,6 +357,7 @@ export async function recordConsignmentSales(input: {
   }
 
   const { partnerWarehouseId, saleDate, items } = validated.data;
+  const requestId = readRequestId(input.requestId);
   // Normalise to start-of-day to make per-date matching deterministic
   const day = new Date(saleDate);
   day.setHours(0, 0, 0, 0);
@@ -354,7 +366,13 @@ export async function recordConsignmentSales(input: {
   dayEnd.setHours(23, 59, 59, 999);
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome: { duplicate?: boolean; repeatOf?: number } = await prisma.$transaction(async (tx: any) => {
+      // One recording at a time per partner, so a repeat sees the first one's lines.
+      await tx.$queryRaw`SELECT id FROM "Warehouse" WHERE id = ${partnerWarehouseId} FOR UPDATE`;
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return { duplicate: true };
+      }
+
       // 1. Verify partner and warehouse
       const warehouse = await tx.warehouse.findUnique({
         where: { id: partnerWarehouseId },
@@ -415,6 +433,23 @@ export async function recordConsignmentSales(input: {
         include: { items: true },
       });
 
+      // The same lines booked again onto the same day's order: most likely the
+      // same report entered twice. Only an explicit confirmation books them.
+      if (
+        order &&
+        !input.confirmRepeat &&
+        items.every((item) =>
+          order.items.some(
+            (line: any) =>
+              line.productId === item.productId &&
+              line.quantity === item.quantity &&
+              Number(line.price) === item.unitPrice,
+          ),
+        )
+      ) {
+        return { repeatOf: order.number as number };
+      }
+
       if (order) {
         // Append items to existing order
         for (const item of items) {
@@ -429,12 +464,14 @@ export async function recordConsignmentSales(input: {
             },
           });
         }
-        // Recalculate gross from ALL items
+        // Recalculate gross from ALL items, counting only units still sold
+        // (returned and exchanged units are no longer owed or commissioned)
         const allItems = await tx.orderItem.findMany({
           where: { orderId: order.id },
+          include: { returns: true, exchanges: true },
         });
         const newGross = allItems.reduce(
-          (sum: number, it: any) => sum + it.quantity * Number(it.price),
+          (sum: number, it: any) => sum + effectiveQuantity(it) * Number(it.price),
           0,
         );
         const newCommission = (newGross * commissionRate) / 100;
@@ -540,6 +577,13 @@ export async function recordConsignmentSales(input: {
       // 6. Record P&L expenses (non-cash): COGS + partner commission.
       // Booked against dedicated EXPENSE accounts whose balance stays 0, so
       // they reduce net profit (P&L sums by type) without touching cash.
+      // The first row written carries the submission's requestId.
+      let firstRow = true;
+      const requestIdOnce = () => {
+        const id = firstRow ? requestId ?? undefined : undefined;
+        firstRow = false;
+        return id;
+      };
       if (cogsTotal > 0) {
         const cogsAccountId = await ensureExpenseAccount(
           tx,
@@ -556,6 +600,8 @@ export async function recordConsignmentSales(input: {
             category: 'COGS',
             description: `بهای تمام‌شده کالای فروش امانی - سفارش #${order.number}`,
             customerId: warehouse.customerId,
+            orderId: order.id,
+            clientRequestId: requestIdOnce(),
             date: day,
           },
         });
@@ -576,12 +622,23 @@ export async function recordConsignmentSales(input: {
             category: 'CONSIGNMENT_COMMISSION',
             description: `کمیسیون همکار امانی - سفارش #${order.number}`,
             customerId: warehouse.customerId,
+            orderId: order.id,
+            clientRequestId: requestIdOnce(),
             date: day,
           },
         });
       }
+      return {};
     });
+    if (outcome.duplicate) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+    if (outcome.repeatOf) {
+      return {
+        message: `همین اقلام با همین تعداد و قیمت قبلاً در فاکتور #${outcome.repeatOf} برای این تاریخ ثبت شده‌اند. اگر فروش تازه‌ای است، دوباره تأیید کنید.`,
+        data: { repeatOf: outcome.repeatOf },
+      };
+    }
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     const message = error instanceof Error ? error.message : 'خطا در ثبت فروش امانی.';
     return { message };
   }
@@ -664,37 +721,33 @@ export async function getPendingSettlements() {
       },
       include: {
         customer: true,
-        items: { include: { product: true } },
+        items: { include: { product: true, returns: true, exchanges: true } },
         commissions: true,
       },
       orderBy: { createdAt: 'desc' },
     });
     return orders.map((order: any) => {
-      const paidAmount = order.paidAmount ? Number(order.paidAmount) : 0;
-      const commission = order.commissions?.[0];
-      const commissionAmount = commission ? Number(commission.commissionAmount) : 0;
-      const commissionRate = commission ? Number(commission.commissionRate) : 0;
-      // Gross is always the sum of item prices (reliable for old & new orders).
-      const grossAmount = order.items.reduce(
-        (sum: number, it: any) => sum + it.quantity * Number(it.price),
-        0,
-      );
+      // Gross is the sum of item prices over the units still sold (reliable
+      // for old & new orders, and for lines partly returned or exchanged).
       // Our share = gross − partner commission. Derive it instead of trusting
       // order.totalAmount, which is gross for legacy single-item orders.
-      const netShare = grossAmount - commissionAmount;
+      const { grossAmount, commissionAmount, commissionRate, netAmount, paidAmount, remainingAmount } =
+        consignmentAmounts(order);
       return {
         ...order,
-        totalAmount: netShare,
+        totalAmount: netAmount,
         paidAmount,
-        remainingAmount: netShare - paidAmount,
+        remainingAmount,
         grossAmount,
         commissionAmount,
         commissionRate,
         discount: order.discount ? Number(order.discount) : undefined,
         items: order.items.map((item: any) => {
           const { costPrice, ...product } = item.product;
+          const { returns, exchanges, ...line } = item;
           return {
-            ...item,
+            ...line,
+            soldQuantity: effectiveQuantity(item),
             price: Number(item.price),
             product: canSeeCost ? item.product : product,
           };
@@ -719,7 +772,10 @@ const PaymentSchema = z.object({
  * Supports PARTIAL payments — if amount < remaining, order stays
  * PENDING_PAYMENT with paymentStatus = PARTIAL.
  *
- * If no amount is provided, the full remaining balance is paid.
+ * If no amount is provided, the full remaining balance is paid. The amount is
+ * in Toman and lands on a bank or cash account in that account's currency.
+ * The payment row carries the order and the form's requestId, so a
+ * submission sent twice is booked once.
  */
 export async function paySettlement(prevState: ActionState, formData: FormData): Promise<ActionResult> {
   const denied = await checkPermission('sales.manage');
@@ -736,13 +792,21 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   }
 
   const { orderId, accountId, amount, paymentDate } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // Payments on one order run one after the other; the second re-checks
+      // the remaining amount the first one left.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
+
       // 1. Get Order with items + commission so we can derive the net payable
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: true, commissions: true },
+        include: { items: { include: { returns: true, exchanges: true } }, commissions: true },
       });
 
       if (!order) {
@@ -751,22 +815,17 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
       if (order.siteReference) {
         throw new Error(WEBSITE_ORDER_LOCKED);
       }
+      if (order.status === 'CANCELLED') {
+        throw new Error('این سفارش لغو شده است و نمی‌توان برای آن پرداخت ثبت کرد.');
+      }
       if (order.paymentStatus === 'PAID') {
         throw new Error('این سفارش قبلاً به طور کامل پرداخت شده است.');
       }
 
-      // Net payable = gross (sum of items) − partner commission. Derived so it
-      // is correct for both legacy (gross-stored) and new (net-stored) orders.
-      const grossAmount = order.items.reduce(
-        (sum: number, it: any) => sum + it.quantity * Number(it.price),
-        0,
-      );
-      const commissionAmount = order.commissions?.[0]
-        ? Number(order.commissions[0].commissionAmount)
-        : 0;
-      const netPayable = grossAmount - commissionAmount;
-      const currentPaid = Number(order.paidAmount || 0);
-      const remaining = netPayable - currentPaid;
+      // Net payable = gross (units still sold) − partner commission. Derived
+      // so it is correct for both legacy (gross-stored) and new (net-stored)
+      // orders, and after returns and exchanges.
+      const { netAmount: netPayable, paidAmount: currentPaid, remainingAmount: remaining } = consignmentAmounts(order);
       const payAmount = amount ?? remaining;
 
       if (payAmount <= 0) {
@@ -776,38 +835,49 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
         throw new Error(`مبلغ پرداخت (${payAmount.toLocaleString('fa-IR')}) از مبلغ باقیمانده (${remaining.toLocaleString('fa-IR')}) بیشتر است.`);
       }
 
-      // 2. Create INCOME transaction for this payment
+      // 2. The money lands on a real bank or cash account, in its currency.
+      const account = await tx.account.findUnique({ where: { id: accountId } });
+      if (!account) {
+        throw new Error('حساب مقصد یافت نشد.');
+      }
+      if (account.type !== 'BANK' && account.type !== 'CASH') {
+        throw new Error('حساب مقصد باید از نوع بانک یا صندوق باشد.');
+      }
+      const converted = await inAccountCurrency(tx, account, payAmount);
+
+      // 3. Create INCOME transaction for this payment
       const transaction = await tx.transaction.create({
         data: {
-          currency: Currency.TOMAN,
+          currency: account.currency,
           type: TransactionType.INCOME,
           accountId,
-          amount: new Prisma.Decimal(payAmount),
+          amount: new Prisma.Decimal(converted.amount),
           amountInToman: new Prisma.Decimal(payAmount),
-          rateSnapshot: 1,
+          rateSnapshot: new Prisma.Decimal(converted.rate),
           date: paymentDate ? new Date(paymentDate) : new Date(),
           description: `تسویه فروش امانی - سفارش #${order.number}${
             payAmount < remaining ? ' (پرداخت جزئی)' : ''
           }`,
           customerId: order.customerId ?? undefined,
+          orderId,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
-      // 3. Update account balance
+      // 4. Update account balance
       await tx.account.update({
         where: { id: accountId },
-        data: { balance: { increment: payAmount } },
+        data: { balance: { increment: new Prisma.Decimal(converted.amount) } },
       });
 
-      // 4. Update order paid status against the NET payable
+      // 5. Update order paid status against the NET payable. The sale amount
+      //    (totalAmount) is the sale's, kept by the sale, returns and exchanges.
       const newPaid = currentPaid + payAmount;
       const fullyPaid = newPaid >= netPayable - 0.01;
 
       await tx.order.update({
         where: { id: orderId },
         data: {
-          // Normalise legacy orders: store the net as totalAmount going forward
-          totalAmount: new Prisma.Decimal(netPayable),
           paidAmount: new Prisma.Decimal(newPaid),
           paymentStatus: fullyPaid ? 'PAID' : 'PARTIAL',
           // Always standard COMPLETED (also normalises legacy PENDING_PAYMENT)
@@ -816,8 +886,11 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
           transactionId: fullyPaid ? transaction.id : order.transactionId,
         },
       });
+      return 'done';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت.';
     return { message };
   }
@@ -834,19 +907,30 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
  * caused:
  *  - sold goods go back to the partner's virtual warehouse (unless the order
  *    was already CANCELLED via sales history, which already restored stock)
- *  - settlement payment (INCOME) transactions are deleted and their account
- *    balance decremented
- *  - non-cash COGS / commission EXPENSE transactions are deleted
- *  - commission rows, SALE movements, items and the order itself are removed
+ *  - every money row of the order is deleted and what it did to its
+ *    account's balance is undone: rows linked by orderId (checkout,
+ *    «ثبت پرداخت», settlement payments, return refunds, exchange
+ *    differences), the checkout row (Order.transactionId), and older rows
+ *    that only name «سفارش #N» in their description
+ *  - non-cash COGS / commission EXPENSE transactions are deleted (they sit on
+ *    EXPENSE accounts whose balance they never moved)
+ *  - returns, exchanges, commission rows, SALE movements, items and the order
+ *    itself are removed
  * Removing the order also removes it from sales history (same table).
+ * Deleting money that reached a bank or cash account is for an admin only.
  */
 export async function deleteConsignmentOrder(
   orderId: string,
 ): Promise<ActionResult> {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
   try {
     await prisma.$transaction(async (tx: any) => {
+      // A payment, return or exchange on this order either committed before
+      // this point or waits here and then finds the order gone, so none of its
+      // money is left behind unlinked.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
@@ -880,22 +964,49 @@ export async function deleteConsignmentOrder(
         }
       }
 
-      // 2. Reverse all related transactions. Match by description containing
-      //    the exact order number (guard against #19 vs #197 with a regex).
+      // 2. Reverse all related transactions: every row linked to the order,
+      //    its checkout row, and older rows written before rows were linked,
+      //    matched by the exact order number in the wording the app itself
+      //    writes for an order's money (guard against #19 vs #197). A row typed
+      //    by hand that names the order (a courier cost «... سفارش #N») moved
+      //    money for its own reason and stays.
       const candidates = await tx.transaction.findMany({
         where: {
-          customerId: order.customerId ?? undefined,
-          description: { contains: `سفارش #${order.number}` },
+          OR: [
+            { orderId },
+            ...(order.transactionId ? [{ id: order.transactionId }] : []),
+            { description: { contains: `سفارش #${order.number}` } },
+          ],
         },
+        include: { account: true },
       });
-      const numRe = new RegExp(`#${order.number}(?!\\d)`);
-      for (const trx of candidates) {
-        if (!trx.description || !numRe.test(trx.description)) continue;
-        // Settlement income moved real cash → reverse the account balance.
-        if (trx.type === TransactionType.INCOME && trx.accountId) {
+      const appWording = new RegExp(
+        `^(دریافت بابت|تسویه فروش امانی -|تسویه حساب امانی -|بهای تمام\u200cشده کالای فروش امانی -|کمیسیون همکار امانی -|عودت کالا -|تعویض کالا -|پرداخت فاکتور .+ -) سفارش #${order.number}(?!\\d)`,
+      );
+      const moneyRows = candidates.filter(
+        (trx: any) =>
+          trx.orderId === orderId ||
+          trx.id === order.transactionId ||
+          (trx.orderId == null &&
+            (trx.type === TransactionType.INCOME || trx.type === TransactionType.EXPENSE) &&
+            (trx.customerId == null || trx.customerId === order.customerId) &&
+            appWording.test(trx.description ?? '')),
+      );
+      // The COGS and commission rows sit on EXPENSE accounts kept at 0 and never
+      // moved a balance. Every other row did, whatever its account: the old
+      // settlement modal let a payment land on an EXPENSE account and raised it.
+      const movedCash = (trx: any) =>
+        !!trx.account &&
+        !(trx.account.type === 'EXPENSE' && (trx.category === 'COGS' || trx.category === 'CONSIGNMENT_COMMISSION'));
+      if (!isAdmin && moneyRows.some(movedCash)) {
+        throw new Error('دسترسی غیرمجاز — این فاکتور پرداخت یا بازپرداخت ثبت‌شده دارد و فقط مدیر سیستم می‌تواند آن را حذف کند.');
+      }
+      for (const trx of moneyRows) {
+        // Undo exactly what the row did to its account, in the account's currency.
+        if (movedCash(trx)) {
           await tx.account.update({
             where: { id: trx.accountId },
-            data: { balance: { decrement: Number(trx.amount) } },
+            data: { balance: { increment: -balanceEffect(trx) } },
           });
         }
         await tx.transaction.delete({ where: { id: trx.id } });
@@ -904,8 +1015,10 @@ export async function deleteConsignmentOrder(
       // 3. Remove SALE movements created for this order.
       await tx.inventoryMovement.deleteMany({ where: { referenceId: orderId } });
 
-      // 4. Remove commissions, items, and the order itself.
+      // 4. Remove commissions, returns, exchanges, items, and the order itself.
       await tx.consignmentCommission.deleteMany({ where: { orderId } });
+      await tx.orderExchange.deleteMany({ where: { orderId } });
+      await tx.orderReturn.deleteMany({ where: { orderId } });
       await tx.orderItem.deleteMany({ where: { orderId } });
       await tx.order.delete({ where: { id: orderId } });
     });
@@ -1077,7 +1190,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
           status: { not: 'CANCELLED' },
           items: { some: { warehouseId: partnerWarehouseId } },
         },
-        include: { items: true, commissions: true },
+        include: { items: { include: { returns: true, exchanges: true } }, commissions: true },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
@@ -1113,19 +1226,16 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
         )
       : null;
 
+    // Money is counted over the units still sold (returned and exchanged
+    // units are neither owed nor commissioned), as in the settlement list.
     let grossSales = 0;
     let commissionTotal = 0;
     let receivedTotal = 0;
     for (const order of orders) {
-      const gross = order.items.reduce(
-        (s: number, it: any) => s + it.quantity * Number(it.price),
-        0,
-      );
-      grossSales += gross;
-      commissionTotal += order.commissions?.[0]
-        ? Number(order.commissions[0].commissionAmount)
-        : 0;
-      receivedTotal += Number(order.paidAmount || 0);
+      const amounts = consignmentAmounts(order);
+      grossSales += amounts.grossAmount;
+      commissionTotal += amounts.commissionAmount;
+      receivedTotal += amounts.paidAmount;
     }
     const ourShare = grossSales - commissionTotal;
     const balance = ourShare - receivedTotal;
@@ -1155,13 +1265,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
           quantity: inv.quantity,
         })),
       orders: orders.map((o: any) => {
-        const gross = o.items.reduce(
-          (s: number, it: any) => s + it.quantity * Number(it.price),
-          0,
-        );
-        const commission = o.commissions?.[0]
-          ? Number(o.commissions[0].commissionAmount)
-          : 0;
+        const { grossAmount: gross, commissionAmount: commission } = consignmentAmounts(o);
         return {
           id: o.id,
           number: o.number,

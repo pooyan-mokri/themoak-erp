@@ -5,8 +5,12 @@ import { Currency, TransactionType, ActionResult, ActionState } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
+import { auth } from '@/auth';
 import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { randomUUID } from 'node:crypto';
 
 // const prisma = new PrismaClient(); // Removed local instance
 
@@ -19,6 +23,9 @@ import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balan
 // exporting this constant failed every Next.js build.
 const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
 
+/** The one ADJUSTMENT row that documents an account's historical difference and moves no money. */
+const BASELINE_CATEGORY = 'مانده پایه';
+
 /**
  * COGS and gift rows are valued at product cost, so their amounts are cost
  * data (cost.view), which an accountant reading the journal may not see.
@@ -30,6 +37,17 @@ const COST_CATEGORIES = ['COGS', 'Marketing - Gift', 'Marketing/Gift'];
 
 function isCostRow(transaction: { category?: string | null; marketingGift?: unknown }): boolean {
   return COST_CATEGORIES.includes(transaction.category ?? '') || !!transaction.marketingGift;
+}
+
+/**
+ * True when this submission's id is already stored, i.e. it was booked before
+ * (src/lib/request-id.ts). Checked first, so a repeat answers as the first one
+ * did even when the balance no longer covers it; the unique column still
+ * catches two copies that arrive at the same moment.
+ */
+async function alreadyBooked(requestId: string | null): Promise<boolean> {
+  if (!requestId) return false;
+  return !!(await prisma.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
 }
 
 // --- Schemas ---
@@ -88,15 +106,34 @@ export async function createAccount(prevState: ActionState, formData: FormData):
   const { name, type, currency, initialBalance, cardNumber, sheba } = validatedFields.data;
 
   try {
-    await prisma.account.create({
-      data: {
-        name,
-        type,
-        currency,
-        balance: initialBalance || 0,
-        cardNumber: cardNumber || undefined,
-        sheba: sheba || undefined,
-      },
+    await prisma.$transaction(async (tx: any) => {
+      const account = await tx.account.create({
+        data: {
+          name,
+          type,
+          currency,
+          balance: initialBalance || 0,
+          cardNumber: cardNumber || undefined,
+          sheba: sheba || undefined,
+        },
+      });
+      // The opening balance is a row like any other money, so the
+      // reconciliation of a new account starts at a difference of 0.
+      if (initialBalance) {
+        await tx.transaction.create({
+          data: {
+            type: TransactionType.ADJUSTMENT,
+            amount: new Prisma.Decimal(initialBalance),
+            currency,
+            rateSnapshot: new Prisma.Decimal(1),
+            amountInToman: new Prisma.Decimal(initialBalance),
+            accountId: account.id,
+            category: 'موجودی اولیه',
+            description: 'موجودی اولیه',
+            date: new Date(),
+          },
+        });
+      }
     });
   } catch (error) {
     return {
@@ -158,7 +195,7 @@ export async function updateAccount(id: string, prevState: ActionState, formData
   // Check if this is the Marketing Expenses account and prevent name change
   const existingAccount = await prisma.account.findUnique({
     where: { id },
-    select: { name: true, type: true },
+    select: { name: true, type: true, currency: true },
   });
 
   if (existingAccount?.name === 'Marketing Expenses') {
@@ -198,6 +235,16 @@ export async function updateAccount(id: string, prevState: ActionState, formData
       ? 'نوع حساب‌های هزینه‌ای سیستم (مثل بهای تمام‌شده) قابل تغییر نیست.'
       : 'نمی‌توان حساب را به حساب هزینه‌ای تبدیل کرد.';
     return { errors: { type: [message] }, message };
+  }
+
+  // An account's rows are amounts in its own currency (balanceEffect reads them
+  // that way), so relabelling the currency would silently revalue its history.
+  if (existingAccount && currency !== existingAccount.currency) {
+    const rows = await prisma.transaction.count({ where: { accountId: id } });
+    if (rows > 0) {
+      const message = `ارز حسابی که تراکنش دارد قابل تغییر نیست (${existingAccount.currency}). برای ارز دیگر یک حساب جدید بسازید.`;
+      return { errors: { currency: [message] }, message };
+    }
   }
 
   try {
@@ -353,8 +400,11 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
   }
 
   const { amount, currency, category, accountId, employeeId, description, date, projectId, receiptUrl } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     // 1. Get Exchange Rate if not Toman
     let rate = 1;
     if (currency !== 'TOMAN') {
@@ -399,6 +449,7 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
             date: date ? new Date(date) : new Date(),
             projectId: projectId || undefined,
             receiptUrl: receiptUrl || undefined,
+            clientRequestId: requestId ?? undefined,
           }
         });
         // No account balance update needed - this creates a payable (liability)
@@ -437,6 +488,7 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
             date: date ? new Date(date) : new Date(),
             projectId: projectId || undefined,
             receiptUrl: receiptUrl || undefined,
+            clientRequestId: requestId ?? undefined,
           }
         });
 
@@ -455,6 +507,8 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
     });
 
   } catch (error: unknown) {
+    // The same submission a second time: it was booked once, by the first.
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error recording expense:', error);
     const errorObj = error as { message?: string; code?: string; meta?: unknown; stack?: string };
     console.error('Error details:', {
@@ -477,7 +531,7 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
   } catch (error) {
     // Ignore revalidatePath error outside of Next.js context
   }
-  return { message: 'هزینه با موفقیت ثبت شد.' };
+  return { message: 'هزینه با موفقیت ثبت شد.', success: true };
 }
 
 // --- Edit / delete a recorded expense (finance.manage) ---
@@ -529,6 +583,9 @@ function systemOwnerOf(expense: any): string | null {
   return null;
 }
 
+/** A refusal meant for the user, not a crash. */
+class ExpenseRefusal extends Error {}
+
 /**
  * Delete an expense transaction (finance.manage).
  * Reverses the account balance change that was applied when the expense was recorded.
@@ -538,23 +595,24 @@ export async function deleteExpense(id: string): Promise<ActionResult> {
   if (denied) return denied;
 
   try {
-    const expense = await prisma.transaction.findUnique({
-      where: { id },
-      include: SYSTEM_OWNED_RELATIONS,
-    });
-    if (!expense || expense.type !== TransactionType.EXPENSE) {
-      return { success: false, message: 'هزینه یافت نشد.' };
-    }
-
-    const owner = systemOwnerOf(expense);
-    if (owner) {
-      return {
-        success: false,
-        message: `این سند به‌صورت خودکار توسط «${owner}» ثبت شده است و باید از همان بخش اصلاح یا لغو شود.`,
-      };
-    }
-
     await prisma.$transaction(async (tx: any) => {
+      // Read the expense inside the transaction, with its row locked, as
+      // updateExpense does: an edit of it waits, or is waited for, and the
+      // reversal below undoes what the row holds now, not what it held before.
+      await tx.$queryRaw`SELECT id FROM "Transaction" WHERE id = ${id} FOR UPDATE`;
+      const expense = await tx.transaction.findUnique({
+        where: { id },
+        include: SYSTEM_OWNED_RELATIONS,
+      });
+      if (!expense || expense.type !== TransactionType.EXPENSE) {
+        throw new ExpenseRefusal('هزینه یافت نشد.');
+      }
+
+      const owner = systemOwnerOf(expense);
+      if (owner) {
+        throw new ExpenseRefusal(`این سند به‌صورت خودکار توسط «${owner}» ثبت شده است و باید از همان بخش اصلاح یا لغو شود.`);
+      }
+
       // Reverse the balance decrement for account-paid expenses.
       // Undo exactly what this row did to the balance, in the account's own
       // currency — balanceEffect replays the same rule the reconciliation
@@ -571,6 +629,7 @@ export async function deleteExpense(id: string): Promise<ActionResult> {
     revalidatePath('/dashboard/accounting/expenses');
     return { success: true, message: 'هزینه با موفقیت حذف شد.' };
   } catch (error) {
+    if (error instanceof ExpenseRefusal) return { success: false, message: error.message };
     console.error('Error deleting expense:', error);
     return { success: false, message: 'خطا در حذف هزینه.' };
   }
@@ -603,38 +662,39 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
   const { id, amount, currency, category, description, date, accountId } = parsed.data;
 
   try {
-    const existing = await prisma.transaction.findUnique({
-      where: { id },
-      include: SYSTEM_OWNED_RELATIONS,
-    });
-    if (!existing || existing.type !== TransactionType.EXPENSE) {
-      return { success: false, message: 'هزینه یافت نشد.' };
-    }
-
-    const owner = systemOwnerOf(existing);
-    if (owner) {
-      return {
-        success: false,
-        message: `این سند به‌صورت خودکار توسط «${owner}» ثبت شده است و باید از همان بخش اصلاح یا لغو شود.`,
-      };
-    }
-
-    // Resolve new exchange rate / Toman amount
-    let rate = 1;
-    if (currency !== 'TOMAN') {
-      const latestRate = await prisma.exchangeRate.findFirst({
-        where: { currency },
-        orderBy: { date: 'desc' },
-      });
-      if (!latestRate) {
-        return { success: false, message: `نرخ تبدیل برای ارز ${currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.` };
-      }
-      rate = Number(latestRate.rateToToman);
-    }
-    const newAmountInToman = amount * rate;
-    const wasAccountPaid = !!existing.accountId;
-
     const result = await prisma.$transaction(async (tx: any) => {
+      // Read the expense inside the transaction, with its row locked: a second
+      // edit or a delete of it waits, and this one reverses what the row holds
+      // now, not what it held before the other one changed it.
+      await tx.$queryRaw`SELECT id FROM "Transaction" WHERE id = ${id} FOR UPDATE`;
+      const existing = await tx.transaction.findUnique({
+        where: { id },
+        include: SYSTEM_OWNED_RELATIONS,
+      });
+      if (!existing || existing.type !== TransactionType.EXPENSE) {
+        throw new Error('هزینه یافت نشد.');
+      }
+
+      const owner = systemOwnerOf(existing);
+      if (owner) {
+        throw new Error(`این سند به‌صورت خودکار توسط «${owner}» ثبت شده است و باید از همان بخش اصلاح یا لغو شود.`);
+      }
+
+      // Resolve new exchange rate / Toman amount
+      let rate = 1;
+      if (currency !== 'TOMAN') {
+        const latestRate = await tx.exchangeRate.findFirst({
+          where: { currency },
+          orderBy: { date: 'desc' },
+        });
+        if (!latestRate) {
+          throw new Error(`نرخ تبدیل برای ارز ${currency} یافت نشد. لطفا ابتدا نرخ امروز را وارد کنید.`);
+        }
+        rate = Number(latestRate.rateToToman);
+      }
+      const newAmountInToman = amount * rate;
+      const wasAccountPaid = !!existing.accountId;
+
       if (wasAccountPaid) {
         // 1. Reverse the original effect in the currency it was applied in
         await tx.account.update({
@@ -774,12 +834,13 @@ export async function getExpenseBreakdown() {
  */
 /**
  * Compare every account's stored balance against the balance re-derived from
- * its own transactions, so accounts whose ledger no longer adds up are visible.
+ * its own transactions, so accounts whose ledger no longer adds up are visible,
+ * next to the account's last bank check.
  *
- * The difference is NOT purely error: it also contains the account's opening
- * balance, which was written directly at creation and has no transaction. The
- * UI says so — this report points at accounts worth checking, it does not
- * declare a number wrong on its own.
+ * A new account starts at a difference of 0: its opening balance is a row. An
+ * older account carries a historical difference (opening balances written with
+ * no row, overwrites by the old account form) until an admin records it once
+ * with recordBalanceBaseline; from then on any difference is new drift.
  */
 export async function getAccountReconciliation() {
   await requirePermission('finance.view');
@@ -789,26 +850,27 @@ export async function getAccountReconciliation() {
     const accounts = await prisma.account.findMany({
       where: { type: { not: 'EXPENSE' } },
       orderBy: { name: 'asc' },
+      include: { bankChecks: { orderBy: { checkedAt: 'desc' }, take: 1 } },
     });
 
     const rows = await Promise.all(
       accounts.map(async (account: any) => {
         const transactions = await prisma.transaction.findMany({
           where: { accountId: account.id },
-          select: { type: true, amount: true, description: true, date: true },
+          select: { type: true, amount: true, description: true, category: true, date: true, createdAt: true },
         });
 
         const computed = sumBalanceEffects(transactions as any);
-        const stored = Number(account.balance);
+        const check = account.bankChecks[0] ?? null;
 
         return {
           id: account.id,
           name: account.name,
           type: account.type,
           currency: account.currency,
-          stored,
-          computed,
-          difference: stored - computed,
+          stored: Number(account.balance),
+          computed: Number(computed),
+          difference: Number(new Decimal(account.balance).minus(computed)),
           transactionCount: transactions.length,
           lastTransactionAt:
             transactions.length > 0
@@ -817,6 +879,27 @@ export async function getAccountReconciliation() {
                   transactions[0].date as Date,
                 )
               : null,
+          lastCheck: check
+            ? {
+                checkedAt: check.checkedAt as Date,
+                bankBalance: Number(check.bankBalance),
+                erpBalance: Number(check.erpBalance),
+                note: check.note as string | null,
+              }
+            : null,
+          // What was entered after the check, so the bank should now hold its
+          // figure plus this. The correction an adjustment made with its check
+          // carries the check's own time and is not counted; nor is a baseline,
+          // which moves no money.
+          changeSinceCheck: check
+            ? Number(
+                sumBalanceEffects(
+                  transactions.filter(
+                    (t: any) => t.createdAt > check.checkedAt && t.category !== BASELINE_CATEGORY,
+                  ) as any,
+                ),
+              )
+            : null,
         };
       }),
     );
@@ -828,11 +911,23 @@ export async function getAccountReconciliation() {
   }
 }
 
+/** The account row, locked until the surrounding transaction ends. */
+async function lockAccount(tx: any, accountId: string) {
+  const [account] = await tx.$queryRaw`SELECT id, name, currency, balance FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
+  if (!account) throw new Error('حساب یافت نشد.');
+  return account as { id: string; name: string; currency: string; balance: Decimal };
+}
+
 /**
  * Deliberately correct an account's balance to a known figure (e.g. a bank
  * statement), writing an ADJUSTMENT transaction for the difference so the
- * change is explained and the ledger invariant
- * (balance == opening + Σ transactions) still holds.
+ * change is explained and the ledger invariant (balance == Σ transactions)
+ * still holds, and keeping the figure as a BankCheck.
+ *
+ * The account row is locked while the difference is worked out, and the
+ * balance moves by that difference, never to an absolute figure: a sale booked
+ * at the same moment waits for the lock and then adds on top instead of being
+ * overwritten.
  *
  * This replaces the old behaviour where saving the account edit form silently
  * overwrote the balance with no record of what changed or why.
@@ -849,46 +944,63 @@ export async function adjustAccountBalance(input: {
   if (!Number.isFinite(targetBalance)) {
     return { success: false, message: 'موجودی جدید معتبر نیست.' };
   }
+  const createdById = (await auth())?.user?.id ?? null;
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
-      const account = await tx.account.findUnique({ where: { id: accountId } });
-      if (!account) throw new Error('حساب یافت نشد.');
+      const account = await lockAccount(tx, accountId);
 
-      const current = Number(account.balance);
-      const delta = targetBalance - current;
-      if (Math.abs(delta) < 0.5) return { delta: 0, name: account.name };
+      const current = new Decimal(account.balance);
+      const delta = new Decimal(targetBalance).minus(current);
+      // The check and its correction share one moment (see getAccountReconciliation).
+      const now = new Date();
+
+      await tx.bankCheck.create({
+        data: {
+          accountId,
+          checkedAt: now,
+          bankBalance: new Prisma.Decimal(targetBalance),
+          erpBalance: current,
+          note: note?.trim() || null,
+          createdById,
+        },
+      });
+
+      // A Toman figure typed as the rounded balance the page shows is already
+      // right; on a foreign-currency account a cent is money.
+      if (delta.abs().lessThan(account.currency === 'TOMAN' ? 0.5 : 0.005)) return { delta: 0, name: account.name };
 
       await tx.transaction.create({
         data: {
           type: TransactionType.ADJUSTMENT,
           // Signed on purpose: an ADJUSTMENT carries no implicit direction, so
           // reconciliation can only re-derive its effect if the sign is stored.
-          amount: new Prisma.Decimal(delta),
+          amount: delta,
           currency: account.currency,
           rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: new Prisma.Decimal(delta),
+          amountInToman: delta,
           accountId,
           category: 'اصلاح موجودی',
           description:
             (note?.trim() ? `${note.trim()} — ` : '') +
-            `اصلاح موجودی از ${Math.round(current).toLocaleString('fa-IR')} به ${Math.round(targetBalance).toLocaleString('fa-IR')}`,
-          date: new Date(),
+            `اصلاح موجودی از ${Math.round(Number(current)).toLocaleString('fa-IR')} به ${Math.round(targetBalance).toLocaleString('fa-IR')}`,
+          date: now,
+          createdAt: now,
         },
       });
 
       await tx.account.update({
         where: { id: accountId },
-        data: { balance: new Prisma.Decimal(targetBalance) },
+        data: { balance: { increment: delta } },
       });
 
-      return { delta, name: account.name };
+      return { delta: Number(delta), name: account.name };
     });
 
     revalidatePath('/dashboard', 'layout');
 
     return result.delta === 0
-      ? { success: true, message: 'موجودی از قبل درست بود؛ تغییری ثبت نشد.' }
+      ? { success: true, message: 'موجودی از قبل درست بود؛ رقم بانک ثبت شد و موجودی تغییری نکرد.' }
       : {
           success: true,
           message: `موجودی «${result.name}» اصلاح شد (${result.delta > 0 ? '+' : ''}${Math.round(result.delta).toLocaleString('fa-IR')}) و سند اصلاح ثبت گردید.`,
@@ -899,6 +1011,114 @@ export async function adjustAccountBalance(input: {
       success: false,
       message: error instanceof Error ? error.message : 'خطا در اصلاح موجودی.',
     };
+  }
+}
+
+/**
+ * «ثبت مانده پایه»: record an account's historical difference once, so its
+ * reconciliation starts from 0 and any later difference is new drift.
+ *
+ * The difference (stored balance − signed sum of its transactions) is history:
+ * opening balances written with no row, overwrites by the old account form,
+ * legacy rows. This writes ONE ADJUSTMENT row equal to it and leaves
+ * Account.balance alone: no money moves, the ledger is only told where it
+ * starts. Wrong legacy rows should be fixed first; one fixed afterwards shows
+ * up as a new difference.
+ */
+export async function recordBalanceBaseline(accountId: string): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      // Locked, so no sale lands between reading the balance and summing the rows.
+      const account = await lockAccount(tx, accountId);
+      const transactions = await tx.transaction.findMany({
+        where: { accountId },
+        select: { type: true, amount: true, description: true },
+      });
+      const difference = new Decimal(account.balance).minus(sumBalanceEffects(transactions));
+      if (difference.isZero()) return null;
+
+      await tx.transaction.create({
+        data: {
+          type: TransactionType.ADJUSTMENT,
+          amount: difference,
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(1),
+          amountInToman: difference,
+          accountId,
+          category: BASELINE_CATEGORY,
+          description: 'مانده پایه — اختلاف قدیمی موجودی ثبت‌شده با جمع تراکنش‌ها؛ موجودی حساب تغییر نکرد',
+          date: new Date(),
+        },
+      });
+      return { difference: Number(difference), name: account.name };
+    });
+
+    if (!result) {
+      return { success: false, message: 'اختلاف این حساب صفر است؛ ثبت مانده پایه لازم نیست.' };
+    }
+
+    revalidatePath('/dashboard', 'layout');
+    return {
+      success: true,
+      message: `مانده پایه «${result.name}» ثبت شد (${Math.round(result.difference).toLocaleString('fa-IR')}). موجودی حساب تغییر نکرد و اختلاف آن اکنون صفر است.`,
+    };
+  } catch (error) {
+    console.error('Error recording balance baseline:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'خطا در ثبت مانده پایه.',
+    };
+  }
+}
+
+/**
+ * «ثبت موجودی بانک»: keep a bank-statement figure next to what the ERP shows
+ * now, and change nothing else. The reconciliation page shows the last check
+ * and what has been entered since.
+ */
+export async function recordBankCheck(input: {
+  accountId: string;
+  bankBalance: number;
+  note?: string;
+}): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  const { accountId, bankBalance, note } = input;
+  if (!Number.isFinite(bankBalance)) {
+    return { success: false, message: 'رقم بانک معتبر نیست.' };
+  }
+
+  try {
+    const account = await prisma.account.findUnique({ where: { id: accountId } });
+    if (!account) return { success: false, message: 'حساب یافت نشد.' };
+
+    await prisma.bankCheck.create({
+      data: {
+        accountId,
+        checkedAt: new Date(),
+        bankBalance: new Prisma.Decimal(bankBalance),
+        erpBalance: account.balance,
+        note: note?.trim() || null,
+        createdById: (await auth())?.user?.id ?? null,
+      },
+    });
+
+    revalidatePath('/dashboard/accounting/reconciliation');
+    const gap = Number(account.balance) - bankBalance;
+    return {
+      success: true,
+      message:
+        Math.abs(gap) < 0.5
+          ? 'رقم بانک ثبت شد؛ با موجودی سیستم برابر است.'
+          : `رقم بانک ثبت شد. سیستم ${Math.round(Math.abs(gap)).toLocaleString('fa-IR')} ${gap > 0 ? 'بیشتر' : 'کمتر'} از بانک نشان می‌دهد.`,
+    };
+  } catch (error) {
+    console.error('Error recording bank check:', error);
+    return { success: false, message: 'خطا در ثبت موجودی بانک.' };
   }
 }
 
@@ -1083,9 +1303,13 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
         throw new Error('حساب یافت نشد');
       }
 
+      // The debt is kept in Toman (amountInToman); the cash leaves the account
+      // in the account's own currency.
+      const { amount: amountInAccountCurrency, rate } = await inAccountCurrency(tx, account, amount);
+
       const accountBalance = Number(account.balance);
-      if (accountBalance < amount) {
-        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} تومان، مبلغ مورد نیاز: ${amount.toLocaleString('fa-IR')} تومان`);
+      if (accountBalance < amountInAccountCurrency) {
+        throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${accountBalance.toLocaleString('fa-IR')} ${account.currency}، مبلغ مورد نیاز: ${amountInAccountCurrency.toLocaleString('fa-IR')} ${account.currency}`);
       }
 
       // Money leaves the account, so the row must be an EXPENSE. It was typed
@@ -1094,9 +1318,9 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
       // transactions. The debt report now nets by category instead.
       await tx.transaction.create({
         data: {
-          amount: new Prisma.Decimal(amount),
-          currency: 'TOMAN',
-          rateSnapshot: new Prisma.Decimal(1),
+          amount: new Prisma.Decimal(amountInAccountCurrency),
+          currency: account.currency,
+          rateSnapshot: new Prisma.Decimal(rate),
           amountInToman: new Prisma.Decimal(amount),
           type: TransactionType.EXPENSE,
           accountId,
@@ -1112,7 +1336,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
         where: { id: accountId },
         data: {
           balance: {
-            decrement: new Prisma.Decimal(amount),
+            decrement: new Prisma.Decimal(amountInAccountCurrency),
           },
         },
       });
@@ -1168,8 +1392,11 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
   }
 
   const { amount, currency, accountId, payee, description, category, tags, date, receiptUrl } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     let rate = 1;
     if (currency !== 'TOMAN') {
       const latestRate = await prisma.exchangeRate.findFirst({ where: { currency }, orderBy: { date: 'desc' } });
@@ -1202,6 +1429,7 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
           tags: tagsArr,
           date: date ? new Date(date) : new Date(),
           receiptUrl: receiptUrl || undefined,
+          clientRequestId: requestId ?? undefined,
         },
       });
       await tx.account.update({
@@ -1210,6 +1438,7 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
       });
     });
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     return { message: error instanceof Error ? error.message : 'خطا در ثبت برداشت.', success: false };
   }
 
@@ -1219,6 +1448,11 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
 }
 
 // ─── Internal Transfer ────────────────────────────────────────────────────────
+
+/** Both legs of a transfer made in the app are TRANSFER rows; the prefix gives the direction (see balanceEffect). */
+const TRANSFER_CATEGORY = 'انتقال وجه';
+const OUT_PREFIX = '[خروج]';
+const IN_PREFIX = '[ورود]';
 
 const TransferSchema = z.object({
   amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
@@ -1253,8 +1487,11 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
   if (fromAccountId === toAccountId) {
     return { message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.', success: false };
   }
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const [fromAccount, toAccount] = await Promise.all([
       prisma.account.findUnique({ where: { id: fromAccountId } }),
       prisma.account.findUnique({ where: { id: toAccountId } }),
@@ -1271,6 +1508,8 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
     const txDate = date ? new Date(date) : new Date();
     const desc = description || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
+    // The two legs share one id, so they are listed, corrected and removed as one transfer.
+    const transferGroupId = randomUUID();
 
     await prisma.$transaction(async (tx: any) => {
       // Debit source
@@ -1282,11 +1521,13 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
           amountInToman: new Prisma.Decimal(amount),
           type: TransactionType.TRANSFER,
           accountId: fromAccountId,
-          category: 'انتقال وجه',
-          description: `[خروج] ${desc}`,
+          category: TRANSFER_CATEGORY,
+          description: `${OUT_PREFIX} ${desc}`,
           tags: tagsArr,
           date: txDate,
           receiptUrl: receiptUrl || undefined,
+          transferGroupId,
+          clientRequestId: requestId ?? undefined,
         },
       });
       // Credit destination
@@ -1298,23 +1539,330 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
           amountInToman: new Prisma.Decimal(amount),
           type: TransactionType.TRANSFER,
           accountId: toAccountId,
-          category: 'انتقال وجه',
-          description: `[ورود] ${desc}`,
+          category: TRANSFER_CATEGORY,
+          description: `${IN_PREFIX} ${desc}`,
           tags: tagsArr,
           date: txDate,
           receiptUrl: receiptUrl || undefined,
+          transferGroupId,
         },
       });
       await tx.account.update({ where: { id: fromAccountId }, data: { balance: { decrement: new Prisma.Decimal(amount) } } });
       await tx.account.update({ where: { id: toAccountId }, data: { balance: { increment: new Prisma.Decimal(amount) } } });
     });
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     return { message: error instanceof Error ? error.message : 'خطا در انتقال وجه.', success: false };
   }
 
   revalidatePath('/dashboard/accounting/transactions');
+  revalidatePath('/dashboard/accounting/transfers');
   revalidatePath('/dashboard/accounting/accounts');
   return { message: 'انتقال وجه با موفقیت ثبت شد.', success: true };
+}
+
+/**
+ * Transfers recorded before transferGroupId existed have no link between their
+ * legs. They are paired the way the old code wrote them: a «[خروج]» and a
+ * «[ورود]» row of the same amount on two accounts, written in one database
+ * transaction, so created within a few seconds of each other.
+ */
+const LEGACY_TRANSFER_WINDOW_MS = 5000;
+
+type TransferLeg = {
+  id: string;
+  type: string;
+  accountId: string | null;
+  amount: unknown;
+  currency: string;
+  description: string | null;
+  date: Date;
+  createdAt: Date;
+  transferGroupId: string | null;
+};
+
+/** Internal transfer rows: legs linked by transferGroupId (app or API), and unlinked app legs marked by their prefix. */
+const TRANSFER_ROWS = {
+  OR: [
+    { transferGroupId: { not: null } },
+    {
+      transferGroupId: null,
+      type: TransactionType.TRANSFER,
+      OR: [{ description: { startsWith: OUT_PREFIX } }, { description: { startsWith: IN_PREFIX } }],
+    },
+  ],
+};
+
+/** The leg money leaves, by the same rule the reconciliation reads. */
+function isOutgoing(leg: { type: string; description?: string | null }): boolean {
+  return balanceEffect({ type: leg.type, amount: 1, description: leg.description }) < 0;
+}
+
+function isLegacyPartner(a: TransferLeg, b: TransferLeg): boolean {
+  return (
+    !a.transferGroupId &&
+    !b.transferGroupId &&
+    a.id !== b.id &&
+    isOutgoing(a) !== isOutgoing(b) &&
+    a.accountId !== b.accountId &&
+    new Decimal(a.amount as Decimal.Value).equals(b.amount as Decimal.Value) &&
+    Math.abs(a.createdAt.getTime() - b.createdAt.getTime()) <= LEGACY_TRANSFER_WINDOW_MS
+  );
+}
+
+/** Groups transfer rows into pairs, newest first. A leg without a partner is returned alone. */
+function pairTransferRows<T extends TransferLeg>(rows: T[]): Array<{ from?: T; to?: T }> {
+  const byGroup = new Map<string, { from?: T; to?: T }>();
+  const legacy: T[] = [];
+  const pairs: Array<{ from?: T; to?: T }> = [];
+
+  for (const row of rows) {
+    if (!row.transferGroupId) {
+      legacy.push(row);
+      continue;
+    }
+    let pair = byGroup.get(row.transferGroupId);
+    if (!pair) {
+      pair = {};
+      byGroup.set(row.transferGroupId, pair);
+      pairs.push(pair);
+    }
+    if (isOutgoing(row)) pair.from = row;
+    else pair.to = row;
+  }
+
+  // The two legs of one transfer were written in one database transaction,
+  // milliseconds apart, so the closest possible partners are paired first: a
+  // leg of the same amount a second away never takes the partner written right
+  // beside a leg. loadTransfer pairs with this same function over the same
+  // rows, so an edit or a delete acts on exactly the pair shown in the list.
+  const byTime = [...legacy].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+  const candidates: Array<[T, T]> = [];
+  for (const [index, row] of byTime.entries()) {
+    for (const other of byTime.slice(index + 1)) {
+      if (other.createdAt.getTime() - row.createdAt.getTime() > LEGACY_TRANSFER_WINDOW_MS) break;
+      if (isLegacyPartner(row, other)) candidates.push([row, other]);
+    }
+  }
+  const gap = ([a, b]: [T, T]) => b.createdAt.getTime() - a.createdAt.getTime();
+  const taken = new Set<string>();
+  for (const [a, b] of candidates.sort((x, y) => gap(x) - gap(y))) {
+    if (taken.has(a.id) || taken.has(b.id)) continue;
+    taken.add(a.id);
+    taken.add(b.id);
+    pairs.push(isOutgoing(a) ? { from: a, to: b } : { from: b, to: a });
+  }
+  for (const row of byTime) {
+    if (!taken.has(row.id)) pairs.push(isOutgoing(row) ? { from: row } : { to: row });
+  }
+
+  const at = (pair: { from?: T; to?: T }) => (pair.from ?? pair.to)!.date.getTime();
+  return pairs.sort((a, b) => at(b) - at(a));
+}
+
+/** A refusal meant for the user, not a crash. */
+class TransferRefusal extends Error {}
+
+/** The legs of the transfer `id` names, which is either a group id or one leg's id. */
+async function loadTransfer(tx: any, id: string): Promise<{ from?: TransferLeg; to?: TransferLeg; groupId: string | null }> {
+  const found: TransferLeg[] = await tx.transaction.findMany({
+    where: { AND: [TRANSFER_ROWS, { OR: [{ transferGroupId: id }, { id }] }] },
+  });
+  if (found.length === 0) throw new TransferRefusal('سند انتقال یافت نشد.');
+
+  const groupId = found[0].transferGroupId ?? null;
+  if (!groupId) {
+    // A leg written before transferGroupId existed: its partner is the one the
+    // transfers list shows beside it, found the same way from the same rows.
+    const anchor = found[0];
+    const legacy: TransferLeg[] = await tx.transaction.findMany({ where: { AND: [TRANSFER_ROWS, { transferGroupId: null }] } });
+    const pair = pairTransferRows(legacy).find((legs) => legs.from?.id === anchor.id || legs.to?.id === anchor.id);
+    if (!pair) throw new TransferRefusal('این انتقال هم‌زمان ویرایش یا حذف شده است؛ صفحه را تازه کنید.');
+    return { from: pair.from, to: pair.to, groupId };
+  }
+
+  const legs: TransferLeg[] = await tx.transaction.findMany({ where: { transferGroupId: groupId } });
+  return { from: legs.find(isOutgoing), to: legs.find((leg) => !isOutgoing(leg)), groupId };
+}
+
+/**
+ * Lock the legs and read them again. A second correction of the same transfer
+ * waits here, then sees what the first one left: legs it deleted are gone
+ * (refused, so nothing is reversed twice) and legs it rewrote are read with
+ * their new amounts.
+ */
+async function lockTransferLegs(tx: any, legs: Array<TransferLeg | undefined>) {
+  const ids = legs.filter(Boolean).map((leg) => leg!.id);
+  const locked: Array<{ id: string; type: string; accountId: string | null; amount: Decimal; description: string | null }> =
+    await tx.$queryRaw`SELECT id, type::text AS type, "accountId", amount, description FROM "Transaction" WHERE id = ANY(${ids}) FOR UPDATE`;
+  if (locked.length !== ids.length) {
+    throw new TransferRefusal('این انتقال هم‌زمان ویرایش یا حذف شده است؛ صفحه را تازه کنید.');
+  }
+  return locked;
+}
+
+/** Undo what a leg did to its account's balance, exactly. */
+async function reverseTransferLeg(tx: any, leg: { type: string; accountId: string | null; amount: unknown; description: string | null }) {
+  if (!leg.accountId) return;
+  const sign = balanceEffect({ type: leg.type, amount: 1, description: leg.description });
+  await tx.account.update({
+    where: { id: leg.accountId },
+    data: { balance: { increment: new Decimal(leg.amount as Decimal.Value).times(-sign) } },
+  });
+}
+
+/**
+ * Correct a recorded internal transfer. The old legs are taken back off their
+ * accounts and the new figures applied, in one transaction, so the balances end
+ * up as if the transfer had been recorded this way. The same two documents are
+ * rewritten; a leg missing from the books is written again.
+ */
+export async function updateInternalTransfer(input: {
+  id: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  date?: string;
+  description?: string;
+}): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  const parsed = TransferSchema.extend({ id: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) {
+    const first = Object.values(parsed.error.flatten().fieldErrors)[0]?.[0];
+    return { success: false, message: first ?? 'اطلاعات وارد شده معتبر نیست.' };
+  }
+  const { id, amount, fromAccountId, toAccountId, description, date } = parsed.data;
+  if (fromAccountId === toAccountId) {
+    return { success: false, message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.' };
+  }
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const existing = await loadTransfer(tx, id);
+      for (const leg of await lockTransferLegs(tx, [existing.from, existing.to])) {
+        await reverseTransferLeg(tx, leg);
+      }
+
+      const fromAccount = await tx.account.findUnique({ where: { id: fromAccountId } });
+      const toAccount = await tx.account.findUnique({ where: { id: toAccountId } });
+      if (!fromAccount || !toAccount) throw new TransferRefusal('حساب یافت نشد.');
+      if (fromAccount.currency !== toAccount.currency) {
+        throw new TransferRefusal(`ارز دو حساب باید یکسان باشد (${fromAccount.currency} ≠ ${toAccount.currency}).`);
+      }
+      if (Number(fromAccount.balance) < amount) {
+        throw new TransferRefusal(`موجودی حساب "${fromAccount.name}" کافی نیست.`);
+      }
+
+      const desc = description?.trim() || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
+      const transferGroupId = existing.groupId ?? randomUUID();
+      const txDate = date ? new Date(date) : (existing.from ?? existing.to)!.date;
+      const leg = (accountId: string, prefix: string) => ({
+        amount: new Prisma.Decimal(amount),
+        currency: fromAccount.currency,
+        rateSnapshot: new Prisma.Decimal(1),
+        amountInToman: new Prisma.Decimal(amount),
+        accountId,
+        description: `${prefix} ${desc}`,
+        date: txDate,
+        transferGroupId,
+      });
+      for (const [data, old] of [
+        [leg(fromAccountId, OUT_PREFIX), existing.from],
+        [leg(toAccountId, IN_PREFIX), existing.to],
+      ] as const) {
+        if (old) await tx.transaction.update({ where: { id: old.id }, data });
+        else await tx.transaction.create({ data: { ...data, type: TransactionType.TRANSFER, category: TRANSFER_CATEGORY } });
+      }
+
+      await tx.account.update({ where: { id: fromAccountId }, data: { balance: { decrement: new Prisma.Decimal(amount) } } });
+      await tx.account.update({ where: { id: toAccountId }, data: { balance: { increment: new Prisma.Decimal(amount) } } });
+    });
+  } catch (error: unknown) {
+    console.error('Error editing internal transfer:', error);
+    return {
+      success: false,
+      message: error instanceof TransferRefusal ? error.message : 'خطا در ویرایش انتقال وجه.',
+    };
+  }
+
+  revalidatePath('/dashboard', 'layout');
+  return { success: true, message: 'انتقال وجه اصلاح شد و موجودی حساب‌ها به‌روز شد.' };
+}
+
+/** Remove a recorded internal transfer and give both accounts their money back. */
+export async function deleteInternalTransfer(id: string): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const existing = await loadTransfer(tx, id);
+      const legs = await lockTransferLegs(tx, [existing.from, existing.to]);
+      for (const leg of legs) await reverseTransferLeg(tx, leg);
+      const { count } = await tx.transaction.deleteMany({ where: { id: { in: legs.map((leg) => leg.id) } } });
+      if (count !== legs.length) {
+        throw new TransferRefusal('این انتقال هم‌زمان ویرایش یا حذف شده است؛ صفحه را تازه کنید.');
+      }
+    });
+  } catch (error: unknown) {
+    console.error('Error deleting internal transfer:', error);
+    return {
+      success: false,
+      message: error instanceof TransferRefusal ? error.message : 'خطا در حذف انتقال وجه.',
+    };
+  }
+
+  revalidatePath('/dashboard', 'layout');
+  return { success: true, message: 'انتقال وجه حذف شد و موجودی حساب‌ها به حالت قبل برگشت.' };
+}
+
+export type TransferHistoryRow = {
+  /** What edit and delete take: the transfer's group id, or the id of its first leg. */
+  id: string;
+  date: Date;
+  fromAccountId: string | null;
+  toAccountId: string | null;
+  fromAccount: string | null;
+  toAccount: string | null;
+  amount: number;
+  currency: string;
+  description: string;
+  /** False when only one leg of the transfer is in the books. */
+  complete: boolean;
+};
+
+/** Internal transfers between the company's own accounts, one row per transfer, newest first. */
+export async function getInternalTransfers(): Promise<TransferHistoryRow[]> {
+  await requirePermission('finance.view');
+  try {
+    const rows = await prisma.transaction.findMany({
+      where: TRANSFER_ROWS,
+      include: { account: { select: { name: true } } },
+      orderBy: { date: 'desc' },
+    });
+
+    return pairTransferRows(rows as any).map((pair) => {
+      const { from, to } = pair as { from?: any; to?: any };
+      const known = (from ?? to)!;
+      return {
+        id: known.transferGroupId ?? known.id,
+        date: known.date,
+        fromAccountId: from?.accountId ?? null,
+        toAccountId: to?.accountId ?? null,
+        fromAccount: from?.account?.name ?? null,
+        toAccount: to?.account?.name ?? null,
+        amount: Number(known.amount),
+        currency: known.currency,
+        description: (known.description ?? '').replace(/^\s*\[(خروج|ورود)\]\s*/, ''),
+        complete: Boolean(from && to),
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching internal transfers:', error);
+    return [];
+  }
 }
 
 // ─── Deposit ──────────────────────────────────────────────────────────────────
@@ -1353,8 +1901,11 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
 
   const { amount, currency, accountId, description, category, tags, date } = validatedFields.data;
   const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     let rate = 1;
     if (currency !== 'TOMAN') {
       const latestRate = await prisma.exchangeRate.findFirst({
@@ -1389,6 +1940,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
           description,
           tags: tagsArr,
           date: date ? new Date(date) : new Date(),
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -1398,6 +1950,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
       });
     });
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     const message = error instanceof Error ? error.message : 'خطا در ثبت واریز.';
     return { message, success: false };
   }

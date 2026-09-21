@@ -88,7 +88,10 @@ export function SettlementList({ settlements, accounts }: SettlementListProps) {
                       <div className="max-h-[100px] overflow-y-auto text-xs">
                         {s.items.map((item: any) => (
                           <div key={item.id}>
-                            {item.product?.name} × {item.quantity}
+                            {item.product?.name} × {item.soldQuantity}
+                            {item.soldQuantity !== item.quantity && (
+                              <span className="text-muted-foreground"> (از {item.quantity}؛ بقیه برگشتی یا تعویضی)</span>
+                            )}
                           </div>
                         ))}
                       </div>

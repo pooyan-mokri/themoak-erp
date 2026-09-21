@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
+import { accountLabel } from '@/lib/account-label';
 
 const initialState = {
   message: '',
@@ -28,6 +29,7 @@ interface Account {
   id: string;
   name: string;
   currency: string;
+  cardNumber?: string | null;
 }
 
 interface PayDebtDialogProps {
@@ -112,7 +114,7 @@ export function PayDebtDialog({ employee, accounts, isOpen, onClose }: PayDebtDi
                 <SelectContent>
                   {accounts.map((acc) => (
                     <SelectItem key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.currency})
+                      {accountLabel(acc)}
                     </SelectItem>
                   ))}
                 </SelectContent>
