@@ -17,7 +17,7 @@ import { restoreOrderItemStock } from '@/lib/restore-warehouse';
 import { balanceEffect } from '@/lib/balance-reconciliation';
 import { WEBSITE_ORDER_LOCKED, readSiteOrderData } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
-import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
 import { PAYMENT_ACCOUNT_TYPE_MESSAGE, accountForViewer, bookOrderPayment, productForViewer } from '@/lib/sales-records';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { accountLabel } from '@/lib/account-label';
@@ -474,6 +474,7 @@ type OrderMoneyRow = {
   amount: Prisma.Decimal;
   description: string | null;
   category: string | null;
+  amountInToman: Prisma.Decimal | null;
   accountId: string | null;
   account: { name: string; currency: string; cardNumber: string | null; type: string } | null;
 };
@@ -497,6 +498,37 @@ function orderMoneyRows(client: any, orderId: string, transactionId: string | nu
 function movesBalance(row: OrderMoneyRow): boolean {
   if (!row.account) return false;
   return !(row.account.type === 'EXPENSE' && (row.category === 'COGS' || row.category === 'CONSIGNMENT_COMMISSION'));
+}
+
+const fmt = (n: number) => Math.round(n).toLocaleString('fa-IR');
+
+/**
+ * Why this cancel must not run, or null. Two checks, on the rows the cancel would reverse:
+ * - They must add up to what the order says was paid. A payment the order-link
+ *   backfill could not attach (older wording, a row written during a deploy)
+ *   would otherwise stay booked while the order shows nothing paid.
+ * - Reversing money other people recorded after the checkout (later payments,
+ *   settlements) deletes recorded bank money, which is for an admin only, like
+ *   deleteConsignmentOrder.
+ */
+function cancelBlocker(
+  rows: OrderMoneyRow[],
+  order: { paidAmount: unknown; transactionId: string | null },
+  isAdmin: boolean,
+): string | null {
+  const moving = rows.filter(movesBalance);
+  const linked = moving.reduce((sum, row) => {
+    const toman = Number(row.amountInToman ?? row.amount);
+    return sum + (row.type === 'INCOME' ? toman : row.type === 'EXPENSE' ? -toman : 0);
+  }, 0);
+  const paid = Number(order.paidAmount ?? 0);
+  if (Math.abs(linked - paid) > 0.5) {
+    return `پرداخت‌های وصل به این سفارش (${fmt(linked)} تومان) با مبلغ پرداخت‌شدهٔ سفارش (${fmt(paid)} تومان) نمی‌خواند؛ بخشی از پول سفارش به آن وصل نیست. لغو انجام نشد تا پولی در حساب‌ها جا نماند. با مدیر سیستم تماس بگیرید.`;
+  }
+  if (!isAdmin && moving.some((row) => row.id !== order.transactionId)) {
+    return 'دسترسی غیرمجاز — این سفارش پرداخت یا تسویهٔ ثبت‌شده بعد از فروش دارد و فقط مدیر سیستم می‌تواند آن را لغو کند.';
+  }
+  return null;
 }
 
 /** What removing an order's money rows does to each account, in the account's own currency. */
@@ -548,7 +580,7 @@ export async function getCancelOrderPreview(orderId: string): Promise<
   try {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { status: true, siteReference: true, transactionId: true },
+      select: { status: true, siteReference: true, transactionId: true, paidAmount: true },
     });
     if (!order) return { success: false, message: 'سفارش یافت نشد.' };
     if (order.siteReference !== null) return { success: false, message: WEBSITE_ORDER_LOCKED };
@@ -556,6 +588,8 @@ export async function getCancelOrderPreview(orderId: string): Promise<
     if (await hasReturnsOrExchanges(prisma, orderId)) return { success: false, message: RETURNED_ORDER_MESSAGE };
 
     const rows = await orderMoneyRows(prisma, orderId, order.transactionId);
+    const blocked = cancelBlocker(rows, order, (await getCurrentRole()) === 'ADMIN');
+    if (blocked) return { success: false, message: blocked };
     return { success: true, accounts: reversalsByAccount(rows), moneyRowIds: rows.map((row) => row.id) };
   } catch (error) {
     console.error('Error previewing order cancel:', error);
@@ -576,6 +610,7 @@ export async function cancelOrder(orderId: string, expectedMoneyRowIds?: string[
 }> {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
   try {
     // Get order with all relations
     const order = await prisma.order.findUnique({
@@ -660,6 +695,10 @@ export async function cancelOrder(orderId: string, expectedMoneyRowIds?: string[
       if (expectedMoneyRowIds && !sameIds(expectedMoneyRowIds, moneyRows.map((row) => row.id))) {
         throw new Error(PREVIEW_CHANGED_MESSAGE);
       }
+      // order was read before the claim zeroed paidAmount: a payment that slipped in between makes
+      // the sums disagree, which refuses the cancel (the safe side).
+      const blocked = cancelBlocker(moneyRows, order, isAdmin);
+      if (blocked) throw new Error(blocked);
       const deleted = await tx.transaction.deleteMany({ where: { id: { in: moneyRows.map((row) => row.id) } } });
       if (deleted.count !== moneyRows.length) {
         throw new Error('پرداخت‌های این سفارش هم‌زمان تغییر کرد؛ دوباره تلاش کنید.');

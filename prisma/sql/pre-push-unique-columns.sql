@@ -184,4 +184,21 @@ BEGIN
     CREATE TRIGGER site_hook_inventory AFTER INSERT OR UPDATE OR DELETE ON "Inventory"
       FOR EACH ROW EXECUTE FUNCTION site_hook_log();
   END IF;
+
+  -- Transaction.clientRequestId (src/lib/request-id.ts): the same reason as
+  -- webId. db push refuses to add a unique index to an existing table without
+  -- --accept-data-loss, so the column and its index are created here first
+  -- (every existing row is NULL, and NULLs never collide). The index name must
+  -- be the one Prisma expects.
+  IF to_regclass('"Transaction"') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_attribute
+      WHERE attrelid = '"Transaction"'::regclass AND attname = 'clientRequestId' AND NOT attisdropped
+    ) THEN
+      ALTER TABLE "Transaction" ADD COLUMN "clientRequestId" TEXT;
+    END IF;
+    IF to_regclass('"Transaction_clientRequestId_key"') IS NULL THEN
+      CREATE UNIQUE INDEX "Transaction_clientRequestId_key" ON "Transaction"("clientRequestId");
+    END IF;
+  END IF;
 END $$;

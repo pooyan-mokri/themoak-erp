@@ -113,7 +113,7 @@ export function ShareholderWithdrawalForm({
         <CardTitle>{profit ? 'پرداخت سود به صاحب سهام' : 'برداشت سرمایه توسط صاحب سهام'}</CardTitle>
         <p className="text-sm text-muted-foreground mt-2">
           {profit
-            ? `مبلغ به تومان از سود این دوره کم می‌شود. قابل برداشت: ${Math.round(profit.available).toLocaleString('fa-IR')} تومان`
+            ? `مبلغ به تومان از سود این دوره کم می‌شود. قابل برداشت: ${Math.floor(profit.available).toLocaleString('fa-IR')} تومان`
             : 'وقتی سهامدار پول برداشت می‌کند، به سیستم بدهکار می‌شود.'}
         </p>
       </CardHeader>

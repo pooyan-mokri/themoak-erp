@@ -61,7 +61,8 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         include: {
           customer: true,
           items: {
-            include: { product: true },
+            // Returns and exchanges tell orderMoney whether the total is stored net of commission.
+            include: { product: true, returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } },
           },
           commissions: true,
         },
@@ -323,7 +324,11 @@ export async function getOrderMoney(orderId: string) {
   await requirePermission('sales.view');
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { commissions: true, transaction: { include: { account: true } } },
+    include: {
+      commissions: true,
+      transaction: { include: { account: true } },
+      items: { include: { returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } } },
+    },
   });
   if (!order) return null;
   const checkout = order.transaction?.account;

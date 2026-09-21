@@ -37,18 +37,40 @@ export type OrderChange = {
   cashOut: number;
 };
 
-/** The money fields of an order row as Prisma returns them. */
+/**
+ * The money fields of an order row as Prisma returns them.
+ *
+ * The commission is netted only for an order whose total is stored net of it.
+ * A consignment-report sale is (its commission row is written settled, isPaid);
+ * a POS sale to a partner is stored gross until a settlement normalises it to
+ * net. With the items (and their returns and exchanges) at hand, the stored
+ * total itself says which: it sits nearer the net than the gross of the units
+ * still sold. Without them, the commission row's isPaid decides.
+ */
 export function orderMoney(order: {
   totalAmount: unknown;
   discount?: unknown;
   paidAmount?: unknown;
-  commissions?: Array<{ commissionRate: unknown }>;
+  commissions?: Array<{ commissionRate: unknown; isPaid?: unknown }>;
+  items?: Array<{ quantity: number; price: unknown; returns?: Array<{ quantity: number }>; exchanges?: Array<{ quantity: number }> }>;
 }): OrderMoney {
+  const commission = order.commissions?.[0];
+  const rate = commission ? Number(commission.commissionRate) : 0;
+  const totalAmount = Number(order.totalAmount);
+  let storedNet = false;
+  if (rate > 0) {
+    if (order.items) {
+      const gross = order.items.reduce((sum, item) => sum + effectiveQuantity(item) * Number(item.price), 0);
+      storedNet = Math.abs(totalAmount - gross * (1 - rate / 100)) < Math.abs(totalAmount - gross);
+    } else {
+      storedNet = !!commission?.isPaid;
+    }
+  }
   return {
-    totalAmount: Number(order.totalAmount),
+    totalAmount,
     discount: Number(order.discount ?? 0),
     paidAmount: Number(order.paidAmount ?? 0),
-    commissionRate: order.commissions?.[0] ? Number(order.commissions[0].commissionRate) : 0,
+    commissionRate: storedNet ? rate : 0,
   };
 }
 

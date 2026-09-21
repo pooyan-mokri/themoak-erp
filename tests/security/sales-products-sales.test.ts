@@ -278,7 +278,24 @@ test('SALES can still sell, take a payment, return, exchange, invoice, cancel an
   const invoiced = await createInvoiceFromOrder(sale.id);
   assert.equal(invoiced.success, true, invoiced.message);
 
-  assert.equal((await cancelOrder(sale.id)).success, true);
+  // This order has a payment recorded after the sale, a return and an exchange: its cancel is refused.
+  const refused = await cancelOrder(sale.id);
+  assert.equal(refused.success, false);
+
+  // A sale paid only at checkout: SALES may cancel it, which reverses that payment.
+  const paidAtCheckout = await createOrder({
+    customerId: ids.customer.id,
+    items: [{ productId: ids.product.id, quantity: 1, price: PRICE }],
+    paymentMethod: 'CASH',
+    accountId: ids.account.id,
+    totalAmount: PRICE,
+    paidAmount: PRICE,
+    warehouseId: ids.warehouse.id,
+  });
+  assert.equal(paidAtCheckout.success, true, paidAtCheckout.message);
+  const second = await prisma.order.findFirstOrThrow({ where: { id: { notIn: [ids.order.id, sale.id] } } });
+  const cancelled = await cancelOrder(second.id);
+  assert.equal(cancelled.success, true, cancelled.message);
 
   const customer = await createCustomer({}, form({ name: 'مشتری تازه' }));
   assert.equal(customer.success, true, customer.message);

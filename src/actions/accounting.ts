@@ -580,6 +580,9 @@ function systemOwnerOf(expense: any): string | null {
   if (expense.category === 'COGS') return 'بهای تمام‌شده کالای فروش امانی';
   if (expense.category === 'CONSIGNMENT_COMMISSION') return 'کمیسیون همکار امانی';
   if (expense.category === 'Currency Exchange') return 'مبادله ارز';
+  // Money of an order (a refund recorded on the website review page, a settlement cost):
+  // changed only from the order's own screens, which keep the order in step.
+  if (expense.orderId) return 'پول یک سفارش';
   return null;
 }
 
@@ -1033,6 +1036,12 @@ export async function recordBalanceBaseline(accountId: string): Promise<ActionRe
     const result = await prisma.$transaction(async (tx: any) => {
       // Locked, so no sale lands between reading the balance and summing the rows.
       const account = await lockAccount(tx, accountId);
+      // Once per account: a later difference is new drift, to be explained or corrected
+      // with «اصلاح موجودی», never folded into the history.
+      const existing = await tx.transaction.findFirst({ where: { accountId, category: BASELINE_CATEGORY }, select: { id: true } });
+      if (existing) {
+        throw new Error('مانده پایهٔ این حساب قبلاً ثبت شده است. اختلاف تازه، اختلاف جدید است: علتش را پیدا کنید یا با «اصلاح موجودی» و عدد صورتحساب بانک اصلاحش کنید.');
+      }
       const transactions = await tx.transaction.findMany({
         where: { accountId },
         select: { type: true, amount: true, description: true },

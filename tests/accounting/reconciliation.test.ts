@@ -98,10 +98,10 @@ test('the baseline records the historical difference once, as one row, and leave
     assert.equal(row.difference, 0);
     assert.equal(row.computed, before);
 
-    // Nothing left to record: refused, and nothing written.
+    // Once per account: refused, and nothing written.
     const again = await recordBalanceBaseline(id);
     assert.equal(again.success, false);
-    assert.match(again.message!, /صفر/);
+    assert.match(again.message!, /قبلاً ثبت شده/);
     assert.equal((await rowsOf(id)).length, 2);
   }
 });

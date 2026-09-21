@@ -825,7 +825,8 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
       // Net payable = gross (units still sold) − partner commission. Derived
       // so it is correct for both legacy (gross-stored) and new (net-stored)
       // orders, and after returns and exchanges.
-      const { netAmount: netPayable, paidAmount: currentPaid, remainingAmount: remaining } = consignmentAmounts(order);
+      const { grossAmount, commissionAmount, netAmount: netPayable, paidAmount: currentPaid, remainingAmount: remaining } =
+        consignmentAmounts(order);
       const payAmount = amount ?? remaining;
 
       if (payAmount <= 0) {
@@ -880,6 +881,10 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
         data: {
           paidAmount: new Prisma.Decimal(newPaid),
           paymentStatus: fullyPaid ? 'PAID' : 'PARTIAL',
+          // Store the total net of the partner's commission, over the units still sold
+          // (before the discount, as Order.totalAmount always is). A legacy order stored
+          // gross is normalised here; a net one keeps the same figure.
+          totalAmount: new Prisma.Decimal(grossAmount - commissionAmount),
           // Always standard COMPLETED (also normalises legacy PENDING_PAYMENT)
           status: 'COMPLETED',
           // Only set transactionId for full payment (preserves last-payment ref)

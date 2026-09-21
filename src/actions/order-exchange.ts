@@ -68,7 +68,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         include: {
           customer: true,
           items: {
-            include: { product: true },
+            // Returns and exchanges tell orderMoney whether the total is stored net of commission.
+            include: { product: true, returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } },
           },
           commissions: true,
         },
