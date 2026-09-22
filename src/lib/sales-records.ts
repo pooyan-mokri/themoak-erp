@@ -23,7 +23,14 @@ export const PAYMENT_ACCOUNT_TYPE_MESSAGE = 'حساب دریافت وجه بای
  */
 export async function bookOrderPayment(
   tx: any,
-  payment: { orderId: string; accountId: string; amount: number; requestId?: string | null; description?: string },
+  payment: {
+    orderId: string;
+    accountId: string;
+    amount: number;
+    requestId?: string | null;
+    description?: string;
+    receiptUrl?: string;
+  },
 ): Promise<'booked' | 'duplicate'> {
   const { orderId, accountId, amount, requestId } = payment;
 
@@ -66,6 +73,7 @@ export async function bookOrderPayment(
       description: payment.description ?? `دریافت بابت سفارش #${order.number} - مشتری: ${order.customer?.name || 'مشتری'}`,
       category: 'Sales',
       date: new Date(),
+      receiptUrl: payment.receiptUrl,
     },
   });
 

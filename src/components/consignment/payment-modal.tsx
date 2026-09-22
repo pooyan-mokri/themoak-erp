@@ -25,6 +25,7 @@ import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
 import { useRequestId } from '@/components/ui/request-id';
+import { ReceiptUpload } from '@/components/accounting/receipt-upload';
 
 interface Account {
   id: string;
@@ -53,6 +54,7 @@ export function PaymentModal({
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState(remainingAmount.toString());
   const [paymentDate, setPaymentDate] = useState<Date>(new Date());
+  const [receiptUrl, setReceiptUrl] = useState('');
   const [isPending, startTransition] = useTransition();
   const [requestId, renewRequestId] = useRequestId();
   // A settlement is real money: only a bank or cash account can receive it.
@@ -80,10 +82,12 @@ export function PaymentModal({
       fd.set('amount', String(amt));
       fd.set('paymentDate', paymentDate.toISOString().slice(0, 10));
       fd.set('requestId', requestId);
+      fd.set('receiptUrl', receiptUrl);
       const result = await paySettlement(undefined as any, fd);
       if (result.success) {
         toast.success(result.message);
         renewRequestId();
+        setReceiptUrl('');
         setOpen(false);
       } else {
         toast.error(result.message || 'خطا در ثبت پرداخت');
@@ -189,6 +193,15 @@ export function PaymentModal({
             defaultValue={paymentDate}
             onChange={(d) => d && setPaymentDate(d)}
           />
+
+          <div className="space-y-2">
+            <Label>رسید پرداخت (اختیاری)</Label>
+            <ReceiptUpload
+              currentUrl={receiptUrl}
+              onUploadComplete={(url) => setReceiptUrl(url)}
+              onRemove={() => setReceiptUrl('')}
+            />
+          </div>
         </div>
 
         <DialogFooter>

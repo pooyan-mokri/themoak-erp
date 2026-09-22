@@ -36,6 +36,7 @@ import { ShoppingCart } from 'lucide-react';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { accountLabel } from '@/lib/account-label';
 import { useRequestId } from '@/components/ui/request-id';
+import { ReceiptUpload } from '@/components/accounting/receipt-upload';
 
 interface Product {
   id: string;
@@ -95,6 +96,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const [saleDate, setSaleDate] = useState<Date>(new Date());
   const [orderTags, setOrderTags] = useState<string[]>([]);
   const [invoiceAccountId, setInvoiceAccountId] = useState<string>('');
+  const [receiptUrl, setReceiptUrl] = useState('');
   const [requestId, renewRequestId] = useRequestId();
 
   const addToCart = (product: Product) => {
@@ -146,6 +148,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     setSaleDate(new Date());
     setOrderTags([]);
     setInvoiceAccountId('');
+    setReceiptUrl('');
     setIsCheckoutOpen(true);
   };
 
@@ -213,6 +216,8 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       tags: orderTags,
       invoiceAccountId: invoiceAccountId || undefined,
       requestId,
+      // A sale with nothing paid has no money row to carry a receipt.
+      receiptUrl: paidVal > 0 && receiptUrl ? receiptUrl : undefined,
     });
 
     setIsSubmitting(false);
@@ -412,6 +417,13 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                   </div>
                 );
               })()}
+              {!isCreditSale && (
+                <ReceiptUpload
+                  currentUrl={receiptUrl}
+                  onUploadComplete={(url) => setReceiptUrl(url)}
+                  onRemove={() => setReceiptUrl('')}
+                />
+              )}
             </div>
 
             <div className="flex items-center space-x-2 space-x-reverse bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-900">

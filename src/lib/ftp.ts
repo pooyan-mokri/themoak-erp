@@ -1,7 +1,7 @@
-// Server-only helpers for src/actions/upload.ts and src/actions/ftp.ts, which check access first.
+// Server-only helpers for src/lib/receipt-storage.ts and src/actions/ftp.ts, whose callers check access first.
 // Deliberately not a 'use server' file: that would make every export a public endpoint.
 import { Client } from 'basic-ftp';
-import { Readable } from 'stream';
+import { Readable, Writable } from 'stream';
 import { readSystemSetting } from '@/lib/system-settings';
 
 interface FTPCredentials {
@@ -258,6 +258,71 @@ export async function deleteFromFTP(filePath: string): Promise<void> {
   } catch (error: any) {
     console.error('[FTP] Delete error:', error);
     throw new Error(error?.message || 'Failed to delete from FTP server');
+  } finally {
+    if (client) {
+      try {
+        client.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+    }
+  }
+}
+
+/**
+ * Read a file from the FTP server (a receipt, for src/app/api/receipts), or
+ * null when there is no such file.
+ */
+export async function downloadFromFTP(filePath: string): Promise<Buffer | null> {
+  let client: Client | null = null;
+  try {
+    const ftpCreds = (await readSystemSetting('ftp_credentials')) as
+      | FTPCredentials
+      | undefined;
+
+    if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
+      throw new Error('FTP credentials not configured');
+    }
+
+    client = new Client();
+    client.ftp.verbose = false;
+    // A viewer waits on this request: fail rather than hang.
+    (client.ftp as any).timeout = 15000;
+
+    const accessOptions: any = {
+      host: ftpCreds.host,
+      port: ftpCreds.port || 21,
+      user: ftpCreds.user,
+      password: ftpCreds.password,
+      secure: ftpCreds.secure || false,
+    };
+
+    if (ftpCreds.secure && ftpCreds.ignoreCertificateErrors) {
+      accessOptions.secureOptions = {
+        rejectUnauthorized: false,
+      };
+    }
+
+    await client.access(accessOptions);
+
+    const cleanPath = filePath.startsWith('ftp:')
+      ? filePath.slice(4)
+      : filePath;
+
+    const chunks: Buffer[] = [];
+    const sink = new Writable({
+      write(chunk, _encoding, done) {
+        chunks.push(Buffer.from(chunk));
+        done();
+      },
+    });
+    await client.downloadTo(sink, cleanPath);
+    return Buffer.concat(chunks);
+  } catch (error: any) {
+    // 550: no such file.
+    if (error?.code === 550) return null;
+    console.error('[FTP] Download error:', error);
+    throw new Error(error?.message || 'Failed to download from FTP server');
   } finally {
     if (client) {
       try {

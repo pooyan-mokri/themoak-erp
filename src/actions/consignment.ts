@@ -12,6 +12,7 @@ import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
 import { balanceEffect, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
 
 // const prisma = new PrismaClient();
@@ -793,6 +794,8 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
 
   const { orderId, accountId, amount, paymentDate } = validatedFields.data;
   const requestId = readRequestId(formData.get('requestId'));
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE };
 
   try {
     const outcome = await prisma.$transaction(async (tx: any) => {
@@ -861,6 +864,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
           }`,
           customerId: order.customerId ?? undefined,
           orderId,
+          receiptUrl,
           clientRequestId: requestId ?? undefined,
         },
       });

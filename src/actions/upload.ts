@@ -3,157 +3,59 @@
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
-import { readSystemSetting } from '@/lib/system-settings';
-import { uploadToFTP, deleteFromFTP } from '@/lib/ftp';
-import { checkPermission, requirePermission } from '@/lib/access';
+import { prisma } from '@/lib/prisma';
+import { checkPermission } from '@/lib/access';
+import { INVALID_RECEIPT_MESSAGE, RECEIPT_MAX_BYTES, isReceiptRef } from '@/lib/receipt-ref';
+import { STORAGE_MISSING_MESSAGE, deleteReceiptFile, sniffReceiptType, storeReceipt } from '@/lib/receipt-storage';
 
-// Receipts are attached to expenses, withdrawals and transfers.
+// Who records money records its receipt: finance staff for any row, sales staff
+// for order payments (src/lib/receipt-ref.ts decides which row takes it).
+const RECEIPT_UPLOADERS = ['finance.manage', 'sales.manage'] as const;
+
+/** Stores a receipt photo or PDF and returns its reference, for a form to save on its row. */
 export async function uploadReceipt(formData: FormData) {
-  const denied = await checkPermission('finance.manage');
+  const denied = await checkPermission(RECEIPT_UPLOADERS);
   if (denied) return denied;
+  const file = formData.get('file');
+  if (!(file instanceof Blob) || file.size === 0) {
+    return { success: false, error: 'فایلی انتخاب نشده است.' };
+  }
+  if (file.size > RECEIPT_MAX_BYTES) {
+    return { success: false, error: 'حجم فایل نباید بیشتر از ۴ مگابایت باشد.' };
+  }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  // The bytes decide the type, not the name or what the browser claimed.
+  const type = sniffReceiptType(bytes);
+  if (!type) {
+    return { success: false, error: 'فقط عکس (JPG، PNG، WEBP) یا فایل PDF قابل آپلود است.' };
+  }
   try {
-    const file = formData.get('file') as File;
-
-    if (!file) {
-      return { success: false, error: 'No file provided' };
-    }
-
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!validTypes.includes(file.type)) {
-      return {
-        success: false,
-        error: 'Invalid file type. Only JPG, PNG and PDF allowed.',
-      };
-    }
-
-    // Validate file size (5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      return { success: false, error: 'File size too large. Max 5MB allowed.' };
-    }
-
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Check if FTP is configured
-    const ftpCredentials = await readSystemSetting('ftp_credentials');
-
-    if (ftpCredentials) {
-      try {
-        // Upload to FTP
-        const ext = file.name.split('.').pop();
-        const filename = `${randomUUID()}.${ext}`;
-
-        console.log('[Upload] Attempting FTP upload:', filename);
-        const ftpResult = await uploadToFTP(buffer, filename);
-
-        console.log('[Upload] FTP upload successful:', ftpResult.path);
-
-        return {
-          success: true,
-          url: ftpResult.url,
-          type: file.type,
-        };
-      } catch (error: any) {
-        console.error('[Upload] FTP upload error:', error);
-        console.error('[Upload] Error details:', {
-          message: error?.message,
-        });
-
-        // On Vercel, local storage is not available, so we must fail if FTP fails
-        const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
-
-        if (isVercel) {
-          const errorMessage = error?.message || 'Failed to upload to FTP server';
-          return {
-            success: false,
-            error: `خطا در آپلود به FTP: ${errorMessage}. لطفاً تنظیمات FTP را بررسی کنید.`,
-          };
-        }
-
-        // Fall back to local storage only in non-Vercel environments
-        console.log('[Upload] Falling back to local storage...');
-      }
-    }
-
-    // Fallback to local storage (only works locally, not on Vercel)
-    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
-    if (isVercel) {
-      return {
-        success: false,
-        error:
-          'FTP تنظیم نشده است. لطفاً در تنظیمات اطلاعات FTP را وارد کنید.',
-      };
-    }
-
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'receipts');
-    await mkdir(uploadDir, { recursive: true });
-
-    // Generate unique filename
-    const ext = file.name.split('.').pop();
-    const filename = `${randomUUID()}.${ext}`;
-    const filepath = join(uploadDir, filename);
-
-    // Write file
-    await writeFile(filepath, buffer);
-
-    const url = `/uploads/receipts/${filename}`;
-
-    return {
-      success: true,
-      url,
-      type: file.type,
-    };
-  } catch (error) {
-    console.error('Upload error:', error);
-    return { success: false, error: 'Failed to upload file' };
+    return { success: true, url: await storeReceipt(bytes, type), type };
+  } catch (error: any) {
+    console.error('[Upload] receipt:', error);
+    const message =
+      error?.message === STORAGE_MISSING_MESSAGE
+        ? STORAGE_MISSING_MESSAGE
+        : `آپلود رسید به سرور FTP انجام نشد: ${error?.message ?? 'خطای نامشخص'}`;
+    return { success: false, error: message };
   }
 }
 
-export async function deleteReceipt(url: string) {
-  const denied = await checkPermission('finance.manage');
+/** Discards a receipt uploaded in a form but not saved; a receipt on a row stays. */
+export async function deleteReceipt(ref: string) {
+  const denied = await checkPermission(RECEIPT_UPLOADERS);
   if (denied) return denied;
+  if (!isReceiptRef(ref)) return { success: false, error: INVALID_RECEIPT_MESSAGE };
+  if (await prisma.transaction.findFirst({ where: { receiptUrl: ref }, select: { id: true } })) {
+    return { success: false, error: 'این رسید به یک تراکنش ثبت‌شده وصل است و حذف نمی‌شود.' };
+  }
   try {
-    // Check if it's an FTP URL
-    if (url.startsWith('ftp:')) {
-      await deleteFromFTP(url);
-      return { success: true };
-    }
-
-    // Local file deletion
-    const filename = url.split('/').pop();
-    if (!filename) return { success: false, error: 'Invalid URL' };
-
-    const filepath = join(
-      process.cwd(),
-      'public',
-      'uploads',
-      'receipts',
-      filename
-    );
-
-    await unlink(filepath);
-
+    await deleteReceiptFile(ref);
     return { success: true };
   } catch (error) {
-    console.error('Delete error:', error);
-    return { success: false, error: 'Failed to delete file' };
+    console.error('[Upload] delete receipt:', error);
+    return { success: false, error: 'حذف فایل انجام نشد.' };
   }
-}
-
-/**
- * Get viewable URL for a receipt (handles both local and FTP)
- */
-export async function getReceiptViewUrl(url: string): Promise<string> {
-  await requirePermission('finance.view');
-  if (url.startsWith('ftp:')) {
-    // For FTP, you may need to construct a web-accessible URL
-    // This depends on your FTP server setup (e.g., if it's accessible via HTTP)
-    // For now, return the FTP path
-    return url;
-  }
-  // For local files, return as-is (relative URL)
-  return url;
 }
 
 export async function uploadProductImage(formData: FormData) {

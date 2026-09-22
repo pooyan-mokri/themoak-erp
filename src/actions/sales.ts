@@ -21,6 +21,7 @@ import { checkPermission, getCurrentRole, hasPermission, requirePermission } fro
 import { PAYMENT_ACCOUNT_TYPE_MESSAGE, accountForViewer, bookOrderPayment, productForViewer } from '@/lib/sales-records';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { accountLabel } from '@/lib/account-label';
+import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 
 // const prisma = new PrismaClient();
 
@@ -45,6 +46,7 @@ interface OrderData {
   tags?: string[];
   invoiceAccountId?: string; // Account whose card/IBAN to show on credit invoice
   requestId?: string; // One checkout submission (src/lib/request-id.ts)
+  receiptUrl?: string; // The payment's receipt (src/lib/receipt-ref.ts)
 }
 
 export async function createOrder(data: OrderData) {
@@ -53,6 +55,8 @@ export async function createOrder(data: OrderData) {
   const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate, tags = [], invoiceAccountId } = data;
   const orderDate = saleDate ? new Date(saleDate) : new Date();
   const requestId = readRequestId(data.requestId);
+  const receiptUrl = readReceiptRef(data.receiptUrl);
+  if (receiptUrl === null) return { success: false, message: INVALID_RECEIPT_MESSAGE };
 
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };
@@ -129,6 +133,7 @@ export async function createOrder(data: OrderData) {
             description: `سفارش فروش - مشتری: ${customerName}`,
             category: 'Sales',
             date: orderDate,
+            receiptUrl,
             clientRequestId: requestId ?? undefined,
           },
         });
@@ -312,15 +317,23 @@ export async function getOrders() {
 }
 
 // Record payment for an unpaid or partially paid order
-export async function recordOrderPayment(orderId: string, accountId: string, amount: number, requestId?: string) {
+export async function recordOrderPayment(
+  orderId: string,
+  accountId: string,
+  amount: number,
+  requestId?: string,
+  receipt?: string,
+) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
   if (!(amount > 0)) {
     return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
   }
+  const receiptUrl = readReceiptRef(receipt);
+  if (receiptUrl === null) return { success: false, message: INVALID_RECEIPT_MESSAGE };
   try {
     const outcome = await prisma.$transaction((tx: any) =>
-      bookOrderPayment(tx, { orderId, accountId, amount, requestId: readRequestId(requestId) }),
+      bookOrderPayment(tx, { orderId, accountId, amount, requestId: readRequestId(requestId), receiptUrl }),
     );
 
     revalidatePath('/dashboard/sales/history');
@@ -365,8 +378,24 @@ export async function getOrder(id: string) {
       },
     });
     if (!order) return undefined;
+    // The money received for the order (checkout, payments, settlements), each with its receipt.
+    const received = await prisma.transaction.findMany({
+      where: {
+        type: 'INCOME',
+        OR: [{ orderId: order.id }, ...(order.transactionId ? [{ id: order.transactionId }] : [])],
+      },
+      select: { id: true, date: true, amountInToman: true, receiptUrl: true, account: { select: { name: true } } },
+      orderBy: { date: 'asc' },
+    });
     return {
       ...order,
+      received: received.map((row: any) => ({
+        id: row.id,
+        date: row.date,
+        amountInToman: Number(row.amountInToman),
+        receiptUrl: row.receiptUrl ?? undefined,
+        accountName: row.account?.name ?? undefined,
+      })),
       customerId: order.customerId ?? undefined,
       transactionId: order.transactionId ?? undefined,
       wooId: order.wooId ?? undefined,

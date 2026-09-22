@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ArrowRight, Printer, RotateCcw, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
-import { formatJalaliDateTime } from '@/lib/date-utils';
+import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
+import { mayAttachReceipt } from '@/lib/receipt-ref';
+import { TransactionReceipt } from '@/components/accounting/transaction-receipt';
 import { WEBSITE_ORDER_LOCKED, formatShipTo, type SiteOrderData } from '@/lib/site-sale-data';
 
 import { InvoiceGenerator } from './invoice-generator';
@@ -104,6 +106,7 @@ type OrderWithDetails = {
   customer?: Customer;
   items: OrderItem[];
   transaction?: Transaction;
+  received?: Array<{ id: string; date: Date; amountInToman: number; receiptUrl?: string; accountName?: string }>;
   invoice?: any;
   isConsignmentSale?: boolean;
   commissions?: Array<{
@@ -128,9 +131,10 @@ interface OrderDetailsProps {
   }>;
   returns?: Array<any>;
   exchanges?: Array<any>;
+  role: string | null;
 }
 
-export function OrderDetails({ order, accounts, warehouses, returns = [], exchanges = [] }: OrderDetailsProps) {
+export function OrderDetails({ order, accounts, warehouses, returns = [], exchanges = [], role }: OrderDetailsProps) {
   const router = useRouter();
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
@@ -379,6 +383,25 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                 <span className="text-muted-foreground">شماره تراکنش:</span>
                 <span className="font-medium text-xs font-mono">{order.transactionId?.slice(-8) || '-'}</span>
               </div>
+              {order.received && order.received.length > 0 && (
+                <div className="pt-2 border-t space-y-1">
+                  <div className="text-sm text-muted-foreground">دریافت‌ها و رسیدها:</div>
+                  {order.received.map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate">
+                        {formatJalaliDate(row.date)} · {row.amountInToman.toLocaleString()} تومان
+                        {row.accountName ? ` · ${row.accountName}` : ''}
+                      </span>
+                      <TransactionReceipt
+                        transactionId={row.id}
+                        receiptUrl={row.receiptUrl}
+                        canAttach={mayAttachReceipt(role, { type: 'INCOME', orderId: order.id })}
+                        canReplace={role === 'ADMIN'}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

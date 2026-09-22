@@ -10,6 +10,7 @@ import { checkPermission, getCurrentRole, hasPermission, requirePermission } fro
 import { auth } from '@/auth';
 import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { randomUUID } from 'node:crypto';
 
 // const prisma = new PrismaClient(); // Removed local instance
@@ -1911,6 +1912,8 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
   const { amount, currency, accountId, description, category, tags, date } = validatedFields.data;
   const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
   const requestId = readRequestId(formData.get('requestId'));
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
@@ -1949,6 +1952,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
           description,
           tags: tagsArr,
           date: date ? new Date(date) : new Date(),
+          receiptUrl,
           clientRequestId: requestId ?? undefined,
         },
       });

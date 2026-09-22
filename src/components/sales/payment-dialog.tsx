@@ -24,6 +24,7 @@ import { recordOrderPayment } from '@/actions/sales';
 import { getAccountOptions } from '@/actions/account-options';
 import { accountLabel } from '@/lib/account-label';
 import { useRequestId } from '@/components/ui/request-id';
+import { ReceiptUpload } from '@/components/accounting/receipt-upload';
 
 type OrderWithDetails = {
   id: string;
@@ -49,6 +50,7 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
   const [selectedAccount, setSelectedAccount] = useState('');
   const [amount, setAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState('');
   const [requestId, renewRequestId] = useRequestId();
 
   // One dialog serves every order in the list: a payment to another order is another submission.
@@ -72,6 +74,7 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
       // Set default amount to full remaining debt
       setAmount(remainingDebt.toString());
       setSelectedAccount('');
+      setReceiptUrl('');
     }
   }, [open, remainingDebt]);
 
@@ -93,7 +96,7 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
     }
 
     setIsSubmitting(true);
-    const result = await recordOrderPayment(order.id, selectedAccount, paymentAmount, requestId);
+    const result = await recordOrderPayment(order.id, selectedAccount, paymentAmount, requestId, receiptUrl || undefined);
     setIsSubmitting(false);
 
     if (result.success) {
@@ -174,6 +177,15 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
                 نصف مبلغ
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>رسید پرداخت (اختیاری)</Label>
+            <ReceiptUpload
+              currentUrl={receiptUrl}
+              onUploadComplete={(url) => setReceiptUrl(url)}
+              onRemove={() => setReceiptUrl('')}
+            />
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">

@@ -6,16 +6,17 @@ import { getOrderExchanges } from '@/actions/order-exchange';
 import { OrderDetails } from '@/components/sales/order-details';
 import { BackButton } from '@/components/ui/back-button';
 import { notFound } from 'next/navigation';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, requireRouteAccess } from '@/lib/access';
 
 export default async function OrderDetailsPage({ params }: { params: { id: string } }) {
   await requireRouteAccess('/dashboard/sales');
-  const [order, allAccounts, allWarehouses, returns, exchanges] = await Promise.all([
+  const [order, allAccounts, allWarehouses, returns, exchanges, role] = await Promise.all([
     getOrder(params.id),
     getAccountOptions(),
     getWarehouses(),
     getOrderReturns(params.id),
     getOrderExchanges(params.id),
+    getCurrentRole(),
   ]);
 
   if (!order) {
@@ -45,6 +46,7 @@ export default async function OrderDetailsPage({ params }: { params: { id: strin
         warehouses={warehouses}
         returns={returns}
         exchanges={exchanges}
+        role={role}
       />
     </div>
   );

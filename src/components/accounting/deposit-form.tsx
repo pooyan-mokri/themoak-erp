@@ -19,6 +19,7 @@ import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { TagInput } from '@/components/ui/tag-input';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 import { accountLabel } from '@/lib/account-label';
+import { ReceiptUpload } from '@/components/accounting/receipt-upload';
 import { toast } from 'sonner';
 
 const initialState = { message: '', errors: {}, success: false };
@@ -59,6 +60,7 @@ export function DepositForm({ accounts }: DepositFormProps) {
   const [accountId, setAccountId] = useState('');
   const [category, setCategory] = useState('');
   const [date, setDate] = useState<Date>(new Date());
+  const [receiptUrl, setReceiptUrl] = useState('');
 
   useEffect(() => {
     if (state.message && state.success) {
@@ -67,6 +69,7 @@ export function DepositForm({ accounts }: DepositFormProps) {
       setAccountId('');
       setCategory('');
       setDate(new Date());
+      setReceiptUrl('');
       // A new id, and a fresh form (it is keyed by the id), for the next entry.
       renewRequestId();
     } else if (state.message && !state.success) {
@@ -89,6 +92,7 @@ export function DepositForm({ accounts }: DepositFormProps) {
       </CardHeader>
       <form key={requestId} action={dispatch}>
         <RequestIdField value={requestId} />
+        <input type="hidden" name="receiptUrl" value={receiptUrl} />
         <CardContent className="space-y-4">
           {/* Description */}
           <div className="space-y-2">
@@ -195,6 +199,16 @@ export function DepositForm({ accounts }: DepositFormProps) {
             defaultValue={date}
             onChange={(d) => d && setDate(d)}
           />
+
+          {/* Receipt */}
+          <div className="space-y-2">
+            <Label>رسید واریز (اختیاری)</Label>
+            <ReceiptUpload
+              currentUrl={receiptUrl}
+              onUploadComplete={(url) => setReceiptUrl(url)}
+              onRemove={() => setReceiptUrl('')}
+            />
+          </div>
         </CardContent>
 
         <CardFooter className="flex justify-end">

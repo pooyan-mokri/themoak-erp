@@ -245,33 +245,37 @@ test('fixed assets: reading takes finance.view; creating, depreciating and delet
 test('uploads take the permission of their use and write nothing otherwise; the FTP helpers are not endpoints', async () => {
   const listing = (dir: string) => {
     try {
-      return readdirSync(join(process.cwd(), 'public', 'uploads', dir)).sort();
+      return readdirSync(join(process.cwd(), ...dir.split('/'))).sort();
     } catch {
       return [];
     }
   };
-  const before = [listing('receipts'), listing('products')];
+  // Without an FTP server, receipts are kept outside public/ (src/lib/receipt-storage.ts); product images in it.
+  const before = [listing('.receipts'), listing('public/uploads/products')];
   const file = (type: string) => {
     const data = new FormData();
     data.append('file', new File(['not really an image'], 'x.png', { type }));
     return data;
   };
 
-  for (const role of ['WAREHOUSE', 'SALES', 'AUDITOR', 'USER', null]) {
+  // Sales staff record order payments, so they upload those receipts too.
+  for (const role of ['WAREHOUSE', 'AUDITOR', 'USER', null]) {
     setTestRole(role);
     assert.equal((await uploadReceipt(file('image/png'))).error, DENIED, String(role));
-    assert.equal((await deleteReceipt('/uploads/receipts/none.png')).error, DENIED, String(role));
+    assert.equal((await deleteReceipt('ftp:/uploads/receipts/00000000-0000-4000-8000-000000000000.png')).error, DENIED, String(role));
   }
   for (const role of ['SALES', 'ACCOUNTANT', 'AUDITOR', 'USER', null]) {
     setTestRole(role);
     assert.equal((await uploadProductImage(file('image/png'))).error, DENIED, String(role));
     assert.equal((await deleteProductImage('/uploads/products/none.png')).error, DENIED, String(role));
   }
-  assert.deepEqual([listing('receipts'), listing('products')], before);
+  assert.deepEqual([listing('.receipts'), listing('public/uploads/products')], before);
 
   // The permitted roles get past the check (to the file validation, which writes nothing).
-  setTestRole('ACCOUNTANT');
-  assert.match((await uploadReceipt(file('text/plain'))).error ?? '', /Invalid file type/);
+  for (const role of ['ACCOUNTANT', 'SALES']) {
+    setTestRole(role);
+    assert.match((await uploadReceipt(file('text/plain'))).error ?? '', /فقط عکس/, role);
+  }
   setTestRole('WAREHOUSE');
   assert.match((await uploadProductImage(file('text/plain'))).error ?? '', /Invalid file type/);
 

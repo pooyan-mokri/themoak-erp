@@ -6,11 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { FileText, Image as ImageIcon, FileSpreadsheet, Printer, X } from 'lucide-react';
+import { FileSpreadsheet, Printer, X } from 'lucide-react';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
+import { TransactionReceipt } from '@/components/accounting/transaction-receipt';
+import { mayAttachReceipt } from '@/lib/receipt-ref';
 import {
   exportJournalToExcel,
   printJournal,
@@ -20,7 +22,7 @@ import {
 
 type TransactionWithAccount = Transaction & { account: Account };
 
-export function TransactionList({ transactions }: { transactions: any[] }) {
+export function TransactionList({ transactions, role }: { transactions: any[]; role: string | null }) {
   // Period filter — a journal is normally taken for a date range. It scopes
   // both what is shown and what is exported.
   const [fromDate, setFromDate] = useState<Date | undefined>();
@@ -150,24 +152,14 @@ export function TransactionList({ transactions }: { transactions: any[] }) {
       label: 'پیوست',
       sortable: false,
       className: 'text-center',
-      render: (transaction) =>
-        transaction.receiptUrl ? (
-          <a
-            href={transaction.receiptUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-muted"
-            title="مشاهده رسید"
-          >
-            {transaction.receiptType?.startsWith('image/') ? (
-              <ImageIcon className="h-4 w-4 text-blue-500" />
-            ) : (
-              <FileText className="h-4 w-4 text-red-500" />
-            )}
-          </a>
-        ) : (
-          <span className="text-muted-foreground text-xs">-</span>
-        ),
+      render: (transaction) => (
+        <TransactionReceipt
+          transactionId={transaction.id}
+          receiptUrl={transaction.receiptUrl}
+          canAttach={mayAttachReceipt(role, transaction)}
+          canReplace={role === 'ADMIN'}
+        />
+      ),
     },
   ];
 
