@@ -4,6 +4,7 @@ import { getAccountOptions } from '@/actions/account-options';
 import { getWarehouses } from '@/actions/warehouse';
 import { POSInterface } from '@/components/sales/pos-interface';
 import { requireRouteAccess } from '@/lib/access';
+import { DEFAULT_SITE_WAREHOUSE_NAME, pickWithDefault } from '@/lib/site-connection';
 
 export default async function POSPage() {
   await requireRouteAccess('/dashboard/sales');
@@ -19,6 +20,10 @@ export default async function POSPage() {
 
   // Filter to only physical (non-virtual) warehouses for POS sales
   const physicalWarehouses = warehouses.filter((w: any) => !w.isVirtual);
+  // The shop sells from مشاهیر: start there, not in whichever warehouse was created first
+  // (a sale left on the wrong default drove an unused warehouse deep into negative stock).
+  const defaultWarehouseId =
+    pickWithDefault(physicalWarehouses, null, DEFAULT_SITE_WAREHOUSE_NAME) ?? physicalWarehouses[0]?.id ?? '';
 
   return (
     <div className="h-full">
@@ -27,6 +32,7 @@ export default async function POSPage() {
         customers={customers} 
         accounts={accounts}
         warehouses={physicalWarehouses}
+        defaultWarehouseId={defaultWarehouseId}
       />
     </div>
   );

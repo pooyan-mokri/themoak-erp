@@ -69,14 +69,18 @@ interface POSInterfaceProps {
   customers: Customer[];
   accounts: Account[];
   warehouses: Warehouse[];
+  /** The warehouse a sale starts in (مشاهیر). */
+  defaultWarehouseId?: string;
 }
 
-export function POSInterface({ products, customers: initialCustomers, accounts, warehouses }: POSInterfaceProps) {
+export function POSInterface({ products, customers: initialCustomers, accounts, warehouses, defaultWarehouseId }: POSInterfaceProps) {
   const router = useRouter();
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(warehouses.length > 0 ? warehouses[0].id : '');
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(
+    defaultWarehouseId || (warehouses.length > 0 ? warehouses[0].id : ''),
+  );
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'ACCOUNT'>('CASH');
