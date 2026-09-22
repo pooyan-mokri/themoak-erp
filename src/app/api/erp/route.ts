@@ -55,6 +55,8 @@ const GET_ACTIONS = [
   'search',
   'warehouses',
   'stock',
+  'inventory',
+  'productSales',
 ];
 
 // The site reads 404 as "the ERP does not have this action yet".
@@ -340,6 +342,139 @@ export async function GET(req: NextRequest) {
             price: Math.round(Number(p.sellPrice)),
           })),
         });
+      }
+
+
+      // ── موجودی کامل: هر کالا در هر انبار (فقط کلید کامل) ────────────────────
+      // Unlike `stock`, this is the owner's view: every warehouse (consignment
+      // included) and every product, whether or not the website knows it.
+      case 'inventory': {
+        const low = Math.max(0, Number(searchParams.get('low') ?? 5) || 0);
+        const filter = searchParams.get('filter') ?? 'all'; // all | low | zero | negative
+        const wantSku = (searchParams.get('sku') ?? '').trim().toUpperCase();
+        const includeArchived = searchParams.get('includeArchived') === 'true';
+
+        const warehouses = await prisma.warehouse.findMany({
+          where: includeArchived ? {} : { isArchived: false },
+          select: { id: true, name: true, isVirtual: true, isArchived: true },
+          orderBy: [{ isVirtual: 'asc' }, { name: 'asc' }],
+        });
+        type WhRow = { id: string; name: string; isVirtual: boolean; isArchived: boolean };
+        const whById = new Map<string, WhRow>(
+          warehouses.map((w: any) => [w.id as string, w as WhRow]),
+        );
+
+        const products = await prisma.product.findMany({
+          where: {
+            productType: 'SALEABLE',
+            ...(wantSku && { sku: { contains: wantSku, mode: 'insensitive' } }),
+          },
+          select: {
+            id: true, sku: true, name: true, costPrice: true, sellPrice: true,
+            inventory: { select: { warehouseId: true, quantity: true } },
+          },
+          orderBy: { sku: 'asc' },
+        });
+
+        const rows = products.map((p: any) => {
+          const byWarehouse: Record<string, number> = {};
+          let onHand = 0;   // physical, non-archived warehouses
+          let consigned = 0; // virtual (امانی) warehouses
+          let shortfall = 0; // the negative rows, as a positive number
+          for (const inv of p.inventory) {
+            const w = whById.get(inv.warehouseId);
+            if (!w) continue; // archived and not asked for
+            if (inv.quantity !== 0) byWarehouse[w.name] = inv.quantity;
+            if (inv.quantity < 0) { shortfall += -inv.quantity; continue; }
+            if (w.isVirtual) consigned += inv.quantity; else onHand += inv.quantity;
+          }
+          const available = onHand + consigned; // what physically exists somewhere
+          return {
+            sku: p.sku,
+            name: p.name,
+            costPrice: Math.round(Number(p.costPrice)),
+            sellPrice: Math.round(Number(p.sellPrice)),
+            onHand,
+            consigned,
+            available,
+            // What the ERP dashboards show: negative rows subtracted. Lower than
+            // `available` wherever a warehouse carries a shortfall.
+            net: available - shortfall,
+            shortfall,
+            byWarehouse,
+          };
+        });
+
+        const filtered = rows.filter((r: any) =>
+          filter === 'zero' ? r.available === 0
+          : filter === 'low' ? r.available <= low
+          : filter === 'negative' ? r.shortfall > 0
+          : true,
+        );
+
+        const warehouseTotals = warehouses.map((w: any) => ({
+          id: w.id, name: w.name, isVirtual: w.isVirtual, isArchived: w.isArchived,
+          total: rows.reduce((sum: number, r: any) => sum + (r.byWarehouse[w.name] ?? 0), 0),
+        }));
+
+        return NextResponse.json({
+          at: new Date().toISOString(),
+          lowThreshold: low,
+          filter,
+          totals: {
+            skuCount: rows.length,
+            available: rows.reduce((s: number, r: any) => s + r.available, 0),
+            net: rows.reduce((s: number, r: any) => s + r.net, 0),
+            shortfall: rows.reduce((s: number, r: any) => s + r.shortfall, 0),
+            valueAtCost: rows.reduce((s: number, r: any) => s + r.available * r.costPrice, 0),
+            zeroCount: rows.filter((r: any) => r.available === 0).length,
+            lowCount: rows.filter((r: any) => r.available > 0 && r.available <= low).length,
+          },
+          warehouses: warehouseTotals,
+          products: filtered,
+        });
+      }
+
+      // ── فروش هر کالا در بازهٔ اخیر، کنار موجودی (فقط کلید کامل) ──────────────
+      case 'productSales': {
+        const days = Math.min(730, Math.max(1, Number(searchParams.get('days') ?? 90) || 90));
+        const since = new Date(Date.now() - days * 86400000);
+
+        const [items, products] = await Promise.all([
+          prisma.orderItem.groupBy({
+            by: ['productId'],
+            where: { order: { createdAt: { gte: since }, status: { not: 'CANCELLED' } } },
+            _sum: { quantity: true },
+          }),
+          prisma.product.findMany({
+            where: { productType: 'SALEABLE' },
+            select: {
+              id: true, sku: true, name: true, costPrice: true,
+              inventory: { where: { warehouse: { isArchived: false } }, select: { quantity: true } },
+            },
+          }),
+        ]);
+        const soldById = new Map<string, number>(
+          items.map((i: any) => [i.productId as string, Number(i._sum.quantity ?? 0)]),
+        );
+
+        const rows = products.map((p: any) => {
+          const available = p.inventory.reduce((s: number, i: any) => s + Math.max(0, i.quantity), 0);
+          const sold = soldById.get(p.id) ?? 0;
+          return {
+            sku: p.sku,
+            name: p.name,
+            costPrice: Math.round(Number(p.costPrice)),
+            sold,
+            available,
+            perMonth: Math.round((sold / days) * 30 * 100) / 100,
+            // Months of cover left at the recent rate. null = no sales in the window.
+            monthsLeft: sold > 0 ? Math.round((available / ((sold / days) * 30)) * 10) / 10 : null,
+          };
+        });
+        rows.sort((a: any, b: any) => b.sold - a.sold || a.available - b.available);
+
+        return NextResponse.json({ at: new Date().toISOString(), days, since: since.toISOString(), products: rows });
       }
 
       default:

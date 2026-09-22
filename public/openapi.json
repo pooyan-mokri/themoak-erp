@@ -19,16 +19,16 @@
       "get": {
         "operationId": "erpQuery",
         "summary": "Query ERP data",
-        "description": "Fetch financial summaries, accounts, transactions, orders, settlements, loans, or search.",
+        "description": "Fetch financial summaries, accounts, transactions, orders, settlements, loans, search, stock across warehouses, or per-product sales.",
         "parameters": [
           {
             "name": "action",
             "in": "query",
             "required": true,
-            "description": "The data to fetch: summary | accounts | transactions | orders | settlements | loans | search",
+            "description": "The data to fetch: summary | accounts | transactions | orders | settlements | loans | search | inventory | productSales",
             "schema": {
               "type": "string",
-              "enum": ["summary", "accounts", "transactions", "orders", "settlements", "loans", "search"]
+              "enum": ["summary", "accounts", "transactions", "orders", "settlements", "loans", "search", "inventory", "productSales"]
             }
           },
           {
@@ -51,6 +51,41 @@
             "required": false,
             "description": "Filter transactions by type: INCOME | EXPENSE | TRANSFER",
             "schema": { "type": "string", "enum": ["INCOME", "EXPENSE", "TRANSFER"] }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "description": "Stock filter when action=inventory",
+            "schema": { "type": "string", "enum": ["all", "low", "zero", "negative"], "default": "all" }
+          },
+          {
+            "name": "low",
+            "in": "query",
+            "required": false,
+            "description": "Low-stock threshold for action=inventory&filter=low, counted on `available`",
+            "schema": { "type": "integer", "default": 5 }
+          },
+          {
+            "name": "sku",
+            "in": "query",
+            "required": false,
+            "description": "Only SKUs containing this text (action=inventory)",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "required": false,
+            "description": "Include archived warehouses (action=inventory)",
+            "schema": { "type": "boolean", "default": false }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "description": "Sales window in days when action=productSales (max 730)",
+            "schema": { "type": "integer", "default": 90 }
           }
         ],
         "responses": {

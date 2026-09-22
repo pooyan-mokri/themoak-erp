@@ -128,6 +128,31 @@ const TOOLS = [
     },
   },
   {
+    name: 'erp_inventory',
+    description:
+      "Stock for every saleable product across every warehouse — the owner's view, not the website feed. Per SKU: onHand (physical warehouses), consigned (امانی partner warehouses), available (the two added), net (what the ERP dashboards show, with negative rows subtracted), shortfall (the size of those negative rows), and a per-warehouse breakdown. Use filter=zero for nothing left anywhere, filter=low with `low` for what is running out, filter=negative to find warehouses the ERP deducts sales from while holding no stock.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filter: { type: 'string', enum: ['all', 'low', 'zero', 'negative'], description: 'Default all' },
+        low:    { type: 'number', description: 'Threshold for filter=low, counted on `available` (default 5)' },
+        sku:    { type: 'string', description: 'Only SKUs containing this text, e.g. PANJ' },
+        includeArchived: { type: 'boolean', description: 'Include archived warehouses (default false)' },
+      },
+    },
+  },
+  {
+    name: 'erp_product_sales',
+    description:
+      'Units sold per product over a recent window (cancelled orders excluded), next to what is left in stock. Returns sold, available, perMonth, and monthsLeft — the months of cover at the recent rate, null when nothing sold. This is the reorder list: sort by monthsLeft ascending. Pair it with erp_inventory before placing a supplier order.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        days: { type: 'number', description: 'Window in days (default 90, max 730)' },
+      },
+    },
+  },
+  {
     name: 'erp_deposit',
     description:
       'Record a deposit (income) into an account. Use this when money arrives into a company account. Returns the new row id, the booked amount and the account balance after it.',
@@ -227,6 +252,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'erp_search':
         result = await erpGet('search', { q: String(args.q) });
+        break;
+      case 'erp_inventory':
+        result = await erpGet('inventory', {
+          ...(args.filter ? { filter: String(args.filter) } : {}),
+          ...(args.low != null ? { low: String(args.low) } : {}),
+          ...(args.sku ? { sku: String(args.sku) } : {}),
+          ...(args.includeArchived ? { includeArchived: 'true' } : {}),
+        });
+        break;
+      case 'erp_product_sales':
+        result = await erpGet('productSales', args.days ? { days: String(args.days) } : {});
         break;
       case 'erp_deposit':
       case 'erp_expense':
