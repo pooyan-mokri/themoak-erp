@@ -2,10 +2,10 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, FileX, Image as ImageIcon, Loader2, Paperclip, RefreshCw } from 'lucide-react';
+import { FileText, FileX, Image as ImageIcon, Loader2, Paperclip, RefreshCw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { attachReceipt } from '@/actions/receipts';
+import { attachReceipt, removeReceipt } from '@/actions/receipts';
 import { deleteReceipt } from '@/actions/upload';
 import { isPdfReceipt, receiptViewUrl } from '@/lib/receipt-ref';
 import { uploadReceiptFile } from '@/components/accounting/upload-receipt-file';
@@ -26,6 +26,19 @@ export function TransactionReceipt({ transactionId, receiptUrl, canAttach, canRe
   const [busy, setBusy] = useState(false);
   const canUpload = receiptUrl ? canReplace : canAttach;
   const viewUrl = receiptUrl ? receiptViewUrl(receiptUrl) : null;
+
+  const remove = async () => {
+    if (!window.confirm('رسید این تراکنش حذف شود؟ فایل هم از سرور پاک می‌شود.')) return;
+    setBusy(true);
+    const result = await removeReceipt(transactionId);
+    setBusy(false);
+    if (result.success) {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+  };
 
   const choose = () => {
     if (receiptUrl && !window.confirm('رسید فعلی این تراکنش با فایل تازه عوض شود؟')) return;
@@ -97,6 +110,19 @@ export function TransactionReceipt({ transactionId, receiptUrl, canAttach, canRe
             )}
           </Button>
         </>
+      )}
+      {receiptUrl && canReplace && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={remove}
+          disabled={busy}
+          title="حذف رسید"
+        >
+          <X className="h-4 w-4 text-muted-foreground" />
+        </Button>
       )}
       {!receiptUrl && !canUpload && <span className="text-muted-foreground text-xs">-</span>}
     </span>

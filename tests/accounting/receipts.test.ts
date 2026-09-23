@@ -7,7 +7,7 @@ import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { seedShop, PRICE } from '../orders/seed';
 import { deleteReceipt, uploadReceipt } from '@/actions/upload';
-import { attachReceipt } from '@/actions/receipts';
+import { attachReceipt, removeReceipt } from '@/actions/receipts';
 import { recordDeposit } from '@/actions/accounting';
 import { createOrder, getOrder, recordOrderPayment } from '@/actions/sales';
 import { paySettlement } from '@/actions/consignment';
@@ -235,4 +235,25 @@ test('an unsaved upload can be discarded; a receipt on a row cannot', async () =
   assert.equal((await view(saved)).status, 200);
   assert.equal((await deleteReceipt(unsaved)).success, true);
   assert.equal((await view(unsaved)).status, 404);
+});
+
+test('only an admin takes a receipt off a row, and the file goes with it', async () => {
+  // The signed-in user of tests/stubs/auth.ts, so the activity log can name them.
+  await prisma.user.create({ data: { id: 'test-user', name: 'Test', email: 'test@example.com', password: 'x' } });
+  const file = await upload(PNG);
+  const { row } = await deposit(file);
+  assert.ok(row);
+
+  for (const role of ['ACCOUNTANT', 'SALES', 'AUDITOR', null]) {
+    setTestRole(role);
+    assert.match((await removeReceipt(row!.id)).message ?? '', /فقط مدیر سیستم/, String(role));
+  }
+  assert.equal((await prisma.transaction.findUniqueOrThrow({ where: { id: row!.id } })).receiptUrl, file);
+
+  setTestRole('ADMIN');
+  assert.equal((await removeReceipt(row!.id)).success, true);
+  assert.equal((await prisma.transaction.findUniqueOrThrow({ where: { id: row!.id } })).receiptUrl, null);
+  assert.equal((await view(file)).status, 404, 'the file is gone too');
+  assert.match((await removeReceipt(row!.id)).message ?? '', /رسیدی ندارد/);
+  assert.equal(await prisma.activityLog.count({ where: { action: 'REMOVE_RECEIPT' } }), 1);
 });
