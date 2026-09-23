@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
+import { channelSummary } from '@/lib/consignment-channels';
 import { PartnerEditForm } from './partner-edit-form';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
@@ -13,6 +13,13 @@ interface Partner {
     phone?: string;
     address?: string;
     commissionRate?: number;
+    channels?: {
+      id: string;
+      name: string;
+      commissionRate: number;
+      isDefault: boolean;
+      isActive: boolean;
+    }[];
   };
 }
 
@@ -39,17 +46,17 @@ export function PartnerList({ partners }: PartnerListProps) {
       render: (partner) => partner.customer?.phone || '-',
     },
     {
-      key: 'commissionRate',
-      label: 'کمیسیون',
-      sortable: true,
-      render: (partner) =>
-        partner.customer?.commissionRate !== null && partner.customer?.commissionRate !== undefined ? (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-            {partner.customer.commissionRate}%
-          </Badge>
+      key: 'channels',
+      label: 'کانال‌های فروش',
+      sortable: false,
+      render: (partner) => {
+        const summary = channelSummary(partner.customer?.channels ?? []);
+        return summary ? (
+          <span className="text-sm">{summary}</span>
         ) : (
           <span className="text-muted-foreground text-sm">تعریف نشده</span>
-        ),
+        );
+      },
     },
     {
       key: 'actions',

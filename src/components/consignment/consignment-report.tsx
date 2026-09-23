@@ -30,6 +30,16 @@ interface ConsignmentReportProps {
       partnerName: string;
       customerId: string;
       commissionRate?: number;
+      /** «آنلاین ۳۰٪ · حضوری ۳۵٪»; empty for a partner from before channels. */
+      channelSummary: string;
+      channelBreakdown: Array<{
+        channel: string;
+        commissionRate: number;
+        grossSales: number;
+        commissions: number;
+        netSales: number;
+        orderCount: number;
+      }>;
       totalSales: number;
       totalPaid: number;
       totalDebt: number;
@@ -179,11 +189,15 @@ export function ConsignmentReport({ reportData }: ConsignmentReportProps) {
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       {partner.partnerName}
-                      {partner.commissionRate && (
+                      {partner.channelSummary ? (
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                          کمیسیون: {partner.channelSummary}
+                        </Badge>
+                      ) : partner.commissionRate ? (
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                           کمیسیون: {partner.commissionRate}%
                         </Badge>
-                      )}
+                      ) : null}
                     </CardTitle>
                     <CardDescription className="mt-2">
                       <div className="flex gap-4 text-sm">
@@ -238,6 +252,38 @@ export function ConsignmentReport({ reportData }: ConsignmentReportProps) {
                       <p className="text-xs text-muted-foreground">پرداخت نشده</p>
                       <p className="text-lg font-bold text-red-600">{formatCurrency(partner.unpaidCommissions)}</p>
                     </div>
+                  </div>
+                )}
+
+                {partner.channelBreakdown.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold mb-3">تفکیک بر اساس کانال فروش</h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">کانال فروش</TableHead>
+                          <TableHead className="text-right">درصد کمیسیون</TableHead>
+                          <TableHead className="text-right">تعداد سفارشات</TableHead>
+                          <TableHead className="text-right">فروش ناخالص</TableHead>
+                          <TableHead className="text-right">کمیسیون</TableHead>
+                          <TableHead className="text-right">خالص</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {partner.channelBreakdown.map((row) => (
+                          <TableRow key={row.channel}>
+                            <TableCell className="font-medium">{row.channel}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{row.commissionRate}%</Badge>
+                            </TableCell>
+                            <TableCell>{formatNumber(row.orderCount)}</TableCell>
+                            <TableCell>{formatCurrency(row.grossSales)}</TableCell>
+                            <TableCell className="text-red-600">{formatCurrency(row.commissions)}</TableCell>
+                            <TableCell className="font-bold">{formatCurrency(row.netSales)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
 

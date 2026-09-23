@@ -14,6 +14,13 @@ import { balanceEffect, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
+import {
+  CHANNELS_FIELD,
+  DEFAULT_CHANNEL_NAME,
+  defaultChannelOf,
+  readChannels,
+  type ChannelInput,
+} from '@/lib/consignment-channels';
 
 // const prisma = new PrismaClient();
 
@@ -26,6 +33,69 @@ async function ensureExpenseAccount(tx: any, name: string): Promise<string> {
     data: { name, type: 'EXPENSE', currency: 'TOMAN', balance: 0 },
   });
   return created.id;
+}
+
+/**
+ * Write the partner's channels as the form sent them. A channel the form
+ * dropped is deleted only while no order was sold through it; one that carries
+ * orders is deactivated instead, so those orders keep their rate and name.
+ */
+async function writeChannels(tx: any, customerId: string, channels: ChannelInput[]) {
+  const existing = await tx.consignmentChannel.findMany({ where: { customerId } });
+  const kept = new Set<string>();
+  for (const channel of channels) {
+    const match =
+      (channel.id && existing.find((row: any) => row.id === channel.id)) ||
+      existing.find((row: any) => row.name === channel.name);
+    const data = {
+      name: channel.name,
+      commissionRate: new Prisma.Decimal(channel.commissionRate),
+      isDefault: channel.isDefault,
+      isActive: channel.isActive,
+      sortOrder: channel.sortOrder,
+    };
+    const row = match
+      ? await tx.consignmentChannel.update({ where: { id: match.id }, data })
+      : await tx.consignmentChannel.create({ data: { customerId, ...data } });
+    kept.add(row.id);
+  }
+  for (const row of existing.filter((channel: any) => !kept.has(channel.id))) {
+    const sold = await tx.order.count({ where: { consignmentChannelId: row.id } });
+    if (sold > 0) {
+      await tx.consignmentChannel.update({ where: { id: row.id }, data: { isActive: false, isDefault: false } });
+    } else {
+      await tx.consignmentChannel.delete({ where: { id: row.id } });
+    }
+  }
+  // Customer.commissionRate is no longer the source of truth; it mirrors the
+  // default channel so anything still reading it sees the same number.
+  const fallback = channels.find((channel) => channel.isDefault) ?? channels[0];
+  await tx.customer.update({
+    where: { id: customerId },
+    data: { commissionRate: new Prisma.Decimal(fallback?.commissionRate ?? 0) },
+  });
+}
+
+const DUPLICATE_CHANNEL_MESSAGE = 'نام کانال‌های فروش نباید تکراری باشد.';
+
+/**
+ * The channel an order was sold through: the live one, else the name snapshotted
+ * on its commission, else «پیش‌فرض» for an order booked before channels existed.
+ */
+function channelNameOf(order: any): string {
+  return order.consignmentChannel?.name ?? order.commissions?.[0]?.channelName ?? DEFAULT_CHANNEL_NAME;
+}
+
+/** A partner's channels as a client component reads them: no Decimals. */
+function plainChannels(channels: any[] | undefined) {
+  return (channels ?? []).map((channel: any) => ({
+    id: channel.id as string,
+    name: channel.name as string,
+    commissionRate: Number(channel.commissionRate),
+    isDefault: channel.isDefault as boolean,
+    isActive: channel.isActive as boolean,
+    sortOrder: channel.sortOrder as number,
+  }));
 }
 
 // --- Schemas ---
@@ -47,7 +117,10 @@ const TransferSchema = z.object({
 const BatchSettlementItemSchema = z.object({
   productId: z.string().min(1),
   quantity: z.coerce.number().min(1),
+  // Whatever the partner reports it sold for: a discount, a bundle price, anything.
   unitPrice: z.coerce.number().min(0),
+  /** The partner's sale channel; missing means their default one. */
+  channelId: z.string().min(1).optional(),
 });
 
 const BatchSettlementSchema = z.object({
@@ -76,6 +149,12 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
   }
 
   const { name, phone, address, commissionRate } = validatedFields.data;
+  const read = readChannels(formData.get(CHANNELS_FIELD));
+  if ('error' in read) return { message: read.error };
+  // A form that sends no channels (an older screen, a script) still gets one.
+  const channels: ChannelInput[] = read.channels.length
+    ? read.channels
+    : [{ name: DEFAULT_CHANNEL_NAME, commissionRate: commissionRate ?? 0, isDefault: true, isActive: true, sortOrder: 0 }];
 
   try {
     await prisma.$transaction(async (tx: any) => {
@@ -85,7 +164,6 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
           name,
           phone,
           address,
-          commissionRate: commissionRate ? new Prisma.Decimal(commissionRate) : undefined,
         },
       });
 
@@ -97,8 +175,12 @@ export async function createConsignmentPartner(prevState: ActionState, formData:
           customerId: customer.id,
         },
       });
+
+      // 3. The ways this partner sells, each with its own commission
+      await writeChannels(tx, customer.id, channels);
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'P2002') return { message: DUPLICATE_CHANNEL_MESSAGE };
     return { message: 'خطا در ایجاد همکار امانی.' };
   }
 
@@ -124,6 +206,9 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
   }
 
   const { name, phone, address, commissionRate } = validatedFields.data;
+  const read = readChannels(formData.get(CHANNELS_FIELD));
+  if ('error' in read) return { message: read.error };
+  const channels = read.channels;
 
   try {
     await prisma.$transaction(async (tx: any) => {
@@ -144,9 +229,13 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
           name,
           phone,
           address,
-          commissionRate: commissionRate ? new Prisma.Decimal(commissionRate) : undefined,
+          // Only a form with no channels section still sets the rate directly.
+          commissionRate:
+            channels.length === 0 && commissionRate !== undefined ? new Prisma.Decimal(commissionRate) : undefined,
         },
       });
+
+      if (channels.length > 0) await writeChannels(tx, warehouse.customerId, channels);
 
       // Update Warehouse name if needed
       await tx.warehouse.update({
@@ -156,7 +245,8 @@ export async function updateConsignmentPartner(partnerId: string, prevState: Act
         },
       });
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
+    if (error?.code === 'P2002') return { message: DUPLICATE_CHANNEL_MESSAGE };
     const message = error instanceof Error ? error.message : 'خطا در بروزرسانی همکار امانی.';
     return { message };
   }
@@ -325,25 +415,30 @@ export async function transferStockBatch(input: {
 
 /**
  * Record a batch of consignment sales reported by a partner for a specific date.
- * Groups ALL items into ONE Order. If an unpaid order already exists for this
- * (partner, date), items are appended to it instead of creating a new one.
+ * The lines are grouped by the partner's sale channel and booked as ONE order
+ * per (partner, date, channel), so each order carries a single commission rate.
+ * If an unpaid order already exists for that (partner, date, channel), the
+ * lines are appended to it instead of creating a new one.
  *
  * Commission model: the partner already deducts their commission BEFORE paying
  * us, so:
  *   - Order.totalAmount = NET amount we are owed (gross − commission)
- *   - ConsignmentCommission records the gross & commission split for reporting
+ *   - ConsignmentCommission records the gross & commission split for reporting,
+ *     with the channel's rate and name snapshotted: changing the channel's rate
+ *     later never changes an order already booked
  *   - Commission is marked isPaid=true at creation (partner auto-deducted it)
  *
  * Each call books its own COGS and commission expense rows, so the same
  * report must not be booked twice: a submission sent again (a retry after an
- * error, a double click) carries the same requestId and is answered without
- * writing, and lines that are all already on the day's order are refused
- * until the user confirms them (confirmRepeat) as a genuinely new report.
+ * error, a double click) carries the same requestId — one derived id per
+ * channel — and is answered without writing, and lines that are all already on
+ * the day's order for their channel are refused until the user confirms them
+ * (confirmRepeat) as a genuinely new report.
  */
 export async function recordConsignmentSales(input: {
   partnerWarehouseId: string;
   saleDate: string; // ISO date or YYYY-MM-DD
-  items: Array<{ productId: string; quantity: number; unitPrice: number }>;
+  items: Array<{ productId: string; quantity: number; unitPrice: number; channelId?: string }>;
   requestId?: string;
   confirmRepeat?: boolean;
 }): Promise<ActionResult<{ repeatOf: number }>> {
@@ -370,264 +465,310 @@ export async function recordConsignmentSales(input: {
     const outcome: { duplicate?: boolean; repeatOf?: number } = await prisma.$transaction(async (tx: any) => {
       // One recording at a time per partner, so a repeat sees the first one's lines.
       await tx.$queryRaw`SELECT id FROM "Warehouse" WHERE id = ${partnerWarehouseId} FOR UPDATE`;
-      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
-        return { duplicate: true };
-      }
 
       // 1. Verify partner and warehouse
       const warehouse = await tx.warehouse.findUnique({
         where: { id: partnerWarehouseId },
-        include: { customer: true },
+        include: { customer: { include: { channels: { orderBy: { sortOrder: 'asc' } } } } },
       });
       if (!warehouse || !warehouse.customerId || !warehouse.customer) {
         throw new Error('انبار همکار یا مشتری مرتبط یافت نشد.');
       }
 
-      // 2. Check inventory for each item BEFORE doing anything, and total COGS
-      let cogsTotal = 0;
-      for (const item of items) {
-        const stock = await tx.inventory.findUnique({
-          where: {
-            productId_warehouseId: {
-              productId: item.productId,
-              warehouseId: partnerWarehouseId,
-            },
-          },
-          include: { product: { select: { name: true, costPrice: true } } },
-        });
-        if (!stock || stock.quantity < item.quantity) {
-          throw new Error(
-            `موجودی کافی نیست برای محصول ${stock?.product?.name ?? item.productId} (موجودی: ${stock?.quantity ?? 0}, درخواست: ${item.quantity})`,
-          );
+      // 2. Put every line on a channel: the one it names, or the partner's
+      //    default. A partner from before channels has none, and its lines
+      //    stay channel-less, on the rate that is on the customer.
+      type PartnerChannel = { id: string; name: string; commissionRate: number; isDefault: boolean; isActive: boolean };
+      const channels: PartnerChannel[] = (warehouse.customer.channels ?? []).map((channel: any) => ({
+        id: channel.id,
+        name: channel.name,
+        commissionRate: Number(channel.commissionRate),
+        isDefault: channel.isDefault,
+        isActive: channel.isActive,
+      }));
+      const fallback = defaultChannelOf(channels);
+      const legacyRate = warehouse.customer.commissionRate ? Number(warehouse.customer.commissionRate) : 0;
+
+      type Line = (typeof items)[number] & { channel?: PartnerChannel };
+      const lines: Line[] = items.map((item) => {
+        if (!item.channelId) return { ...item, channel: fallback };
+        const channel = channels.find((one) => one.id === item.channelId);
+        if (!channel || !channel.isActive) {
+          throw new Error('کانال فروش انتخاب‌شده برای این همکار معتبر نیست.');
         }
-        cogsTotal += item.quantity * Number(stock.product.costPrice || 0);
-      }
-
-      // 3. Calculate totals
-      const commissionRate = warehouse.customer.commissionRate
-        ? Number(warehouse.customer.commissionRate)
-        : 0;
-      const grossTotal = items.reduce(
-        (sum, i) => sum + i.quantity * i.unitPrice,
-        0,
-      );
-      const commissionAmount = (grossTotal * commissionRate) / 100;
-      const netAmount = grossTotal - commissionAmount;
-      // Commission newly incurred in THIS call (for the expense entry)
-      let commissionExpenseAmount = 0;
-
-      // 4. Find existing not-fully-paid order for this (partner, date).
-      // Keyed off paymentStatus so it works for legacy PENDING_PAYMENT orders
-      // and new COMPLETED+UNPAID ones alike.
-      let order = await tx.order.findFirst({
-        where: {
-          customerId: warehouse.customerId,
-          paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-          // Cancelling an order leaves paymentStatus UNPAID, so without this a
-          // new sale is appended to a CANCELLED order: the stock is deducted
-          // but the sale is invisible everywhere (settlement lists filter
-          // cancelled orders out).
-          status: { not: 'CANCELLED' },
-          createdAt: { gte: dayStart, lte: dayEnd },
-          items: { some: { warehouseId: partnerWarehouseId } },
-        },
-        include: { items: true },
+        return { ...item, channel };
       });
 
-      // The same lines booked again onto the same day's order: most likely the
-      // same report entered twice. Only an explicit confirmation books them.
-      if (
-        order &&
-        !input.confirmRepeat &&
-        items.every((item) =>
-          order.items.some(
-            (line: any) =>
-              line.productId === item.productId &&
-              line.quantity === item.quantity &&
-              Number(line.price) === item.unitPrice,
-          ),
-        )
-      ) {
-        return { repeatOf: order.number as number };
+      // Each channel's order books its own money rows, so each carries its own
+      // id derived from the submission's: a retry is refused channel by channel.
+      const groups = new Map<string, { channel?: PartnerChannel; lines: Line[] }>();
+      for (const line of lines) {
+        const key = line.channel?.id ?? '';
+        const group = groups.get(key) ?? { channel: line.channel, lines: [] };
+        group.lines.push(line);
+        groups.set(key, group);
+      }
+      const requestIdFor = (key: string) => (requestId ? (key ? `${requestId}:${key}` : requestId) : null);
+      if (requestId) {
+        const already = await tx.transaction.findFirst({
+          where: { clientRequestId: { in: [...groups.keys()].map((key) => requestIdFor(key) as string) } },
+          select: { id: true },
+        });
+        if (already) return { duplicate: true };
       }
 
-      if (order) {
-        // Append items to existing order
-        for (const item of items) {
-          await tx.orderItem.create({
-            data: {
-              orderId: order.id,
-              productId: item.productId,
-              quantity: item.quantity,
-              price: new Prisma.Decimal(item.unitPrice),
-              warehouseId: partnerWarehouseId,
-              status: 'PENDING',
-            },
-          });
+      // 3. Check stock once per product, over every line that uses it, and
+      //    keep the cost for the COGS rows.
+      const wanted = new Map<string, number>();
+      for (const line of lines) wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + line.quantity);
+      const costOf = new Map<string, number>();
+      for (const [productId, quantity] of wanted) {
+        const stock = await tx.inventory.findUnique({
+          where: { productId_warehouseId: { productId, warehouseId: partnerWarehouseId } },
+          include: { product: { select: { name: true, costPrice: true } } },
+        });
+        if (!stock || stock.quantity < quantity) {
+          throw new Error(
+            `موجودی کافی نیست برای محصول ${stock?.product?.name ?? productId} (موجودی: ${stock?.quantity ?? 0}, درخواست: ${quantity})`,
+          );
         }
-        // Recalculate gross from ALL items, counting only units still sold
-        // (returned and exchanged units are no longer owed or commissioned)
-        const allItems = await tx.orderItem.findMany({
-          where: { orderId: order.id },
-          include: { returns: true, exchanges: true },
-        });
-        const newGross = allItems.reduce(
-          (sum: number, it: any) => sum + effectiveQuantity(it) * Number(it.price),
-          0,
-        );
-        const newCommission = (newGross * commissionRate) / 100;
-        const newNet = newGross - newCommission;
+        costOf.set(productId, Number(stock.product.costPrice || 0));
+      }
 
-        await tx.order.update({
-          where: { id: order.id },
-          data: { totalAmount: new Prisma.Decimal(newNet) },
-        });
-
-        // Update or create the single commission record for the order
-        const existingCommission = await tx.consignmentCommission.findFirst({
-          where: { orderId: order.id },
-        });
-        if (existingCommission) {
-          // Only the incremental commission is a new expense
-          commissionExpenseAmount =
-            newCommission - Number(existingCommission.commissionAmount || 0);
-          await tx.consignmentCommission.update({
-            where: { id: existingCommission.id },
-            data: {
-              orderAmount: new Prisma.Decimal(newGross),
-              commissionAmount: new Prisma.Decimal(newCommission),
-              commissionRate: new Prisma.Decimal(commissionRate),
-            },
-          });
-        } else if (commissionRate > 0) {
-          commissionExpenseAmount = newCommission;
-          await tx.consignmentCommission.create({
-            data: {
-              customerId: warehouse.customerId,
-              orderId: order.id,
-              commissionRate: new Prisma.Decimal(commissionRate),
-              orderAmount: new Prisma.Decimal(newGross),
-              commissionAmount: new Prisma.Decimal(newCommission),
-              isPaid: true, // partner already deducted it
-              paidDate: new Date(),
-            },
-          });
-        }
-      } else {
-        // Create new order with all items
-        order = await tx.order.create({
-          data: {
+      // 4. The day's order for each channel, if there is one. Read for every
+      //    channel BEFORE writing anything, so a repeat is refused whole.
+      const booking = [] as Array<{
+        key: string;
+        channel?: PartnerChannel;
+        lines: Line[];
+        order: any | null;
+      }>;
+      for (const [key, group] of groups) {
+        // Keyed off paymentStatus so it works for legacy PENDING_PAYMENT orders
+        // and new COMPLETED+UNPAID ones alike.
+        const order = await tx.order.findFirst({
+          where: {
             customerId: warehouse.customerId,
-            totalAmount: new Prisma.Decimal(netAmount),
-            // Standard status (sale happened); settlement tracked via paymentStatus
-            status: 'COMPLETED',
-            paymentStatus: 'UNPAID',
-            paidAmount: new Prisma.Decimal(0),
-            createdAt: day,
-            items: {
-              create: items.map((i) => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                price: new Prisma.Decimal(i.unitPrice),
+            paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+            // Cancelling an order leaves paymentStatus UNPAID, so without this a
+            // new sale is appended to a CANCELLED order: the stock is deducted
+            // but the sale is invisible everywhere (settlement lists filter
+            // cancelled orders out).
+            status: { not: 'CANCELLED' },
+            createdAt: { gte: dayStart, lte: dayEnd },
+            items: { some: { warehouseId: partnerWarehouseId } },
+            // An online line must never land on the in-store order.
+            consignmentChannelId: group.channel ? group.channel.id : null,
+          },
+          include: { items: true },
+        });
+        // The same lines booked again onto the same day's order: most likely the
+        // same report entered twice. Only an explicit confirmation books them.
+        if (
+          order &&
+          !input.confirmRepeat &&
+          group.lines.every((item) =>
+            order.items.some(
+              (line: any) =>
+                line.productId === item.productId &&
+                line.quantity === item.quantity &&
+                Number(line.price) === item.unitPrice,
+            ),
+          )
+        ) {
+          return { repeatOf: order.number as number };
+        }
+        booking.push({ key, channel: group.channel, lines: group.lines, order });
+      }
+
+      // 5. Book each channel's order: append or create, then its commission,
+      //    the stock it moves and the expenses it incurs.
+      for (const group of booking) {
+        const rate = group.channel ? group.channel.commissionRate : legacyRate;
+        const grossTotal = group.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+        const commissionAmount = (grossTotal * rate) / 100;
+        // Commission newly incurred in THIS call (for the expense entry)
+        let commissionExpenseAmount = 0;
+        let order = group.order;
+
+        if (order) {
+          // Append items to existing order
+          for (const item of group.lines) {
+            await tx.orderItem.create({
+              data: {
+                orderId: order.id,
+                productId: item.productId,
+                quantity: item.quantity,
+                price: new Prisma.Decimal(item.unitPrice),
                 warehouseId: partnerWarehouseId,
                 status: 'PENDING',
-              })),
-            },
-          },
-        });
+              },
+            });
+          }
+          // Recalculate gross from ALL items, counting only units still sold
+          // (returned and exchanged units are no longer owed or commissioned)
+          const allItems = await tx.orderItem.findMany({
+            where: { orderId: order.id },
+            include: { returns: true, exchanges: true },
+          });
+          const newGross = allItems.reduce(
+            (sum: number, it: any) => sum + effectiveQuantity(it) * Number(it.price),
+            0,
+          );
+          const newCommission = (newGross * rate) / 100;
+          const newNet = newGross - newCommission;
 
-        if (commissionRate > 0) {
-          commissionExpenseAmount = commissionAmount;
-          await tx.consignmentCommission.create({
+          await tx.order.update({
+            where: { id: order.id },
+            data: { totalAmount: new Prisma.Decimal(newNet) },
+          });
+
+          // Update or create the single commission record for the order
+          const existingCommission = await tx.consignmentCommission.findFirst({
+            where: { orderId: order.id },
+          });
+          if (existingCommission) {
+            // Only the incremental commission is a new expense
+            commissionExpenseAmount = newCommission - Number(existingCommission.commissionAmount || 0);
+            await tx.consignmentCommission.update({
+              where: { id: existingCommission.id },
+              data: {
+                orderAmount: new Prisma.Decimal(newGross),
+                commissionAmount: new Prisma.Decimal(newCommission),
+                commissionRate: new Prisma.Decimal(rate),
+              },
+            });
+          } else if (rate > 0) {
+            commissionExpenseAmount = newCommission;
+            await tx.consignmentCommission.create({
+              data: {
+                customerId: warehouse.customerId,
+                orderId: order.id,
+                commissionRate: new Prisma.Decimal(rate),
+                channelName: group.channel?.name,
+                orderAmount: new Prisma.Decimal(newGross),
+                commissionAmount: new Prisma.Decimal(newCommission),
+                isPaid: true, // partner already deducted it
+                paidDate: new Date(),
+              },
+            });
+          }
+        } else {
+          // Create new order with all of this channel's items
+          order = await tx.order.create({
             data: {
               customerId: warehouse.customerId,
-              orderId: order.id,
-              commissionRate: new Prisma.Decimal(commissionRate),
-              orderAmount: new Prisma.Decimal(grossTotal),
-              commissionAmount: new Prisma.Decimal(commissionAmount),
-              isPaid: true, // partner already deducted it
-              paidDate: new Date(),
+              totalAmount: new Prisma.Decimal(grossTotal - commissionAmount),
+              // Standard status (sale happened); settlement tracked via paymentStatus
+              status: 'COMPLETED',
+              paymentStatus: 'UNPAID',
+              paidAmount: new Prisma.Decimal(0),
+              createdAt: day,
+              consignmentChannelId: group.channel?.id,
+              items: {
+                create: group.lines.map((i) => ({
+                  productId: i.productId,
+                  quantity: i.quantity,
+                  price: new Prisma.Decimal(i.unitPrice),
+                  warehouseId: partnerWarehouseId,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+
+          if (rate > 0) {
+            commissionExpenseAmount = commissionAmount;
+            await tx.consignmentCommission.create({
+              data: {
+                customerId: warehouse.customerId,
+                orderId: order.id,
+                commissionRate: new Prisma.Decimal(rate),
+                channelName: group.channel?.name,
+                orderAmount: new Prisma.Decimal(grossTotal),
+                commissionAmount: new Prisma.Decimal(commissionAmount),
+                isPaid: true, // partner already deducted it
+                paidDate: new Date(),
+              },
+            });
+          }
+        }
+
+        // Decrement partner inventory and record movements
+        for (const item of group.lines) {
+          await tx.inventory.update({
+            where: {
+              productId_warehouseId: {
+                productId: item.productId,
+                warehouseId: partnerWarehouseId,
+              },
+            },
+            data: { quantity: { decrement: item.quantity } },
+          });
+          await tx.inventoryMovement.create({
+            data: {
+              productId: item.productId,
+              fromWarehouseId: partnerWarehouseId,
+              quantity: item.quantity,
+              type: 'SALE',
+              referenceId: order.id,
+              note: 'فروش امانی',
             },
           });
         }
-      }
 
-      // 5. Decrement partner inventory and record movements
-      for (const item of items) {
-        await tx.inventory.update({
-          where: {
-            productId_warehouseId: {
-              productId: item.productId,
-              warehouseId: partnerWarehouseId,
+        // Record P&L expenses (non-cash): COGS + partner commission.
+        // Booked against dedicated EXPENSE accounts whose balance stays 0, so
+        // they reduce net profit (P&L sums by type) without touching cash.
+        // The first row written for this channel carries its derived requestId.
+        const cogsTotal = group.lines.reduce(
+          (sum, line) => sum + line.quantity * (costOf.get(line.productId) ?? 0),
+          0,
+        );
+        let firstRow = true;
+        const requestIdOnce = () => {
+          const id = firstRow ? requestIdFor(group.key) ?? undefined : undefined;
+          firstRow = false;
+          return id;
+        };
+        if (cogsTotal > 0) {
+          const cogsAccountId = await ensureExpenseAccount(tx, 'بهای تمام‌شده کالای فروش‌رفته');
+          await tx.transaction.create({
+            data: {
+              type: TransactionType.EXPENSE,
+              currency: Currency.TOMAN,
+              amount: new Prisma.Decimal(cogsTotal),
+              amountInToman: new Prisma.Decimal(cogsTotal),
+              rateSnapshot: 1,
+              accountId: cogsAccountId,
+              category: 'COGS',
+              description: `بهای تمام‌شده کالای فروش امانی - سفارش #${order.number}`,
+              customerId: warehouse.customerId,
+              orderId: order.id,
+              clientRequestId: requestIdOnce(),
+              date: day,
             },
-          },
-          data: { quantity: { decrement: item.quantity } },
-        });
-        await tx.inventoryMovement.create({
-          data: {
-            productId: item.productId,
-            fromWarehouseId: partnerWarehouseId,
-            quantity: item.quantity,
-            type: 'SALE',
-            referenceId: order.id,
-            note: 'فروش امانی',
-          },
-        });
-      }
-
-      // 6. Record P&L expenses (non-cash): COGS + partner commission.
-      // Booked against dedicated EXPENSE accounts whose balance stays 0, so
-      // they reduce net profit (P&L sums by type) without touching cash.
-      // The first row written carries the submission's requestId.
-      let firstRow = true;
-      const requestIdOnce = () => {
-        const id = firstRow ? requestId ?? undefined : undefined;
-        firstRow = false;
-        return id;
-      };
-      if (cogsTotal > 0) {
-        const cogsAccountId = await ensureExpenseAccount(
-          tx,
-          'بهای تمام‌شده کالای فروش‌رفته',
-        );
-        await tx.transaction.create({
-          data: {
-            type: TransactionType.EXPENSE,
-            currency: Currency.TOMAN,
-            amount: new Prisma.Decimal(cogsTotal),
-            amountInToman: new Prisma.Decimal(cogsTotal),
-            rateSnapshot: 1,
-            accountId: cogsAccountId,
-            category: 'COGS',
-            description: `بهای تمام‌شده کالای فروش امانی - سفارش #${order.number}`,
-            customerId: warehouse.customerId,
-            orderId: order.id,
-            clientRequestId: requestIdOnce(),
-            date: day,
-          },
-        });
-      }
-      if (commissionExpenseAmount > 0) {
-        const commAccountId = await ensureExpenseAccount(
-          tx,
-          'کمیسیون همکاران امانی',
-        );
-        await tx.transaction.create({
-          data: {
-            type: TransactionType.EXPENSE,
-            currency: Currency.TOMAN,
-            amount: new Prisma.Decimal(commissionExpenseAmount),
-            amountInToman: new Prisma.Decimal(commissionExpenseAmount),
-            rateSnapshot: 1,
-            accountId: commAccountId,
-            category: 'CONSIGNMENT_COMMISSION',
-            description: `کمیسیون همکار امانی - سفارش #${order.number}`,
-            customerId: warehouse.customerId,
-            orderId: order.id,
-            clientRequestId: requestIdOnce(),
-            date: day,
-          },
-        });
+          });
+        }
+        if (commissionExpenseAmount > 0) {
+          const commAccountId = await ensureExpenseAccount(tx, 'کمیسیون همکاران امانی');
+          await tx.transaction.create({
+            data: {
+              type: TransactionType.EXPENSE,
+              currency: Currency.TOMAN,
+              amount: new Prisma.Decimal(commissionExpenseAmount),
+              amountInToman: new Prisma.Decimal(commissionExpenseAmount),
+              rateSnapshot: 1,
+              accountId: commAccountId,
+              category: 'CONSIGNMENT_COMMISSION',
+              description: `کمیسیون همکار امانی - سفارش #${order.number}`,
+              customerId: warehouse.customerId,
+              orderId: order.id,
+              clientRequestId: requestIdOnce(),
+              date: day,
+            },
+          });
+        }
       }
       return {};
     });
@@ -658,12 +799,13 @@ export async function getConsignmentPartners() {
     try {
         const partners = await prisma.warehouse.findMany({
             where: { isVirtual: true, customerId: { not: null }, isArchived: false },
-            include: { customer: true }
+            include: { customer: { include: { channels: { orderBy: { sortOrder: 'asc' } } } } }
         });
         return partners.map((partner: any) => ({
             ...partner,
             customer: partner.customer ? {
                 ...partner.customer,
+                channels: plainChannels(partner.customer.channels),
                 commissionRate: partner.customer.commissionRate ? Number(partner.customer.commissionRate) : undefined,
                 phone: partner.customer.phone ?? undefined,
                 email: partner.customer.email ?? undefined,
@@ -684,13 +826,14 @@ export async function getConsignmentPartnerById(warehouseId: string) {
     try {
         const warehouse = await prisma.warehouse.findUnique({
             where: { id: warehouseId },
-            include: { customer: true }
+            include: { customer: { include: { channels: { orderBy: { sortOrder: 'asc' } } } } }
         });
         if (!warehouse || !warehouse.customer) return undefined;
         return {
             ...warehouse,
             customer: {
                 ...warehouse.customer,
+                channels: plainChannels(warehouse.customer.channels),
                 commissionRate: warehouse.customer.commissionRate ? Number(warehouse.customer.commissionRate) : undefined,
                 phone: warehouse.customer.phone ?? undefined,
                 email: warehouse.customer.email ?? undefined,
@@ -724,6 +867,7 @@ export async function getPendingSettlements() {
         customer: true,
         items: { include: { product: true, returns: true, exchanges: true } },
         commissions: true,
+        consignmentChannel: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -742,6 +886,8 @@ export async function getPendingSettlements() {
         grossAmount,
         commissionAmount,
         commissionRate,
+        channelId: order.consignmentChannelId ?? undefined,
+        channelName: channelNameOf(order),
         discount: order.discount ? Number(order.discount) : undefined,
         items: order.items.map((item: any) => {
           const { costPrice, ...product } = item.product;
@@ -1173,7 +1319,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: partnerWarehouseId },
       include: {
-        customer: true,
+        customer: { include: { channels: { orderBy: { sortOrder: 'asc' } } } },
         inventory: { include: { product: true } },
       },
     });
@@ -1199,7 +1345,11 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
           status: { not: 'CANCELLED' },
           items: { some: { warehouseId: partnerWarehouseId } },
         },
-        include: { items: { include: { returns: true, exchanges: true } }, commissions: true },
+        include: {
+          items: { include: { returns: true, exchanges: true } },
+          commissions: true,
+          consignmentChannel: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
@@ -1240,11 +1390,19 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
     let grossSales = 0;
     let commissionTotal = 0;
     let receivedTotal = 0;
+    // The same money, split by the channel each order was sold through.
+    const perChannel = new Map<string, { channel: string; gross: number; commission: number; net: number }>();
     for (const order of orders) {
       const amounts = consignmentAmounts(order);
       grossSales += amounts.grossAmount;
       commissionTotal += amounts.commissionAmount;
       receivedTotal += amounts.paidAmount;
+      const name = channelNameOf(order);
+      const row = perChannel.get(name) ?? { channel: name, gross: 0, commission: 0, net: 0 };
+      row.gross += amounts.grossAmount;
+      row.commission += amounts.commissionAmount;
+      row.net += amounts.grossAmount - amounts.commissionAmount;
+      perChannel.set(name, row);
     }
     const ourShare = grossSales - commissionTotal;
     const balance = ourShare - receivedTotal;
@@ -1257,6 +1415,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
         commissionRate: warehouse.customer.commissionRate
           ? Number(warehouse.customer.commissionRate)
           : 0,
+        channels: plainChannels(warehouse.customer.channels),
       },
       logistics: { sentQty, returnedQty, soldQty, currentStockQty, currentStockValue },
       financials: {
@@ -1265,6 +1424,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
         ourShare,
         receivedTotal,
         balance,
+        byChannel: [...perChannel.values()].sort((a, b) => b.gross - a.gross),
       },
       currentStock: warehouse.inventory
         .filter((inv: any) => inv.quantity !== 0)
@@ -1280,6 +1440,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
           number: o.number,
           createdAt: o.createdAt,
           itemCount: o.items.length,
+          channel: channelNameOf(o),
           gross,
           commission,
           net: gross - commission,

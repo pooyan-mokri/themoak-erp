@@ -196,6 +196,7 @@ export async function GET(req: NextRequest) {
             // Returned and exchanged units are neither owed nor charged commission.
             items: { include: { returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } } },
             commissions: true,
+            consignmentChannel: { select: { name: true } },
           },
           orderBy: { createdAt: 'desc' },
         });
@@ -207,6 +208,9 @@ export async function GET(req: NextRequest) {
               id: o.id,
               number: o.number,
               partner: o.customer?.name ?? null,
+              // Which way the partner sold it, and the cut it kept.
+              channel: o.consignmentChannel?.name ?? o.commissions?.[0]?.channelName ?? 'پیش‌فرض',
+              commissionRate: amounts.commissionRate,
               grossAmount: amounts.grossAmount,
               commissionAmount: amounts.commissionAmount,
               netAmount: amounts.netAmount,

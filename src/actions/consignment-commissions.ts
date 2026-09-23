@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { consignmentAmounts } from '@/lib/return-math';
+import { DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
 
 /**
  * "طلب از همکار" — outstanding NET amount partners owe us. Partners deduct
@@ -25,15 +26,24 @@ export async function getConsignmentCommissionsReport() {
         customer: true,
         items: { include: { returns: true, exchanges: true } },
         commissions: true,
+        consignmentChannel: true,
       },
       orderBy: { createdAt: 'desc' },
     });
 
+    type ChannelTotal = {
+      channel: string;
+      commissionRate: number;
+      orderCount: number;
+      orderAmount: number; // gross sold through the channel
+      commissionAmount: number; // outstanding, as on the rows
+    };
     const customerTotals: Record<string, {
       customer: any;
       totalCommission: number; // repurposed: total outstanding (our net owed)
       totalOrders: number;
       commissions: any[];
+      channels: Map<string, ChannelTotal>;
     }> = {};
 
     let totalRows = 0;
@@ -51,25 +61,45 @@ export async function getConsignmentCommissionsReport() {
           totalCommission: 0,
           totalOrders: 0,
           commissions: [],
+          channels: new Map(),
         };
       }
+      // The channel the order was sold through, else the name snapshotted on
+      // its commission; an order from before channels reads as «پیش‌فرض».
+      const channel =
+        (order as any).consignmentChannel?.name ??
+        order.commissions?.[0]?.channelName ??
+        DEFAULT_CHANNEL_NAME;
+      const commissionRate = order.commissions?.[0]
+        ? Number(order.commissions[0].commissionRate)
+        : 0;
       customerTotals[customerId].totalCommission += outstanding;
       customerTotals[customerId].totalOrders += 1;
       customerTotals[customerId].commissions.push({
         id: order.id,
         orderNumber: order.number,
         orderAmount: gross,
-        commissionRate: order.commissions?.[0]
-          ? Number(order.commissions[0].commissionRate)
-          : 0,
+        commissionRate,
+        channelName: channel,
         commissionAmount: outstanding, // shown as "مبلغ طلب"
         createdAt: order.createdAt,
       });
+      const channelTotal = customerTotals[customerId].channels.get(channel) ?? {
+        channel,
+        commissionRate,
+        orderCount: 0,
+        orderAmount: 0,
+        commissionAmount: 0,
+      };
+      channelTotal.orderCount += 1;
+      channelTotal.orderAmount += gross;
+      channelTotal.commissionAmount += outstanding;
+      customerTotals[customerId].channels.set(channel, channelTotal);
       totalRows++;
     }
 
     const report = Object.values(customerTotals)
-      .map((item: any) => ({
+      .map(({ channels, ...item }: any) => ({
         ...item,
         customer: item.customer
           ? {
@@ -86,6 +116,9 @@ export async function getConsignmentCommissionsReport() {
         commissions: item.commissions.sort(
           (a: any, b: any) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        ),
+        channelTotals: [...channels.values()].sort(
+          (a: any, b: any) => b.commissionAmount - a.commissionAmount,
         ),
       }))
       .sort((a: any, b: any) => b.totalCommission - a.totalCommission);

@@ -12,21 +12,38 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
-import { useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { PaymentModal } from './payment-modal';
 import { deleteConsignmentOrder } from '@/actions/consignment';
 import { formatJalaliDate } from '@/lib/date-utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface SettlementListProps {
   settlements: any[];
   accounts: any[];
 }
 
+const ALL_CHANNELS = 'ALL';
+
 export function SettlementList({ settlements, accounts }: SettlementListProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [channel, setChannel] = useState(ALL_CHANNELS);
+
+  // The channels these invoices were sold through, in the order they appear.
+  const channels = useMemo(
+    () => [...new Set(settlements.map((s) => s.channelName).filter(Boolean))] as string[],
+    [settlements],
+  );
+  const shown = channel === ALL_CHANNELS ? settlements : settlements.filter((s) => s.channelName === channel);
 
   const handleDelete = (orderId: string, orderNumber: number) => {
     if (
@@ -48,14 +65,30 @@ export function SettlementList({ settlements, accounts }: SettlementListProps) {
 
   return (
     <Card className="mt-6">
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle>تسویه‌های در انتظار پرداخت</CardTitle>
+        {channels.length > 1 && (
+          <Select value={channel} onValueChange={setChannel}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_CHANNELS}>همهٔ کانال‌ها</SelectItem>
+              {channels.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="text-right">همکار</TableHead>
+              <TableHead className="text-right">کانال فروش</TableHead>
               <TableHead className="text-right">تاریخ</TableHead>
               <TableHead className="text-right">اقلام</TableHead>
               <TableHead className="text-right">فروش ناخالص</TableHead>
@@ -67,20 +100,21 @@ export function SettlementList({ settlements, accounts }: SettlementListProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {settlements.length === 0 ? (
+            {shown.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
                   هیچ تسویه‌ای در انتظار پرداخت نیست.
                 </TableCell>
               </TableRow>
             ) : (
-              settlements.map((s) => {
+              shown.map((s) => {
                 const fullyPaid = s.remainingAmount <= 0.01;
                 return (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">
                       {s.customer?.name || 'ناشناس'}
                     </TableCell>
+                    <TableCell className="text-xs">{s.channelName}</TableCell>
                     <TableCell className="text-xs">
                       {formatJalaliDate(s.createdAt)}
                     </TableCell>

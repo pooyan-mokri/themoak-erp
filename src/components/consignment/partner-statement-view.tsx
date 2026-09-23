@@ -26,6 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { channelSummary } from '@/lib/consignment-channels';
 
 interface Partner {
   id: string;
@@ -157,10 +158,27 @@ export function PartnerStatementView({ partners }: { partners: Partner[] }) {
                   <span>فروش ناخالص کل:</span>
                   <span className="font-medium">{fmt(statement.financials.grossSales)} تومان</span>
                 </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>سهم همکار (کمیسیون {statement.partner.commissionRate}%):</span>
-                  <span>{fmt(statement.financials.commissionTotal)} تومان</span>
-                </div>
+                {(statement.financials.byChannel ?? []).length > 1 ? (
+                  (statement.financials.byChannel as any[]).map((row) => (
+                    <div key={row.channel} className="flex justify-between text-muted-foreground">
+                      <span>
+                        سهم همکار — {row.channel} (فروش {fmt(row.gross)}):
+                      </span>
+                      <span>{fmt(row.commission)} تومان</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>
+                      سهم همکار
+                      {statement.partner.channels?.length
+                        ? ` (${channelSummary(statement.partner.channels)})`
+                        : ` (کمیسیون ${statement.partner.commissionRate}%)`}
+                      :
+                    </span>
+                    <span>{fmt(statement.financials.commissionTotal)} تومان</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t pt-2 font-bold">
                   <span>سهم ما (خالص):</span>
                   <span className="text-green-700">{fmt(statement.financials.ourShare)} تومان</span>
@@ -223,6 +241,7 @@ export function PartnerStatementView({ partners }: { partners: Partner[] }) {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">شماره</TableHead>
+                      <TableHead className="text-right">کانال</TableHead>
                       <TableHead className="text-right">تاریخ</TableHead>
                       <TableHead className="text-right">اقلام</TableHead>
                       <TableHead className="text-right">ناخالص</TableHead>
@@ -235,6 +254,7 @@ export function PartnerStatementView({ partners }: { partners: Partner[] }) {
                     {statement.orders.map((o: any) => (
                       <TableRow key={o.id}>
                         <TableCell>#{o.number}</TableCell>
+                        <TableCell className="text-xs">{o.channel}</TableCell>
                         <TableCell className="text-xs">{formatJalaliDate(o.createdAt)}</TableCell>
                         <TableCell>{fmt(o.itemCount)}</TableCell>
                         <TableCell className="text-xs">{fmt(o.gross)}</TableCell>

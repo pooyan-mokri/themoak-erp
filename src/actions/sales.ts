@@ -22,6 +22,7 @@ import { PAYMENT_ACCOUNT_TYPE_MESSAGE, accountForViewer, bookOrderPayment, produ
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { accountLabel } from '@/lib/account-label';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
+import { defaultChannelOf } from '@/lib/consignment-channels';
 
 // const prisma = new PrismaClient();
 
@@ -90,6 +91,7 @@ export async function createOrder(data: OrderData) {
             warehouses: {
               where: { isVirtual: true },
             },
+            channels: { orderBy: { sortOrder: 'asc' } },
           },
         });
       }
@@ -195,18 +197,37 @@ export async function createOrder(data: OrderData) {
         await tx.transaction.update({ where: { id: transactionId }, data: { orderId: order.id } });
       }
 
-      // 5. Calculate and record commission if customer is a consignment partner
-      if (customer && customer.commissionRate && customer.warehouses.length > 0) {
-        const commissionRate = Number(customer.commissionRate);
+      // 5. Calculate and record commission if customer is a consignment partner.
+      //    A sale rung up here goes through the partner's default channel; its
+      //    rate and name are snapshotted on the commission (src/lib/consignment-channels.ts).
+      if (customer && customer.warehouses.length > 0) {
+        const channel = defaultChannelOf(
+          (customer.channels ?? []).map((one: any) => ({
+            id: one.id,
+            name: one.name,
+            commissionRate: Number(one.commissionRate),
+            isDefault: one.isDefault,
+            isActive: one.isActive,
+          })),
+        );
+        const commissionRate = channel
+          ? channel.commissionRate
+          : customer.commissionRate
+            ? Number(customer.commissionRate)
+            : 0;
         const orderAmount = Number(totalAmount) - Number(discount);
         const commissionAmount = (orderAmount * commissionRate) / 100;
 
         if (commissionAmount > 0) {
+          if (channel) {
+            await tx.order.update({ where: { id: order.id }, data: { consignmentChannelId: channel.id } });
+          }
           await tx.consignmentCommission.create({
             data: {
               customerId: customer.id,
               orderId: order.id,
               commissionRate: new Prisma.Decimal(commissionRate),
+              channelName: channel?.name,
               orderAmount: new Prisma.Decimal(orderAmount),
               commissionAmount: new Prisma.Decimal(commissionAmount),
               isPaid: false,

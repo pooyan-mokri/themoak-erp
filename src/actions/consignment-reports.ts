@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
+import { channelSummary, DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
 
 /** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
@@ -13,7 +14,7 @@ export async function getConsignmentReport() {
     const partners = await prisma.warehouse.findMany({
       where: { isVirtual: true, customerId: { not: null } },
       include: {
-        customer: true,
+        customer: { include: { channels: { orderBy: { sortOrder: 'asc' } } } },
         inventory: {
           include: {
             product: true,
@@ -41,6 +42,7 @@ export async function getConsignmentReport() {
           },
         },
         commissions: true,
+        consignmentChannel: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -96,6 +98,63 @@ export async function getConsignmentReport() {
       // Calculate unpaid commissions
       const unpaidCommissions = totalCommissions - paidCommissions;
 
+      // The partner's totals split over its sale channels. An order's channel
+      // is the one it was sold through, else the name snapshotted on its
+      // commission; an order from before channels belongs under «پیش‌فرض».
+      const channels = (partner.customer?.channels ?? []).map((channel: any) => ({
+        id: channel.id as string,
+        name: channel.name as string,
+        commissionRate: Number(channel.commissionRate),
+        isDefault: channel.isDefault as boolean,
+        isActive: channel.isActive as boolean,
+      }));
+      type ChannelRow = {
+        channel: string;
+        commissionRate: number;
+        grossSales: number;
+        commissions: number;
+        netSales: number;
+        orderCount: number;
+      };
+      const byChannel = new Map<string, ChannelRow>();
+      for (const order of partnerOrders as any[]) {
+        const name =
+          order.consignmentChannel?.name ?? order.commissions?.[0]?.channelName ?? DEFAULT_CHANNEL_NAME;
+        const netSales = Number(order.totalAmount) - Number(order.discount || 0);
+        const commission = (order.commissions || []).reduce(
+          (s: any, c: any) => s + Number(c.commissionAmount),
+          0,
+        );
+        // The commission row carries the gross it was taken from; an order
+        // without one (a plain sale to the partner) is its own gross.
+        const gross = order.commissions?.[0] ? Number(order.commissions[0].orderAmount) : netSales;
+        const row = byChannel.get(name) ?? {
+          channel: name,
+          // The channel's rate today; for a channel that is gone, the rate the order was booked at.
+          commissionRate:
+            channels.find((channel: any) => channel.name === name)?.commissionRate ??
+            (order.commissions?.[0] ? Number(order.commissions[0].commissionRate) : 0),
+          grossSales: 0,
+          commissions: 0,
+          netSales: 0,
+          orderCount: 0,
+        };
+        row.grossSales += gross;
+        row.commissions += commission;
+        row.netSales += netSales;
+        row.orderCount += 1;
+        byChannel.set(name, row);
+      }
+      const channelOrder = new Map<string, number>(
+        channels.map((channel: any, index: number) => [channel.name as string, index]),
+      );
+      const channelBreakdown = [...byChannel.values()].sort(
+        (a, b) =>
+          (channelOrder.get(a.channel) ?? channels.length) -
+            (channelOrder.get(b.channel) ?? channels.length) ||
+          a.channel.localeCompare(b.channel, 'fa'),
+      );
+
       // Calculate inventory value (at cost)
       const inventoryValue = canSeeCost
         ? partner.inventory.reduce((sum: any, inv: any) => {
@@ -119,6 +178,8 @@ export async function getConsignmentReport() {
         commissionRate: partner.customer?.commissionRate
           ? Number(partner.customer.commissionRate)
           : undefined,
+        channelSummary: channelSummary(channels),
+        channelBreakdown,
         totalSales,
         totalPaid,
         totalDebt,

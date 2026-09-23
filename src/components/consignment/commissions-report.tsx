@@ -24,8 +24,17 @@ interface ConsignmentCommissionsReportProps {
         orderNumber: number;
         orderAmount: number;
         commissionRate: number;
+        /** The channel the order was sold through; «پیش‌فرض» for one from before channels. */
+        channelName: string;
         commissionAmount: number; // outstanding amount for this order
         createdAt: Date;
+      }>;
+      channelTotals: Array<{
+        channel: string;
+        commissionRate: number;
+        orderCount: number;
+        orderAmount: number;
+        commissionAmount: number; // outstanding through this channel
       }>;
     }>;
     grandTotal: number;
@@ -115,6 +124,7 @@ export function ConsignmentCommissionsReport({ reportData }: ConsignmentCommissi
                     <TableHead className="text-right">شماره فاکتور</TableHead>
                     <TableHead className="text-right">تاریخ</TableHead>
                     <TableHead className="text-right">فروش ناخالص</TableHead>
+                    <TableHead className="text-right">کانال فروش</TableHead>
                     <TableHead className="text-right">درصد کمیسیون</TableHead>
                     <TableHead className="text-right">مبلغ طلب (مانده)</TableHead>
                   </TableRow>
@@ -127,6 +137,7 @@ export function ConsignmentCommissionsReport({ reportData }: ConsignmentCommissi
                       </TableCell>
                       <TableCell>{formatJalaliDate(row.createdAt)}</TableCell>
                       <TableCell>{formatCurrency(row.orderAmount)}</TableCell>
+                      <TableCell>{row.channelName}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{row.commissionRate}%</Badge>
                       </TableCell>
@@ -137,6 +148,38 @@ export function ConsignmentCommissionsReport({ reportData }: ConsignmentCommissi
                   ))}
                 </TableBody>
               </Table>
+
+              {partnerData.channelTotals.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="font-semibold mb-3 text-sm">جمع بر اساس کانال فروش</h4>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-right">کانال فروش</TableHead>
+                        <TableHead className="text-right">درصد کمیسیون</TableHead>
+                        <TableHead className="text-right">تعداد فاکتور</TableHead>
+                        <TableHead className="text-right">فروش ناخالص</TableHead>
+                        <TableHead className="text-right">مبلغ طلب (مانده)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {partnerData.channelTotals.map((total) => (
+                        <TableRow key={total.channel}>
+                          <TableCell className="font-medium">{total.channel}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{total.commissionRate}%</Badge>
+                          </TableCell>
+                          <TableCell>{formatNumber(total.orderCount)}</TableCell>
+                          <TableCell>{formatCurrency(total.orderAmount)}</TableCell>
+                          <TableCell className="font-bold text-green-600">
+                            {formatCurrency(total.commissionAmount)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))
