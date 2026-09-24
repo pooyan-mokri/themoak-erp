@@ -1,13 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Transaction, Account, TransactionType, Currency } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { FileSpreadsheet, Printer, X } from 'lucide-react';
-import { formatJalaliDate } from '@/lib/date-utils';
+import { formatJalaliDate, getStartOfJalaliYear } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
@@ -22,11 +23,54 @@ import {
 
 type TransactionWithAccount = Transaction & { account: Account };
 
-export function TransactionList({ transactions, role }: { transactions: any[]; role: string | null }) {
-  // Period filter — a journal is normally taken for a date range. It scopes
-  // both what is shown and what is exported.
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+interface JournalRange {
+  from?: string;
+  to?: string;
+  all: boolean;
+}
+
+export function TransactionList({
+  transactions,
+  role,
+  range,
+  truncated,
+  maxRows,
+}: {
+  transactions: any[];
+  role: string | null;
+  range: JournalRange;
+  truncated: boolean;
+  maxRows: number;
+}) {
+  const router = useRouter();
+  const [loading, startNavigation] = useTransition();
+  // Period filter — a journal is normally taken for a date range. The server
+  // reads the period out of the address, so an older period is fetched rather
+  // than filtered out of what happened to be loaded.
+  const [fromDate, setFromDate] = useState<Date | undefined>(range.from ? new Date(range.from) : undefined);
+  const [toDate, setToDate] = useState<Date | undefined>(range.to ? new Date(range.to) : undefined);
+
+  const iso = (date: Date | undefined) => (date ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : undefined);
+  const askFor = (next: { from?: Date; to?: Date; all?: boolean }) => {
+    const params = new URLSearchParams();
+    if (next.all) params.set('all', '1');
+    else {
+      const start = iso(next.from);
+      const end = iso(next.to);
+      if (start) params.set('from', start);
+      if (end) params.set('to', end);
+    }
+    startNavigation(() => router.push(`/dashboard/accounting/transactions${params.size ? `?${params}` : ''}`));
+  };
+
+  const chooseFrom = (date: Date | undefined) => {
+    setFromDate(date);
+    askFor({ from: date, to: toDate });
+  };
+  const chooseTo = (date: Date | undefined) => {
+    setToDate(date);
+    askFor({ from: fromDate, to: date });
+  };
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
@@ -171,15 +215,17 @@ export function TransactionList({ transactions, role }: { transactions: any[]; r
             <JalaliDatePicker
               name="journalFrom"
               label="از تاریخ"
+              key={`from-${range.from ?? 'none'}`}
               defaultValue={fromDate}
-              onChange={setFromDate}
+              onChange={chooseFrom}
               placeholder="ابتدای دوره"
             />
             <JalaliDatePicker
               name="journalTo"
               label="تا تاریخ"
+              key={`to-${range.to ?? 'none'}`}
               defaultValue={toDate}
-              onChange={setToDate}
+              onChange={chooseTo}
               placeholder="انتهای دوره"
             />
             <div className="space-y-2">
@@ -198,13 +244,50 @@ export function TransactionList({ transactions, role }: { transactions: any[]; r
             {(fromDate || toDate) && (
               <Button
                 variant="ghost"
-                onClick={() => { setFromDate(undefined); setToDate(undefined); }}
+                onClick={() => {
+                  setFromDate(undefined);
+                  setToDate(undefined);
+                  askFor({});
+                }}
               >
                 <X className="h-4 w-4 ml-1" />
                 حذف بازه
               </Button>
             )}
           </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">دورهٔ آماده:</span>
+            <Button variant="outline" size="sm" onClick={() => { setFromDate(undefined); setToDate(undefined); askFor({}); }}>
+              ۳ ماه اخیر
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const start = getStartOfJalaliYear();
+                setFromDate(start);
+                setToDate(undefined);
+                askFor({ from: start });
+              }}
+            >
+              از ابتدای امسال
+            </Button>
+            <Button
+              variant={range.all ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => { setFromDate(undefined); setToDate(undefined); askFor({ all: true }); }}
+            >
+              همهٔ تاریخچه
+            </Button>
+            {loading && <span className="text-muted-foreground">در حال خواندن…</span>}
+          </div>
+
+          {truncated && (
+            <p className="text-xs text-amber-600">
+              فقط {maxRows.toLocaleString('fa-IR')} سند آخر این بازه خوانده شد؛ برای دیدن قدیمی‌ترها بازه را کوچک‌تر کنید.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
             <div className="rounded-lg border p-3">

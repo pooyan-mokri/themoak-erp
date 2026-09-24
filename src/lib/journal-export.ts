@@ -159,3 +159,6 @@ export function printJournal(rows: JournalRow[], from?: Date, to?: Date): boolea
   setTimeout(() => win.print(), 350);
   return true;
 }
+
+/** The most documents one journal page carries; a wider period is asked for in slices. */
+export const JOURNAL_MAX_ROWS = 3000;

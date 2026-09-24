@@ -11,6 +11,7 @@ import { auth } from '@/auth';
 import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
+import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
 import { randomUUID } from 'node:crypto';
 
 // const prisma = new PrismaClient(); // Removed local instance
@@ -1974,18 +1975,26 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
   return { message: 'واریز با موفقیت ثبت شد.', success: true };
 }
 
-export async function getTransactions() {
+/**
+ * The journal for a period. Without one it used to answer the 100 newest rows,
+ * which hid everything older than those 100 whatever period was asked for.
+ */
+export async function getTransactions(range?: { from?: string; to?: string }) {
   await requirePermission('finance.view');
   try {
     const canSeeCost = await hasPermission('cost.view');
+    const from = range?.from ? new Date(range.from) : undefined;
+    const to = range?.to ? new Date(range.to) : undefined;
+    if (to) to.setHours(23, 59, 59, 999);
     const transactions = await prisma.transaction.findMany({
+      where: from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {},
       orderBy: { date: 'desc' },
       include: {
         account: true,
         employee: true,
         marketingGift: { select: { id: true } },
       },
-      take: 100, // Limit to 100 most recent for now
+      take: JOURNAL_MAX_ROWS,
     });
     
     // Get transaction IDs
