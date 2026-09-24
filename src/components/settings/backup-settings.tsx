@@ -117,7 +117,7 @@ export function BackupSettings() {
             بک‌آپ دستی
           </CardTitle>
           <CardDescription>
-            ایجاد بک‌آپ فوری از دیتابیس
+            کل دیتابیس همین حالا به صورت فایل SQL روی سرور FTP ذخیره می‌شود و از فهرست پایین دانلود می‌شود.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -243,12 +243,12 @@ export function BackupSettings() {
 
               {settings.frequency === 'monthly' && (
                 <div className="space-y-2">
-                  <Label htmlFor="dayOfMonth">روز ماه (1-31)</Label>
+                  <Label htmlFor="dayOfMonth">روز ماه شمسی (۱ تا ۲۹)</Label>
                   <Input
                     id="dayOfMonth"
                     type="number"
                     min="1"
-                    max="31"
+                    max="29"
                     value={settings.dayOfMonth}
                     onChange={(e) =>
                       setSettings((prev) => ({
@@ -260,17 +260,10 @@ export function BackupSettings() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="time">ساعت بک‌آپ (HH:MM)</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={settings.time}
-                  onChange={(e) =>
-                    setSettings((prev) => ({ ...prev, time: e.target.value }))
-                  }
-                />
-              </div>
+              <p className="text-sm text-muted-foreground">
+                هر روز حدود ساعت ۳:۳۰ بامداد (به وقت تهران) بررسی می‌شود و اگر روزِ بک‌آپ باشد،
+                بک‌آپ کامل روی سرور FTP (پوشهٔ <span dir="ltr">/backups</span>) ذخیره می‌شود.
+              </p>
 
               <div className="space-y-2">
                 <Label htmlFor="keepBackups">تعداد بک‌آپ‌های نگه‌داری شده</Label>

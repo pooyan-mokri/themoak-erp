@@ -142,7 +142,9 @@ export async function testFTPConnection(): Promise<{
  */
 export async function uploadToFTP(
   fileBuffer: Buffer,
-  fileName: string
+  fileName: string,
+  /** A folder other than the receipts one in Settings (database backups). */
+  folder?: string
 ): Promise<{ url: string; path: string }> {
   let client: Client | null = null;
   try {
@@ -176,7 +178,7 @@ export async function uploadToFTP(
     await client.access(accessOptions);
 
     // Navigate to base path if specified
-    const basePath = ftpCreds.basePath || '/uploads/receipts';
+    const basePath = folder || ftpCreds.basePath || '/uploads/receipts';
     try {
       await client.ensureDir(basePath);
     } catch (error) {
@@ -323,6 +325,70 @@ export async function downloadFromFTP(filePath: string): Promise<Buffer | null> 
     if (error?.code === 550) return null;
     console.error('[FTP] Download error:', error);
     throw new Error(error?.message || 'Failed to download from FTP server');
+  } finally {
+    if (client) {
+      try {
+        client.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+    }
+  }
+}
+
+/** The files in a folder on the FTP server, newest first; empty when the folder does not exist. */
+export async function listFromFTP(
+  folder: string
+): Promise<Array<{ name: string; size: number; modifiedAt: string | null }>> {
+  let client: Client | null = null;
+  try {
+    const ftpCreds = (await readSystemSetting('ftp_credentials')) as
+      | FTPCredentials
+      | undefined;
+
+    if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
+      throw new Error('FTP credentials not configured');
+    }
+
+    client = new Client();
+    client.ftp.verbose = false;
+    (client.ftp as any).timeout = 15000;
+
+    const accessOptions: any = {
+      host: ftpCreds.host,
+      port: ftpCreds.port || 21,
+      user: ftpCreds.user,
+      password: ftpCreds.password,
+      secure: ftpCreds.secure || false,
+    };
+
+    if (ftpCreds.secure && ftpCreds.ignoreCertificateErrors) {
+      accessOptions.secureOptions = {
+        rejectUnauthorized: false,
+      };
+    }
+
+    await client.access(accessOptions);
+
+    let entries;
+    try {
+      entries = await client.list(folder);
+    } catch (error: any) {
+      // 550: the folder has not been created yet.
+      if (error?.code === 550) return [];
+      throw error;
+    }
+    return entries
+      .filter((entry) => entry.isFile)
+      .map((entry) => ({
+        name: entry.name,
+        size: entry.size,
+        modifiedAt: entry.modifiedAt ? entry.modifiedAt.toISOString() : null,
+      }))
+      .sort((a, b) => b.name.localeCompare(a.name));
+  } catch (error: any) {
+    console.error('[FTP] List error:', error);
+    throw new Error(error?.message || 'Failed to list the FTP folder');
   } finally {
     if (client) {
       try {

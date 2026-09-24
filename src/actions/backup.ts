@@ -1,106 +1,30 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { Role } from '@prisma/client';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
 import { revalidatePath } from 'next/cache';
 import { saveSetting } from './settings';
 import { readSystemSetting } from '@/lib/system-settings';
+import { listFromFTP } from '@/lib/ftp';
+import { BACKUP_FOLDER, isBackupName, runBackup } from '@/lib/db-backup';
 
-const execAsync = promisify(exec);
-
-// Backup directory
-const BACKUP_DIR = join(process.cwd(), 'backups');
-
-// Ensure backup directory exists
-async function ensureBackupDir() {
-  try {
-    await mkdir(BACKUP_DIR, { recursive: true });
-  } catch (error) {
-    // Directory might already exist
-  }
-}
-
-// Parse DATABASE_URL and extract connection info
-function parseDatabaseUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    return {
-      host: parsed.hostname,
-      port: parsed.port || '5432',
-      database: parsed.pathname.slice(1),
-      user: parsed.username,
-      password: parsed.password,
-    };
-  } catch (error) {
-    throw new Error('Invalid DATABASE_URL');
-  }
-}
-
-// Create manual backup
+// Create manual backup: the whole database as SQL, stored on the FTP server
 export async function createBackup() {
   try {
     const session = await auth();
     if (!session?.user || session.user.role !== Role.ADMIN) {
-      return { success: false, error: 'دسترسی غیرمجاز' };
+      return { success: false as const, error: 'دسترسی غیرمجاز' };
     }
 
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      return { success: false, error: 'DATABASE_URL تنظیم نشده است' };
-    }
-
-    await ensureBackupDir();
-
-    const dbInfo = parseDatabaseUrl(databaseUrl);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `backup-${timestamp}.sql`;
-    const filepath = join(BACKUP_DIR, filename);
-
-    // Create pg_dump command
-    // Use PGPASSWORD environment variable to avoid password prompt in command
-    const pgDumpCommand = `pg_dump -h ${dbInfo.host} -p ${dbInfo.port} -U ${dbInfo.user} -d ${dbInfo.database} -F p -f "${filepath}"`;
-
-    await execAsync(pgDumpCommand, {
-      env: { 
-        ...process.env, 
-        PGPASSWORD: dbInfo.password, // Set password via env to avoid shell injection
-      },
-    });
-
-    // Get file size
-    const fs = await import('fs/promises');
-    const stats = await fs.stat(filepath);
-    const sizeInMB = (stats.size / (1024 * 1024)).toFixed(2);
-
-    // Save backup record
-    const backupInfo = {
-      filename,
-      filepath: `/api/backups/${filename}`,
-      size: stats.size,
-      sizeInMB,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Save to database (optional - can track backups)
-    await saveSetting('last_backup', backupInfo);
-
-    return {
-      success: true,
-      filename,
-      downloadUrl: `/api/backups/${filename}`,
-      size: stats.size,
-      sizeInMB,
-    };
+    const schedule = (await readSystemSetting('backup_settings')) as { keepBackups?: number } | undefined;
+    const backup = await runBackup(schedule?.keepBackups ?? 30);
+    revalidatePath('/dashboard/settings/backup');
+    return { success: true as const, ...backup };
   } catch (error: any) {
     console.error('Error creating backup:', error);
     return {
-      success: false,
-      error: error.message || 'خطا در ایجاد بک‌آپ',
+      success: false as const,
+      error: `بک‌آپ گرفته نشد: ${error?.message || 'خطای نامشخص'}`,
     };
   }
 }
@@ -158,7 +82,7 @@ export async function getLastBackup() {
   }
 }
 
-// List available backups
+// List the backups on the FTP server
 export async function listBackups() {
   try {
     const session = await auth();
@@ -166,28 +90,17 @@ export async function listBackups() {
       return { success: false, error: 'دسترسی غیرمجاز' };
     }
 
-    await ensureBackupDir();
-    const fs = await import('fs/promises');
-    const files = await fs.readdir(BACKUP_DIR);
-    
-    const backups = await Promise.all(
-      files
-        .filter(file => file.endsWith('.sql'))
-        .map(async (file) => {
-          const filepath = join(BACKUP_DIR, file);
-          const stats = await fs.stat(filepath);
-          return {
-            filename: file,
-            downloadUrl: `/api/backups/${file}`,
-            size: stats.size,
-            sizeInMB: (stats.size / (1024 * 1024)).toFixed(2),
-            createdAt: stats.birthtime.toISOString(),
-          };
-        })
-    );
-
-    // Sort by creation date (newest first)
-    backups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const files = await listFromFTP(BACKUP_FOLDER);
+    const backups = files
+      .filter((file) => isBackupName(file.name))
+      .map((file) => ({
+        filename: file.name,
+        downloadUrl: `/api/backups/${file.name}`,
+        size: file.size,
+        sizeInMB: (file.size / (1024 * 1024)).toFixed(2),
+        // The name carries when it was taken: backup-2026-09-24T12-02-11.sql (UTC)
+        createdAt: file.name.slice(7, 26).replace(/T(\d{2})-(\d{2})-(\d{2})/, 'T$1:$2:$3') + 'Z',
+      }));
 
     return { success: true, backups };
   } catch (error: any) {
@@ -195,4 +108,3 @@ export async function listBackups() {
     return { success: false, error: error.message || 'خطا در دریافت لیست بک‌آپ‌ها' };
   }
 }
-
