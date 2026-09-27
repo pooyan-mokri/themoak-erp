@@ -1,12 +1,10 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Eye } from 'lucide-react';
 import Link from 'next/link';
-
+import { cn } from '@/lib/utils';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { PILL, fa, leadStatus } from './crm-labels';
+
 interface Lead {
   id: string;
   name: string;
@@ -21,52 +19,34 @@ interface CustomerLeadsTabProps {
 }
 
 export function CustomerLeadsTab({ leads }: CustomerLeadsTabProps) {
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      NEW: 'جدید',
-      CONTACTED: 'تماس گرفته شده',
-      QUALIFIED: 'واجد شرایط',
-      LOST: 'از دست رفته',
-    };
-    return labels[status] || status;
-  };
-
   if (leads.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground border rounded-md">
-        هیچ سرنخی برای این مشتری یافت نشد.
+      <div className="rounded-lg border bg-card py-8 text-center text-[13px] text-muted-foreground">
+        هیچ سرنخی به این مشتری وصل نیست.
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {leads.map((lead) => (
-        <Card key={lead.id}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-medium">{lead.name}</h4>
-                  <Badge variant="outline">{getStatusLabel(lead.status)}</Badge>
-                </div>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>امتیاز: {lead.score}/100</span>
-                  {lead.expectedValue && (
-                    <span>ارزش: {new Intl.NumberFormat('fa-IR').format(Number(lead.expectedValue))} تومان</span>
-                  )}
-                  <span>{formatJalaliDate(lead.createdAt)}</span>
-                </div>
-              </div>
-              <Link href={`/dashboard/crm/leads/${lead.id}`}>
-                <Button variant="ghost" size="icon">
-                  <Eye className="h-4 w-4" />
-                </Button>
+    <ul className="divide-y rounded-lg border bg-card">
+      {leads.map((lead) => {
+        const status = leadStatus(lead.status);
+        return (
+          <li key={lead.id} className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-brand/[.04]">
+            <div className="min-w-0 flex-1">
+              <Link href={`/dashboard/crm/leads/${lead.id}`} className="font-medium hover:text-brand hover:underline">
+                {lead.name}
               </Link>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                امتیاز: {fa(lead.score)}/۱۰۰
+                {lead.expectedValue && ` · ارزش: ${fa(Number(lead.expectedValue))} تومان`}
+                {` · ${formatJalaliDate(lead.createdAt)}`}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+            <span className={cn(PILL, status.tone)}>{status.label}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

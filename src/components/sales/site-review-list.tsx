@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,6 +32,7 @@ const TITLES: Record<SiteReviewAction, string> = {
 };
 
 const toman = (n: number) => `${Math.round(n).toLocaleString('fa-IR')} تومان`;
+const fa = (n: number) => Math.round(n).toLocaleString('fa-IR');
 
 export function SiteReviewList({
   rows,
@@ -91,48 +91,45 @@ export function SiteReviewList({
 
   if (rows.length === 0) {
     return (
-      <Card>
-        <CardContent className="pt-6 text-sm text-muted-foreground">
-          سفارش سایتی نیست که پولش منتظر تصمیم باشد.
-        </CardContent>
-      </Card>
+      <div className="rounded-lg border bg-card px-4 py-10 text-center text-[13px] text-muted-foreground">
+        سفارش سایتی نیست که پولش منتظر تصمیم باشد. سفارشی که در سایت لغو شود یا پرداختش ردّی از درگاه نداشته باشد، اینجا می‌آید.
+      </div>
     );
   }
 
   return (
     <>
-      <Card>
-        <CardContent className="pt-6">
-          <div className="rounded-md border overflow-x-auto">
+      <div className="overflow-hidden rounded-lg border bg-card">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-right">سفارش</TableHead>
-                  <TableHead className="text-right">مشتری</TableHead>
-                  <TableHead className="text-right">چرا اینجاست</TableHead>
+                  <TableHead>سفارش</TableHead>
+                  <TableHead>مشتری</TableHead>
+                  <TableHead>چرا اینجاست</TableHead>
                   {canSeeAmounts && (
                     <>
-                      <TableHead className="text-right">پرداخت طبق سایت</TableHead>
-                      <TableHead className="text-right">بازپرداخت در سایت</TableHead>
-                      <TableHead className="text-right">نزد ERP</TableHead>
-                      <TableHead className="text-right">مانده بدهی</TableHead>
+                      <TableHead className="text-end">پرداخت طبق سایت (تومان)</TableHead>
+                      <TableHead className="text-end">بازپرداخت در سایت</TableHead>
+                      <TableHead className="text-end">نزد ERP</TableHead>
+                      <TableHead className="text-end">مانده بدهی</TableHead>
                     </>
                   )}
-                  {isAdmin && <TableHead className="text-right">تصمیم</TableHead>}
+                  {isAdmin && <TableHead>تصمیم</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="whitespace-nowrap">
-                      <Link href={`/dashboard/sales/history/${row.id}`} className="text-blue-600 hover:underline">
+                      <Link href={`/dashboard/sales/history/${row.id}`} className="font-mono font-bold hover:text-brand hover:underline">
                         #{row.number}
                       </Link>
                       <div dir="ltr" className="font-mono text-xs text-muted-foreground">{row.reference}</div>
                       {row.issuedAt && (
-                        <div className="text-xs text-muted-foreground">{formatJalaliDateTime(row.issuedAt)}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{formatJalaliDateTime(row.issuedAt)}</div>
                       )}
-                      {row.cancelled && <Badge variant="destructive" className="mt-1">لغو شده</Badge>}
+                      {row.cancelled && <Badge variant="danger" className="mt-1">لغو شده</Badge>}
                     </TableCell>
                     <TableCell>{row.customerName ?? '—'}</TableCell>
                     <TableCell className="max-w-md space-y-1 text-sm">
@@ -154,12 +151,12 @@ export function SiteReviewList({
                     </TableCell>
                     {canSeeAmounts && (
                       <>
-                        <TableCell className="whitespace-nowrap">{row.amounts ? toman(row.amounts.sitePaid) : '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap">{row.amounts ? toman(row.amounts.siteRefunded) : '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap font-semibold">
-                          {row.amounts ? toman(row.amounts.held) : '—'}
+                        <TableCell className="whitespace-nowrap text-end">{row.amounts ? fa(row.amounts.sitePaid) : '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-end">{row.amounts ? fa(row.amounts.siteRefunded) : '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-end font-medium">
+                          {row.amounts ? fa(row.amounts.held) : '—'}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">{row.amounts ? toman(row.amounts.owed) : '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-end">{row.amounts ? fa(row.amounts.owed) : '—'}</TableCell>
                       </>
                     )}
                     {isAdmin && (
@@ -178,8 +175,7 @@ export function SiteReviewList({
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       <Dialog open={!!target} onOpenChange={(value) => !value && setTarget(null)}>
         <DialogContent>
@@ -191,7 +187,7 @@ export function SiteReviewList({
           {target && (
             <div className="space-y-4">
               {target.action === 'refund' && !target.row.cancelled && (
-                <p className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="rounded-md bg-warning-soft p-3 text-[13px] text-warning">
                   این سفارش در سایت لغو نشده است. مبلغ از حساب کم می‌شود و سفارش دوباره پرداخت‌نشده می‌شود. اگر پول را به
                   مشتری برگردانده‌اید، بازپرداخت را در پنل سایت ثبت کنید، نه اینجا؛ ثبت در هر دو جا آن را دو بار کم می‌کند.
                 </p>

@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
@@ -83,7 +84,7 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
       <DialogTrigger asChild>
         {trigger || (
           <Button>
-            <Plus className="ml-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             پروژه جدید
           </Button>
         )}
@@ -106,7 +107,7 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
               required 
             />
             {(state?.errors as Record<string, string[] | undefined> | undefined)?.name && (
-              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
             )}
           </div>
 
@@ -120,25 +121,18 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
             />
           </div>
 
+          {/* Jalali pickers, like the task form (these were Gregorian date inputs); each sends an ISO date. */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="startDate">تاریخ شروع</Label>
-              <Input 
-                id="startDate" 
-                name="startDate" 
-                type="date" 
-                defaultValue={project?.startDate ? new Date(project.startDate).toISOString().split('T')[0] : ''}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="endDate">تاریخ پایان</Label>
-              <Input 
-                id="endDate" 
-                name="endDate" 
-                type="date" 
-                defaultValue={project?.endDate ? new Date(project.endDate).toISOString().split('T')[0] : ''}
-              />
-            </div>
+            <JalaliDatePicker
+              name="startDate"
+              label="تاریخ شروع"
+              defaultValue={project?.startDate ? new Date(project.startDate) : undefined}
+            />
+            <JalaliDatePicker
+              name="endDate"
+              label="تاریخ پایان"
+              defaultValue={project?.endDate ? new Date(project.endDate) : undefined}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

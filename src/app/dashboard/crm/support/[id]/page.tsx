@@ -1,125 +1,81 @@
 import { getTicketById } from '@/actions/crm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { TicketActions } from '@/components/crm/ticket-actions';
-
+import { PageHeader } from '@/components/layout/page-header';
+import { BackButton } from '@/components/ui/back-button';
+import { PILL, ticketPriority, ticketStatus } from '@/components/crm/crm-labels';
 import { formatJalaliDate } from '@/lib/date-utils';
-import { requireRouteAccess } from '@/lib/access';
-
-const getPriorityColor = (priority: string) => {
-  switch (priority) {
-    case 'URGENT': return 'destructive';
-    case 'HIGH': return 'default';
-    case 'MEDIUM': return 'secondary';
-    case 'LOW': return 'outline';
-    default: return 'outline';
-  }
-};
-
-const getPriorityLabel = (priority: string) => {
-  const labels: Record<string, string> = {
-    URGENT: 'فوری',
-    HIGH: 'بالا',
-    MEDIUM: 'متوسط',
-    LOW: 'پایین',
-  };
-  return labels[priority] || priority;
-};
-
-const getStatusLabel = (status: string) => {
-  const labels: Record<string, string> = {
-    OPEN: 'باز',
-    IN_PROGRESS: 'در حال بررسی',
-    RESOLVED: 'حل شده',
-    CLOSED: 'بسته',
-  };
-  return labels[status] || status;
-};
+import { hasPermission, requireRouteAccess } from '@/lib/access';
+import { cn } from '@/lib/utils';
 
 export default async function TicketDetailsPage({ params }: { params: { id: string } }) {
   await requireRouteAccess('/dashboard/crm');
-  const ticket = await getTicketById(params.id);
+  const [ticket, canManage] = await Promise.all([getTicketById(params.id), hasPermission('sales.manage')]);
 
   if (!ticket) {
     notFound();
   }
 
+  const status = ticketStatus(ticket.status);
+  const priority = ticketPriority(ticket.priority);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Link href="/dashboard/crm/support">
-          <Button variant="ghost" size="icon">
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-        <h1 className="text-3xl font-bold tracking-tight">تیکت #{ticket.ticketNumber}</h1>
-        <Badge>{getStatusLabel(ticket.status)}</Badge>
-        <Badge variant={getPriorityColor(ticket.priority)}>
-          {getPriorityLabel(ticket.priority)}
-        </Badge>
-      </div>
+    <div className="space-y-4">
+      <BackButton href="/dashboard/crm/support" label="بازگشت به تیکت‌ها" />
+      <PageHeader
+        title={`تیکت #${ticket.ticketNumber}`}
+        description={
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <span className={cn(PILL, status.tone)}>{status.label}</span>
+            <span className={cn(PILL, priority.tone)}>اولویت {priority.label}</span>
+          </span>
+        }
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>{ticket.subject}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h4 className="font-medium mb-2">شرح مشکل:</h4>
-              <p className="text-sm whitespace-pre-wrap">{ticket.description}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="space-y-4 rounded-lg border bg-card p-4 md:col-span-2">
+          <h3 className="text-[15px] font-medium">{ticket.subject}</h3>
+          <div>
+            <h4 className="mb-1 text-xs text-muted-foreground">شرح مشکل</h4>
+            <p className="whitespace-pre-wrap text-[13.5px]">{ticket.description}</p>
+          </div>
+
+          {ticket.resolution && (
+            <div className="rounded-md bg-success-soft p-3">
+              <h4 className="mb-1 text-xs text-success">پاسخ</h4>
+              <p className="whitespace-pre-wrap text-[13.5px]">{ticket.resolution}</p>
             </div>
-            
-            {ticket.resolution && (
-              <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-900">
-                <h4 className="font-medium mb-2 text-green-900 dark:text-green-100">✓ پاسخ:</h4>
-                <p className="text-sm whitespace-pre-wrap text-green-800 dark:text-green-200">
-                  {ticket.resolution}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>جزئیات</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
+        <div className="space-y-4">
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="mb-3 text-sm font-medium">جزئیات</h3>
+            <dl className="space-y-2 text-[13px]">
               {ticket.customer && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">مشتری:</span>
-                  <Link href={`/dashboard/crm/customers/${ticket.customer.id}`} className="font-medium text-blue-600 hover:underline">
-                    {ticket.customer.name}
-                  </Link>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">مشتری</dt>
+                  <dd>
+                    <Link href={`/dashboard/crm/customers/${ticket.customer.id}`} className="font-medium text-brand hover:underline">
+                      {ticket.customer.name}
+                    </Link>
+                  </dd>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">تاریخ ایجاد:</span>
-                <span className="font-medium">
-                  {formatJalaliDate(ticket.createdAt)}
-                </span>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">تاریخ ایجاد</dt>
+                <dd className="font-mono text-[12.5px]">{formatJalaliDate(ticket.createdAt)}</dd>
               </div>
-            </CardContent>
-          </Card>
+            </dl>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>عملیات</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TicketActions 
-                ticketId={ticket.id} 
-                currentStatus={ticket.status}
-                hasResolution={!!ticket.resolution}
-              />
-            </CardContent>
-          </Card>
+          {canManage && (
+            <div className="rounded-lg border bg-card p-4">
+              <h3 className="mb-3 text-sm font-medium">عملیات</h3>
+              <TicketActions ticketId={ticket.id} currentStatus={ticket.status} hasResolution={!!ticket.resolution} />
+            </div>
+          )}
         </div>
       </div>
     </div>

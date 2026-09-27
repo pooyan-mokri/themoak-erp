@@ -1,6 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, CheckCircle } from "lucide-react";
+import { cn } from '@/lib/utils';
+import { PILL, fa } from './crm-labels';
 
 interface CustomerDebtCardProps {
   creditLimit: number;
@@ -8,69 +7,55 @@ interface CustomerDebtCardProps {
   paymentTerms: number;
 }
 
+/** Current debt against the credit limit, and the payment terms. */
 export function CustomerDebtCard({ creditLimit, totalDebt, paymentTerms }: CustomerDebtCardProps) {
   const creditUsage = creditLimit > 0 ? (totalDebt / creditLimit) * 100 : 0;
   const isOverLimit = totalDebt > creditLimit && creditLimit > 0;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">وضعیت اعتبار و بدهی</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-2xl font-bold">
-                {new Intl.NumberFormat('fa-IR').format(totalDebt)} تومان
-              </span>
-              {isOverLimit && (
-                <span className="flex items-center text-red-500 text-xs font-medium">
-                  <AlertTriangle className="h-3 w-3 ml-1" />
-                  بیش از حد اعتبار
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">کل بدهی جاری</p>
-            
-            {creditLimit > 0 && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span>استفاده از اعتبار</span>
-                  <span>{Math.round(creditUsage)}%</span>
-                </div>
-                <Progress value={creditUsage} className={isOverLimit ? "bg-red-100 [&>div]:bg-red-500" : ""} />
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>0</span>
-                  <span>سقف: {new Intl.NumberFormat('fa-IR').format(creditLimit)}</span>
-                </div>
-              </div>
-            )}
-          </div>
+    <div className="rounded-lg border bg-card p-4">
+      <h3 className="text-sm font-medium">وضعیت اعتبار و بدهی</h3>
 
-          <div className="pt-4 border-t grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground">شرایط پرداخت</p>
-              <p className="font-medium">{paymentTerms} روزه</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">وضعیت حساب</p>
-              <div className="flex items-center mt-0.5">
-                {totalDebt === 0 ? (
-                    <span className="flex items-center text-green-600 text-sm">
-                        <CheckCircle className="h-3 w-3 ml-1" />
-                        تسویه
-                    </span>
-                ) : (
-                    <span className="text-sm text-yellow-600">
-                        دارای بدهی
-                    </span>
-                )}
-              </div>
-            </div>
+      <div className="mt-3 flex items-baseline justify-between gap-2">
+        <p className="text-[19px] font-medium tabular-nums">
+          {fa(totalDebt)}
+          <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+        </p>
+        {isOverLimit && <span className={cn(PILL, 'bg-danger-soft text-danger')}>بیش از حد اعتبار</span>}
+      </div>
+      <p className="text-xs text-muted-foreground">کل بدهی جاری</p>
+
+      {creditLimit > 0 && (
+        <div className="mt-4 space-y-1">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">استفاده از اعتبار</span>
+            <span className="tabular-nums">{fa(creditUsage)}٪</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div
+              className={cn('h-full', isOverLimit ? 'bg-danger' : creditUsage >= 80 ? 'bg-warning' : 'bg-brand')}
+              style={{ width: `${Math.min(100, creditUsage)}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>۰</span>
+            <span className="tabular-nums">سقف: {fa(creditLimit)}</span>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      <div className="mt-4 grid grid-cols-2 gap-4 border-t pt-3">
+        <div>
+          <p className="text-xs text-muted-foreground">شرایط پرداخت</p>
+          <p className="mt-0.5 text-[13.5px] font-medium">{fa(paymentTerms)} روزه</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">وضعیت حساب</p>
+          <span className={cn(PILL, 'mt-1', totalDebt === 0 ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning')}>
+            {totalDebt === 0 ? 'تسویه' : 'دارای بدهی'}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

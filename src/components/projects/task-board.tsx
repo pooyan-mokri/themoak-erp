@@ -38,6 +38,8 @@ interface TaskBoardProps {
   tasks: Task[];
   projectId: string;
   users?: User[];
+  /** May move and edit tasks (projects.manage). */
+  canManage?: boolean;
 }
 
 const COLUMNS = [
@@ -53,38 +55,38 @@ interface TaskColumnProps {
   tasks: Task[];
   projectId: string;
   users?: User[];
+  canManage: boolean;
 }
 
-function TaskColumn({ id, title, tasks, projectId, users }: TaskColumnProps) {
+function TaskColumn({ id, title, tasks, projectId, users, canManage }: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
-    <div 
-      ref={setNodeRef} 
-      className={`flex flex-col gap-4 bg-muted/50 p-4 rounded-lg min-h-[500px] animate-fade-in hover:bg-muted/70 transition-colors duration-300 ${
-        isOver ? 'ring-2 ring-primary ring-offset-2 bg-primary/10' : ''
+    <div
+      ref={setNodeRef}
+      className={`flex min-h-[500px] flex-col gap-3 rounded-lg border p-3 transition-colors duration-150 ${
+        isOver ? 'border-brand bg-brand/[.04]' : 'border-transparent bg-secondary'
       }`}
     >
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">{title}</h3>
-        <span className="text-xs text-muted-foreground bg-background px-2 py-1 rounded-full border animate-scale-in">
-          {tasks.length}
+      <div className="flex items-center justify-between px-1">
+        <h3 className="text-[13px] font-medium">{title}</h3>
+        <span className="rounded bg-card px-1.5 font-mono text-[11px] text-muted-foreground">
+          {tasks.length.toLocaleString('fa-IR')}
         </span>
       </div>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-3">
-          {tasks.map((task, index) => (
-            <div key={task.id} style={{ animationDelay: `${index * 0.05}s` }} className="animate-fade-in-up">
-              <TaskCard task={task} projectId={projectId} users={users} />
-            </div>
+        <div className="flex flex-col gap-2">
+          {tasks.map((task) => (
+            <TaskCard key={task.id} task={task} projectId={projectId} users={users} canManage={canManage} />
           ))}
         </div>
       </SortableContext>
+      {tasks.length === 0 && <p className="py-6 text-center text-[12px] text-muted-foreground">وظیفه‌ای در این ستون نیست.</p>}
     </div>
   );
 }
 
-export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
+export function TaskBoard({ tasks, projectId, users = [], canManage = true }: TaskBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | undefined>(undefined);
   const [optimisticTasks, setOptimisticTasks] = useState(tasks);
 
@@ -176,7 +178,7 @@ export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 h-full">
+      <div className="grid h-full grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
         {COLUMNS.map((col) => {
           const columnTasks = optimisticTasks.filter((t) => t.status === col.id);
           console.log(`Column ${col.id} (${col.title}): ${columnTasks.length} tasks`, columnTasks.map((t) => ({ id: t.id, title: t.title })));
@@ -188,6 +190,7 @@ export function TaskBoard({ tasks, projectId, users = [] }: TaskBoardProps) {
               tasks={columnTasks}
               projectId={projectId}
               users={users}
+              canManage={canManage}
             />
           );
         })}

@@ -72,7 +72,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
+              <Settings className="h-4 w-4 text-muted-foreground" />
               تنظیمات دستیار هوش مصنوعی
             </CardTitle>
             <CardDescription>
@@ -123,7 +123,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
 
           <div className="space-y-2">
             <Label>API Key</Label>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[12.5px] text-muted-foreground">
               {settings.hasApiKey
                 ? 'کلید API تنظیم شده است. برای تغییر، کلید جدید را وارد کنید؛ اگر خالی بماند، همان کلید قبلی حفظ می‌شود.'
                 : 'کلید API تنظیم نشده است.'}
@@ -134,6 +134,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={settings.hasApiKey ? 'کلید جدید (اختیاری)' : 'sk-...'}
               autoComplete="new-password"
+              dir="ltr"
             />
           </div>
 
@@ -165,7 +166,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>فعال‌سازی دستیار</Label>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-[12.5px] text-muted-foreground">
                 دستیار هوش مصنوعی را فعال یا غیرفعال کنید
               </p>
             </div>
@@ -186,7 +187,7 @@ export function AISettingsCard({ settings }: AISettingsCardProps) {
               onClick={handleSave}
               disabled={loading || (!apiKey && !settings.hasApiKey)}
             >
-              <Save className="h-4 w-4 ml-2" />
+              <Save className="h-4 w-4" />
               ذخیره تنظیمات
             </Button>
           </div>

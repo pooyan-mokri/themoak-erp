@@ -1,13 +1,22 @@
 import { getDealById } from '@/actions/crm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-
+import { PageHeader } from '@/components/layout/page-header';
+import { BackButton } from '@/components/ui/back-button';
+import { PILL, dealStage, fa } from '@/components/crm/crm-labels';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { requireRouteAccess } from '@/lib/access';
+import { cn } from '@/lib/utils';
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-end">{children}</dd>
+    </div>
+  );
+}
+
 export default async function DealDetailsPage({ params }: { params: { id: string } }) {
   await requireRouteAccess('/dashboard/crm');
   const deal = await getDealById(params.id);
@@ -16,95 +25,46 @@ export default async function DealDetailsPage({ params }: { params: { id: string
     notFound();
   }
 
-  const getStageLabel = (stage: string) => {
-    const labels: Record<string, string> = {
-      PROSPECT: 'سرنخ',
-      PROPOSAL: 'پیشنهاد',
-      NEGOTIATION: 'مذاکره',
-      WON: 'برنده',
-      LOST: 'باخته',
-    };
-    return labels[stage] || stage;
-  };
+  const stage = dealStage(deal.stage);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Link href="/dashboard/crm/deals">
-          <Button variant="ghost" size="icon">
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-        <h1 className="text-3xl font-bold tracking-tight">{deal.title}</h1>
-        <Badge>{getStageLabel(deal.stage)}</Badge>
-      </div>
+    <div className="space-y-4">
+      <BackButton href="/dashboard/crm/deals" label="بازگشت به فرصت‌های فروش" />
+      <PageHeader title={deal.title} description={<span className={cn(PILL, stage.tone)}>{stage.label}</span>} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>اطلاعات معامله</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">اطلاعات معامله</h3>
+          <dl className="space-y-2 text-[13px]">
             {deal.customer && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">مشتری:</span>
-                <Link href={`/dashboard/crm/customers/${deal.customer.id}`} className="font-medium text-blue-600 hover:underline">
+              <Row label="مشتری">
+                <Link href={`/dashboard/crm/customers/${deal.customer.id}`} className="font-medium text-brand hover:underline">
                   {deal.customer.name}
                 </Link>
-              </div>
+              </Row>
             )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">ارزش:</span>
-              <span className="font-medium text-green-600">
-                {new Intl.NumberFormat('fa-IR').format(Number(deal.value))} تومان
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">احتمال برد:</span>
-              <span className="font-medium">{deal.probability}%</span>
-            </div>
-            {deal.expectedClose && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">تاریخ پیش‌بینی شده:</span>
-                <span className="font-medium">
-                  {formatJalaliDate(deal.expectedClose)}
-                </span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <Row label="ارزش">
+              <span className="font-medium tabular-nums">{fa(Number(deal.value))} تومان</span>
+            </Row>
+            <Row label="احتمال برد">{fa(deal.probability)}٪</Row>
+            {deal.expectedClose && <Row label="تاریخ پیش‌بینی شده">{formatJalaliDate(deal.expectedClose)}</Row>}
+            {deal.lostReason && <Row label="دلیل باخت">{deal.lostReason}</Row>}
+          </dl>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>تاریخچه</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">تاریخ ایجاد:</span>
-              <span className="font-medium">
-                {formatJalaliDate(deal.createdAt)}
-              </span>
-            </div>
-            {deal.actualClose && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">تاریخ بسته شدن:</span>
-                <span className="font-medium">
-                  {formatJalaliDate(deal.actualClose)}
-                </span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">تاریخچه</h3>
+          <dl className="space-y-2 text-[13px]">
+            <Row label="تاریخ ایجاد">{formatJalaliDate(deal.createdAt)}</Row>
+            {deal.actualClose && <Row label="تاریخ بسته شدن">{formatJalaliDate(deal.actualClose)}</Row>}
+          </dl>
+        </div>
 
         {deal.notes && (
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>یادداشت‌ها</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm whitespace-pre-wrap">{deal.notes}</p>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg border bg-card p-4 md:col-span-2">
+            <h3 className="mb-2 text-sm font-medium">یادداشت‌ها</h3>
+            <p className="whitespace-pre-wrap text-[13.5px]">{deal.notes}</p>
+          </div>
         )}
       </div>
     </div>

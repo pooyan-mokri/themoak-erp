@@ -5,13 +5,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
-import { Eye } from "lucide-react";
-import { Button } from "@/components/ui/button";
-
+} from '@/components/ui/table';
+import Link from 'next/link';
+import { Eye } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { PILL, fa, orderPayment } from './crm-labels';
+
 interface Order {
   id: string;
   number: number;
@@ -29,60 +30,47 @@ interface CustomerOrdersListProps {
 
 export function CustomerOrdersList({ orders }: CustomerOrdersListProps) {
   return (
-    <div className="rounded-md border">
+    <div className="overflow-hidden rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[100px]">شماره سفارش</TableHead>
+            <TableHead className="w-[100px]">سفارش</TableHead>
             <TableHead>تاریخ</TableHead>
-            <TableHead>مبلغ کل</TableHead>
-            <TableHead>پرداخت شده</TableHead>
-            <TableHead>وضعیت پرداخت</TableHead>
-            <TableHead>وضعیت سفارش</TableHead>
-            <TableHead className="text-left">عملیات</TableHead>
+            <TableHead className="text-end">مبلغ کل (تومان)</TableHead>
+            <TableHead className="text-end">پرداخت شده</TableHead>
+            <TableHead>وضعیت</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {orders.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                هیچ سفارشی یافت نشد.
+              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                این مشتری هنوز سفارشی ندارد.
               </TableCell>
             </TableRow>
           ) : (
-            orders.map((order) => (
-              <TableRow key={order.id}>
-                <TableCell className="font-medium">{order.number}</TableCell>
-                <TableCell>
-                  {formatJalaliDate(order.createdAt)}
-                </TableCell>
-                <TableCell>
-                  {new Intl.NumberFormat('fa-IR').format(Number(order.totalAmount))}
-                </TableCell>
-                <TableCell>
-                  {new Intl.NumberFormat('fa-IR').format(Number(order.paidAmount))}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={
-                    order.paymentStatus === 'PAID' ? 'default' : 
-                    order.paymentStatus === 'PARTIAL' ? 'secondary' : 'destructive'
-                  }>
-                    {order.paymentStatus === 'PAID' ? 'پرداخت شده' :
-                     order.paymentStatus === 'PARTIAL' ? 'پرداخت ناقص' : 'پرداخت نشده'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">{order.status}</Badge>
-                </TableCell>
-                <TableCell className="text-left">
-                  <Link href={`/dashboard/sales/history/${order.id}`}>
-                    <Button variant="ghost" size="icon">
-                        <Eye className="h-4 w-4" />
+            orders.map((order) => {
+              const status = orderPayment(order);
+              return (
+                <TableRow key={order.id}>
+                  <TableCell className="font-mono font-bold">#{order.number}</TableCell>
+                  <TableCell className="font-mono text-[12px] text-muted-foreground">{formatJalaliDate(order.createdAt)}</TableCell>
+                  <TableCell className="text-end">{fa(Number(order.totalAmount))}</TableCell>
+                  <TableCell className="text-end text-muted-foreground">{fa(Number(order.paidAmount))}</TableCell>
+                  <TableCell>
+                    <span className={cn(PILL, status.tone)}>{status.label}</span>
+                  </TableCell>
+                  <TableCell className="text-end">
+                    <Button asChild variant="ghost" size="icon" className="h-8 w-8" title="جزئیات سفارش">
+                      <Link href={`/dashboard/sales/history/${order.id}`}>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </Link>
                     </Button>
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))
+                  </TableCell>
+                </TableRow>
+              );
+            })
           )}
         </TableBody>
       </Table>

@@ -1,33 +1,70 @@
-import { getProjects } from '@/actions/project';
+import Link from 'next/link';
+import { AlarmClock, Briefcase, Calendar, Coins, Wallet } from 'lucide-react';
+import { getMyTasks, getProjectFigures, getProjects } from '@/actions/project';
 import { ProjectForm } from '@/components/projects/project-form';
 import { ProjectList } from '@/components/projects/project-list';
-import { Calendar } from 'lucide-react';
-import Link from 'next/link';
+import { MyTasks } from '@/components/projects/my-tasks';
+import { fa } from '@/components/projects/project-labels';
+import { PageHeader } from '@/components/layout/page-header';
+import { KpiCard } from '@/components/dashboard/kpi-card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { hasPermission } from '@/lib/access';
 
+/** Projects: status, progress, budget and what was spent, and the signed-in user's open tasks. */
 export default async function ProjectsPage() {
-  const projects = await getProjects();
+  const [projects, figures, myTasks, canManage] = await Promise.all([
+    getProjects(),
+    getProjectFigures(),
+    getMyTasks(),
+    hasPermission('projects.manage'),
+  ]);
+
+  const active = projects.filter((p: any) => p.status === 'ACTIVE').length;
+  const budget = projects.reduce((sum: number, p: any) => sum + Number(p.budget || 0), 0);
+  const all = Object.values(figures);
+  const seesMoney = all.some((f) => f.spent !== undefined);
+  const spent = all.reduce((sum, f) => sum + (f.spent ?? 0), 0);
+  const overdue = all.reduce((sum, f) => sum + f.overdue, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">پروژه‌ها</h2>
-          <p className="text-muted-foreground">مدیریت پروژه‌ها و وظایف سازمانی</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard/projects/calendar">
-            <Button variant="outline">
-              <Calendar className="h-4 w-4 ml-2" />
-              نمای تقویمی
+    <div className="space-y-4">
+      <PageHeader
+        title="پروژه‌ها"
+        description="مدیریت پروژه‌ها و وظایف سازمانی"
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/projects/calendar">
+                <Calendar className="h-4 w-4" />
+                نمای تقویمی
+              </Link>
             </Button>
-          </Link>
-          <ProjectForm />
-        </div>
+            {canManage && <ProjectForm />}
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard label="پروژه‌های فعال" icon={Briefcase} value={fa(active)} note={`از ${fa(projects.length)} پروژه`} />
+        <KpiCard label="بودجه کل" icon={Coins} value={budget ? fa(budget) : '—'} unit={budget ? 'تومان' : undefined} note="جمع بودجهٔ پروژه‌ها" />
+        {seesMoney ? (
+          <KpiCard
+            label="هزینه شده"
+            icon={Wallet}
+            value={fa(spent)}
+            unit="تومان"
+            note={budget > 0 ? `${fa((spent / budget) * 100)}٪ از بودجه · هزینه‌های ثبت‌شده روی پروژه` : 'هزینه‌های ثبت‌شده روی پروژه'}
+          />
+        ) : (
+          <KpiCard label="هزینه شده" icon={Wallet} value="—" note="با دسترسی مالی دیده می‌شود" />
+        )}
+        <KpiCard label="وظایف دیرکرد" icon={AlarmClock} value={fa(overdue)} note="سررسید گذشته و انجام‌نشده" />
       </div>
 
-      <ProjectList projects={projects} />
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <ProjectList projects={projects} figures={figures} />
+        <MyTasks tasks={myTasks} />
+      </div>
     </div>
   );
 }

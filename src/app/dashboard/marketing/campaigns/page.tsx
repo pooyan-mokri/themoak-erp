@@ -1,29 +1,26 @@
 import { getMarketingCampaigns } from '@/actions/marketing';
 import { CampaignForm } from '@/components/marketing/campaign-form';
 import { CampaignList } from '@/components/marketing/campaign-list';
-import { requireRouteAccess } from '@/lib/access';
+import { PageHeader } from '@/components/layout/page-header';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
+import { cn } from '@/lib/utils';
 
 export default async function CampaignsPage() {
   await requireRouteAccess('/dashboard/marketing');
-  const campaigns = await getMarketingCampaigns();
+  const [campaigns, canManage] = await Promise.all([getMarketingCampaigns(), hasPermission('sales.manage')]);
+  const active = campaigns.filter((c: any) => c.status === 'ACTIVE').length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">کمپین‌های بازاریابی</h1>
-        <p className="text-muted-foreground mt-2">
-          ایجاد و مدیریت کمپین‌های بازاریابی
-        </p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="کمپین‌های بازاریابی"
+        description={`${active.toLocaleString('fa-IR')} کمپین فعال از ${campaigns.length.toLocaleString('fa-IR')} · ایجاد و مدیریت کمپین‌ها`}
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CampaignForm />
+      <div className={cn('grid gap-4', canManage && 'lg:grid-cols-[1fr_420px]')}>
         <CampaignList campaigns={campaigns} />
+        {canManage && <CampaignForm />}
       </div>
     </div>
   );
 }
-
-
-
-

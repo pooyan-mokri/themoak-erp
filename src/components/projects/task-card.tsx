@@ -1,18 +1,21 @@
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Calendar, User } from 'lucide-react';
 import { TaskForm } from './task-form';
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
+import { formatJalaliDate } from '@/lib/date-utils';
+import { PILL, taskPriority } from './project-labels';
 
 interface TaskCardProps {
   task: any;
   projectId: string;
   users?: Array<{ id: string; name: string; email: string }>;
+  /** May move and edit tasks (projects.manage); the server checks it again. */
+  canManage?: boolean;
 }
 
-export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {
+export function TaskCard({ task, projectId, users = [], canManage = true }: TaskCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const {
     attributes,
@@ -21,7 +24,7 @@ export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({ id: task.id, disabled: !canManage });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -29,70 +32,64 @@ export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'URGENT': return 'bg-red-500 hover:bg-red-600';
-      case 'HIGH': return 'bg-orange-500 hover:bg-orange-600';
-      case 'MEDIUM': return 'bg-blue-500 hover:bg-blue-600';
-      case 'LOW': return 'bg-slate-500 hover:bg-slate-600';
-      default: return 'bg-slate-500';
-    }
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     // Only open edit dialog if not dragging (drag activation requires 8px movement)
-    if (!isDragging) {
+    if (!isDragging && canManage) {
       setIsEditing(true);
     }
   };
 
+  const priority = taskPriority(task.priority);
+  // assignedTo holds the user's id: show their name (the server sends assignedToUser; the users list is the fallback).
+  const assignee = task.assignedTo
+    ? task.assignedToUser?.name ?? users.find((u) => u.id === task.assignedTo)?.name
+    : undefined;
+
   return (
     <>
-      <div 
-        ref={setNodeRef} 
-        style={style} 
+      <div
+        ref={setNodeRef}
+        style={style}
         {...attributes}
         {...listeners}
-        className="touch-none relative group cursor-grab active:cursor-grabbing"
+        className={cn('relative touch-none', canManage && 'cursor-grab active:cursor-grabbing')}
       >
-        <Card 
-          className="hover:shadow-lg hover:scale-[1.02] transition-all duration-300 ease-out hover:border-primary/20"
+        <div
+          className="space-y-2 rounded-md border bg-card p-3 transition-colors duration-150 hover:border-input"
           onClick={handleClick}
         >
-          <CardHeader className="p-3 pb-0 space-y-0">
-            <div className="flex justify-between items-start gap-2">
-              <h4 className="font-medium text-sm line-clamp-2">{task.title}</h4>
-              <Badge className={`text-[10px] px-1.5 py-0 h-5 ${getPriorityColor(task.priority)} animate-pulse-slow`}>
-                {task.priority}
-              </Badge>
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="line-clamp-2 text-[13px] font-medium">{task.title}</h4>
+            <span className={cn(PILL, priority.tone)}>{priority.label}</span>
+          </div>
+          {task.description && <p className="line-clamp-2 text-[12px] text-muted-foreground">{task.description}</p>}
+          {(task.dueDate || assignee) && (
+            <div className="flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+              {task.dueDate && (
+                <span className="inline-flex items-center gap-1 font-mono">
+                  <Calendar className="h-3 w-3" />
+                  {formatJalaliDate(task.dueDate)}
+                </span>
+              )}
+              {assignee && (
+                <span className="ms-auto inline-flex min-w-0 items-center gap-1">
+                  <User className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{assignee}</span>
+                </span>
+              )}
             </div>
-          </CardHeader>
-          <CardContent className="p-3 text-xs text-muted-foreground">
-            {task.description && <p className="line-clamp-2 mb-2">{task.description}</p>}
-          </CardContent>
-          <CardFooter className="p-3 pt-0 flex justify-between items-center text-xs text-muted-foreground">
-            {task.dueDate && (
-              <div className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                <span>{new Date(task.dueDate).toLocaleDateString('fa-IR')}</span>
-              </div>
-            )}
-            {task.assignedTo && (
-              <div className="flex items-center gap-1 ml-auto">
-                <User className="h-3 w-3" />
-                <span>{task.assignedTo}</span>
-              </div>
-            )}
-          </CardFooter>
-        </Card>
+          )}
+        </div>
       </div>
-      <TaskForm 
-        projectId={projectId}
-        task={task}
-        open={isEditing}
-        onOpenChange={setIsEditing}
-        users={users}
-      />
+      {canManage && (
+        <TaskForm
+          projectId={projectId}
+          task={task}
+          open={isEditing}
+          onOpenChange={setIsEditing}
+          users={users}
+        />
+      )}
     </>
   );
 }

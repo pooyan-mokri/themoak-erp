@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { ActionState, ActionResult } from '@/lib/types';
-import { checkPermission, getCurrentRole } from '@/lib/access';
+import { checkPermission, getCurrentRole, hasPermission } from '@/lib/access';
+import { auth } from '@/auth';
 
 const ProjectSchema = z.object({
   name: z.string().min(1, 'نام پروژه الزامی است'),
@@ -92,6 +93,62 @@ export async function getProjects() {
   } catch (error) {
     throw new Error('Failed to fetch projects');
   }
+}
+
+export type ProjectFigures = { tasks: number; done: number; overdue: number; spent?: number };
+
+/**
+ * Per project id: its tasks, how many are done and how many are past due; with
+ * finance.view also what the expenses booked against it spent (Toman). Read only.
+ */
+export async function getProjectFigures(): Promise<Record<string, ProjectFigures>> {
+  if (!(await getCurrentRole())) return {};
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [tasks, canSeeMoney] = await Promise.all([
+    prisma.task.findMany({ select: { projectId: true, status: true, dueDate: true } }),
+    hasPermission('finance.view'),
+  ]);
+  const figures: Record<string, ProjectFigures> = {};
+  for (const task of tasks) {
+    const f = (figures[task.projectId] ??= { tasks: 0, done: 0, overdue: 0 });
+    const done = task.status === 'DONE' || task.status === 'COMPLETED';
+    f.tasks += 1;
+    if (done) f.done += 1;
+    else if (task.dueDate && task.dueDate < today) f.overdue += 1;
+  }
+  if (canSeeMoney) {
+    const spending = await prisma.transaction.groupBy({
+      by: ['projectId'],
+      where: { projectId: { not: null }, type: 'EXPENSE' },
+      _sum: { amountInToman: true },
+    });
+    for (const row of spending) {
+      const f = (figures[row.projectId as string] ??= { tasks: 0, done: 0, overdue: 0 });
+      f.spent = Number(row._sum.amountInToman ?? 0);
+    }
+    for (const f of Object.values(figures)) f.spent ??= 0;
+  }
+  return figures;
+}
+
+/** The signed-in user's open tasks across every project, soonest due first. Read only. */
+export async function getMyTasks() {
+  const session = await auth();
+  if (!session?.user?.id) return [];
+  const tasks = await prisma.task.findMany({
+    where: { assignedTo: session.user.id, status: { notIn: ['DONE', 'COMPLETED'] } },
+    include: { project: { select: { id: true, name: true } } },
+    orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
+  });
+  return tasks.map((task: any) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    dueDate: task.dueDate ?? undefined,
+    project: task.project,
+  }));
 }
 
 export async function getProjectById(id: string) {

@@ -77,28 +77,22 @@ export function PayrollPaymentForm({
     <form action={dispatch} className="space-y-4">
       <input type="hidden" name="payrollId" value={payroll.id} />
 
-      <div className="p-3 bg-muted rounded-md">
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium">خالص قابل پرداخت:</span>
-            <span className="text-lg font-bold text-green-600">
-              {formatCurrency(payroll.netAmount)} تومان
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium">پرداخت شده:</span>
-            <span className="text-sm">{formatCurrency(payroll.paidAmount)} تومان</span>
-          </div>
-          <div className="flex justify-between items-center border-t pt-2">
-            <span className="text-sm font-medium">باقیمانده:</span>
-            <span className="text-lg font-bold text-orange-600">
-              {formatCurrency(remainingAmount)} تومان
-            </span>
-          </div>
+      <dl className="space-y-1.5 rounded-md bg-secondary p-3 text-[13px]">
+        <div className="flex items-center justify-between">
+          <dt className="text-muted-foreground">خالص قابل پرداخت</dt>
+          <dd className="tabular-nums">{formatCurrency(payroll.netAmount)} تومان</dd>
         </div>
-      </div>
+        <div className="flex items-center justify-between">
+          <dt className="text-muted-foreground">پرداخت شده</dt>
+          <dd className="tabular-nums">{formatCurrency(payroll.paidAmount)} تومان</dd>
+        </div>
+        <div className="flex items-center justify-between border-t pt-1.5">
+          <dt className="font-medium">باقیمانده</dt>
+          <dd className="text-[15px] font-medium tabular-nums">{formatCurrency(remainingAmount)} تومان</dd>
+        </div>
+      </dl>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="accountId">حساب پرداخت *</Label>
         <Select name="accountId" required value={accountId} onValueChange={setAccountId}>
           <SelectTrigger id="accountId">
@@ -113,12 +107,12 @@ export function PayrollPaymentForm({
           </SelectContent>
         </Select>
         {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="amount">مبلغ پرداخت *</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="amount">مبلغ پرداخت (تومان) *</Label>
         <Input
           id="amount"
           name="amount"
@@ -132,14 +126,14 @@ export function PayrollPaymentForm({
           onChange={(e) => setAmount(e.target.value)}
         />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
         )}
         <p className="text-xs text-muted-foreground">
           حداکثر: {formatCurrency(remainingAmount)} تومان
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="date">تاریخ</Label>
         <JalaliDatePicker
           name="date"
@@ -150,11 +144,11 @@ export function PayrollPaymentForm({
         />
         <input type="hidden" name="date" value={date} />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.date && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.date?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.date?.[0]}</p>
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="description">توضیحات</Label>
         <Textarea
           id="description"
@@ -163,16 +157,14 @@ export function PayrollPaymentForm({
           rows={3}
         />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
         )}
       </div>
 
       {state.message && (
         <div
-          className={`text-sm p-3 rounded ${
-            state.success
-              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-              : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
+          className={`rounded-md px-3 py-2 text-[13px] ${
+            state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'
           }`}
         >
           {state.message}

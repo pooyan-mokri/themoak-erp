@@ -219,7 +219,7 @@ export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpe
         <DialogTrigger asChild>
           {trigger || (
             <Button size="sm">
-              <Plus className="ml-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               وظیفه جدید
             </Button>
           )}
@@ -245,7 +245,7 @@ export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpe
               required 
             />
             {errors?.title && (
-              <p className="text-sm text-red-500">{errors.title[0]}</p>
+              <p className="text-[12.5px] text-danger">{errors.title[0]}</p>
             )}
           </div>
 
@@ -336,7 +336,7 @@ export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpe
             )}
             <input type="hidden" name="assignedTo" value={assignedTo} />
             {errors?.assignedTo && (
-              <p className="text-sm text-red-500">{errors.assignedTo[0]}</p>
+              <p className="text-[12.5px] text-danger">{errors.assignedTo[0]}</p>
             )}
           </div>
 

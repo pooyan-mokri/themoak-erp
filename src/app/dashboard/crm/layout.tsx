@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { requireRouteAccess } from '@/lib/access';
+import { CrmNav } from '@/components/crm/crm-nav';
 
 export const metadata: Metadata = {
   title: 'CRM Dashboard | TheMoak ERP',
@@ -13,10 +14,8 @@ export default async function CRMLayout({
 }) {
   await requireRouteAccess('/dashboard/crm');
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">مدیریت ارتباط با مشتری</h2>
-      </div>
+    <div className="space-y-4">
+      <CrmNav />
       {children}
     </div>
   );

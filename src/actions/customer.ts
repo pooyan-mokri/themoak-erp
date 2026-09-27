@@ -518,3 +518,31 @@ export async function updateCustomerSegment(id: string, segment?: string) {
     return { success: false, message: 'خطا در بروزرسانی دسته‌بندی.' };
   }
 }
+
+export type CustomerOrderSummary = { orders: number; lifetimeValue: number };
+
+/**
+ * For the CRM tables, per customer id: how many orders were not cancelled and
+ * what they were worth. Read only.
+ *
+ * An order is worth its total less its discount, never below zero. A return, an
+ * exchange or a website refund lowers Order.totalAmount when it is booked
+ * (order-return.ts and order-exchange.ts through return-math's returnChange and
+ * exchangeChange; site-sale.ts for refunds), so this is already net of them:
+ * taking the return rows off again would count each return twice.
+ */
+export async function getCustomerOrderSummaries(): Promise<Record<string, CustomerOrderSummary>> {
+  await requirePermission('sales.view');
+  const orders = await prisma.order.findMany({
+    where: { customerId: { not: null }, status: { not: 'CANCELLED' } },
+    select: { customerId: true, totalAmount: true, discount: true },
+  });
+  const summaries: Record<string, CustomerOrderSummary> = {};
+  for (const order of orders) {
+    const id = order.customerId as string;
+    const summary = (summaries[id] ??= { orders: 0, lifetimeValue: 0 });
+    summary.orders += 1;
+    summary.lifetimeValue += Math.max(0, Number(order.totalAmount) - Number(order.discount));
+  }
+  return summaries;
+}

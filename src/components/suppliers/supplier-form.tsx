@@ -39,7 +39,7 @@ export function SupplierForm() {
             </Alert>
           )}
           {state?.success && (
-            <Alert className="bg-green-50 text-green-900 border-green-200">
+            <Alert className="border-transparent bg-success-soft text-success">
               <AlertDescription>{state.message}</AlertDescription>
             </Alert>
           )}

@@ -1,12 +1,10 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Eye } from 'lucide-react';
 import Link from 'next/link';
-
+import { cn } from '@/lib/utils';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { PILL, dealStage, fa } from './crm-labels';
+
 interface Deal {
   id: string;
   title: string;
@@ -21,63 +19,37 @@ interface CustomerDealsTabProps {
 }
 
 export function CustomerDealsTab({ deals }: CustomerDealsTabProps) {
-  const getStageLabel = (stage: string) => {
-    const labels: Record<string, string> = {
-      PROSPECT: 'سرنخ',
-      PROPOSAL: 'پیشنهاد',
-      NEGOTIATION: 'مذاکره',
-      WON: 'برنده',
-      LOST: 'باخته',
-    };
-    return labels[stage] || stage;
-  };
-
-  const getStageColor = (stage: string) => {
-    switch (stage) {
-      case 'WON': return 'default';
-      case 'LOST': return 'destructive';
-      default: return 'secondary';
-    }
-  };
-
   if (deals.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground border rounded-md">
-        هیچ فرصت فروشی برای این مشتری یافت نشد.
+      <div className="rounded-lg border bg-card py-8 text-center text-[13px] text-muted-foreground">
+        هیچ فرصت فروشی برای این مشتری ثبت نشده است.
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {deals.map((deal) => (
-        <Card key={deal.id}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-medium">{deal.title}</h4>
-                  <Badge variant={getStageColor(deal.stage)}>{getStageLabel(deal.stage)}</Badge>
-                </div>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="text-green-600 font-medium">
-                    {new Intl.NumberFormat('fa-IR').format(Number(deal.value))} تومان
-                  </span>
-                  <span>احتمال: {deal.probability}%</span>
-                  {deal.expectedClose && (
-                    <span>موعد: {formatJalaliDate(deal.expectedClose)}</span>
-                  )}
-                </div>
-              </div>
-              <Link href={`/dashboard/crm/deals/${deal.id}`}>
-                <Button variant="ghost" size="icon">
-                  <Eye className="h-4 w-4" />
-                </Button>
+    <ul className="divide-y rounded-lg border bg-card">
+      {deals.map((deal) => {
+        const stage = dealStage(deal.stage);
+        return (
+          <li key={deal.id} className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-brand/[.04]">
+            <div className="min-w-0 flex-1">
+              <Link href={`/dashboard/crm/deals/${deal.id}`} className="font-medium hover:text-brand hover:underline">
+                {deal.title}
               </Link>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                احتمال: {fa(deal.probability)}٪
+                {deal.expectedClose && ` · موعد: ${formatJalaliDate(deal.expectedClose)}`}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+            <span className="text-[13.5px] font-medium tabular-nums">
+              {fa(Number(deal.value))}
+              <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+            </span>
+            <span className={cn(PILL, stage.tone)}>{stage.label}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

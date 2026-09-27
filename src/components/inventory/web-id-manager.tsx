@@ -37,7 +37,7 @@ export function WebIdManager({
   isAdmin: boolean;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <SeedCard plan={preview} isAdmin={isAdmin} />
       <MissingCard products={missing} />
     </div>
@@ -75,7 +75,7 @@ function SeedCard({ plan, isAdmin }: { plan: SeedPlan; isAdmin: boolean }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">پر کردن شناسه‌ها از فایل سایت</CardTitle>
+        <CardTitle>پر کردن شناسه‌ها از فایل سایت</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
@@ -85,9 +85,14 @@ function SeedCard({ plan, isAdmin }: { plan: SeedPlan; isAdmin: boolean }) {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {tiles.map((t) => (
-            <div key={t.label} className="rounded-lg border p-3 text-center">
-              <div className={`text-2xl font-bold ${t.bad && t.value > 0 ? 'text-red-600' : ''}`}>{fa(t.value)}</div>
-              <div className="text-xs text-muted-foreground mt-1">{t.label}</div>
+            <div key={t.label} className="rounded-md border px-3 py-2.5">
+              <div className="text-xs text-muted-foreground">{t.label}</div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-[19px] font-medium tabular-nums">{fa(t.value)}</span>
+                {t.bad && t.value > 0 && (
+                  <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[11px] text-danger">نیاز به رفع</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -97,10 +102,10 @@ function SeedCard({ plan, isAdmin }: { plan: SeedPlan; isAdmin: boolean }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-right">شناسهٔ سایت</TableHead>
-                  <TableHead className="text-right">کالا در فایل</TableHead>
-                  <TableHead className="text-right">وضعیت فعلی در ERP</TableHead>
-                  <TableHead className="text-right">مشکل</TableHead>
+                  <TableHead>شناسهٔ سایت</TableHead>
+                  <TableHead>کالا در فایل</TableHead>
+                  <TableHead>وضعیت فعلی در ERP</TableHead>
+                  <TableHead>مشکل</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -124,7 +129,7 @@ function SeedCard({ plan, isAdmin }: { plan: SeedPlan; isAdmin: boolean }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="destructive">{SEED_STATUS_LABEL[r.status]}</Badge>
+                      <Badge variant="danger">{SEED_STATUS_LABEL[r.status]}</Badge>
                       {r.takenBy && <div className="text-xs text-muted-foreground mt-1">{r.takenBy}</div>}
                     </TableCell>
                   </TableRow>
@@ -135,7 +140,7 @@ function SeedCard({ plan, isAdmin }: { plan: SeedPlan; isAdmin: boolean }) {
         )}
 
         {allDone ? (
-          <p className="text-sm text-green-700">همهٔ شناسه‌های این فایل ثبت شده‌اند.</p>
+          <p className="rounded-md bg-success-soft px-3 py-2 text-[13px] text-success">همهٔ شناسه‌های این فایل ثبت شده‌اند.</p>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm">
@@ -160,7 +165,7 @@ function SeedCard({ plan, isAdmin }: { plan: SeedPlan; isAdmin: boolean }) {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>انصراف</AlertDialogCancel>
-                    <AlertDialogAction onClick={apply}>ثبت</AlertDialogAction>
+                    <AlertDialogAction onClick={apply}>{`ثبت ${fa(counts.toSet)} شناسه`}</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
@@ -178,7 +183,7 @@ function MissingCard({ products }: { products: MissingProduct[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">کالاهای فروختنی بدون شناسهٔ سایت ({fa(products.length)})</CardTitle>
+        <CardTitle>کالاهای فروختنی بدون شناسهٔ سایت ({fa(products.length)})</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {products.length === 0 ? (
@@ -188,9 +193,9 @@ function MissingCard({ products }: { products: MissingProduct[] }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-right">کالا</TableHead>
-                  <TableHead className="text-right">SKU</TableHead>
-                  <TableHead className="text-right">شناسهٔ سایت</TableHead>
+                  <TableHead>کالا</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>شناسهٔ سایت</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -229,7 +234,7 @@ function MissingRow({ product }: { product: MissingProduct }) {
   return (
     <TableRow>
       <TableCell className="font-medium">
-        <Link href={`/dashboard/inventory/products/${product.id}`} className="hover:underline">
+        <Link href={`/dashboard/inventory/products/${product.id}`} className="hover:text-brand hover:underline">
           {product.name}
         </Link>
       </TableCell>

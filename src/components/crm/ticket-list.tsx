@@ -8,12 +8,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye } from 'lucide-react';
 import Link from 'next/link';
-
+import { cn } from '@/lib/utils';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { PILL, ticketPriority, ticketStatus } from './crm-labels';
+
 interface Ticket {
   id: string;
   ticketNumber: number;
@@ -31,38 +32,8 @@ interface TicketListProps {
 }
 
 export function TicketList({ tickets }: TicketListProps) {
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'URGENT': return 'destructive';
-      case 'HIGH': return 'default';
-      case 'MEDIUM': return 'secondary';
-      case 'LOW': return 'outline';
-      default: return 'outline';
-    }
-  };
-
-  const getPriorityLabel = (priority: string) => {
-    const labels: Record<string, string> = {
-      URGENT: 'فوری',
-      HIGH: 'بالا',
-      MEDIUM: 'متوسط',
-      LOW: 'پایین',
-    };
-    return labels[priority] || priority;
-  };
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      OPEN: 'باز',
-      IN_PROGRESS: 'در حال بررسی',
-      RESOLVED: 'حل شده',
-      CLOSED: 'بسته',
-    };
-    return labels[status] || status;
-  };
-
   return (
-    <div className="rounded-md border">
+    <div className="overflow-hidden rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
@@ -72,40 +43,46 @@ export function TicketList({ tickets }: TicketListProps) {
             <TableHead>اولویت</TableHead>
             <TableHead>وضعیت</TableHead>
             <TableHead>تاریخ ایجاد</TableHead>
-            <TableHead className="text-left">عملیات</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {tickets.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                هیچ تیکتی یافت نشد.
+              <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                هیچ تیکتی ثبت نشده است. درخواست یا شکایت هر مشتری را با «تیکت جدید» ثبت کنید تا پیگیری شود.
               </TableCell>
             </TableRow>
           ) : (
-            tickets.map((ticket) => (
-              <TableRow key={ticket.id}>
-                <TableCell className="font-medium">#{ticket.ticketNumber}</TableCell>
-                <TableCell>{ticket.subject}</TableCell>
-                <TableCell>{ticket.customer?.name || '-'}</TableCell>
-                <TableCell>
-                  <Badge variant={getPriorityColor(ticket.priority)}>
-                    {getPriorityLabel(ticket.priority)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">{getStatusLabel(ticket.status)}</Badge>
-                </TableCell>
-                <TableCell>{formatJalaliDate(ticket.createdAt)}</TableCell>
-                <TableCell className="text-left">
-                  <Link href={`/dashboard/crm/support/${ticket.id}`}>
-                    <Button variant="ghost" size="icon">
-                      <Eye className="h-4 w-4" />
+            tickets.map((ticket) => {
+              const priority = ticketPriority(ticket.priority);
+              const status = ticketStatus(ticket.status);
+              return (
+                <TableRow key={ticket.id}>
+                  <TableCell className="font-mono text-[12.5px]">#{ticket.ticketNumber}</TableCell>
+                  <TableCell>
+                    <Link href={`/dashboard/crm/support/${ticket.id}`} className="font-medium hover:text-brand hover:underline">
+                      {ticket.subject}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{ticket.customer?.name || '—'}</TableCell>
+                  <TableCell>
+                    <span className={cn(PILL, priority.tone)}>{priority.label}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn(PILL, status.tone)}>{status.label}</span>
+                  </TableCell>
+                  <TableCell className="font-mono text-[12px] text-muted-foreground">{formatJalaliDate(ticket.createdAt)}</TableCell>
+                  <TableCell className="text-end">
+                    <Button asChild variant="ghost" size="icon" className="h-8 w-8" title="جزئیات تیکت">
+                      <Link href={`/dashboard/crm/support/${ticket.id}`}>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </Link>
                     </Button>
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))
+                  </TableCell>
+                </TableRow>
+              );
+            })
           )}
         </TableBody>
       </Table>
