@@ -13,6 +13,9 @@ import { checkPermission, hasPermission, requirePermission } from '@/lib/access'
 
 // ========== LEADS ==========
 
+// The statuses the lead screens know (lead-list, the lead page).
+const LEAD_STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'LOST'];
+
 const LeadSchema = z.object({
   name: z.string().min(1, 'نام الزامی است'),
   company: z.string().optional(),
@@ -128,6 +131,7 @@ export async function getLeadById(id: string) {
 export async function updateLeadStatus(id: string, status: string) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  if (!LEAD_STATUSES.includes(status)) return { success: false, message: 'وضعیت سرنخ نامعتبر است.' };
 
   try {
     await prisma.lead.update({
@@ -148,36 +152,45 @@ export async function convertLeadToCustomer(leadId: string) {
   if (denied) return denied;
 
   try {
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    // One customer per lead: the lead row is locked, so a second conversion
+    // (a double click) waits and then finds the customer the first one made.
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      const locked = await tx.$queryRaw`SELECT id FROM "Lead" WHERE id = ${leadId} FOR UPDATE`;
+      if (locked.length === 0) return null;
+      const lead = await tx.lead.findUnique({ where: { id: leadId } });
+      if (lead.customerId) return { customerId: lead.customerId as string, already: true };
+
+      // Create customer from lead
+      const customer = await tx.customer.create({
+        data: {
+          name: lead.name,
+          phone: lead.phone || undefined,
+          email: lead.email || undefined,
+          notes: lead.notes || undefined,
+        },
+      });
+
+      // Update lead to link to customer
+      await tx.lead.update({
+        where: { id: leadId },
+        data: {
+          customerId: customer.id,
+          status: 'QUALIFIED',
+        },
+      });
+      return { customerId: customer.id as string, already: false };
     });
 
-    if (!lead) {
+    if (!outcome) {
       return { success: false, message: 'سرنخ یافت نشد.' };
     }
-
-    // Create customer from lead
-    const customer = await prisma.customer.create({
-      data: {
-        name: lead.name,
-        phone: lead.phone || undefined,
-        email: lead.email || undefined,
-        notes: lead.notes || undefined,
-      },
-    });
-
-    // Update lead to link to customer
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        customerId: customer.id,
-        status: 'QUALIFIED',
-      },
-    });
+    if (outcome.already) {
+      return { success: true, message: 'این سرنخ قبلاً به مشتری تبدیل شده بود.', customerId: outcome.customerId };
+    }
 
     revalidatePath('/dashboard/crm/leads');
-    revalidatePath('/ dashboard/crm/customers');
-    return { success: true, message: 'مشتری با موفقیت ایجاد شد.', customerId: customer.id };
+    revalidatePath('/dashboard/crm/customers');
+    return { success: true, message: 'مشتری با موفقیت ایجاد شد.', customerId: outcome.customerId };
   } catch (error) {
     console.error('Error converting lead to customer:', error);
     return { success: false, message: 'خطا در تبدیل سرنخ به مشتری.' };
@@ -223,7 +236,7 @@ export async function createDeal(prevState: ActionState, formData: FormData): Pr
         title,
         customerId,
         value,
-        probability: probability || 25,
+        probability: probability ?? 25,
         expectedClose: expectedClose ? new Date(expectedClose) : undefined,
         notes,
       },
@@ -306,27 +319,28 @@ export async function getDealById(id: string) {
   }
 }
 
+// The deal board's columns, and the probability each one means.
+const STAGE_PROBABILITIES: Record<string, number> = {
+  PROSPECT: 25,
+  PROPOSAL: 50,
+  NEGOTIATION: 75,
+  WON: 100,
+  LOST: 0,
+};
+
 export async function updateDealStage(id: string, stage: string) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  if (!(stage in STAGE_PROBABILITIES)) return { success: false, message: 'مرحلهٔ فرصت نامعتبر است.' };
 
   try {
-    const updateData: { stage: string; actualClose?: Date; probability?: number } = { stage };
+    const updateData: { stage: string; actualClose?: Date | null; probability?: number } = { stage };
 
-    // If won or lost, set actual close date
-    if (stage === 'WON' || stage === 'LOST') {
-      updateData.actualClose = new Date();
-    }
+    // If won or lost, set actual close date; a deal reopened is not closed.
+    updateData.actualClose = stage === 'WON' || stage === 'LOST' ? new Date() : null;
 
-    // Update probability based on stage
-    const stageProbabilities: Record<string, number> = {
-      PROSPECT: 25,
-      PROPOSAL: 50,
-      NEGOTIATION: 75,
-      WON: 100,
-      LOST: 0,
-    };
-    updateData.probability = stageProbabilities[stage] || 25;
+    // Update probability based on stage (LOST is 0%, not the 25% of a new deal)
+    updateData.probability = STAGE_PROBABILITIES[stage];
 
     await prisma.deal.update({
       where: { id },
@@ -342,6 +356,9 @@ export async function updateDealStage(id: string, stage: string) {
 }
 
 // ========== SUPPORT TICKETS ==========
+
+// The statuses the ticket screen offers (ticket-actions).
+const TICKET_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 
 const TicketSchema = z.object({
   customerId: z.string().min(1, 'انتخاب مشتری الزامی است'),
@@ -457,6 +474,7 @@ export async function getTicketById(id: string) {
 export async function updateTicketStatus(id: string, status: string) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  if (!TICKET_STATUSES.includes(status)) return { success: false, message: 'وضعیت تیکت نامعتبر است.' };
 
   try {
     await prisma.supportTicket.update({
@@ -557,19 +575,12 @@ export async function getCRMDashboardStats() {
         orderBy: { createdAt: 'desc' },
         include: { customer: true }
       }),
-      // Top 5 customers by total order value
-      prisma.customer.findMany({
-        take: 5,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          orders: {
-            select: {
-              totalAmount: true,
-            }
-          }
-        }
+      // What each customer bought: every order but the cancelled ones. An
+      // order's total already has its returns taken off; the discount is not.
+      prisma.order.groupBy({
+        by: ['customerId'],
+        where: { status: { not: 'CANCELLED' }, customerId: { not: null } },
+        _sum: { totalAmount: true, discount: true },
       }),
       // Recent 10 activity logs
       !isAdmin ? Promise.resolve([]) : prisma.activityLog.findMany({
@@ -586,14 +597,22 @@ export async function getCRMDashboardStats() {
       })
     ]);
 
-    // Calculate revenue for top customers and sort
-    const customersWithRevenue = topCustomers
-      .map((customer: any) => ({
-        ...customer,
-        totalRevenue: customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0)
+    // The top 5 of all customers by what they bought, after discount
+    const top = topCustomers
+      .map((row: any) => ({
+        id: row.customerId as string,
+        totalRevenue: Number(row._sum.totalAmount ?? 0) - Number(row._sum.discount ?? 0),
       }))
       .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);
+    const named = await prisma.customer.findMany({
+      where: { id: { in: top.map((row: any) => row.id) } },
+      select: { id: true, name: true, email: true },
+    });
+    const customersWithRevenue = top.map((row: any) => ({
+      ...named.find((customer: any) => customer.id === row.id),
+      totalRevenue: row.totalRevenue,
+    }));
 
     return {
       totalCustomers,
