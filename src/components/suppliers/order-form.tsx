@@ -338,7 +338,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
             </div>
 
             {items.map((item, index) => (
-              <div key={index} className="grid grid-cols-12 gap-4 items-end border p-4 rounded-lg bg-muted/20">
+              <div key={index} className="grid grid-cols-12 items-end gap-4 rounded-lg border p-4">
                 <div className="col-span-12 md:col-span-4 space-y-2">
                   <Label>محصول</Label>
                   <Select 
@@ -427,7 +427,7 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
             </div>
 
             {additionalCosts.map((cost, index) => (
-              <div key={index} className="grid grid-cols-12 gap-4 items-end border p-4 rounded-lg bg-muted/20">
+              <div key={index} className="grid grid-cols-12 items-end gap-4 rounded-lg border p-4">
                 <div className="col-span-12 md:col-span-4 space-y-2">
                   <Label>عنوان</Label>
                   <Input
@@ -493,8 +493,8 @@ export function OrderForm({ suppliers, products }: OrderFormProps) {
                 </div>
               </div>
               <div className="flex justify-between items-center pt-2 border-t">
-                <span className="text-lg font-bold">جمع کل به تومان:</span>
-                <span className="text-lg font-bold">{totalInToman.toLocaleString('fa-IR')} تومان</span>
+                <span className="text-[15px] font-medium">جمع کل به تومان:</span>
+                <span className="text-[15px] font-medium tabular-nums">{totalInToman.toLocaleString('fa-IR')} تومان</span>
               </div>
               {Object.keys(totalsByCurrency).length > 0 && (
                 <div className="flex justify-between items-center pt-2">

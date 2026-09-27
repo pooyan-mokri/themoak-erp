@@ -142,7 +142,9 @@ export async function getPurchaseOrders() {
         },
         additionalCosts: true,
         arrivalAdditionalCosts: true,
-        paymentTransaction: true
+        paymentTransaction: true,
+        // What was paid, for the list's balance and payables (finance.view only, below).
+        payments: { select: { amount: true } }
       }
     });
 
@@ -151,6 +153,8 @@ export async function getPurchaseOrders() {
       ...order,
       totalAmount: Number(order.totalAmount),
       totalAmountInToman: order.totalAmountInToman ? Number(order.totalAmountInToman) : undefined,
+      payments: order.payments.map((p: any) => ({ amount: Number(p.amount) })),
+      paidAmountInToman: order.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0),
       items: order.items.map((item: any) => ({
         ...item,
         unitCost: Number(item.unitCost),

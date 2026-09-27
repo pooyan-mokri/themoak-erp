@@ -8,20 +8,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
-import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
+import { Package, Check, ArrowLeft, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { accountLabel } from '@/lib/account-label';
 import { useRequestId } from '@/components/ui/request-id';
 import { Plus, Trash2 } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
+import { cn } from '@/lib/utils';
+import { CURRENCY_LABELS, purchaseStatus } from './purchase-figures';
 
 type Currency = 'TOMAN' | 'USD' | 'EUR' | 'CNY';
 
@@ -221,7 +222,7 @@ export function OrderDetail({
         setReceivedItems({});
         setSelectedWarehouse('');
       } else {
-        setError(result.error || 'خطا در دریافت کالاها');
+        setError(result.error || result.message || 'خطا در دریافت کالاها');
       }
     } catch (err) {
       setError('خطا در ارتباط با سرور');
@@ -252,7 +253,7 @@ export function OrderDetail({
       if (result.success) {
         router.refresh();
       } else {
-        setError(result.error || 'خطا در تغییر وضعیت');
+        setError(result.message || result.error || 'خطا در تغییر وضعیت');
       }
     } catch (err) {
       setError('خطا در ارتباط با سرور');
@@ -341,7 +342,7 @@ export function OrderDetail({
         setArrivalCosts([]);
         setArrivalAccount('');
       } else {
-        setError(result.error || 'خطا در ثبت رسیدن به مقصد');
+        setError(result.message || result.error || 'خطا در ثبت رسیدن به مقصد');
       }
     } catch (err) {
       setError('خطا در ارتباط با سرور');
@@ -350,34 +351,25 @@ export function OrderDetail({
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-      'DRAFT': { label: 'پیش‌نویس', variant: 'outline' },
-      'PENDING_PAYMENT': { label: 'منتظر پرداخت', variant: 'secondary' },
-      'PARTIALLY_PAID': { label: 'پرداخت جزئی', variant: 'secondary' },
-      'PAID': { label: 'پرداخت شده', variant: 'default' },
-      'IN_PRODUCTION': { label: 'در حال تولید', variant: 'default' },
-      'ARRIVED': { label: 'رسیده به مقصد', variant: 'default' },
-      'PARTIALLY_RECEIVED': { label: 'نیمه دریافت شده', variant: 'default' },
-      'RECEIVED': { label: 'دریافت شده', variant: 'default' },
-      'CANCELLED': { label: 'لغو شده', variant: 'destructive' },
-    };
-    const statusInfo = statusMap[status] || { label: status, variant: 'secondary' };
-    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
+  const StatusPill = ({ status }: { status: string }) => {
+    const s = purchaseStatus(status);
+    return <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px]', s.tone)}>{s.label}</span>;
   };
 
   const getWorkflowSteps = () => {
     const steps = [
-      { key: 'DRAFT', label: 'ثبت سفارش', icon: '📝' },
-      { key: 'PENDING_PAYMENT', label: 'منتظر پرداخت', icon: '⏳' },
-      { key: 'PAID', label: 'پرداخت شده', icon: '💳' },
-      { key: 'IN_PRODUCTION', label: 'در حال تولید', icon: '🏭' },
-      { key: 'ARRIVED', label: 'رسیده به مقصد', icon: '🚚' },
-      { key: 'RECEIVED', label: 'دریافت شده', icon: '✅' },
+      { key: 'DRAFT', label: 'ثبت سفارش' },
+      { key: 'PENDING_PAYMENT', label: 'منتظر پرداخت' },
+      { key: 'PAID', label: 'پرداخت شده' },
+      { key: 'IN_PRODUCTION', label: 'در حال تولید' },
+      { key: 'ARRIVED', label: 'رسیده به مقصد' },
+      { key: 'RECEIVED', label: 'دریافت شده' },
     ];
 
-    // Treat a partially-paid order as still at the "pending payment" stage
-    const effectiveStatus = order.status === 'PARTIALLY_PAID' ? 'PENDING_PAYMENT' : order.status;
+    // A partially-paid order is still at «pending payment»; a partly received one has
+    // arrived and waits on the rest (it used to match no step and showed none done).
+    const effectiveStatus =
+      order.status === 'PARTIALLY_PAID' ? 'PENDING_PAYMENT' : order.status === 'PARTIALLY_RECEIVED' ? 'ARRIVED' : order.status;
     const currentIndex = steps.findIndex(s => s.key === effectiveStatus);
     return steps.map((step, index) => ({
       ...step,
@@ -386,316 +378,276 @@ export function OrderDetail({
     }));
   };
 
-  const getCurrencyLabel = (currency: string) => {
-    const labels: Record<string, string> = {
-      'TOMAN': 'تومان',
-      'USD': 'دلار',
-      'EUR': 'یورو',
-      'CNY': 'یوان',
-    };
-    return labels[currency] || currency;
-  };
+  const getCurrencyLabel = (currency: string) => CURRENCY_LABELS[currency] || currency;
+  const fa = (n: number) => Math.round(n).toLocaleString('fa-IR');
+  const canReceiveNow = (order.status === 'ARRIVED' || order.status === 'PARTIALLY_RECEIVED') && canReceive;
+  // The server refuses to cancel an order once goods came in.
+  const canCancelNow = order.status !== 'RECEIVED' && order.status !== 'PARTIALLY_RECEIVED' && canChangeStatus;
+  const dialogOpen = showReceiveDialog || showPaymentDialog || showArrivalDialog;
+  const steps = getWorkflowSteps();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">سفارش خرید #{order.number}</h1>
-          <p className="text-muted-foreground mt-1">
-            تامین‌کننده: {order.supplier.name} | تاریخ: {formatJalaliDate(order.createdAt)}
-          </p>
+    <div className="space-y-4">
+      <PageHeader
+        title={`سفارش خرید PO-${order.number}`}
+        description={`تامین‌کننده: ${order.supplier.name} · تاریخ: ${formatJalaliDate(order.createdAt)}`}
+        actions={<StatusPill status={order.status} />}
+      />
+
+      {/* Workflow steps */}
+      <div className="rounded-lg border bg-card p-4">
+        <h3 className="mb-4 text-sm font-medium">مراحل سفارش</h3>
+        {order.status === 'CANCELLED' ? (
+          <p className="rounded-md bg-danger-soft px-3 py-2 text-[13px] text-danger">این سفارش لغو شده است.</p>
+        ) : (
+          <ol className="flex items-start overflow-x-auto pb-1">
+            {steps.map((step, index) => (
+              <li key={step.key} className="flex min-w-[96px] flex-1 items-start">
+                <div className="flex flex-1 flex-col items-center gap-1.5">
+                  <span
+                    className={cn(
+                      'grid h-8 w-8 place-items-center rounded-full border font-mono text-[12px] transition-colors duration-150',
+                      step.completed ? 'border-brand bg-brand text-white' : 'bg-card text-muted-foreground',
+                    )}
+                  >
+                    {step.completed && !step.current ? <Check className="h-4 w-4" /> : (index + 1).toLocaleString('fa-IR')}
+                  </span>
+                  <span className={cn('text-center text-[12px]', step.current ? 'font-medium text-brand' : 'text-muted-foreground')}>
+                    {step.label}
+                  </span>
+                </div>
+                {index < steps.length - 1 && (
+                  <span className={cn('mt-4 h-px flex-1', step.completed && steps[index + 1].completed ? 'bg-brand' : 'bg-border')} />
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
+      {/* Actions */}
+      {order.status !== 'RECEIVED' && order.status !== 'CANCELLED' && (canChangeStatus || canPay || canRecordArrival || canReceive) && (
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">عملیات</h3>
+          {error && !dialogOpen && (
+            <Alert variant="destructive" className="mb-3">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {order.status === 'DRAFT' && canChangeStatus && (
+              <Button onClick={() => handleStatusChange('PENDING_PAYMENT')} disabled={statusLoading}>
+                <ArrowLeft className="h-4 w-4" />
+                ارسال برای پرداخت
+              </Button>
+            )}
+            {(order.status === 'PENDING_PAYMENT' || order.status === 'PARTIALLY_PAID') && canPay && (
+              <Button onClick={openPaymentDialog}>
+                <CreditCard className="h-4 w-4" />
+                {order.status === 'PARTIALLY_PAID' ? 'ثبت پرداخت بعدی' : 'ثبت پرداخت'}
+              </Button>
+            )}
+            {order.status === 'PAID' && canChangeStatus && (
+              <Button onClick={() => handleStatusChange('IN_PRODUCTION')} disabled={statusLoading}>
+                <Factory className="h-4 w-4" />
+                شروع تولید
+              </Button>
+            )}
+            {order.status === 'IN_PRODUCTION' && canRecordArrival && (
+              <Button onClick={() => setShowArrivalDialog(true)}>
+                <Truck className="h-4 w-4" />
+                ثبت رسیدن به مقصد
+              </Button>
+            )}
+            {canReceiveNow && (
+              <Button onClick={() => setShowReceiveDialog(true)}>
+                <Package className="h-4 w-4" />
+                {order.status === 'PARTIALLY_RECEIVED' ? 'دریافت باقی کالا' : 'دریافت کالا'}
+              </Button>
+            )}
+            {canCancelNow && (
+              <Button
+                onClick={() => {
+                  if (window.confirm(`سفارش خرید PO-${order.number} از ${order.supplier.name} لغو شود؟`)) handleStatusChange('CANCELLED');
+                }}
+                variant="destructive"
+                disabled={statusLoading}
+              >
+                لغو سفارش PO-{order.number}
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {getStatusBadge(order.status)}
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {canSeeFinance && (
+          <div className="rounded-lg border bg-card px-4 py-3.5">
+            <p className="text-xs text-muted-foreground">مبلغ کل</p>
+            {order.totalAmountInToman && (
+              <p className="mt-1.5 text-[19px] font-medium tabular-nums">
+                {Number(order.totalAmountInToman).toLocaleString('fa-IR')}
+                <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+              </p>
+            )}
+            {order.items && order.items.length > 0 && (
+              <p className="mt-1 text-[12px] text-muted-foreground tabular-nums">
+                {Number(order.totalAmount).toLocaleString('fa-IR')} {getCurrencyLabel(order.items[0]?.currency || 'TOMAN')}
+              </p>
+            )}
+          </div>
+        )}
+        {(canSeeCost || canSeeFinance) && order.additionalCosts && order.additionalCosts.length > 0 && (
+          <div className="rounded-lg border bg-card px-4 py-3.5">
+            <p className="mb-2 text-xs text-muted-foreground">هزینه‌های اضافی</p>
+            <div className="space-y-2">
+              {order.additionalCosts.map((cost, index) => (
+                <div key={index} className="flex items-start justify-between gap-2 text-[13px]">
+                  <span>{cost.title}</span>
+                  <div className="text-end">
+                    <div className="font-medium tabular-nums">
+                      {Number(cost.amount).toLocaleString('fa-IR')} {getCurrencyLabel(cost.currency)}
+                    </div>
+                    {cost.amountInToman && (
+                      <div className="text-xs text-muted-foreground tabular-nums">{Number(cost.amountInToman).toLocaleString('fa-IR')} تومان</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="rounded-lg border bg-card px-4 py-3.5">
+          <p className="mb-2 text-xs text-muted-foreground">وضعیت</p>
+          <StatusPill status={order.status} />
         </div>
       </div>
 
-      {/* Workflow Steps */}
-      <Card>
-        <CardHeader>
-          <CardTitle>مراحل سفارش</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between overflow-x-auto pb-4">
-            {getWorkflowSteps().map((step, index) => (
-              <div key={step.key} className="flex items-center flex-1 min-w-0">
-                <div className="flex flex-col items-center flex-1 min-w-0">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl mb-2 ${
-                    step.completed ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {step.icon}
-                  </div>
-                  <div className={`text-xs text-center ${step.current ? 'font-bold' : ''}`}>
-                    {step.label}
-                  </div>
+      {/* Payments */}
+      {canSeeFinance && (order.status !== 'DRAFT' && order.status !== 'CANCELLED') && totalInToman > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">پرداخت‌ها</h3>
+            {remaining <= 0 ? (
+              <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11.5px] text-success">تسویه کامل</span>
+            ) : paidSoFar > 0 ? (
+              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] text-brand">پرداخت جزئی</span>
+            ) : (
+              <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11.5px] text-warning">پرداخت‌نشده</span>
+            )}
+          </div>
+          <div className="mb-4 grid grid-cols-3 gap-2">
+            {[
+              { label: 'مبلغ کل', value: totalInToman },
+              { label: 'پرداخت‌شده', value: paidSoFar },
+              { label: 'باقیمانده', value: remaining },
+            ].map((figure) => (
+              <div key={figure.label} className="rounded-md bg-secondary px-3 py-2">
+                <div className="text-xs text-muted-foreground">{figure.label}</div>
+                <div className="mt-0.5 font-medium tabular-nums">
+                  {fa(figure.value)}
+                  <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
                 </div>
-                {index < getWorkflowSteps().length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 ${step.completed ? 'bg-primary' : 'bg-muted'}`} />
-                )}
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Action Buttons */}
-      {order.status !== 'RECEIVED' && order.status !== 'CANCELLED' && (canChangeStatus || canPay || canRecordArrival || canReceive) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>عملیات</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {order.status === 'DRAFT' && canChangeStatus && (
-                <Button 
-                  onClick={() => handleStatusChange('PENDING_PAYMENT')}
-                  disabled={statusLoading}
-                >
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                  ارسال برای پرداخت
-                </Button>
-              )}
-              {(order.status === 'PENDING_PAYMENT' || order.status === 'PARTIALLY_PAID') && canPay && (
-                <Button
-                  onClick={openPaymentDialog}
-                  variant="default"
-                >
-                  <CreditCard className="w-4 h-4 ml-2" />
-                  {order.status === 'PARTIALLY_PAID' ? 'ثبت پرداخت بعدی' : 'ثبت پرداخت'}
-                </Button>
-              )}
-              {order.status === 'PAID' && canChangeStatus && (
-                <Button 
-                  onClick={() => handleStatusChange('IN_PRODUCTION')}
-                  disabled={statusLoading}
-                >
-                  <Factory className="w-4 h-4 ml-2" />
-                  شروع تولید
-                </Button>
-              )}
-              {order.status === 'IN_PRODUCTION' && canRecordArrival && (
-                <Button 
-                  onClick={() => setShowArrivalDialog(true)}
-                  variant="default"
-                >
-                  <Truck className="w-4 h-4 ml-2" />
-                  ثبت رسیدن به مقصد
-                </Button>
-              )}
-              {order.status === 'ARRIVED' && canReceive && (
-                <Button 
-                  onClick={() => setShowReceiveDialog(true)}
-                  variant="default"
-                >
-                  <Package className="w-4 h-4 ml-2" />
-                  دریافت کالا
-                </Button>
-              )}
-              {order.status !== 'RECEIVED' && canChangeStatus && (
-                <Button 
-                  onClick={() => handleStatusChange('CANCELLED')}
-                  variant="destructive"
-                  disabled={statusLoading}
-                >
-                  لغو سفارش
-                </Button>
-              )}
+          {order.payments && order.payments.length > 0 ? (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>تاریخ</TableHead>
+                    <TableHead>حساب</TableHead>
+                    <TableHead className="text-end">مبلغ (تومان)</TableHead>
+                    <TableHead>توضیحات</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {order.payments.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-mono text-[12px]">{formatJalaliDate(p.date)}</TableCell>
+                      <TableCell>{p.accountName}</TableCell>
+                      <TableCell className="text-end font-medium">{fa(Number(p.amount))}</TableCell>
+                      <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <p className="py-2 text-center text-[13px] text-muted-foreground">هنوز پرداختی ثبت نشده است.</p>
+          )}
+        </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {canSeeFinance && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">مبلغ کل</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {order.totalAmountInToman && (
-              <div className="text-2xl font-bold">
-                {Number(order.totalAmountInToman).toLocaleString('fa-IR')} تومان
-              </div>
-            )}
-            {order.items && order.items.length > 0 && (
-              <div className="text-sm text-muted-foreground mt-1">
-                {Number(order.totalAmount).toLocaleString('fa-IR')} {getCurrencyLabel(order.items[0]?.currency || 'TOMAN')}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
-        {(canSeeCost || canSeeFinance) && order.additionalCosts && order.additionalCosts.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">هزینه‌های اضافی</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {order.additionalCosts.map((cost, index) => (
-                  <div key={index} className="flex justify-between items-center">
-                    <span className="text-sm">{cost.title}:</span>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">
-                        {Number(cost.amount).toLocaleString('fa-IR')} {getCurrencyLabel(cost.currency)}
-                      </div>
-                      {cost.amountInToman && (
-                        <div className="text-xs text-muted-foreground">
-                          {Number(cost.amountInToman).toLocaleString('fa-IR')} تومان
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">وضعیت</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {getStatusBadge(order.status)}
-          </CardContent>
-        </Card>
+      {/* Lines */}
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <h3 className="px-4 pb-3 pt-4 text-sm font-medium">اقلام سفارش</h3>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>محصول</TableHead>
+              <TableHead className="text-end">تعداد</TableHead>
+              <TableHead className="text-end">دریافت شده</TableHead>
+              <TableHead className="text-end">باقیمانده</TableHead>
+              {canSeeCost && (
+                <>
+                  <TableHead className="text-end">قیمت واحد</TableHead>
+                  <TableHead>ارز</TableHead>
+                  <TableHead className="text-end">قیمت واحد (تومان)</TableHead>
+                  <TableHead className="text-end">جمع (تومان)</TableHead>
+                  <TableHead className="text-end">قیمت تمام شده هر واحد (تومان)</TableHead>
+                </>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {order.items.map((item) => {
+              const receivedQty = item.receivedQuantity || 0;
+              const remaining = item.quantity - receivedQty;
+              // Ensure unitCostInToman is a number, not Decimal or string
+              const unitCostInToman = Number(item.unitCostInToman) || (Number(item.unitCost) * getExchangeRate(item.currency));
+              const totalInToman = Number(item.quantity) * unitCostInToman;
+
+              // Calculate landed cost per unit
+              const landedCostPerUnit = calculateLandedCostPerUnit(item, order);
+
+              return (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium">
+                    {item.product.name}
+                    {item.product.sku && <span className="ms-2 font-mono text-[11.5px] text-muted-foreground">{item.product.sku}</span>}
+                  </TableCell>
+                  <TableCell className="text-end">{item.quantity.toLocaleString('fa-IR')}</TableCell>
+                  <TableCell className="text-end">{receivedQty.toLocaleString('fa-IR')}</TableCell>
+                  <TableCell className="text-end">
+                    {remaining > 0 ? (
+                      <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11.5px] text-warning">{remaining.toLocaleString('fa-IR')}</span>
+                    ) : (
+                      <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11.5px] text-success">کامل</span>
+                    )}
+                  </TableCell>
+                  {canSeeCost && (
+                    <>
+                      <TableCell className="text-end">{Number(item.unitCost).toLocaleString('fa-IR')}</TableCell>
+                      <TableCell className="text-muted-foreground">{getCurrencyLabel(item.currency)}</TableCell>
+                      <TableCell className="text-end">{unitCostInToman.toLocaleString('fa-IR')}</TableCell>
+                      <TableCell className="text-end">{totalInToman.toLocaleString('fa-IR')}</TableCell>
+                      <TableCell className="text-end font-medium">{landedCostPerUnit.toLocaleString('fa-IR')}</TableCell>
+                    </>
+                  )}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </div>
 
-      {/* Payments history */}
-      {canSeeFinance && (order.status !== 'DRAFT' && order.status !== 'CANCELLED') && totalInToman > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>پرداخت‌ها</span>
-              {remaining <= 0 ? (
-                <Badge variant="default" className="bg-green-600 hover:bg-green-600">تسویه کامل</Badge>
-              ) : paidSoFar > 0 ? (
-                <Badge variant="secondary">پرداخت جزئی</Badge>
-              ) : (
-                <Badge variant="outline">پرداخت‌نشده</Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-muted-foreground">مبلغ کل</div>
-                <div className="font-bold">{Math.round(totalInToman).toLocaleString('fa-IR')}</div>
-                <div className="text-[10px] text-muted-foreground">تومان</div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-muted-foreground">پرداخت‌شده</div>
-                <div className="font-bold text-green-600">{Math.round(paidSoFar).toLocaleString('fa-IR')}</div>
-                <div className="text-[10px] text-muted-foreground">تومان</div>
-              </div>
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-muted-foreground">باقیمانده</div>
-                <div className="font-bold text-orange-600">{Math.round(remaining).toLocaleString('fa-IR')}</div>
-                <div className="text-[10px] text-muted-foreground">تومان</div>
-              </div>
-            </div>
-
-            {order.payments && order.payments.length > 0 ? (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">تاریخ</TableHead>
-                      <TableHead className="text-right">حساب</TableHead>
-                      <TableHead className="text-right">مبلغ (تومان)</TableHead>
-                      <TableHead className="text-right">توضیحات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {order.payments.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell>{formatJalaliDate(p.date)}</TableCell>
-                        <TableCell>{p.accountName}</TableCell>
-                        <TableCell className="font-medium">{Math.round(Number(p.amount)).toLocaleString('fa-IR')}</TableCell>
-                        <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-2">هنوز پرداختی ثبت نشده است.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>اقلام سفارش</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-right">محصول</TableHead>
-                <TableHead className="text-right">تعداد</TableHead>
-                <TableHead className="text-right">دریافت شده</TableHead>
-                <TableHead className="text-right">باقیمانده</TableHead>
-                {canSeeCost && (
-                  <>
-                    <TableHead className="text-right">قیمت واحد</TableHead>
-                    <TableHead className="text-right">ارز</TableHead>
-                    <TableHead className="text-right">قیمت واحد (تومان)</TableHead>
-                    <TableHead className="text-right">جمع (تومان)</TableHead>
-                    <TableHead className="text-right">قیمت تمام شده (هر واحد)</TableHead>
-                  </>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {order.items.map((item) => {
-                const receivedQty = item.receivedQuantity || 0;
-                const remaining = item.quantity - receivedQty;
-                // Ensure unitCostInToman is a number, not Decimal or string
-                const unitCostInToman = Number(item.unitCostInToman) || (Number(item.unitCost) * getExchangeRate(item.currency));
-                const totalInToman = Number(item.quantity) * unitCostInToman;
-
-                // Calculate landed cost per unit
-                const landedCostPerUnit = calculateLandedCostPerUnit(item, order);
-
-                return (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.product.name}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>
-                      <Badge variant={receivedQty > 0 ? 'default' : 'outline'}>
-                        {receivedQty}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={remaining > 0 ? 'secondary' : 'default'}>
-                        {remaining}
-                      </Badge>
-                    </TableCell>
-                    {canSeeCost && (
-                      <>
-                        <TableCell>{Number(item.unitCost).toLocaleString('fa-IR')}</TableCell>
-                        <TableCell>{getCurrencyLabel(item.currency)}</TableCell>
-                        <TableCell>{unitCostInToman.toLocaleString('fa-IR')}</TableCell>
-                        <TableCell>{totalInToman.toLocaleString('fa-IR')}</TableCell>
-                        <TableCell>
-                          <span className="font-medium">{landedCostPerUnit.toLocaleString('fa-IR')} تومان</span>
-                        </TableCell>
-                      </>
-                    )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
       <Dialog open={showReceiveDialog} onOpenChange={setShowReceiveDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>دریافت کالا</DialogTitle>
+            <DialogTitle>دریافت کالا — PO-{order.number}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {error && (
@@ -704,7 +656,7 @@ export function OrderDetail({
               </Alert>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>انبار *</Label>
               <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse} required>
                 <SelectTrigger>
@@ -718,9 +670,9 @@ export function OrderDetail({
               </Select>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
               <Label>اقلام دریافت شده</Label>
-              <div className="border rounded-lg divide-y">
+              <div className="divide-y rounded-lg border">
                 {order.items
                   .filter((item) => {
                     const receivedQty = item.receivedQuantity || 0;
@@ -732,17 +684,16 @@ export function OrderDetail({
                     const receivedData = receivedItems[item.id] || { quantity: 0 };
 
                     return (
-                      <div key={item.id} className="p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">{item.product.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              سفارش: {item.quantity} | دریافت شده: {receivedQty} | باقیمانده: {remaining}
-                            </div>
+                      <div key={item.id} className="space-y-3 p-4">
+                        <div>
+                          <div className="font-medium">{item.product.name}</div>
+                          <div className="text-[12.5px] text-muted-foreground">
+                            سفارش: {item.quantity.toLocaleString('fa-IR')} · دریافت شده: {receivedQty.toLocaleString('fa-IR')} · باقیمانده:{' '}
+                            {remaining.toLocaleString('fa-IR')}
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div className="space-y-1.5">
                             <Label>تعداد دریافت شده *</Label>
                             <Input
                               type="number"
@@ -754,22 +705,22 @@ export function OrderDetail({
                             />
                           </div>
                           {canSeeCost && (
-                          <div className="space-y-2">
-                            <Label className="text-muted-foreground">قیمت تمام شده (تخمینی)</Label>
-                            <div className="text-sm font-medium pt-2">
-                              {receivedData.quantity > 0 ? (() => {
-                                const landedCostPerUnit = calculateLandedCostPerUnit(item, order);
-                                return (
-                                  <>
-                                    {landedCostPerUnit.toLocaleString('fa-IR')} تومان
-                                    <span className="text-xs text-muted-foreground block">برای هر واحد</span>
-                                  </>
-                                );
-                              })() : (
-                                '-'
-                              )}
+                            <div className="space-y-1.5">
+                              <Label className="text-muted-foreground">قیمت تمام شده (تخمینی)</Label>
+                              <div className="pt-2 text-[13px] font-medium">
+                                {receivedData.quantity > 0 ? (() => {
+                                  const landedCostPerUnit = calculateLandedCostPerUnit(item, order);
+                                  return (
+                                    <>
+                                      {landedCostPerUnit.toLocaleString('fa-IR')} تومان
+                                      <span className="block text-xs text-muted-foreground">برای هر واحد</span>
+                                    </>
+                                  );
+                                })() : (
+                                  '—'
+                                )}
+                              </div>
                             </div>
-                          </div>
                           )}
                         </div>
                       </div>
@@ -793,7 +744,7 @@ export function OrderDetail({
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>ثبت پرداخت</DialogTitle>
+            <DialogTitle>ثبت پرداخت — PO-{order.number}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {error && (
@@ -803,22 +754,22 @@ export function OrderDetail({
             )}
 
             {/* Summary */}
-            <div className="grid grid-cols-3 gap-2 text-center text-sm rounded-lg border p-3 bg-muted/30">
+            <div className="grid grid-cols-3 gap-2 rounded-md bg-secondary p-3 text-center text-[13px]">
               <div>
                 <div className="text-xs text-muted-foreground">مبلغ کل</div>
-                <div className="font-semibold">{Math.round(totalInToman).toLocaleString('fa-IR')}</div>
+                <div className="font-medium tabular-nums">{fa(totalInToman)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">پرداخت‌شده</div>
-                <div className="font-semibold text-green-600">{Math.round(paidSoFar).toLocaleString('fa-IR')}</div>
+                <div className="font-medium tabular-nums">{fa(paidSoFar)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">باقیمانده</div>
-                <div className="font-semibold text-orange-600">{Math.round(remaining).toLocaleString('fa-IR')}</div>
+                <div className="font-medium tabular-nums">{fa(remaining)}</div>
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>حساب پرداخت *</Label>
               <Select value={selectedAccount} onValueChange={setSelectedAccount} required>
                 <SelectTrigger>
@@ -834,7 +785,7 @@ export function OrderDetail({
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>مبلغ پرداخت (تومان) *</Label>
               <Input
                 type="number"
@@ -845,7 +796,7 @@ export function OrderDetail({
                 placeholder="مبلغ این پرداخت"
               />
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">باقیمانده: {Math.round(remaining).toLocaleString('fa-IR')} تومان</span>
+                <span className="text-muted-foreground">باقیمانده: {fa(remaining)} تومان</span>
                 <Button
                   type="button"
                   variant="link"
@@ -865,7 +816,7 @@ export function OrderDetail({
               onChange={(d) => d && setPaymentDate(d)}
             />
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>توضیحات (اختیاری)</Label>
               <Textarea
                 value={paymentDescription}
@@ -888,9 +839,9 @@ export function OrderDetail({
 
       {/* Arrival Dialog */}
       <Dialog open={showArrivalDialog} onOpenChange={setShowArrivalDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>ثبت رسیدن به مقصد</DialogTitle>
+            <DialogTitle>ثبت رسیدن به مقصد — PO-{order.number}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {error && (
@@ -898,7 +849,7 @@ export function OrderDetail({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>حساب پرداخت هزینه‌ها *</Label>
               <Select value={arrivalAccount} onValueChange={setArrivalAccount} required>
                 <SelectTrigger>
@@ -913,17 +864,22 @@ export function OrderDetail({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <Label>هزینه‌های اضافی</Label>
                 <Button type="button" variant="outline" size="sm" onClick={addArrivalCost}>
-                  <Plus className="w-4 h-4 ml-2" />
+                  <Plus className="h-4 w-4" />
                   افزودن هزینه
                 </Button>
               </div>
+              {arrivalCosts.length === 0 && (
+                <p className="rounded-md bg-secondary px-3 py-2 text-[12.5px] text-muted-foreground">
+                  هزینه‌ای مثل حمل داخلی یا ترخیص را اضافه کنید؛ روی قیمت تمام شدهٔ کالاها سرشکن می‌شود.
+                </p>
+              )}
               {arrivalCosts.map((cost, index) => (
-                <div key={index} className="grid grid-cols-12 gap-4 items-end border p-4 rounded-lg bg-muted/20">
-                  <div className="col-span-12 md:col-span-4 space-y-2">
+                <div key={index} className="grid grid-cols-12 items-end gap-3 rounded-lg border p-3">
+                  <div className="col-span-12 space-y-1.5 md:col-span-4">
                     <Label>عنوان</Label>
                     <Input
                       value={cost.title}
@@ -932,7 +888,7 @@ export function OrderDetail({
                       required
                     />
                   </div>
-                  <div className="col-span-6 md:col-span-3 space-y-2">
+                  <div className="col-span-6 space-y-1.5 md:col-span-3">
                     <Label>مبلغ</Label>
                     <Input
                       type="number"
@@ -944,7 +900,7 @@ export function OrderDetail({
                       required
                     />
                   </div>
-                  <div className="col-span-6 md:col-span-3 space-y-2">
+                  <div className="col-span-6 space-y-1.5 md:col-span-3">
                     <Label>ارز</Label>
                     <Select
                       value={cost.currency}
@@ -961,14 +917,15 @@ export function OrderDetail({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-12 md:col-span-2 flex justify-end">
+                  <div className="col-span-12 flex justify-end md:col-span-2">
                     <Button
                       type="button"
                       variant="destructive"
                       size="icon"
+                      title="حذف این هزینه"
                       onClick={() => removeArrivalCost(index)}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -986,34 +943,27 @@ export function OrderDetail({
         </DialogContent>
       </Dialog>
 
-      {/* Arrival Costs Display */}
+      {/* Arrival costs */}
       {(canSeeCost || canSeeFinance) && order.arrivalAdditionalCosts && order.arrivalAdditionalCosts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>هزینه‌های رسیدن به مقصد</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {order.arrivalAdditionalCosts.map((cost, index) => (
-                <div key={index} className="flex justify-between items-center">
-                  <span className="text-sm">{cost.title}:</span>
-                  <div className="text-right">
-                    <div className="text-sm font-medium">
-                      {Number(cost.amount).toLocaleString('fa-IR')} {getCurrencyLabel(cost.currency)}
-                    </div>
-                    {cost.amountInToman && (
-                      <div className="text-xs text-muted-foreground">
-                        {Number(cost.amountInToman).toLocaleString('fa-IR')} تومان
-                      </div>
-                    )}
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">هزینه‌های رسیدن به مقصد</h3>
+          <div className="space-y-2">
+            {order.arrivalAdditionalCosts.map((cost, index) => (
+              <div key={index} className="flex items-start justify-between gap-2 text-[13px]">
+                <span>{cost.title}</span>
+                <div className="text-end">
+                  <div className="font-medium tabular-nums">
+                    {Number(cost.amount).toLocaleString('fa-IR')} {getCurrencyLabel(cost.currency)}
                   </div>
+                  {cost.amountInToman && (
+                    <div className="text-xs text-muted-foreground tabular-nums">{Number(cost.amountInToman).toLocaleString('fa-IR')} تومان</div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
 }
-

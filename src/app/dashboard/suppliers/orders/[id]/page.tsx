@@ -27,7 +27,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <BackButton href="/dashboard/suppliers/orders" label="بازگشت به لیست سفارشات خرید" />
       <OrderDetail
         order={order}
