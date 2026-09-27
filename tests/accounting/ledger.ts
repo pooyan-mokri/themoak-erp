@@ -31,3 +31,16 @@ export async function driftOf(id: string): Promise<number> {
   const rows = await prisma.transaction.findMany({ where: { accountId: id } });
   return Number(new Decimal(account.balance as any).minus(sumBalanceEffects(rows as any)));
 }
+
+/**
+ * The invariant after every scenario: each money account's stored balance
+ * equals the signed sum of its rows. EXPENSE-type accounts (COGS, depreciation)
+ * hold no money and stay at 0 by design, so they are not checked.
+ */
+export async function assertBooksAddUp() {
+  const accounts = await prisma.account.findMany({ where: { type: { not: 'EXPENSE' } } });
+  for (const account of accounts) {
+    const drift = await driftOf(account.id);
+    if (drift !== 0) throw new Error(`${account.name}: balance is ${drift} away from its ledger`);
+  }
+}
