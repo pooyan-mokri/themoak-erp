@@ -115,6 +115,16 @@ export async function createAccount(prevState: ActionState, formData: FormData):
 
   const { name, type, currency, initialBalance, cardNumber, sheba } = validatedFields.data;
 
+  // A foreign opening balance keeps its Toman equivalent at the latest rate, as a deposit does.
+  let rate = 1;
+  if (initialBalance) {
+    try {
+      rate = await tomanRateOf(prisma, currency);
+    } catch (error) {
+      return { message: error instanceof Error ? error.message : 'خطا در ایجاد حساب.' };
+    }
+  }
+
   try {
     await prisma.$transaction(async (tx: any) => {
       const account = await tx.account.create({
@@ -135,8 +145,8 @@ export async function createAccount(prevState: ActionState, formData: FormData):
             type: TransactionType.ADJUSTMENT,
             amount: new Prisma.Decimal(initialBalance),
             currency,
-            rateSnapshot: new Prisma.Decimal(1),
-            amountInToman: new Prisma.Decimal(initialBalance),
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Decimal(initialBalance).times(rate),
             accountId: account.id,
             category: 'موجودی اولیه',
             description: 'موجودی اولیه',
@@ -989,6 +999,7 @@ export async function adjustAccountBalance(input: {
       // A Toman figure typed as the rounded balance the page shows is already
       // right; on a foreign-currency account a cent is money.
       if (delta.abs().lessThan(account.currency === 'TOMAN' ? 0.5 : 0.005)) return { delta: 0, name: account.name };
+      const rate = await tomanRateOf(tx, account.currency);
 
       await tx.transaction.create({
         data: {
@@ -997,8 +1008,8 @@ export async function adjustAccountBalance(input: {
           // reconciliation can only re-derive its effect if the sign is stored.
           amount: delta,
           currency: account.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: delta,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: delta.times(rate),
           accountId,
           category: 'اصلاح موجودی',
           description:
@@ -1065,14 +1076,15 @@ export async function recordBalanceBaseline(accountId: string): Promise<ActionRe
       });
       const difference = new Decimal(account.balance).minus(sumBalanceEffects(transactions));
       if (difference.isZero()) return null;
+      const rate = await tomanRateOf(tx, account.currency);
 
       await tx.transaction.create({
         data: {
           type: TransactionType.ADJUSTMENT,
           amount: difference,
           currency: account.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: difference,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: difference.times(rate),
           accountId,
           category: BASELINE_CATEGORY,
           description: 'مانده پایه — اختلاف قدیمی موجودی ثبت‌شده با جمع تراکنش‌ها؛ موجودی حساب تغییر نکرد',
