@@ -486,6 +486,7 @@ model OrderItem {
   price         Decimal
   status        String          @default("PENDING")
   /// The exchange that issued this line in place of goods given back; null for a line sold at checkout.
+  /// Created, with its index and foreign key, by prisma/sql/pre-push-unique-columns.sql before db push.
   exchangeId    String?
   exchangeItems OrderExchange[] @relation("ExchangeItem")
   exchanges     OrderExchange[] @relation("OriginalItem")
@@ -576,6 +577,9 @@ model OrderExchange {
   priceDifference Decimal
   accountId       String
   transactionId   String?          @unique
+  /// A per-form id: an exchange submitted twice is booked once (src/lib/request-id.ts).
+  /// Created by prisma/sql/pre-push-unique-columns.sql before db push.
+  clientRequestId String?          @unique
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   account         Account          @relation(fields: [accountId], references: [id])

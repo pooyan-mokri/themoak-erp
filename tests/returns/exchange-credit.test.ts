@@ -143,6 +143,56 @@ test('new lines are checked against stock together, and a line with no product i
   assert.equal(await stock(s.p.SMALL.id, s.warehouse.id), 10);
 });
 
+test('an even swap submitted twice, even at the same moment, is booked once', async () => {
+  const s = await shop();
+  const { order, invoiceId, line } = await sell(s, [['A', 1]], 0, A);
+  // DO at the frame's price: nothing is owed, collected, refunded or credited.
+  const lines = [{ productId: s.p.SMALL.id, quantity: 1, price: A, warehouseId: s.warehouse.id }];
+  const submit = () => exchangeFor(s, order.id, line('A').id, 1, lines, { requestId: 'even-swap-000001' });
+
+  const [first, second] = await Promise.all([submit(), submit()]);
+  const results = [first, second].map((r) => r.message).sort();
+  assert.deepEqual(results, [DUPLICATE_REQUEST_MESSAGE, 'تعویض کالا با موفقیت ثبت شد.'].sort());
+  assert.equal(first.success && second.success, true);
+  const third = await submit();
+  assert.deepEqual(third, { message: DUPLICATE_REQUEST_MESSAGE, success: true });
+
+  const exchanges = await prisma.orderExchange.findMany();
+  assert.deepEqual(exchanges.map((x: any) => [x.clientRequestId, Number(x.priceDifference)]), [['even-swap-000001', 0]]);
+  assert.equal(await prisma.orderItem.count({ where: { orderId: order.id } }), 2);
+  assert.deepEqual([await stock(s.p.A.id, s.warehouse.id), await stock(s.p.SMALL.id, s.warehouse.id)], [10, 9]);
+  assert.equal(await prisma.transaction.count({ where: { category: 'Exchange' } }), 0);
+  assert.equal(await prisma.customerCredit.count(), 0);
+  assert.deepEqual(await orderRow(order.id), { total: A, discount: 0, paid: A, status: 'PAID' });
+  await assertInvoice(order.id, invoiceId, {
+    lines: ['EXCHANGED PANJ (تعویض) ×1 = 1000000', 'SOLD DO (به‌جای PANJ (تعویض)) ×1 = 1000000'],
+    rows: { goods: A, net: A, paid: A, remaining: 0 },
+  });
+});
+
+test('an exchange whose whole difference is left as debt, submitted twice, is booked once', async () => {
+  const s = await shop();
+  const { order, line } = await sell(s, [['A', 1]], 0, A);
+  // The one-for-one form, as the old dialog and other callers send it; nothing collected now.
+  const submit = () =>
+    exchangeOrderItem({}, form({
+      orderId: order.id, originalItemId: line('A').id, exchangeProductId: s.p.PRICIER.id, quantity: '1', accountId: s.till.id,
+      returnWarehouseId: s.warehouse.id, exchangeWarehouseId: s.warehouse.id, requestId: 'debt-only-000001',
+    }));
+
+  const first = await submit();
+  assert.deepEqual(first, { message: 'تعویض کالا با موفقیت ثبت شد.', success: true });
+  const again = await submit();
+  assert.deepEqual(again, { message: DUPLICATE_REQUEST_MESSAGE, success: true });
+
+  assert.equal(await prisma.orderExchange.count(), 1);
+  assert.equal(await prisma.orderItem.count({ where: { orderId: order.id } }), 2);
+  assert.deepEqual([await stock(s.p.A.id, s.warehouse.id), await stock(s.p.PRICIER.id, s.warehouse.id)], [10, 9]);
+  assert.equal(await prisma.transaction.count({ where: { category: 'Exchange' } }), 0);
+  assert.deepEqual(await orderRow(order.id), { total: PRICIER, discount: 0, paid: A, status: 'PARTIAL' });
+  assert.equal(await calculateCustomerDebt(s.customer.id), PRICIER - A);
+});
+
 // ── C. Customer credit ───────────────────────────────────────────────────────
 
 test('invoice: a cheaper exchange with the difference put on the customer\'s credit', async () => {
@@ -343,6 +393,56 @@ test('the exchangeId backfill marks the line each old exchange issued, once, and
 
   const after = readInvoice(await render(PrintOrderPage({ params: { id: order.id } })));
   assert.deepEqual(after, before);
+});
+
+test('the pre-push SQL creates the exchange columns as Prisma defines them, and can run twice', async () => {
+  const catalog = async () => ({
+    columns: (await prisma.$queryRawUnsafe(
+      `SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns
+       WHERE (table_name, column_name) IN (('OrderItem', 'exchangeId'), ('OrderExchange', 'clientRequestId')) ORDER BY table_name`,
+    )) as any[],
+    indexes: (await prisma.$queryRawUnsafe(
+      `SELECT indexname, indexdef FROM pg_indexes
+       WHERE indexname IN ('OrderItem_exchangeId_idx', 'OrderExchange_clientRequestId_key') ORDER BY indexname`,
+    )) as any[],
+    foreignKeys: (await prisma.$queryRawUnsafe(
+      `SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'OrderItem_exchangeId_fkey'`,
+    )) as any[],
+  });
+  const expected = {
+    columns: [
+      { table_name: 'OrderExchange', column_name: 'clientRequestId', data_type: 'text', is_nullable: 'YES' },
+      { table_name: 'OrderItem', column_name: 'exchangeId', data_type: 'text', is_nullable: 'YES' },
+    ],
+    indexes: [
+      { indexname: 'OrderExchange_clientRequestId_key', indexdef: 'CREATE UNIQUE INDEX "OrderExchange_clientRequestId_key" ON public."OrderExchange" USING btree ("clientRequestId")' },
+      { indexname: 'OrderItem_exchangeId_idx', indexdef: 'CREATE INDEX "OrderItem_exchangeId_idx" ON public."OrderItem" USING btree ("exchangeId")' },
+    ],
+    foreignKeys: [
+      { conname: 'OrderItem_exchangeId_fkey', def: 'FOREIGN KEY ("exchangeId") REFERENCES "OrderExchange"(id) ON UPDATE CASCADE ON DELETE SET NULL' },
+    ],
+  };
+  const prePush = () => prisma.$executeRawUnsafe(sql('pre-push-unique-columns.sql'));
+
+  // On a database that already has them (as db push left it): nothing changes, twice.
+  await prePush();
+  await prePush();
+  assert.deepEqual(await catalog(), expected);
+
+  // On one from before them (the deploy that adds them): created, then left alone.
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "OrderItem" DROP CONSTRAINT "OrderItem_exchangeId_fkey"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "OrderItem" DROP COLUMN "exchangeId"`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "OrderExchange" DROP COLUMN "clientRequestId"`);
+    assert.deepEqual(await catalog(), { columns: [], indexes: [], foreignKeys: [] });
+    await prePush();
+    assert.deepEqual(await catalog(), expected);
+    await prePush();
+    assert.deepEqual(await catalog(), expected);
+  } finally {
+    // Leave the test database as db push made it, whatever happened above.
+    await prePush();
+  }
 });
 
 test('the read-only reports list over-paid orders and orders whose totals predate b78d364', async () => {

@@ -114,9 +114,12 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     const outcome = await prisma.$transaction(async (tx: any) => {
       // One return or exchange at a time per order: the second re-reads what the first left.
       await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+      // A submission already booked: its exchange row carries the request id, whether or
+      // not money moved (an even swap, a difference left as debt).
       if (
         requestId &&
-        ((await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })) ||
+        ((await tx.orderExchange.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })) ||
+          (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })) ||
           (await tx.customerCredit.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })))
       ) {
         return 'duplicate';
@@ -408,6 +411,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           priceDifference: new Prisma.Decimal(priceDifference),
           accountId,
           transactionId,
+          clientRequestId: requestId ?? undefined,
         },
       });
       await tx.orderItem.updateMany({
