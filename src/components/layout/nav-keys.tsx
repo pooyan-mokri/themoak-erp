@@ -26,7 +26,8 @@ export function NavKeys() {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
       if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
-      const key = event.key.toLowerCase();
+      // The physical key, so the jumps also work with the Persian layout (where G types «گ»).
+      const key = event.code.startsWith('Key') ? event.code.slice(3).toLowerCase() : '';
       if (armed && Date.now() - armed < 1000 && G_SHORTCUTS[key]) {
         armed = 0;
         event.preventDefault();

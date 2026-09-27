@@ -221,12 +221,12 @@ export function OrderList({ orders, canManage = false }: OrderListProps) {
       if (target && /INPUT|TEXTAREA|SELECT/.test(target.tagName)) return;
       if (target?.closest('[role="dialog"]')) return;
       const row = pageRows[cursor];
-      if (event.key === 'j' || event.key === 'ArrowDown') {
+      if (event.code === 'KeyJ' || event.key === 'ArrowDown') {
         event.preventDefault();
         const next = Math.min(pageRows.length - 1, cursor + 1);
         setCursor(next);
         if (peekId && pageRows[next]) setPeekId(pageRows[next].id);
-      } else if (event.key === 'k' || event.key === 'ArrowUp') {
+      } else if (event.code === 'KeyK' || event.key === 'ArrowUp') {
         event.preventDefault();
         const next = Math.max(0, cursor - 1);
         setCursor(next);
@@ -234,7 +234,7 @@ export function OrderList({ orders, canManage = false }: OrderListProps) {
       } else if (event.key === 'Enter' && row) {
         event.preventDefault();
         setPeekId((id) => (id === row.id ? null : row.id));
-      } else if (event.key === 'x' && row) {
+      } else if (event.code === 'KeyX' && row) {
         event.preventDefault();
         toggle(row.id);
       } else if (event.key === 'Escape') {
