@@ -185,7 +185,8 @@ const MENU: Record<string, string[]> = {
   USER: EVERYONE,
 };
 
-for (const file of ['src/components/layout/sidebar.tsx', 'src/components/layout/mobile-menu.tsx']) {
+// The desktop sidebar and the mobile drawer both render this one list.
+for (const file of ['src/components/layout/sidebar-nav.tsx']) {
   test(`${file} shows each role exactly its sections, and only safe items while loading`, () => {
     const source = readFileSync(join(ROOT, file), 'utf8');
     assert.ok(source.includes('canAccessRoute(session?.user?.role, route.href)'), 'menu is not filtered by role');

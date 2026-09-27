@@ -22,7 +22,9 @@ export function SiteHookAlerts() {
     const load = () =>
       getSiteHookAlerts()
         .then((next) => {
-          if (current) setAlerts(next);
+          // A call made while signed out (the session just expired, or login
+          // is still redirecting) comes back without a list.
+          if (current) setAlerts(Array.isArray(next) ? next : []);
         })
         .catch(() => undefined); // keeps what is shown until the next read
     load();

@@ -21,6 +21,9 @@ const config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-vazirmatn)", ...defaultTheme.fontFamily.sans],
+        // Codes, SKUs, order numbers, Latin model names. Space Mono has no
+        // Persian digits, so they fall through to Vazirmatn (§03).
+        mono: ["var(--font-space-mono)", "var(--font-vazirmatn)", ...defaultTheme.fontFamily.mono],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -55,6 +58,23 @@ const config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        brand: {
+          DEFAULT: "hsl(var(--brand))",
+          soft: "hsl(var(--brand-soft))",
+        },
+        mint: "hsl(var(--mint))",
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          soft: "hsl(var(--success-soft))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          soft: "hsl(var(--warning-soft))",
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger))",
+          soft: "hsl(var(--danger-soft))",
         },
       },
       borderRadius: {

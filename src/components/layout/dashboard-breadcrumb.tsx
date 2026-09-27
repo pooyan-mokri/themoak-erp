@@ -165,24 +165,10 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
     setBreadcrumbs(crumbs);
   }, [pathname, customLabel, productName, warehouseName]);
 
-  // Don't show breadcrumb on dashboard home
-  if (pathname === '/dashboard') {
-    return null;
+  if (pathname === '/dashboard' || breadcrumbs.length === 0) {
+    return <span className="text-[12.5px] font-medium">داشبورد</span>;
   }
 
-  if (breadcrumbs.length === 0) {
-    return null;
-  }
-
-  // Don't show breadcrumb when there's only one item (redundant with page heading)
-  if (breadcrumbs.length === 1) {
-    return null;
-  }
-
-  return (
-    <div className="mb-4">
-      <Breadcrumb items={breadcrumbs} />
-    </div>
-  );
+  return <Breadcrumb items={breadcrumbs} />;
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { globalSearch, SearchResult } from '@/actions/search';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +19,9 @@ const TYPE_LABELS: Record<string, { label: string; color: string; Icon: any }> =
 };
 
 export default function SearchPage() {
-  const [query, setQuery] = useState('');
+  // The header search sends what was typed as ?q=.
+  const initialQuery = useSearchParams().get('q') ?? '';
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [isPending, startTransition] = useTransition();

@@ -3,27 +3,43 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * TheMoak design system (docs: ~/dev/erp-design/uploads/design-system.md, §12).
+   * Two brand colours only: indigo for emphasis, mint for good news behind text.
+   * Ink is all text and the primary button. Status colours are a separate axis,
+   * used for status alone — never for decoration.
+   */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background: 0 0% 96.5%;            /* #F6F6F6 page */
+    --foreground: 217.5 15.2% 20.8%;     /* #2D333D ink */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 217.5 15.2% 20.8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --popover-foreground: 217.5 15.2% 20.8%;
+    --primary: 217.5 15.2% 20.8%;        /* the primary button is ink */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96.5%;             /* #F6F6F6 */
+    --secondary-foreground: 217.5 15.2% 20.8%;
+    --muted: 0 0% 96.5%;
+    --muted-foreground: 220 8.9% 46.1%;  /* #6B7280 soft ink */
+    --accent: 235 46.2% 94.9%;           /* #ECEDF8 indigo, soft */
+    --accent-foreground: 236.2 54.1% 45.3%;
+    --destructive: 2.3 56.9% 35.5%;      /* #8E2B27 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 89%;                  /* #E3E3E3 hairline */
+    --input: 0 0% 82.4%;                 /* #D2D2D2 */
+    --ring: 236.2 54.1% 45.3%;           /* #353DB2 focus */
     --radius: 0.5rem;
+
+    --brand: 236.2 54.1% 45.3%;          /* #353DB2 */
+    --brand-soft: 235 46.2% 94.9%;       /* #ECEDF8 */
+    --mint: 124.5 100% 89%;              /* #C7FFCC — behind text only */
+    --success: 152 59.4% 26.3%;          /* #1B6B45 */
+    --success-soft: 150 40% 93.3%;       /* #E8F4EE */
+    --warning: 39.1 100% 27.1%;          /* #8A5A00 */
+    --warning-soft: 40 73.3% 92.2%;      /* #FAF0DC */
+    --danger: 2.3 56.9% 35.5%;           /* #8E2B27 */
+    --danger-soft: 4.3 53.1% 94.7%;      /* #F8ECEB */
   }
 
   .dark {
@@ -45,7 +61,16 @@
     --destructive-foreground: 0 0% 98%;
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --ring: 236.2 54.1% 70%;
+    --brand: 236.2 54.1% 70%;
+    --brand-soft: 236.2 30% 20%;
+    --mint: 124.5 100% 89%;
+    --success: 152 45% 60%;
+    --success-soft: 152 30% 15%;
+    --warning: 39.1 80% 60%;
+    --warning-soft: 39.1 40% 15%;
+    --danger: 2.3 70% 65%;
+    --danger-soft: 2.3 40% 16%;
   }
 }
 
@@ -55,6 +80,20 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* A work tool, open all day: 14 / 400 / 1.5 (§12), not the site's reading text. */
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  /* Money and codes line up in columns. */
+  td, .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  /* One page heading size across every page (§12: the tool has no display type). */
+  .erp-page h1 {
+    font-size: 22px;
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 }
 
