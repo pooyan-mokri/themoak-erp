@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { orderMoney } from '@/lib/return-math';
 import { buildInvoice, type InvoiceBill, type InvoiceSourceItem } from '@/lib/invoice-lines';
 import { formatShipTo, readSiteOrderData } from '@/lib/site-sale-data';
+import { creditBalance } from '@/lib/sales-records';
 
 /**
  * Everything a sale's invoice shows, read once for its page and both prints
@@ -44,7 +45,12 @@ export async function loadInvoiceData(orderId: string): Promise<InvoiceData | nu
         include: {
           product: { select: { name: true } },
           returns: { select: { quantity: true } },
-          exchanges: { select: { quantity: true, exchangeItemId: true }, orderBy: { createdAt: 'asc' } },
+          exchanges: {
+            select: { quantity: true, exchangeItemId: true, issuedItems: { select: { id: true }, orderBy: { id: 'asc' } } },
+            orderBy: { createdAt: 'asc' },
+          },
+          issuedBy: { select: { originalItem: { select: { product: { select: { name: true } } } } } },
+          // An exchange from before OrderItem.exchangeId names only its one line.
           exchangeItems: { select: { originalItem: { select: { product: { select: { name: true } } } } } },
         },
       },
@@ -59,8 +65,10 @@ export async function loadInvoiceData(orderId: string): Promise<InvoiceData | nu
     price: Number(item.price),
     returned: item.returns.reduce((sum: number, row: any) => sum + row.quantity, 0),
     exchangedAway: item.exchanges.reduce((sum: number, row: any) => sum + row.quantity, 0),
-    issuedIds: item.exchanges.map((row: any) => row.exchangeItemId),
-    replaced: item.exchangeItems[0]?.originalItem?.product?.name,
+    issuedIds: item.exchanges.flatMap((row: any) =>
+      row.issuedItems.length ? row.issuedItems.map((issued: any) => issued.id) : [row.exchangeItemId],
+    ),
+    replaced: (item.issuedBy ?? item.exchangeItems[0])?.originalItem?.product?.name,
   }));
 
   // A website order: its total includes the freight and has the website's refunds taken off.
@@ -80,7 +88,7 @@ export async function loadInvoiceData(orderId: string): Promise<InvoiceData | nu
     freight,
     siteRefunded,
     commissionRate: orderMoney(order).commissionRate,
-    customerCredit: 0,
+    customerCredit: order.customerId ? await creditBalance(prisma, order.customerId) : 0,
     items,
   });
 

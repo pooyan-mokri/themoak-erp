@@ -37,6 +37,8 @@ export type OrderChange = {
   cashIn: number;
   /** Cash paid back out of the chosen account now. */
   cashOut: number;
+  /** Moved to the customer's credit account (CustomerCredit) instead of paid back. */
+  creditIn: number;
   /** How much the customer's bill (total less discount) moved: + owes more, − owes less. */
   owedChange: number;
 };
@@ -128,6 +130,7 @@ export function returnChange(order: OrderMoney, value: number): OrderChange {
     paymentStatus: statusOf(netOwed, newPaid),
     cashIn: 0,
     cashOut: order.paidAmount - newPaid,
+    creditIn: 0,
     owedChange,
   };
 }
@@ -150,27 +153,47 @@ export function receivableNow(order: OrderMoney, returnedValue: number, newValue
  * - The bill grows: the addition is owed on the order, except `receivedNow`
  *   (0..receivableNow) that the cashier collects now.
  * - The bill shrinks: what the customer paid beyond the new net total is paid
- *   back only when the cashier chooses `refundNow`; otherwise it stays paid on
- *   the order, as the customer's credit.
+ *   back when the cashier chooses `refundNow`, or moved to the customer's
+ *   credit account with `toCredit`; the order is then paid exactly its net.
+ *   With neither it stays paid on the order (as before credit accounts).
  */
 export function exchangeChange(
   order: OrderMoney,
   returnedValue: number,
   newValue: number,
-  choice: { receivedNow?: number; refundNow?: boolean },
+  choice: { receivedNow?: number; refundNow?: boolean; toCredit?: boolean },
 ): OrderChange {
   const { newTotal, newDiscount, netOwed, owedChange } = afterSwap(order, returnedValue, newValue);
   let newPaid = order.paidAmount;
   let cashIn = 0;
   let cashOut = 0;
+  let creditIn = 0;
   if (owedChange > 0) {
     cashIn = choice.receivedNow ?? 0;
     newPaid = order.paidAmount + cashIn;
-  } else if (owedChange < 0 && choice.refundNow && order.paidAmount > netOwed) {
-    cashOut = order.paidAmount - netOwed;
+  } else if (owedChange < 0 && (choice.refundNow || choice.toCredit) && order.paidAmount > netOwed) {
+    if (choice.refundNow) cashOut = order.paidAmount - netOwed;
+    else creditIn = order.paidAmount - netOwed;
     newPaid = netOwed;
   }
-  return { newTotal, newDiscount, newPaid, paymentStatus: statusOf(netOwed, newPaid), cashIn, cashOut, owedChange };
+  return {
+    newTotal,
+    newDiscount,
+    newPaid,
+    paymentStatus: statusOf(netOwed, newPaid),
+    cashIn,
+    cashOut,
+    creditIn,
+    owedChange,
+  };
+}
+
+/**
+ * How much of a customer's credit can pay an order: at most their balance and
+ * at most what the order still owes (`remaining`).
+ */
+export function creditUsable(balance: number, remaining: number): number {
+  return Math.max(0, Math.min(balance, remaining));
 }
 
 /** Units of a line still sold: bought, less those returned or exchanged away. */

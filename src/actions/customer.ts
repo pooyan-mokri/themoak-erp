@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
-import { accountForViewer, productForViewer } from '@/lib/sales-records';
+import { accountForViewer, creditBalance, creditBalances, productForViewer } from '@/lib/sales-records';
 import { customerBalance } from '@/lib/order-balance';
 
 // const prisma = new PrismaClient();
@@ -258,11 +258,12 @@ export async function getCustomersWithDebt() {
       },
       orderBy: { createdAt: 'desc' },
     });
+    const credits = await creditBalances(prisma);
 
     // Calculate debt for each customer
     return customers.map((customer: any) => {
       const { orders, ...rest } = customer;
-      const { debt: totalDebt, credit: totalCredit } = customerBalance(orders);
+      const { debt: totalDebt, credit: totalCredit } = customerBalance(orders, credits.get(customer.id) ?? 0);
 
       return {
         ...rest,
@@ -312,8 +313,8 @@ export async function getCustomerById(id: string) {
 
     if (!customer) return undefined;
 
-    // Debt and credit over every order that is not cancelled (src/lib/order-balance.ts).
-    const { debt: totalDebt, credit: totalCredit } = customerBalance(customer.orders);
+    // Debt and credit over every order that is not cancelled, and the credit account (src/lib/order-balance.ts).
+    const { debt: totalDebt, credit: totalCredit } = customerBalance(customer.orders, await creditBalance(prisma, id));
 
     // Calculate stats
     const totalOrders = customer.orders.length;

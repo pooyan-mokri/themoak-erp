@@ -1233,6 +1233,9 @@ export async function deleteConsignmentOrder(
       await tx.inventoryMovement.deleteMany({ where: { referenceId: orderId } });
 
       // 4. Remove commissions, returns, exchanges, items, and the order itself.
+      //    Credit the customer spent on it or got from its exchanges goes too,
+      //    like its money rows above.
+      await tx.customerCredit.deleteMany({ where: { orderId } });
       await tx.consignmentCommission.deleteMany({ where: { orderId } });
       await tx.orderExchange.deleteMany({ where: { orderId } });
       await tx.orderReturn.deleteMany({ where: { orderId } });

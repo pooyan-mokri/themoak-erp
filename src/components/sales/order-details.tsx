@@ -156,8 +156,9 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
 
   // The bill as the invoice shows it (src/lib/order-balance.ts).
   const totals = orderTotals(order);
-  // What became of each exchange's difference. Of a cheaper exchange's difference that was not paid
-  // back, what the order still holds beyond its net is the customer's credit; the rest lowered the debt.
+  // What became of each exchange's difference. What went to the customer's credit account is on
+  // the exchange; an older exchange left it on the order, so of a cheaper one's difference that was
+  // not paid back, what the order still holds beyond its net is credit, and the rest lowered the debt.
   let creditLeft = totals.credit;
   const settlements = new Map(
     exchanges.map((ex: any) => {
@@ -165,8 +166,11 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
       const cash = ex.transaction ? Number(ex.transaction.amountInToman) : 0;
       const cashIn = ex.transaction?.type === 'INCOME' ? cash : 0;
       const cashOut = ex.transaction?.type === 'EXPENSE' ? cash : 0;
-      const toCredit = difference < 0 ? Math.min(Math.max(0, -difference - cashOut), creditLeft) : 0;
-      creditLeft -= toCredit;
+      let toCredit = Number(ex.toCredit ?? 0);
+      if (!(toCredit > 0) && difference < 0) {
+        toCredit = Math.min(Math.max(0, -difference - cashOut), creditLeft);
+        creditLeft -= toCredit;
+      }
       return [ex.id, exchangeSettlement({ difference, cashIn, cashOut, toCredit })] as const;
     }),
   );
@@ -363,12 +367,12 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                       <div key={ex.id} className="flex flex-col gap-1 border-b pb-2 last:border-0 last:pb-0">
                         <div className="flex justify-between">
                           <span className="font-medium">
-                            {ex.originalItem?.product?.name || '—'} ← {ex.exchangeItem?.product?.name || '—'}
+                            {ex.originalItem?.product?.name || '—'} × {ex.quantity} ← {ex.issuedNames || ex.exchangeItem?.product?.name || '—'}
                           </span>
                           <span className="text-sm">{formatJalaliDateTime(ex.createdAt)}</span>
                         </div>
                         <div className="flex justify-between text-sm text-muted-foreground">
-                          <span>تعداد: {ex.quantity}</span>
+                          <span>تعداد پس‌داده‌شده: {ex.quantity}</span>
                           <span className="flex flex-col items-end">
                             {(settlements.get(ex.id) ?? []).length === 0 && 'بدون مابه‌التفاوت'}
                             {(settlements.get(ex.id) ?? []).map((part) => (
@@ -481,6 +485,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             open={exchangeDialogOpen}
             onOpenChange={setExchangeDialogOpen}
             orderId={order.id}
+            hasCustomer={!!order.customerId}
             originalItem={{
               id: selectedItem.id,
               product: {

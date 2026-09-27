@@ -163,10 +163,13 @@ export function OrderList({ orders }: OrderListProps) {
       toast.error(preview.message);
       return;
     }
-    const money = preview.accounts.length === 0
+    const money = (preview.accounts.length === 0
       ? `- هیچ مبلغی از این سفارش در حساب‌ها ثبت نشده است\n`
       : `- این ردیف‌های مالی سفارش حذف و اثرشان از حساب‌ها برگردانده می‌شود:\n` +
-        preview.accounts.map(describeReversal).join('\n') + '\n';
+        preview.accounts.map(describeReversal).join('\n') + '\n') +
+      (preview.creditReturned > 0
+        ? `- ${preview.creditReturned.toLocaleString('fa-IR')} تومان اعتبار مشتری که خرج این سفارش شده بود به اعتبارش برمی‌گردد\n`
+        : '');
 
     // Confirm with user
     const confirmed = window.confirm(

@@ -18,11 +18,21 @@ import { balanceEffect } from '@/lib/balance-reconciliation';
 import { WEBSITE_ORDER_LOCKED, readSiteOrderData } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
-import { PAYMENT_ACCOUNT_TYPE_MESSAGE, accountForViewer, bookOrderPayment, productForViewer } from '@/lib/sales-records';
+import {
+  CREDIT_REASON,
+  PAYMENT_ACCOUNT_TYPE_MESSAGE,
+  accountForViewer,
+  bookOrderPayment,
+  checkCreditUse,
+  creditSpentOn,
+  lockCustomerCredit,
+  productForViewer,
+} from '@/lib/sales-records';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { accountLabel } from '@/lib/account-label';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { defaultChannelOf } from '@/lib/consignment-channels';
+import { auth } from '@/auth';
 
 // const prisma = new PrismaClient();
 
@@ -48,6 +58,7 @@ interface OrderData {
   invoiceAccountId?: string; // Account whose card/IBAN to show on credit invoice
   requestId?: string; // One checkout submission (src/lib/request-id.ts)
   receiptUrl?: string; // The payment's receipt (src/lib/receipt-ref.ts)
+  creditUsed?: number; // Paid from the customer's credit (CustomerCredit), on top of paidAmount in cash
 }
 
 export async function createOrder(data: OrderData) {
@@ -63,24 +74,46 @@ export async function createOrder(data: OrderData) {
     return { success: false, message: 'سبد خرید خالی است.' };
   }
 
-  // Calculate final amounts
-  const finalPaidAmount = paidAmount !== undefined ? paidAmount : (totalAmount - discount);
-  const debtAmount = (totalAmount - discount) - finalPaidAmount;
+  // Calculate final amounts. Credit spent is paid without cash: no money row for it.
+  const creditUsed = data.creditUsed ?? 0;
+  const finalPaidAmount = paidAmount !== undefined ? paidAmount : (totalAmount - discount - creditUsed);
+  const debtAmount = (totalAmount - discount) - finalPaidAmount - creditUsed;
 
   // A negative payment would leave the order owing more than its price, and
   // «ثبت پرداخت» would then book the excess as received.
   if (!(finalPaidAmount >= 0)) {
     return { success: false, message: 'مبلغ پرداختی نمی‌تواند منفی باشد.' };
   }
-
-  // Money beyond the price would be booked as received and the order marked PAID.
-  if (finalPaidAmount > totalAmount - discount) {
-    return { success: false, message: 'مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت (پس از تخفیف) باشد.' };
+  if (!(creditUsed >= 0)) {
+    return { success: false, message: 'مبلغ استفاده از اعتبار نمی‌تواند منفی باشد.' };
+  }
+  if (creditUsed > 0 && !customerId) {
+    return { success: false, message: 'اعتبار فقط برای مشتری انتخاب‌شده قابل استفاده است.' };
   }
 
+  // Money beyond the price would be booked as received and the order marked PAID.
+  if (finalPaidAmount + creditUsed > totalAmount - discount) {
+    return { success: false, message: 'مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت (پس از تخفیف) باشد.' };
+  }
+  const userId = creditUsed > 0 ? ((await auth())?.user?.id ?? null) : null;
+
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
       let transactionId = undefined;
+
+      // 0. Credit spent: the customer's credit is locked, so two sales spending
+      //    it run one after the other. A repeat of a sale that spent it finds
+      //    its rows here, before the balance it left refuses it.
+      if (creditUsed > 0) {
+        await lockCustomerCredit(tx, customerId);
+        if (
+          requestId &&
+          ((await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })) ||
+            (await tx.customerCredit.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })))
+        ) {
+          return 'duplicate';
+        }
+      }
 
       // 1. Fetch customer first to get name for transaction description
       let customer = undefined;
@@ -94,6 +127,11 @@ export async function createOrder(data: OrderData) {
             channels: { orderBy: { sortOrder: 'asc' } },
           },
         });
+      }
+
+      // 1a. Credit spent: at most the customer's balance.
+      if (creditUsed > 0) {
+        await checkCreditUse(tx, customerId, creditUsed, totalAmount - discount - finalPaidAmount);
       }
 
       // 2. Create Transaction (Income) ONLY if there is a payment
@@ -174,8 +212,8 @@ export async function createOrder(data: OrderData) {
           customerId,
           totalAmount,
           discount,
-          paidAmount: finalPaidAmount,
-          paymentStatus: debtAmount > 0 ? (finalPaidAmount > 0 ? 'PARTIAL' : 'UNPAID') : 'PAID',
+          paidAmount: finalPaidAmount + creditUsed,
+          paymentStatus: debtAmount > 0 ? (finalPaidAmount + creditUsed > 0 ? 'PARTIAL' : 'UNPAID') : 'PAID',
           status: 'COMPLETED',
           transactionId: transactionId,
           createdAt: orderDate,
@@ -195,6 +233,20 @@ export async function createOrder(data: OrderData) {
       // The checkout money belongs to this order (cancelOrder reverses by it).
       if (transactionId) {
         await tx.transaction.update({ where: { id: transactionId }, data: { orderId: order.id } });
+      }
+
+      // The credit spent on it, as a negative row of the customer's credit account.
+      if (creditUsed > 0) {
+        await tx.customerCredit.create({
+          data: {
+            customerId,
+            amount: new Prisma.Decimal(-creditUsed),
+            orderId: order.id,
+            reason: CREDIT_REASON.PAYMENT,
+            userId: userId ?? undefined,
+            clientRequestId: requestId ?? undefined,
+          },
+        });
       }
 
       // 5. Calculate and record commission if customer is a consignment partner.
@@ -260,7 +312,9 @@ export async function createOrder(data: OrderData) {
           },
         });
       }
+      return 'done';
     });
+    if (outcome === 'duplicate') return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
     kickSiteHook();
 
     try {
@@ -469,7 +523,7 @@ export async function getOrder(id: string) {
           warehouse: item.warehouse
             ? { id: item.warehouse.id, name: item.warehouse.name, isVirtual: item.warehouse.isVirtual }
             : undefined,
-          isExchangeDerived: !!(item.exchangeItems && item.exchangeItems.length > 0),
+          isExchangeDerived: item.exchangeId != null || !!(item.exchangeItems && item.exchangeItems.length > 0),
           remainingQuantity,
           returnedQuantity: returnedQty,
           exchangedQuantity: exchangedQty,
@@ -565,12 +619,14 @@ function cancelBlocker(
   rows: OrderMoneyRow[],
   order: { paidAmount: unknown; transactionId: string | null },
   isAdmin: boolean,
+  creditSpent = 0,
 ): string | null {
   const moving = rows.filter(movesBalance);
+  // Credit the customer spent on the order counts as paid, with no money row.
   const linked = moving.reduce((sum, row) => {
     const toman = Number(row.amountInToman ?? row.amount);
     return sum + (row.type === 'INCOME' ? toman : row.type === 'EXPENSE' ? -toman : 0);
-  }, 0);
+  }, creditSpent);
   const paid = Number(order.paidAmount ?? 0);
   if (Math.abs(linked - paid) > 0.5) {
     return `پرداخت‌های وصل به این سفارش (${fmt(linked)} تومان) با مبلغ پرداخت‌شدهٔ سفارش (${fmt(paid)} تومان) نمی‌خواند؛ بخشی از پول سفارش به آن وصل نیست. لغو انجام نشد تا پولی در حساب‌ها جا نماند. با مدیر سیستم تماس بگیرید.`;
@@ -622,6 +678,8 @@ export async function getCancelOrderPreview(orderId: string): Promise<
       accounts: Array<{ label: string; currency: string | null; change: number; rows: number; moves: boolean }>;
       /** The rows shown; pass them to cancelOrder so it reverses exactly these. */
       moneyRowIds: string[];
+      /** Credit the customer spent on the order, which the cancel gives back to their credit. */
+      creditReturned: number;
     }
   | { success: false; message: string }
 > {
@@ -638,9 +696,10 @@ export async function getCancelOrderPreview(orderId: string): Promise<
     if (await hasReturnsOrExchanges(prisma, orderId)) return { success: false, message: RETURNED_ORDER_MESSAGE };
 
     const rows = await orderMoneyRows(prisma, orderId, order.transactionId);
-    const blocked = cancelBlocker(rows, order, (await getCurrentRole()) === 'ADMIN');
+    const creditReturned = await creditSpentOn(prisma, orderId);
+    const blocked = cancelBlocker(rows, order, (await getCurrentRole()) === 'ADMIN', creditReturned);
     if (blocked) return { success: false, message: blocked };
-    return { success: true, accounts: reversalsByAccount(rows), moneyRowIds: rows.map((row) => row.id) };
+    return { success: true, accounts: reversalsByAccount(rows), moneyRowIds: rows.map((row) => row.id), creditReturned };
   } catch (error) {
     console.error('Error previewing order cancel:', error);
     return { success: false, message: 'خطا در خواندن پرداخت‌های سفارش.' };
@@ -747,8 +806,21 @@ export async function cancelOrder(orderId: string, expectedMoneyRowIds?: string[
       }
       // order was read before the claim zeroed paidAmount: a payment that slipped in between makes
       // the sums disagree, which refuses the cancel (the safe side).
-      const blocked = cancelBlocker(moneyRows, order, isAdmin);
+      const creditSpent = await creditSpentOn(tx, orderId);
+      const blocked = cancelBlocker(moneyRows, order, isAdmin, creditSpent);
       if (blocked) throw new Error(blocked);
+      // Credit spent on the order goes back to the customer's credit.
+      if (creditSpent > 0.5) {
+        await tx.customerCredit.create({
+          data: {
+            customerId: order.customerId,
+            amount: new Prisma.Decimal(creditSpent),
+            orderId,
+            reason: CREDIT_REASON.CANCEL,
+            userId: (await auth())?.user?.id ?? undefined,
+          },
+        });
+      }
       const deleted = await tx.transaction.deleteMany({ where: { id: { in: moneyRows.map((row) => row.id) } } });
       if (deleted.count !== moneyRows.length) {
         throw new Error('پرداخت‌های این سفارش هم‌زمان تغییر کرد؛ دوباره تلاش کنید.');

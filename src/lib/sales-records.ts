@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { orderNet } from '@/lib/order-balance';
+import { creditUsable } from '@/lib/return-math';
 
 /**
  * Helpers for the sales actions that must not be server actions themselves:
@@ -91,6 +92,107 @@ export async function bookOrderPayment(
     },
   });
 
+  await syncInvoiceWithOrder(orderId, tx);
+  return 'booked';
+}
+
+/** Why a row of a customer's credit account was written (CustomerCredit.reason). */
+export const CREDIT_REASON = {
+  /** An exchange's difference the customer left with the shop. */
+  EXCHANGE: 'EXCHANGE',
+  /** Credit spent on an order. */
+  PAYMENT: 'PAYMENT',
+  /** A cancelled order's spent credit, given back. */
+  CANCEL: 'CANCEL',
+} as const;
+
+/** A customer's credit balance: the sum of their CustomerCredit rows, in Toman. */
+export async function creditBalance(client: any, customerId: string): Promise<number> {
+  const sum = await client.customerCredit.aggregate({ where: { customerId }, _sum: { amount: true } });
+  return Number(sum._sum.amount ?? 0);
+}
+
+/** The credit balance of every customer who has one, by customer id. */
+export async function creditBalances(client: any = prisma): Promise<Map<string, number>> {
+  const rows = await client.customerCredit.groupBy({ by: ['customerId'], _sum: { amount: true } });
+  return new Map(rows.map((row: any) => [row.customerId, Number(row._sum.amount ?? 0)]));
+}
+
+/**
+ * Serializes every use of one customer's credit until the transaction ends, so
+ * a second use sees the balance the first one left.
+ */
+export async function lockCustomerCredit(tx: any, customerId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`customer-credit:${customerId}`}))`;
+}
+
+/** Credit spent on an order and not given back: what a cancel of it returns to the customer. */
+export async function creditSpentOn(client: any, orderId: string): Promise<number> {
+  const sum = await client.customerCredit.aggregate({
+    where: { orderId, reason: { in: [CREDIT_REASON.PAYMENT, CREDIT_REASON.CANCEL] } },
+    _sum: { amount: true },
+  });
+  return -Number(sum._sum.amount ?? 0);
+}
+
+const toman = (amount: number) => Math.round(amount).toLocaleString('fa-IR');
+
+/** The most of `customerId`'s credit an order still owing `remaining` may use, or a Persian refusal. */
+export async function checkCreditUse(tx: any, customerId: string, amount: number, remaining: number) {
+  const usable = creditUsable(await creditBalance(tx, customerId), remaining);
+  if (!(amount > 0)) throw new Error('مبلغ استفاده از اعتبار باید بیشتر از صفر باشد.');
+  if (amount > usable + 0.01) {
+    throw new Error(`از اعتبار مشتری حداکثر ${toman(usable)} تومان برای این سفارش قابل استفاده است.`);
+  }
+}
+
+/**
+ * Pay `amount` of an order from its customer's credit, inside the caller's
+ * transaction `tx`: no money row and no account moves; the order's paid amount
+ * grows and a negative CustomerCredit row records the use. At most the
+ * customer's balance and at most what the order still owes.
+ *
+ * The order is locked first, then the customer's credit, the order every
+ * writer takes them in. A request id that was already booked answers
+ * 'duplicate' and writes nothing. A refused use throws, with the reason in Persian.
+ */
+export async function bookCreditPayment(
+  tx: any,
+  use: { orderId: string; amount: number; requestId?: string | null; userId?: string | null },
+): Promise<'booked' | 'duplicate'> {
+  const { orderId, amount, requestId } = use;
+  const locked = await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+  if (locked.length === 0) throw new Error('سفارش یافت نشد.');
+  if (requestId && (await tx.customerCredit.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+    return 'duplicate';
+  }
+
+  const order = await tx.order.findUnique({ where: { id: orderId } });
+  if (order.siteReference !== null) throw new Error(WEBSITE_ORDER_LOCKED);
+  if (order.status === 'CANCELLED') throw new Error('این سفارش لغو شده است و نمی‌توان برای آن پرداخت ثبت کرد.');
+  if (!order.customerId) throw new Error('این سفارش مشتری ندارد؛ اعتبار فقط روی سفارش مشتری قابل استفاده است.');
+
+  await lockCustomerCredit(tx, order.customerId);
+  const net = orderNet(order);
+  await checkCreditUse(tx, order.customerId, amount, net - Number(order.paidAmount));
+
+  await tx.customerCredit.create({
+    data: {
+      customerId: order.customerId,
+      amount: new Prisma.Decimal(-amount),
+      orderId,
+      reason: CREDIT_REASON.PAYMENT,
+      userId: use.userId ?? undefined,
+      clientRequestId: requestId ?? undefined,
+    },
+  });
+  await tx.order.update({
+    where: { id: orderId },
+    data: {
+      paidAmount: { increment: new Prisma.Decimal(amount) },
+      paymentStatus: Number(order.paidAmount) + amount >= net - 0.5 ? 'PAID' : 'PARTIAL',
+    },
+  });
   await syncInvoiceWithOrder(orderId, tx);
   return 'booked';
 }
