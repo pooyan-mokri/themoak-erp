@@ -3,6 +3,7 @@
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
 import { requirePermission } from '@/lib/access';
+import { latestRates, totalsByCurrency } from '@/lib/money-totals';
 
 import { prisma } from '@/lib/prisma';
 
@@ -23,7 +24,9 @@ export async function getDashboardFinancials() {
       }
     });
     
-    const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
+    // Toman accounts only; each other currency on its own (src/lib/money-totals.ts).
+    const balances = totalsByCurrency(accounts, await latestRates(prisma));
+    const totalBalance = balances.toman;
 
     // Total Receivables (actual unpaid amounts from orders)
     // فقط سفارشات با مشتری - سفارشات Guest (نقدی) طلبکار نیستند
@@ -62,6 +65,7 @@ export async function getDashboardFinancials() {
 
     return {
       totalBalance,
+      foreignBalances: balances.foreign,
       totalReceivables,
       totalPayables,
     };
@@ -69,6 +73,7 @@ export async function getDashboardFinancials() {
     console.error('Error fetching dashboard financials:', error);
     return {
       totalBalance: 0,
+      foreignBalances: [],
       totalReceivables: 0,
       totalPayables: 0,
     };

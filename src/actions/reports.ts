@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
+import { latestRates, totalsByCurrency } from '@/lib/money-totals';
 
 // Financial Reports
 
@@ -105,10 +106,14 @@ export async function getBalanceSheet(date: Date) {
       },
       select: {
         balance: true,
+        currency: true,
       },
     });
 
-    const totalCash = cashAccounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
+    // Toman accounts only; a foreign balance is listed in its own currency,
+    // valued at the latest recorded rate (src/lib/money-totals.ts).
+    const balances = totalsByCurrency(cashAccounts, await latestRates(prisma));
+    const totalCash = balances.toman;
 
     // Inventory Value (cost price * quantity) — split own vs. consignment
     const inventory = await prisma.inventory.findMany({
@@ -144,6 +149,10 @@ export async function getBalanceSheet(date: Date) {
 
     const totalAssets =
       totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable;
+    // The same total with the foreign cash at the latest rates; null while a currency has no rate.
+    const approxTotalWithForeign = balances.foreign.every((f) => f.approxToman !== null)
+      ? balances.foreign.reduce((sum, f) => sum + (f.approxToman as number), totalAssets)
+      : null;
 
     // Liabilities (for now, simplified - we don't track AP yet)
     const accountsPayable = 0; // TODO: implement when we add bills/payables
@@ -156,10 +165,12 @@ export async function getBalanceSheet(date: Date) {
     return {
       assets: {
         cash: totalCash,
+        foreignCash: balances.foreign,
         inventory: inventoryValue,
         consignmentInventory: consignmentInventoryValue,
         accountsReceivable,
         total: totalAssets,
+        approxTotalWithForeign,
       },
       liabilities: {
         accountsPayable,

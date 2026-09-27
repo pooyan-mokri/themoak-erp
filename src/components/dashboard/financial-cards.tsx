@@ -2,10 +2,15 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
+import { formatJalaliDate } from '@/lib/date-utils';
+import type { CurrencyTotal } from '@/lib/money-totals';
 
 interface FinancialCardsProps {
   financials: {
+    /** Toman accounts only. */
     totalBalance: number;
+    /** Each other currency's accounts, in that currency, with the latest rate when one is recorded. */
+    foreignBalances?: CurrencyTotal[];
     totalReceivables: number;
     totalPayables: number;
   };
@@ -15,6 +20,7 @@ export function FinancialCards({ financials }: FinancialCardsProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fa-IR').format(amount) + ' تومان';
   };
+  const formatNumber = (amount: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 }).format(amount);
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -29,6 +35,15 @@ export function FinancialCards({ financials }: FinancialCardsProps) {
           <p className="text-xs text-muted-foreground">
             بانک‌ها و صندوق
           </p>
+          {/* A foreign balance is not added to the Toman total: it is shown in its own currency. */}
+          {(financials.foreignBalances ?? []).map((foreign) => (
+            <p key={foreign.currency} className="text-xs text-muted-foreground mt-1">
+              {`+ ${formatNumber(foreign.total)} ${foreign.currency}`}
+              {foreign.rate !== null && foreign.approxToman !== null
+                ? ` ≈ ${formatCurrency(Math.round(foreign.approxToman))} (نرخ ${formatNumber(foreign.rate)} در ${formatJalaliDate(foreign.rateDate ?? undefined)})`
+                : ' (نرخی ثبت نشده است)'}
+            </p>
+          ))}
         </CardContent>
       </Card>
 

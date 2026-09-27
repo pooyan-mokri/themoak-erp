@@ -2,10 +2,17 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { formatJalaliDate } from '@/lib/date-utils';
+import type { CurrencyTotal } from '@/lib/money-totals';
 
 interface BalanceSheetData {
   assets: {
+    /** Toman accounts only. */
     cash: number;
+    /** Each other currency's accounts, in that currency, with the latest rate when one is recorded. */
+    foreignCash?: CurrencyTotal[];
+    /** total with the foreign cash at the latest rates; null while a currency has no rate. */
+    approxTotalWithForeign?: number | null;
     inventory: number;
     consignmentInventory?: number;
     accountsReceivable: number;
@@ -32,6 +39,8 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fa-IR').format(Math.round(value)) + ' تومان';
   };
+  const formatNumber = (value: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 }).format(value);
+  const foreignCash = assets.foreignCash ?? [];
 
   const assetBreakdown = [
     { name: 'نقدینگی', value: assets.cash },
@@ -57,6 +66,18 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
                 <span className="text-muted-foreground">نقدینگی:</span>
                 <span>{formatCurrency(assets.cash)}</span>
               </div>
+              {/* A foreign balance is not added to the Toman figures: it is shown in its own currency. */}
+              {foreignCash.map((foreign) => (
+                <div key={foreign.currency} className="flex justify-between">
+                  <span className="text-muted-foreground">{`نقدینگی ${foreign.currency}:`}</span>
+                  <span>
+                    {`${formatNumber(foreign.total)} ${foreign.currency}`}
+                    {foreign.rate !== null && foreign.approxToman !== null
+                      ? ` ≈ ${formatCurrency(foreign.approxToman)} (نرخ ${formatNumber(foreign.rate)} در ${formatJalaliDate(foreign.rateDate ?? undefined)})`
+                      : ' (نرخی ثبت نشده است)'}
+                  </span>
+                </div>
+              ))}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">موجودی کالا (خودی):</span>
                 <span>{formatCurrency(assets.inventory)}</span>
@@ -69,6 +90,16 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
                 <span className="text-muted-foreground">حساب‌های دریافتنی:</span>
                 <span>{formatCurrency(assets.accountsReceivable)}</span>
               </div>
+              {foreignCash.length > 0 && (
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-muted-foreground">جمع با احتساب ارز (تقریبی):</span>
+                  <span>
+                    {assets.approxTotalWithForeign != null
+                      ? formatCurrency(assets.approxTotalWithForeign)
+                      : 'نرخ برخی ارزها ثبت نشده است'}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
