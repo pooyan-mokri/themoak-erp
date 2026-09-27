@@ -9,8 +9,11 @@
 --   * status PAID / IN_PRODUCTION / ARRIVED / RECEIVED with unpaid > 0: marked
 --     paid (updatePurchaseOrderStatus can set PAID with no payment) or received
 --     with no payment recorded in the ERP;
---   * totalAmountInToman IS NULL: counted as 0 now;
---   * paid > total: overpaid, counted as 0.
+--   * totalAmountInToman IS NULL (old orders): the dashboard prices them from
+--     their lines and order costs at the latest rate, as the payment code does;
+--     unpaid_now shows them as 0 here;
+--   * paid > total: overpaid, counted as 0; a remainder of 1 Toman or less is
+--     rounding (the payment code marks an order paid at total − 1): 0.
 SELECT
   po."number",
   s."name"                                   AS supplier,
@@ -18,7 +21,8 @@ SELECT
   po."totalAmount"                           AS total_in_first_item_currency,
   po."totalAmountInToman"                    AS total_toman,
   COALESCE(p.paid, 0)                        AS paid_toman,
-  GREATEST(COALESCE(po."totalAmountInToman", 0) - COALESCE(p.paid, 0), 0) AS unpaid_now,
+  CASE WHEN COALESCE(po."totalAmountInToman", 0) - COALESCE(p.paid, 0) > 1
+       THEN COALESCE(po."totalAmountInToman", 0) - COALESCE(p.paid, 0) ELSE 0 END AS unpaid_now,
   CASE WHEN po."status" = 'RECEIVED' THEN po."totalAmount" ELSE 0 END     AS counted_before,
   po."paymentTransactionId" IS NOT NULL      AS has_legacy_payment_pointer
 FROM "PurchaseOrder" po

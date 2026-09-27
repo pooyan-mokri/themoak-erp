@@ -3,7 +3,13 @@
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
 import { requirePermission } from '@/lib/access';
-import { latestRates, PAYABLE_PURCHASE_ORDERS, totalsByCurrency, unpaidOnPurchaseOrder } from '@/lib/money-totals';
+import {
+  latestRates,
+  PAYABLE_PURCHASE_ORDERS,
+  PURCHASE_ORDER_DEBT_FIELDS,
+  totalsByCurrency,
+  unpaidOnPurchaseOrder,
+} from '@/lib/money-totals';
 import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
 
 import { prisma } from '@/lib/prisma';
@@ -26,7 +32,8 @@ export async function getDashboardFinancials() {
     });
     
     // Toman accounts only; each other currency on its own (src/lib/money-totals.ts).
-    const balances = totalsByCurrency(accounts, await latestRates(prisma));
+    const rates = await latestRates(prisma);
+    const balances = totalsByCurrency(accounts, rates);
     const totalBalance = balances.toman;
 
     // Total Receivables (actual unpaid amounts from orders)
@@ -55,13 +62,13 @@ export async function getDashboardFinancials() {
     }, 0);
 
     // Total Payables: what is still unpaid on the purchase orders placed with
-    // suppliers, in Toman (totalAmount is in the order's first item's currency).
+    // suppliers, in Toman (src/lib/money-totals.ts).
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where: PAYABLE_PURCHASE_ORDERS,
-      select: { totalAmountInToman: true, payments: { select: { amount: true } } },
+      select: PURCHASE_ORDER_DEBT_FIELDS,
     });
 
-    const totalPayables = purchaseOrders.reduce((sum: number, po: any) => sum + unpaidOnPurchaseOrder(po), 0);
+    const totalPayables = purchaseOrders.reduce((sum: number, po: any) => sum + unpaidOnPurchaseOrder(po, rates), 0);
 
     return {
       totalBalance,

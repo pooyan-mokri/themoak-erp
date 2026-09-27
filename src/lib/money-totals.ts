@@ -63,23 +63,53 @@ export async function latestRates(client: any): Promise<RateRow[]> {
 
 /**
  * Purchase orders that owe their supplier: every order past its draft that was
- * not cancelled. A draft has not been placed with the supplier yet.
+ * not cancelled. A draft has not been placed with the supplier yet. Whether
+ * one still owes anything is read from its payments, never from its status.
  */
 export const PAYABLE_PURCHASE_ORDERS = { status: { notIn: ['DRAFT', 'CANCELLED'] } };
 
-/**
- * What is still unpaid on one purchase order, in Toman: its Toman total less
- * its payments (the PurchaseOrderPayment row every payment writes), never
- * below zero.
- */
-export function unpaidOnPurchaseOrder(order: {
+/** What the payables reader needs of an order (a Prisma select). */
+export const PURCHASE_ORDER_DEBT_FIELDS = {
+  totalAmountInToman: true,
+  payments: { select: { amount: true } },
+  items: { select: { quantity: true, unitCost: true, currency: true, exchangeRateSnapshot: true } },
+  additionalCosts: { select: { amount: true, currency: true, exchangeRateSnapshot: true } },
+};
+
+type Priced = { currency: string; exchangeRateSnapshot?: unknown };
+
+type PurchaseOrderDebt = {
   totalAmountInToman: unknown;
   payments: Array<{ amount: unknown }>;
-}): number {
+  items?: Array<Priced & { quantity: number; unitCost: unknown }>;
+  additionalCosts?: Array<Priced & { amount: unknown }>;
+};
+
+/**
+ * What is still unpaid on one purchase order, in Toman: its Toman total less
+ * its payments (the PurchaseOrderPayment row every payment writes, whose amount
+ * is Toman whatever the paying account), never below zero. totalAmount is in
+ * the first line's currency and is never used. An order with no Toman total
+ * (an old one) is priced as the payment code prices it: its lines and order
+ * costs at the latest rate (or, lacking one, the rate kept on the line).
+ * Arrival costs are paid when recorded, so they are never owed. A remainder of
+ * 1 Toman or less is rounding: the payment code marks an order paid at total − 1.
+ */
+export function unpaidOnPurchaseOrder(order: PurchaseOrderDebt, rates: RateRow[] = []): number {
+  const rateOf = (line: Priced) => {
+    if (line.currency === 'TOMAN') return new Decimal(1);
+    const latest = rates.find((rate) => rate.currency === line.currency);
+    return new Decimal((latest?.rateToToman ?? line.exchangeRateSnapshot ?? 0) as Decimal.Value);
+  };
+  let total = new Decimal((order.totalAmountInToman ?? 0) as Decimal.Value);
+  if (total.isZero()) {
+    for (const item of order.items ?? []) total = total.plus(rateOf(item).times(item.quantity).times(item.unitCost as Decimal.Value));
+    for (const cost of order.additionalCosts ?? []) total = total.plus(rateOf(cost).times(cost.amount as Decimal.Value));
+  }
   const paid = order.payments.reduce(
     (sum: Decimal, payment) => sum.plus(new Decimal(payment.amount as Decimal.Value)),
     new Decimal(0),
   );
-  const unpaid = new Decimal((order.totalAmountInToman ?? 0) as Decimal.Value).minus(paid);
-  return unpaid.greaterThan(0) ? Number(unpaid) : 0;
+  const unpaid = total.minus(paid);
+  return unpaid.greaterThan(1) ? Number(unpaid) : 0;
 }

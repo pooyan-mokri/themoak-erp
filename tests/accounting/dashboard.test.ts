@@ -139,8 +139,29 @@ test('«بدهی‌ها» is what is still unpaid on every placed, uncancelled p
   await purchaseOrder('RECEIVED', 60_000_000, [], 600); // 60M
   await purchaseOrder('PARTIALLY_RECEIVED', 3_000_000, [1_000_000]); // 2M
   await purchaseOrder('PAID', 10_000_000, [10_500_000]); // overpaid: 0, never negative
+  await purchaseOrder('PAID', 8_000_000, [7_999_999]); // paid at total − 1, as the payment code allows: 0
+  await purchaseOrder('PENDING_PAYMENT', 50_000_000, [], 500); // a 500-dollar order: 50M, not 500
 
-  assert.equal((await getDashboardFinancials()).totalPayables, 30_000_000 + 25_000_000 + 4_000_000 + 60_000_000 + 2_000_000);
+  assert.equal((await getDashboardFinancials()).totalPayables, 30_000_000 + 25_000_000 + 4_000_000 + 60_000_000 + 2_000_000 + 50_000_000);
+});
+
+test('an old order with no Toman total is priced as the payment code prices it: its lines and costs at the latest rate', async () => {
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 90_000, date: new Date('2026-09-01T08:00:00Z') } });
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20T08:00:00Z') } });
+  const product = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ-1', costPrice: 1, sellPrice: 1 } });
+  const legacy = await purchaseOrder('RECEIVED', null, [2_000_000], 0);
+  await prisma.purchaseOrderItem.createMany({
+    data: [
+      { purchaseOrderId: legacy.id, productId: product.id, quantity: 10, unitCost: 20, currency: 'USD', exchangeRateSnapshot: 80_000 },
+      { purchaseOrderId: legacy.id, productId: product.id, quantity: 2, unitCost: 1_500_000, currency: 'TOMAN' },
+    ],
+  });
+  await prisma.purchaseOrderAdditionalCost.create({ data: { purchaseOrderId: legacy.id, title: 'حمل', amount: 5, currency: 'USD' } });
+  // Paid when recorded, never owed.
+  await prisma.purchaseOrderArrivalCost.create({ data: { purchaseOrderId: legacy.id, title: 'گمرک', amount: 9_000_000, currency: 'TOMAN', amountInToman: 9_000_000 } });
+
+  // 10 × 20 × 100,000 + 2 × 1,500,000 + 5 × 100,000 − 2,000,000
+  assert.equal((await getDashboardFinancials()).totalPayables, 20_000_000 + 3_000_000 + 500_000 - 2_000_000);
 });
 
 test('recording a supplier payment lowers «بدهی‌ها» by that payment; cancelling the order clears it', async () => {
@@ -160,10 +181,17 @@ test('recording a supplier payment lowers «بدهی‌ها» by that payment; c
   await assertBooksAddUp();
 });
 
-test('unpaidOnPurchaseOrder never goes below zero and reads a missing total as 0', () => {
+test('unpaidOnPurchaseOrder sums exactly, never goes below zero, and reads 1 Toman or less as paid', () => {
   assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: '100.5', payments: [{ amount: '0.2' }, { amount: '0.3' }] }), 100);
   assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: 100, payments: [{ amount: 150 }] }), 0);
+  assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: 100, payments: [{ amount: 99 }] }), 0);
+  assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: 100, payments: [{ amount: 98.5 }] }), 1.5);
   assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: null, payments: [] }), 0);
+  // A foreign line with no rate recorded falls back to the rate kept on it.
+  assert.equal(
+    unpaidOnPurchaseOrder({ totalAmountInToman: null, payments: [], items: [{ quantity: 2, unitCost: 10, currency: 'CNY', exchangeRateSnapshot: 14_000 }] }),
+    280_000,
+  );
 });
 
 // ─── «مطالبات»: what customers still owe ─────────────────────────────────────
