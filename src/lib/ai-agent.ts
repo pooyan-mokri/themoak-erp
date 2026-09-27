@@ -15,6 +15,11 @@ export interface AgentTool {
   execute: (params: any) => Promise<any>;
 }
 
+/** COGS and gift rows carry cost amounts (the rule of the journal in src/actions/accounting.ts). */
+function isCostRow(t: { category?: string | null; marketingGift?: unknown }): boolean {
+  return ['COGS', 'Marketing - Gift', 'Marketing/Gift'].includes(t.category ?? '') || !!t.marketingGift;
+}
+
 // Define available tools for the AI agent
 const tools: AgentTool[] = [
   {
@@ -221,21 +226,27 @@ const tools: AgentTool[] = [
         where: {
           date: { gte: startDate },
         },
+        include: { marketingGift: { select: { id: true } } },
       });
+      // COGS and gift rows are valued at cost: left out for a role without cost.view, as in the accounting totals.
+      const canSeeCost = await hasPermission('cost.view');
+      const counted = transactions.filter((t: any) => canSeeCost || !isCostRow(t));
 
-      const totalIncome = transactions
+      // In toman: amount is in each account's own currency, and dollars are not toman.
+      const totalIncome = counted
         .filter((t: any) => t.type === 'INCOME')
-        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
+        .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
-      const totalExpense = transactions
+      const totalExpense = counted
         .filter((t: any) => t.type === 'EXPENSE')
-        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
+        .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
 
       return {
         period: `${days} روز گذشته`,
         accounts: accounts.map((acc: any) => ({
           name: acc.name,
           type: acc.type,
+          currency: acc.currency,
           balance: Number(acc.balance),
         })),
         totalIncome,
@@ -282,6 +293,10 @@ const tools: AgentTool[] = [
       category: 'string (optional) - دسته‌بندی',
     },
     execute: async (params: { amount: number; description: string; accountId: string; category?: string }) => {
+      // The model writes the parameters: the same rule as the expense form (at least 1 toman).
+      if (typeof params.amount !== 'number' || !Number.isFinite(params.amount) || params.amount < 1) {
+        return { success: false, error: 'مبلغ باید بیشتر از صفر باشد' };
+      }
       const account = await prisma.account.findUnique({
         where: { id: params.accountId },
       });
@@ -299,6 +314,11 @@ const tools: AgentTool[] = [
         account,
         params.amount
       );
+
+      // As the expense form: never more than the account holds.
+      if (Number(account.balance) < amountInAccountCurrency) {
+        return { success: false, error: `موجودی حساب «${account.name}» کافی نیست.` };
+      }
 
       const transaction = await prisma.$transaction(async (tx) => {
         const created = await tx.transaction.create({
