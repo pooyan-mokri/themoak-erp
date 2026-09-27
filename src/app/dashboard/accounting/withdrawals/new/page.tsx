@@ -1,14 +1,21 @@
-import { getAccounts } from '@/actions/accounting';
+import { getAccounts, getTransactions } from '@/actions/accounting';
 import { WithdrawalForm } from '@/components/accounting/withdrawal-form';
+import { MoneyFormSwitch } from '@/components/accounting/entry-parts';
+import { recentFrom, recentPayments } from '@/components/accounting/recent-entries';
+import { PageHeader } from '@/components/layout/page-header';
 import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewWithdrawalPage() {
   await requireRouteAccess('/dashboard/accounting');
-  const accounts = await getAccounts();
+  const [accounts, rows] = await Promise.all([getAccounts(), getTransactions({ from: recentFrom() })]);
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">ثبت پرداخت / برداشت</h1>
-      <WithdrawalForm accounts={accounts} />
+    <div className="space-y-4">
+      <PageHeader
+        title="پرداخت جدید"
+        description="برداشت از یکی از حساب‌ها و پرداخت به شخص، شرکت یا نهاد."
+        actions={<MoneyFormSwitch current="payment" />}
+      />
+      <WithdrawalForm accounts={accounts} recent={recentPayments(rows)} />
     </div>
   );
 }
