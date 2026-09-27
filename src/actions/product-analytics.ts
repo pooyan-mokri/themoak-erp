@@ -63,6 +63,8 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
       where: { id: productId },
       include: {
         orderItems: {
+          // A cancelled sale sold nothing.
+          where: { order: { status: { not: 'CANCELLED' } } },
           include: {
             order: {
               include: {
@@ -179,6 +181,7 @@ export async function getProductSalesByWarehouse(productId: string) {
       where: { id: productId },
       include: {
         orderItems: {
+          where: { order: { status: { not: 'CANCELLED' } } },
           include: {
             order: true
           }

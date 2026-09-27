@@ -220,7 +220,7 @@ export async function getProductMovementHistory(productId: string, limit: number
         dateFormatted: formatJalaliDate(item.order.createdAt, 'jYYYY/jMM/jDD HH:mm'),
         type: 'SALE' as const,
         quantity: -item.quantity,
-        reference: item.order.customer?.name || 'Walk-in',
+        reference: item.order.customer?.name || 'مشتری عمومی',
         status: item.order.status
       })),
       ...purchases.map((item: any) => ({
@@ -243,6 +243,12 @@ export async function getProductMovementHistory(productId: string, limit: number
     return [];
   }
 }
+
+const JALALI_MONTH = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', {
+  timeZone: 'Asia/Tehran',
+  year: 'numeric',
+  month: '2-digit',
+});
 
 /**
  * Get sales history for chart (last N months)
@@ -276,12 +282,12 @@ export async function getProductSalesHistory(productId: string, months: number =
       }
     });
 
-    // Group by month
+    // Group by Jalali month in Tehran time: the chart names each key by its Jalali month (07 is مهر).
     const monthlyData = new Map<string, { units: number; revenue: number }>();
     
     orderItems.forEach((item: any) => {
-      const date = new Date(item.order.createdAt);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const parts = JALALI_MONTH.formatToParts(new Date(item.order.createdAt));
+      const monthKey = `${parts.find((p) => p.type === 'year')!.value}-${parts.find((p) => p.type === 'month')!.value}`;
       
       const existing = monthlyData.get(monthKey) || { units: 0, revenue: 0 };
       existing.units += item.quantity;
