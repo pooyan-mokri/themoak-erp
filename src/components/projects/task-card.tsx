@@ -5,6 +5,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { Calendar, User } from 'lucide-react';
 import { TaskForm } from './task-form';
 import { useState } from 'react';
+import { assigneeName } from '@/lib/task-assignee';
+
+const PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'پایین',
+  MEDIUM: 'متوسط',
+  HIGH: 'بالا',
+  URGENT: 'فوری',
+};
 
 interface TaskCardProps {
   task: any;
@@ -63,7 +71,7 @@ export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {
             <div className="flex justify-between items-start gap-2">
               <h4 className="font-medium text-sm line-clamp-2">{task.title}</h4>
               <Badge className={`text-[10px] px-1.5 py-0 h-5 ${getPriorityColor(task.priority)} animate-pulse-slow`}>
-                {task.priority}
+                {PRIORITY_LABELS[task.priority] ?? task.priority}
               </Badge>
             </div>
           </CardHeader>
@@ -77,10 +85,10 @@ export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {
                 <span>{new Date(task.dueDate).toLocaleDateString('fa-IR')}</span>
               </div>
             )}
-            {task.assignedTo && (
+            {assigneeName(task, users) && (
               <div className="flex items-center gap-1 ml-auto">
                 <User className="h-3 w-3" />
-                <span>{task.assignedTo}</span>
+                <span>{assigneeName(task, users)}</span>
               </div>
             )}
           </CardFooter>

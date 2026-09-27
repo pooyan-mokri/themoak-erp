@@ -12,13 +12,23 @@ const ProjectSchema = z.object({
   status: z.enum(['ACTIVE', 'COMPLETED', 'ON_HOLD', 'CANCELLED']),
   startDate: z.string().optional(), // Will convert to Date
   endDate: z.string().optional(),   // Will convert to Date
-  budget: z.coerce.number().optional(),
+  budget: z.coerce.number().min(0, 'بودجه نمی‌تواند منفی باشد').optional(),
 });
+
+const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'] as const;
+const END_BEFORE_START = 'تاریخ پایان پروژه نمی‌تواند قبل از تاریخ شروع باشد.';
+
+/** Both dates given and the end before the start. */
+function endsBeforeStart(start?: string, end?: string) {
+  if (!start || !end) return false;
+  const [from, to] = [new Date(start), new Date(end)];
+  return !isNaN(from.getTime()) && !isNaN(to.getTime()) && to < from;
+}
 
 const TaskSchema = z.object({
   title: z.string().min(1, 'عنوان وظیفه الزامی است'),
   description: z.string().optional(),
-  status: z.enum(['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE']),
+  status: z.enum(TASK_STATUSES),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   startDate: z.string().optional(), // Will convert to Date
   dueDate: z.string().optional(), // Will convert to Date
@@ -47,6 +57,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
   }
 
   const { name, description, status, startDate, endDate, budget } = validatedFields.data;
+  if (endsBeforeStart(startDate, endDate)) return { success: false, message: END_BEFORE_START, errors: undefined };
 
   try {
     await prisma.project.create({
@@ -266,6 +277,9 @@ export async function createTask(prevState: ActionState, formData: FormData): Pr
 export async function updateTaskStatus(taskId: string, status: string, projectId: string) {
   const denied = await checkPermission('projects.manage');
   if (denied) return denied;
+  if (!(TASK_STATUSES as readonly string[]).includes(status)) {
+    return { success: false, message: 'وضعیت نامعتبر است.' };
+  }
 
   try {
     await prisma.task.update({
@@ -317,6 +331,7 @@ export async function updateProject(id: string, prevState: ActionState, formData
   }
 
   const { name, description, status, startDate, endDate, budget } = validatedFields.data;
+  if (endsBeforeStart(startDate, endDate)) return { success: false, message: END_BEFORE_START, errors: undefined };
 
   try {
     await prisma.project.update({
@@ -411,7 +426,8 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         // Prepare data for update
         const updateData: Record<string, unknown> = {
             title,
-            description: description || undefined,
+            // An emptied description is cleared, not kept.
+            description: description ?? undefined,
             status,
             priority,
         };
@@ -545,33 +561,10 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         console.error('Error type:', typeof error);
         console.error('Error:', error);
 
-        let errorMessage = 'خطا در بروزرسانی وظیفه';
-
-        if (error) {
-            if (typeof error === 'string') {
-                errorMessage = error;
-            } else if (error instanceof Error) {
-                errorMessage = error.message;
-                console.error('Error name:', error.name);
-                console.error('Error message:', error.message);
-                console.error('Error stack:', error.stack);
-            } else if (error && typeof error === 'object') {
-                if ('message' in error && typeof error.message === 'string') {
-                    errorMessage = error.message;
-                    console.error('Error message:', error.message);
-                }
-                if ('name' in error) {
-                    console.error('Error name:', error.name);
-                }
-                if ('code' in error) {
-                    console.error('Error code:', error.code);
-                }
-            }
-        }
-
+        // The database's own (English) message stays in the log, not on the page.
         return {
             success: false,
-            message: `خطا در بروزرسانی وظیفه: ${errorMessage}`,
+            message: 'خطا در بروزرسانی وظیفه.',
             errors: undefined
         };
     }
