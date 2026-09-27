@@ -598,6 +598,7 @@ model OrderExchange {
 /// A customer's credit account («اعتبار», «بستانکار»): + what they left with
 /// the shop (an exchange's difference they did not take back), − what they
 /// used on a purchase. The balance is the sum of the rows.
+/// Created by prisma/sql/pre-push-unique-columns.sql before db push.
 model CustomerCredit {
   id              String         @id @default(cuid())
   customerId      String

@@ -445,6 +445,56 @@ test('the pre-push SQL creates the exchange columns as Prisma defines them, and 
   }
 });
 
+test('the pre-push SQL creates CustomerCredit exactly as db push does, and can run twice', async () => {
+  // The table, its columns, indexes and constraints, as the catalog describes them.
+  const catalog = async () => ({
+    columns: (await prisma.$queryRawUnsafe(
+      `SELECT column_name, data_type, numeric_precision, numeric_scale, datetime_precision, is_nullable, column_default
+       FROM information_schema.columns WHERE table_name = 'CustomerCredit' ORDER BY ordinal_position`,
+    )) as any[],
+    indexes: (await prisma.$queryRawUnsafe(
+      `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'CustomerCredit' ORDER BY indexname`,
+    )) as any[],
+    constraints: (await prisma.$queryRawUnsafe(
+      `SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conrelid = to_regclass('"CustomerCredit"') ORDER BY conname`,
+    )) as any[],
+  });
+  const prePush = () => prisma.$executeRawUnsafe(sql('pre-push-unique-columns.sql'));
+
+  // The test database's table was made by db push: that is what the SQL must reproduce.
+  const byDbPush = await catalog();
+  assert.equal(byDbPush.columns.length, 9);
+  assert.deepEqual(byDbPush.indexes.map((i: any) => i.indexname), [
+    'CustomerCredit_clientRequestId_key', 'CustomerCredit_customerId_idx', 'CustomerCredit_exchangeId_idx',
+    'CustomerCredit_orderId_idx', 'CustomerCredit_pkey',
+  ]);
+  assert.deepEqual(byDbPush.constraints.map((c: any) => c.def), [
+    'FOREIGN KEY ("customerId") REFERENCES "Customer"(id) ON UPDATE CASCADE ON DELETE RESTRICT',
+    'FOREIGN KEY ("exchangeId") REFERENCES "OrderExchange"(id) ON UPDATE CASCADE ON DELETE SET NULL',
+    'FOREIGN KEY ("orderId") REFERENCES "Order"(id) ON UPDATE CASCADE ON DELETE SET NULL',
+    'PRIMARY KEY (id)',
+  ]);
+
+  // Where it exists, nothing changes.
+  await prePush();
+  await prePush();
+  assert.deepEqual(await catalog(), byDbPush);
+
+  // Where it does not yet (the deploy that adds it): created as db push would, then left alone.
+  try {
+    await prisma.$executeRawUnsafe(`DROP TABLE "CustomerCredit"`);
+    assert.deepEqual(await catalog(), { columns: [], indexes: [], constraints: [] });
+    await prePush();
+    assert.deepEqual(await catalog(), byDbPush);
+    await prePush();
+    assert.deepEqual(await catalog(), byDbPush);
+  } finally {
+    // Leave the test database with the table, whatever happened above.
+    await prePush();
+  }
+});
+
 test('the read-only reports list over-paid orders and orders whose totals predate b78d364', async () => {
   const s = await shop();
   // Over-paid: a cheaper exchange whose difference stayed on the order.
