@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
 import { channelSummary, DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
+import { consignmentAmounts } from '@/lib/return-math';
 
 /** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
@@ -23,9 +24,13 @@ export async function getConsignmentReport() {
       },
     });
 
-    // Get all orders from consignment partners
+    // Get all orders from consignment partners. A cancelled order is no sale
+    // and owes nothing; a website order is settled on the website (as in the
+    // settlement list and the outstanding report).
     const consignmentOrders = await prisma.order.findMany({
       where: {
+        status: { not: 'CANCELLED' },
+        siteReference: null,
         customer: {
           warehouses: {
             some: {
@@ -39,6 +44,8 @@ export async function getConsignmentReport() {
         items: {
           include: {
             product: true,
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
           },
         },
         commissions: true,
@@ -59,9 +66,11 @@ export async function getConsignmentReport() {
   (order: any) => order.customerId === customerId
       );
 
-      // Calculate totals
+      // Calculate totals: our share of each sale, over the units still sold and
+      // net of the partner's commission, whether the order stored it gross or net
+      // (the same arithmetic as the settlement list and the partner statement).
       const totalSales = partnerOrders.reduce(
-  (sum: any, order: any) => sum + Number(order.totalAmount) - Number(order.discount || 0),
+  (sum: any, order: any) => sum + consignmentAmounts(order).netAmount,
         0
       );
 
@@ -120,14 +129,8 @@ export async function getConsignmentReport() {
       for (const order of partnerOrders as any[]) {
         const name =
           order.consignmentChannel?.name ?? order.commissions?.[0]?.channelName ?? DEFAULT_CHANNEL_NAME;
-        const netSales = Number(order.totalAmount) - Number(order.discount || 0);
-        const commission = (order.commissions || []).reduce(
-          (s: any, c: any) => s + Number(c.commissionAmount),
-          0,
-        );
-        // The commission row carries the gross it was taken from; an order
-        // without one (a plain sale to the partner) is its own gross.
-        const gross = order.commissions?.[0] ? Number(order.commissions[0].orderAmount) : netSales;
+        // Over the units still sold, as the totals above.
+        const { grossAmount: gross, commissionAmount: commission, netAmount: netSales } = consignmentAmounts(order);
         const row = byChannel.get(name) ?? {
           channel: name,
           // The channel's rate today; for a channel that is gone, the rate the order was booked at.

@@ -21,6 +21,8 @@ export async function getConsignmentCommissionsReport() {
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         status: { not: 'CANCELLED' },
         customer: { warehouses: { some: { isVirtual: true } } },
+        // As in the settlement list: website orders are paid and reversed only on the website.
+        siteReference: null,
       },
       include: {
         customer: true,
