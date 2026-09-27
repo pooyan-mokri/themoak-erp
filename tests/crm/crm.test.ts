@@ -226,7 +226,7 @@ test('the top customers are ranked by what they bought: after discount and retur
   await sell(be.id, 3, 5_000_000); // 25M after discount
   const cancelled = await sell(pe.id, 5); // 50M, then cancelled
   assert.equal((await cancelOrder(cancelled.id)).success, true);
-  await sell(pe.id, 1); // 10M left
+  await sell(pe.id, 1, 500_000); // 9.5M left
   const returned = await sell(te.id, 4, 0, 40_000_000); // 40M, then 2 returned: 20M
   const back = await returnOrderItem({}, form({ orderId: returned.id, orderItemId: returned.items[0].id, quantity: '2', accountId: bank.id, warehouseId: store.id }));
   assert.equal(back.success, true, back.message);
