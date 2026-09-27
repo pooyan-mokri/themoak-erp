@@ -157,10 +157,8 @@ export function BackupSettings() {
               بک‌آپ به صورت خودکار در زمان مشخص ایجاد می‌شود
             </p>
           </div>
-          {/* The shared Switch slides its thumb out of the track in RTL, so it is laid out LTR. */}
           <Switch
             id="enabled"
-            dir="ltr"
             checked={settings.enabled}
             onCheckedChange={(checked) =>
               setSettings((prev) => ({ ...prev, enabled: checked }))

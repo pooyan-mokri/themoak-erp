@@ -344,10 +344,8 @@ export function CompanySettingsForm() {
         </FieldRow>
         <FieldRow label="اتصال امن" htmlFor="ftp-secure">
           <div className="flex min-h-9 items-center gap-2.5">
-            {/* The shared Switch slides its thumb out of the track in RTL, so it is laid out LTR. */}
             <Switch
               id="ftp-secure"
-              dir="ltr"
               checked={ftpCredentials.secure}
               onCheckedChange={(checked) =>
                 setFTPCredentials({
@@ -364,7 +362,6 @@ export function CompanySettingsForm() {
             <div className="mt-2 flex items-start gap-2.5">
               <Switch
                 id="ftp-ignore-cert"
-                dir="ltr"
                 checked={ftpCredentials.ignoreCertificateErrors}
                 onCheckedChange={(checked) =>
                   setFTPCredentials({
