@@ -55,7 +55,7 @@ export function ShareholderProfitForm() {
               />
               <input type="hidden" name="periodStart" value={periodStart} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.periodStart && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodStart?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodStart?.[0]}</p>
               )}
             </div>
 
@@ -70,7 +70,7 @@ export function ShareholderProfitForm() {
               />
               <input type="hidden" name="periodEnd" value={periodEnd} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.periodEnd && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodEnd?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodEnd?.[0]}</p>
               )}
             </div>
           </div>
@@ -84,17 +84,13 @@ export function ShareholderProfitForm() {
               rows={3}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 
           {state.message && (
             <div
-              className={`text-sm p-3 rounded ${
-                state.success
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-              }`}
+              className={`rounded-md px-3 py-2 text-[13px] ${state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}
             >
               {state.message}
             </div>
@@ -112,7 +108,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
-      <Calculator className="h-4 w-4 ml-2" />
+      <Calculator className="h-4 w-4" />
       {pending ? 'در حال محاسبه...' : 'محاسبه سود'}
     </Button>
   );

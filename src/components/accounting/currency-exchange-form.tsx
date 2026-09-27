@@ -13,13 +13,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Currency } from '@/lib/types';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { useEffect, useState } from 'react';
-import { getAccounts } from '@/actions/accounting';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 import { accountLabel } from '@/lib/account-label';
+import { cn } from '@/lib/utils';
 
 const initialState = {
   message: '',
@@ -37,9 +36,24 @@ interface CurrencyExchangeFormProps {
   }>;
 }
 
+/**
+ * Which accounts each side may be: buying spends Toman for a currency, selling
+ * turns a currency into Toman, and a cross trade swaps one currency for another.
+ * The toggle only narrows the two pickers; the server checks the pair again.
+ */
+const MODES = [
+  { id: 'buy', label: 'خرید ارز', hint: 'از حساب تومان برداشت و به حساب ارزی واریز می‌شود.' },
+  { id: 'sell', label: 'فروش ارز', hint: 'از حساب ارزی برداشت و به حساب تومان واریز می‌شود.' },
+  { id: 'cross', label: 'ارز به ارز', hint: 'از یک حساب ارزی به حساب ارزی دیگر؛ هر طرف با نرخ ثبت‌شده‌اش به تومان ارزش‌گذاری می‌شود.' },
+] as const;
+type Mode = (typeof MODES)[number]['id'];
+
+const fa = (n: number, digits = 2) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: digits }).format(n);
+
 export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
   const [state, dispatch] = useFormState(exchangeCurrency, initialState);
   const [requestId, renewRequestId] = useRequestId();
+  const [mode, setMode] = useState<Mode>('buy');
   const [sourceAccountId, setSourceAccountId] = useState<string>('');
   const [targetAccountId, setTargetAccountId] = useState<string>('');
   const [sourceAmount, setSourceAmount] = useState<string>('');
@@ -47,15 +61,19 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
   const [exchangeRate, setExchangeRate] = useState<string>('');
   const [date, setDate] = useState<string>('');
 
-  // After a save the form is emptied and gets a new id (it is keyed by it), so
-  // the same exchange cannot be sent twice and the next one starts clean.
-  useEffect(() => {
-    if (!state.success) return;
+  const clearTrade = () => {
     setSourceAccountId('');
     setTargetAccountId('');
     setSourceAmount('');
     setTargetAmount('');
     setExchangeRate('');
+  };
+
+  // After a save the form is emptied and gets a new id (it is keyed by it), so
+  // the same exchange cannot be sent twice and the next one starts clean.
+  useEffect(() => {
+    if (!state.success) return;
+    clearTrade();
     setDate('');
     renewRequestId();
   }, [state, renewRequestId]);
@@ -122,33 +140,74 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
     if (isSelling && targetAmount) setSourceAmount(foreignFromToman(targetAmount, value));
   };
 
-  // Filter accounts by currency
+  // The accounts each picker offers in the chosen mode.
   const tomanAccounts = accounts.filter((a) => a.currency === Currency.TOMAN);
   const foreignAccounts = accounts.filter((a) => a.currency !== Currency.TOMAN);
+  const sourceAccounts = mode === 'buy' ? tomanAccounts : foreignAccounts;
+  const targetAccounts = (mode === 'sell' ? tomanAccounts : foreignAccounts).filter(
+    (a) => mode !== 'cross' || !sourceAccount || a.currency !== sourceAccount.currency,
+  );
+
+  const errors = state.errors as Record<string, string[] | undefined> | undefined;
+  const FieldError = ({ name }: { name: string }) =>
+    errors?.[name]?.[0] ? <p className="text-[12.5px] text-danger">{errors[name]?.[0]}</p> : null;
+
+  const src = Number(sourceAmount) || 0;
+  const dst = Number(targetAmount) || 0;
+  const short = !!sourceAccount && src > Number(sourceAccount.balance);
+  const unit = (currency?: Currency) => (!currency || currency === Currency.TOMAN ? 'تومان' : currency);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>خرید و فروش ارز</CardTitle>
-      </CardHeader>
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">معامله ارز جدید</h3>
+      </div>
+      <div className="mb-2 inline-flex rounded-md border bg-secondary p-[3px]" role="tablist" aria-label="نوع معامله">
+        {MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            role="tab"
+            aria-selected={mode === m.id}
+            onClick={() => {
+              if (mode === m.id) return;
+              setMode(m.id);
+              clearTrade();
+            }}
+            className={cn(
+              'h-[30px] rounded-[6px] px-3.5 text-[13px] transition-colors duration-150',
+              mode === m.id ? 'bg-card font-medium text-foreground shadow-[0_0_0_1px_hsl(var(--border))]' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <p className="mb-4 text-[12.5px] text-muted-foreground">{MODES.find((m) => m.id === mode)!.hint}</p>
+
       <form key={requestId} action={dispatch}>
         <RequestIdField value={requestId} />
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {/* Source Account */}
-            <div className="space-y-2">
-              <Label htmlFor="sourceAccountId">حساب مبدا (برداشت از)</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="sourceAccountId">حساب مبدأ (برداشت از)</Label>
               <Select
                 name="sourceAccountId"
                 value={sourceAccountId}
-                onValueChange={setSourceAccountId}
+                onValueChange={(id) => {
+                  setSourceAccountId(id);
+                  // In a cross trade the target must be another currency.
+                  const picked = accounts.find((a) => a.id === id);
+                  if (mode === 'cross' && picked && targetAccount?.currency === picked.currency) setTargetAccountId('');
+                }}
                 required
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="انتخاب حساب مبدا" />
+                <SelectTrigger id="sourceAccountId">
+                  <SelectValue placeholder="انتخاب حساب مبدأ" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.map((account) => (
+                  {sourceAccounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       {accountLabel(account)} - موجودی:{' '}
                       {new Intl.NumberFormat('fa-IR').format(Number(account.balance))}
@@ -156,18 +215,16 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors && 'sourceAccountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.sourceAccountId?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sourceAccountId?.[0]}</p>
-              )}
-              {sourceAccount && (
-                <p className="text-xs text-muted-foreground">
-                  نوع ارز: {sourceAccount.currency}
+              <FieldError name="sourceAccountId" />
+              {sourceAccounts.length === 0 && (
+                <p className="text-[12.5px] text-muted-foreground">
+                  حساب {mode === 'buy' ? 'تومانی' : 'ارزی'} تعریف نشده است؛ اول آن را در صفحه حساب‌ها بسازید.
                 </p>
               )}
             </div>
 
             {/* Target Account */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="targetAccountId">حساب مقصد (واریز به)</Label>
               <Select
                 name="targetAccountId"
@@ -175,11 +232,11 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 onValueChange={setTargetAccountId}
                 required
               >
-                <SelectTrigger>
+                <SelectTrigger id="targetAccountId">
                   <SelectValue placeholder="انتخاب حساب مقصد" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.map((account) => (
+                  {targetAccounts.map((account) => (
                     <SelectItem key={account.id} value={account.id}>
                       {accountLabel(account)} - موجودی:{' '}
                       {new Intl.NumberFormat('fa-IR').format(Number(account.balance))}
@@ -187,20 +244,13 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                   ))}
                 </SelectContent>
               </Select>
-              {state.errors && 'targetAccountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.targetAccountId?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.targetAccountId?.[0]}</p>
-              )}
-              {targetAccount && (
-                <p className="text-xs text-muted-foreground">
-                  نوع ارز: {targetAccount.currency}
-                </p>
-              )}
+              <FieldError name="targetAccountId" />
             </div>
 
             {/* Source Amount */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="sourceAmount">
-                مبلغ {sourceAccount?.currency || 'مبدا'}
+                مبلغ برداشت{sourceAccount ? ` (${unit(sourceAccount.currency)})` : ''}
               </Label>
               <Input
                 id="sourceAmount"
@@ -208,26 +258,20 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 type="number"
                 step="0.01"
                 min="0.01"
+                dir="ltr"
+                className="tabular-nums"
                 value={sourceAmount}
                 onChange={(e) => handleSourceAmountChange(e.target.value)}
                 placeholder="0.00"
                 required
               />
-              {state.errors && 'sourceAmount' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.sourceAmount?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sourceAmount?.[0]}</p>
-              )}
-              {sourceAccount && sourceAmount && (
-                <p className="text-xs text-muted-foreground">
-                  موجودی: {new Intl.NumberFormat('fa-IR').format(Number(sourceAccount.balance))}{' '}
-                  {sourceAccount.currency}
-                </p>
-              )}
+              <FieldError name="sourceAmount" />
             </div>
 
             {/* Target Amount */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="targetAmount">
-                مبلغ {targetAccount?.currency || 'مقصد'}
+                مبلغ واریز{targetAccount ? ` (${unit(targetAccount.currency)})` : ''}
               </Label>
               <Input
                 id="targetAmount"
@@ -235,18 +279,18 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 type="number"
                 step="0.01"
                 min="0.01"
+                dir="ltr"
+                className="tabular-nums"
                 value={targetAmount}
                 onChange={(e) => handleTargetAmountChange(e.target.value)}
                 placeholder="0.00"
                 required
               />
-              {state.errors && 'targetAmount' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.targetAmount?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.targetAmount?.[0]}</p>
-              )}
+              <FieldError name="targetAmount" />
             </div>
 
             {/* Exchange Rate */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="exchangeRate">
                 {hasTomanSide && foreignCurrency
                   ? `نرخ تبدیل (تومان به ازای هر ۱ ${foreignCurrency})`
@@ -258,16 +302,16 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 type="number"
                 step="0.000001"
                 min="0.01"
+                dir="ltr"
+                className="tabular-nums"
                 value={exchangeRate}
                 onChange={(e) => handleRateChange(e.target.value)}
                 placeholder="نرخ تبدیل"
                 required
               />
-              {state.errors && 'exchangeRate' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.exchangeRate?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.exchangeRate?.[0]}</p>
-              )}
+              <FieldError name="exchangeRate" />
               {sourceAccount && targetAccount && exchangeRate && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[12px] text-muted-foreground">
                   {hasTomanSide && foreignCurrency
                     ? `۱ ${foreignCurrency} = ${new Intl.NumberFormat('fa-IR').format(Number(exchangeRate))} تومان`
                     : `1 ${sourceAccount.currency} = ${Number(exchangeRate)} ${targetAccount.currency}`}
@@ -276,7 +320,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
             </div>
 
             {/* Date */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="date">تاریخ</Label>
               <JalaliDatePicker
                 name="date"
@@ -301,8 +345,33 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
             value={targetAccount?.currency || ''}
           />
 
+          {/* Before and after, on both accounts */}
+          {sourceAccount && targetAccount && (
+            <dl className="space-y-1.5 rounded-md bg-secondary px-3 py-2.5 text-[12.5px]">
+              <div className="flex items-baseline justify-between gap-2">
+                <dt className="text-muted-foreground">{sourceAccount.name}</dt>
+                <dd className="tabular-nums">
+                  {fa(Number(sourceAccount.balance))} ← <b className="font-medium">{fa(Number(sourceAccount.balance) - src)}</b>{' '}
+                  <span className="text-muted-foreground">{unit(sourceAccount.currency)}</span>
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <dt className="text-muted-foreground">{targetAccount.name}</dt>
+                <dd className="tabular-nums">
+                  {fa(Number(targetAccount.balance))} ← <b className="font-medium">{fa(Number(targetAccount.balance) + dst)}</b>{' '}
+                  <span className="text-muted-foreground">{unit(targetAccount.currency)}</span>
+                </dd>
+              </div>
+              {short && (
+                <p className="pt-1">
+                  <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11.5px] text-warning">موجودی مبدأ کافی نیست</span>
+                </p>
+              )}
+            </dl>
+          )}
+
           {/* Description */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="description">توضیحات (اختیاری)</Label>
             <Textarea
               id="description"
@@ -314,21 +383,21 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
 
           {state.message && (
             <div
-              className={`text-sm p-3 rounded ${
-                state.success
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-              }`}
+              className={cn(
+                'rounded-md px-3 py-2 text-[13px]',
+                state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+              )}
             >
               {state.message}
             </div>
           )}
-        </CardContent>
-        <CardFooter className="flex justify-end">
-          <SubmitButton />
-        </CardFooter>
+
+          <div className="flex justify-end">
+            <SubmitButton />
+          </div>
+        </div>
       </form>
-    </Card>
+    </div>
   );
 }
 
@@ -340,4 +409,3 @@ function SubmitButton() {
     </Button>
   );
 }
-

@@ -113,13 +113,13 @@ export function CurrencyExchangeEditDialog({ exchange, accounts }: { exchange: E
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-600 hover:bg-blue-50">
+        <Button variant="ghost" size="icon" title="ویرایش معامله">
           <Pencil className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-right">ویرایش معامله ارز</DialogTitle>
+          <DialogTitle className="text-start">ویرایش معامله ارز</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <p className="text-sm text-muted-foreground">

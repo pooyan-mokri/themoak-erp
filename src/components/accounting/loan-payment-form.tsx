@@ -68,12 +68,12 @@ export function LoanPaymentForm({
     <form action={dispatch} className="space-y-4">
       <input type="hidden" name="loanId" value={loan.id} />
 
-      <div className="p-3 bg-muted rounded-md">
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium">باقیمانده قرض:</span>
-            <span className="text-lg font-bold text-orange-600">
-              {formatCurrency(loan.remaining)} تومان
+      <div className="rounded-md bg-secondary px-3 py-2.5">
+        <div className="space-y-1">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[13px] text-muted-foreground">باقیمانده قرض</span>
+            <span className="text-[17px] font-medium tabular-nums">
+              {formatCurrency(loan.remaining)} <small className="text-[11px] font-normal text-muted-foreground">تومان</small>
             </span>
           </div>
           {loan.interestRate > 0 && (
@@ -99,7 +99,7 @@ export function LoanPaymentForm({
           </SelectContent>
         </Select>
         {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
         )}
       </div>
 
@@ -118,7 +118,7 @@ export function LoanPaymentForm({
           onChange={(e) => setAmount(e.target.value)}
         />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
         )}
         <p className="text-xs text-muted-foreground">
           حداکثر: {formatCurrency(loan.remaining)} تومان
@@ -136,7 +136,7 @@ export function LoanPaymentForm({
         />
         <input type="hidden" name="date" value={date} />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.date && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.date?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.date?.[0]}</p>
         )}
       </div>
 
@@ -149,17 +149,13 @@ export function LoanPaymentForm({
           rows={3}
         />
         {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-          <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
+          <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
         )}
       </div>
 
       {state.message && (
         <div
-          className={`text-sm p-3 rounded ${
-            state.success
-              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-              : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-          }`}
+          className={`rounded-md px-3 py-2 text-[13px] ${state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}
         >
           {state.message}
         </div>

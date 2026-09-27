@@ -1,8 +1,6 @@
 'use client';
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { fa } from './finance-bits';
 
 interface ShareholderWithBalance {
   id: string;
@@ -15,72 +13,50 @@ interface ShareholderBalanceListProps {
   shareholders: ShareholderWithBalance[];
 }
 
+/** Where each shareholder stands on capital: deposits less withdrawals, in Toman. */
 export function ShareholderBalanceList({ shareholders }: ShareholderBalanceListProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>موجودی و بدهی سهامداران</CardTitle>
-        <p className="text-sm text-muted-foreground mt-2">
-          مقدار مثبت = سیستم به سهامدار بدهکار است (Accounts Payable)
-          <br />
-          مقدار منفی = سهامدار به سیستم بدهکار است (Accounts Receivable)
+    <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="px-4 pt-4 pb-3">
+        <h3 className="text-sm font-medium">موجودی و بدهی سهامداران</h3>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">
+          واریز سرمایه، شرکت را به سهامدار بدهکار می‌کند (حساب پرداختنی) و برداشت، سهامدار را به شرکت (حساب دریافتنی).
         </p>
-      </CardHeader>
-      <CardContent>
-        {shareholders.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            هیچ سهامدار ثبت نشده است.
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>نام سهامدار</TableHead>
-                <TableHead>درصد سهام</TableHead>
-                <TableHead>موجودی/بدهی</TableHead>
-                <TableHead>نوع</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      </div>
+      {shareholders.length === 0 ? (
+        <p className="border-t px-4 py-8 text-center text-[13px] text-muted-foreground">هنوز سهامداری تعریف نشده است.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13.5px]">
+            <thead>
+              <tr className="border-y">
+                <th className="h-9 bg-secondary px-4 text-start text-xs font-normal text-muted-foreground">سهامدار</th>
+                <th className="h-9 bg-secondary px-3 text-end text-xs font-normal text-muted-foreground">سهم</th>
+                <th className="h-9 bg-secondary px-3 text-end text-xs font-normal text-muted-foreground">مانده (تومان)</th>
+                <th className="h-9 bg-secondary px-4 text-start text-xs font-normal text-muted-foreground">وضعیت</th>
+              </tr>
+            </thead>
+            <tbody>
               {shareholders.map((shareholder) => (
-                <TableRow key={shareholder.id}>
-                  <TableCell className="font-medium">{shareholder.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{shareholder.percentage.toFixed(2)}%</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`font-bold ${
-                        shareholder.balance > 0
-                          ? 'text-blue-600'
-                          : shareholder.balance < 0
-                          ? 'text-red-600'
-                          : 'text-gray-600'
-                      }`}
-                    >
-                      {Math.abs(shareholder.balance).toLocaleString('fa-IR')} تومان
-                    </span>
-                  </TableCell>
-                  <TableCell>
+                <tr key={shareholder.id} className="h-11 border-b transition-colors duration-150 last:border-0 hover:bg-brand/[.04]">
+                  <td className="px-4 font-medium">{shareholder.name}</td>
+                  <td className="px-3 text-end tabular-nums text-muted-foreground">{fa(shareholder.percentage, 2)}٪</td>
+                  <td className="px-3 text-end font-medium tabular-nums">{fa(Math.abs(shareholder.balance))}</td>
+                  <td className="px-4">
                     {shareholder.balance > 0 ? (
-                      <Badge variant="default" className="bg-blue-500">
-                        سیستم بدهکار است
-                      </Badge>
+                      <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] text-brand">شرکت بدهکار است</span>
                     ) : shareholder.balance < 0 ? (
-                      <Badge variant="destructive">
-                        سهامدار بدهکار است
-                      </Badge>
+                      <span className="rounded-full bg-warning-soft px-2 py-0.5 text-[11.5px] text-warning">سهامدار بدهکار است</span>
                     ) : (
-                      <Badge variant="outline">بدون بدهی</Badge>
+                      <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11.5px] text-success">بدون بدهی</span>
                     )}
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
-

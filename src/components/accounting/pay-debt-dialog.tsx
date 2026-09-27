@@ -97,7 +97,7 @@ export function PayDebtDialog({ employee, accounts, isOpen, onClose }: PayDebtDi
                 onChange={(e) => setAmount(e.target.value)}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
               )}
             </div>
 
@@ -121,7 +121,7 @@ export function PayDebtDialog({ employee, accounts, isOpen, onClose }: PayDebtDi
               </Select>
               <input type="hidden" name="accountId" value={accountId} />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}
             </div>
 
