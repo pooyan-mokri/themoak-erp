@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
-import { consignmentAmounts } from '@/lib/return-math';
+import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
 import { createSale, setSaleStatus } from '@/lib/site-sale';
 import { kickSiteHook } from '@/lib/site-hook';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
@@ -468,10 +468,11 @@ export async function GET(req: NextRequest) {
         const since = new Date(Date.now() - days * 86400000);
 
         const [items, products] = await Promise.all([
-          prisma.orderItem.groupBy({
-            by: ['productId'],
+          // Units still sold: returned or exchanged-away units came back (an
+          // exchange's new frame is a line of its own).
+          prisma.orderItem.findMany({
             where: { order: { createdAt: { gte: since }, status: { not: 'CANCELLED' } } },
-            _sum: { quantity: true },
+            select: { productId: true, quantity: true, returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } },
           }),
           prisma.product.findMany({
             where: { productType: 'SALEABLE' },
@@ -481,9 +482,10 @@ export async function GET(req: NextRequest) {
             },
           }),
         ]);
-        const soldById = new Map<string, number>(
-          items.map((i: any) => [i.productId as string, Number(i._sum.quantity ?? 0)]),
-        );
+        const soldById = new Map<string, number>();
+        for (const item of items) {
+          soldById.set(item.productId, (soldById.get(item.productId) ?? 0) + effectiveQuantity(item));
+        }
 
         const rows = products.map((p: any) => {
           const available = p.inventory.reduce((s: number, i: any) => s + Math.max(0, i.quantity), 0);
