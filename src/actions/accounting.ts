@@ -408,8 +408,11 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
     };
   }
 
-  const { amount, currency, category, accountId, employeeId, description, date, projectId, receiptUrl } = validatedFields.data;
+  const { amount, currency, category, accountId, employeeId, description, date, projectId } = validatedFields.data;
   const requestId = readRequestId(formData.get('requestId'));
+  // An uploaded receipt or none, as recordDeposit takes it (src/lib/receipt-ref.ts).
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
@@ -1432,8 +1435,10 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     return { errors: validatedFields.error.flatten().fieldErrors, message: 'لطفا فیلدهای الزامی را پر کنید.', success: false };
   }
 
-  const { amount, currency, accountId, payee, description, category, tags, date, receiptUrl } = validatedFields.data;
+  const { amount, currency, accountId, payee, description, category, tags, date } = validatedFields.data;
   const requestId = readRequestId(formData.get('requestId'));
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
@@ -1523,12 +1528,14 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     return { errors: validatedFields.error.flatten().fieldErrors, message: 'لطفا فیلدهای الزامی را پر کنید.', success: false };
   }
 
-  const { amount, fromAccountId, toAccountId, description, tags, date, receiptUrl } = validatedFields.data;
+  const { amount, fromAccountId, toAccountId, description, tags, date } = validatedFields.data;
 
   if (fromAccountId === toAccountId) {
     return { message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.', success: false };
   }
   const requestId = readRequestId(formData.get('requestId'));
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
