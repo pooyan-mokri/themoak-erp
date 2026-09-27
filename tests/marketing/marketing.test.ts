@@ -4,6 +4,7 @@ import { prisma, resetDatabase, form } from '../helpers/db';
 import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
 import { createMarketingCampaign, createMarketingGift, getMarketingCampaigns, getMarketingGifts, getMarketingStats } from '@/actions/marketing';
+import { DUPLICATE_REQUEST_MESSAGE } from '@/lib/request-id';
 import { DENIED, NON_SELLERS, SELLERS, assertInvariants, balanceOf, openAccount, quantityOf, sleep, snapshot, stockIn } from '../sales/world';
 
 // The actions log every refusal these tests provoke on purpose.
@@ -132,6 +133,28 @@ test('two gifts of the last frame at the same time: one is booked, stock stays a
   assert.deepEqual(results.map((r) => r.success === true).sort(), [false, true]);
   assert.equal(await quantityOf(w.frame.id, w.store.id), 0);
   assert.equal(await prisma.marketingGift.count(), 1);
+  await assertInvariants();
+});
+
+test('the same gift submitted twice, one after the other or at once, is booked once', async () => {
+  const w = await world();
+  const once = { requestId: 'gift-request-0001' };
+  assert.equal((await gift(w, [{ productId: w.frame.id, quantity: 1 }], once)).success, true);
+  const before = await snapshot();
+  assert.deepEqual(await gift(w, [{ productId: w.frame.id, quantity: 1 }], once), { message: DUPLICATE_REQUEST_MESSAGE, success: true });
+  assert.deepEqual(await snapshot(), before);
+
+  beforeQuery.fn = async (params) => {
+    if (params.model === 'MarketingGift' && params.action === 'create') await sleep(150);
+  };
+  const both = await Promise.all([
+    gift(w, [{ productId: w.frame.id, quantity: 1 }], { requestId: 'gift-request-0002' }),
+    gift(w, [{ productId: w.frame.id, quantity: 1 }], { requestId: 'gift-request-0002' }),
+  ]);
+  beforeQuery.fn = null;
+  assert.deepEqual(both.map((r) => r.success), [true, true]);
+  assert.equal(await prisma.marketingGift.count(), 2);
+  assert.equal(await quantityOf(w.frame.id, w.store.id), 3);
   await assertInvariants();
 });
 

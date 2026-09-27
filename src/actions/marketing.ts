@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
 // --- Schemas ---
 
@@ -88,9 +89,15 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
     date,
     campaignId,
   } = validatedFields.data;
+  // One submission of the form books one gift, even when it reaches the server twice.
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
+
       // 1. Validate all products and calculate total cost
       let totalCost = 0;
       const validatedItems = [];
@@ -173,6 +180,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
           description: `هزینه بازاریابی - هدیه: ${productNames}${recipientName ? ` - گیرنده: ${recipientName}` : ''}${reason ? ` - دلیل: ${reason}` : ''}`,
           date: transactionDate,
           category: 'Marketing - Gift',
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -244,8 +252,12 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
           },
         });
       }
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
   } catch (error: unknown) {
+    // The same submission reached the server twice at once: the first one is the gift.
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error creating marketing gift:', error);
     return {
       message: error instanceof Error ? error.message : 'خطا در ثبت هدیه بازاریابی.',
