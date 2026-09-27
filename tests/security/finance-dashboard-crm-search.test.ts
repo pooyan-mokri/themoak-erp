@@ -6,7 +6,8 @@ import { setTestRole } from '../stubs/auth';
 import { AccessDenied, ACCESS_DENIED_MESSAGE } from '@/lib/access';
 import { getDashboardFinancials, getDashboardSales, getLowStockItems, getUserTasks } from '@/actions/dashboard';
 import DashboardPage from '../../src/app/dashboard/page';
-import { FinancialCards } from '@/components/dashboard/financial-cards';
+import { KpiCard } from '@/components/dashboard/kpi-card';
+import { TopProducts } from '@/components/dashboard/top-products';
 import { SalesChart } from '@/components/dashboard/sales-chart';
 import { LowStockAlert } from '@/components/dashboard/low-stock-alert';
 import { MyTasksWidget } from '@/components/dashboard/my-tasks-widget';
@@ -137,15 +138,17 @@ test('the dashboard renders for every role and passes only the cards the role ma
     const page = await DashboardPage();
     const finance = ['ADMIN', 'AUDITOR', 'ACCOUNTANT'].includes(role);
     const stock = !['PROJECT_MANAGER', 'USER'].includes(role);
-    assert.equal(!!propsOf(page, FinancialCards), finance, `FinancialCards / ${role}`);
+    assert.equal(!!propsOf(page, KpiCard), finance, `KpiCard / ${role}`);
+    assert.equal(!!propsOf(page, TopProducts), finance, `TopProducts / ${role}`);
     assert.equal(!!propsOf(page, SalesChart), finance, `SalesChart / ${role}`);
     assert.equal(!!propsOf(page, LowStockAlert), stock, `LowStockAlert / ${role}`);
     assert.ok(propsOf(page, MyTasksWidget), `MyTasksWidget / ${role}`);
     // Everything the page hands to its client components.
     const served = JSON.stringify(
-      [FinancialCards, SalesChart, LowStockAlert, MyTasksWidget, RecentActivity].map((type) => propsOf(page, type)),
+      [KpiCard, SalesChart, TopProducts, LowStockAlert, MyTasksWidget, RecentActivity].map((type) => propsOf(page, type)),
     );
-    assert.equal(served.includes(String(BALANCE)), finance, `balance / ${role}`);
+    // The balance card shows its figure in Persian digits.
+    assert.equal(served.includes(new Intl.NumberFormat('fa-IR').format(BALANCE)), finance, `balance / ${role}`);
     assert.equal(served.includes(String(PRICE)), finance, `sales / ${role}`);
     assert.equal(served.includes('PANJ-1'), stock, `low stock / ${role}`);
   }

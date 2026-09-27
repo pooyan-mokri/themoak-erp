@@ -1,3 +1,18 @@
+import Link from 'next/link';
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Bot,
+  Gift,
+  PackagePlus,
+  Plus,
+  Receipt,
+  ShoppingCart,
+  Wallet,
+  Zap,
+  Landmark,
+} from 'lucide-react';
 import {
   getDashboardFinancials,
   getDashboardSales,
@@ -5,24 +20,30 @@ import {
   getRecentActivity,
   getUserTasks,
 } from '@/actions/dashboard';
-import { FinancialCards } from '@/components/dashboard/financial-cards';
+import { PageHeader } from '@/components/layout/page-header';
+import { KpiCard } from '@/components/dashboard/kpi-card';
+import { QuickActions, type QuickAction } from '@/components/dashboard/quick-actions';
 import { SalesChart } from '@/components/dashboard/sales-chart';
+import { TopProducts } from '@/components/dashboard/top-products';
 import { LowStockAlert } from '@/components/dashboard/low-stock-alert';
 import { RecentActivity } from '@/components/dashboard/recent-activity';
 import { MyTasksWidget } from '@/components/dashboard/my-tasks-widget';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShoppingCart, Package, DollarSign, Gift, Bot } from 'lucide-react';
-import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 import { hasPermission } from '@/lib/access';
 
+const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
+
 export default async function DashboardPage() {
-  // Every signed-in user opens the dashboard: load only the cards the role may see.
-  const [canSeeFinance, canSeeStock] = await Promise.all([
+  // Every signed-in user opens the dashboard: load only what the role may see.
+  const [canSeeFinance, canSeeStock, canSell, canManageFinance, canManageStock, canSeeSales] = await Promise.all([
     hasPermission('finance.view'),
     hasPermission('stock.view'),
+    hasPermission('sales.manage'),
+    hasPermission('finance.manage'),
+    hasPermission('stock.manage'),
+    hasPermission('sales.view'),
   ]);
 
-  // Fetch all dashboard data in parallel
   const [financials, sales, lowStockItems, recentActivity, userTasks] = await Promise.all([
     canSeeFinance ? getDashboardFinancials() : null,
     canSeeFinance ? getDashboardSales() : null,
@@ -31,111 +52,108 @@ export default async function DashboardPage() {
     getUserTasks(),
   ]);
 
+  const actions: QuickAction[] = [
+    ...(canSell ? [{ href: '/dashboard/sales/pos', label: 'ثبت فروش', icon: ShoppingCart }] : []),
+    ...(canManageFinance
+      ? [
+          { href: '/dashboard/accounting/expenses/new', label: 'ثبت هزینه', icon: Receipt },
+          { href: '/dashboard/accounting/deposits/new', label: 'ثبت واریز', icon: ArrowDownLeft },
+          { href: '/dashboard/accounting/withdrawals/new', label: 'پرداخت جدید', icon: ArrowUpRight },
+          { href: '/dashboard/accounting/transfers/new', label: 'انتقال داخلی', icon: ArrowLeftRight },
+        ]
+      : []),
+    ...(canManageStock ? [{ href: '/dashboard/inventory/products/new', label: 'افزودن کالا', icon: PackagePlus }] : []),
+    ...(canSell ? [{ href: '/dashboard/marketing/gifts/new', label: 'ثبت هدیه', icon: Gift }] : []),
+    { href: '/dashboard/assistant', label: 'پرسش از دستیار', icon: Bot },
+  ];
+
+  // Today against yesterday, only when there was a yesterday to compare with.
+  const change =
+    sales && sales.yesterday.total > 0
+      ? ((sales.today.total - sales.yesterday.total) / sales.yesterday.total) * 100
+      : null;
+
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      <div className="animate-fade-in-down">
-        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">داشبورد</h2>
-        <p className="text-muted-foreground text-sm md:text-base">
-          نمای کلی کسب‌وکار شما
-        </p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="داشبورد"
+        description="نمای کلی کسب‌وکار"
+        actions={
+          canSell && (
+            <Button asChild>
+              <Link href="/dashboard/sales/pos">
+                <Plus className="h-4 w-4" />
+                فروش جدید
+              </Link>
+            </Button>
+          )
+        }
+      />
 
-      {/* Mobile Quick Actions - Visible only on mobile */}
-      <div className="md:hidden space-y-3 pb-4 border-b">
-        <h3 className="text-lg font-semibold">دسترسی سریع</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <Link href="/dashboard/sales/pos">
-            <Card className="hover:bg-muted/50 transition-all cursor-pointer h-full">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                <ShoppingCart className="h-8 w-8 text-orange-700" />
-                <CardTitle className="text-base">ثبت فروش</CardTitle>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/dashboard/accounting/expenses/new">
-            <Card className="hover:bg-muted/50 transition-all cursor-pointer h-full">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                <DollarSign className="h-8 w-8 text-red-600" />
-                <CardTitle className="text-base">ثبت هزینه</CardTitle>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/dashboard/marketing/gifts/new">
-            <Card className="hover:bg-muted/50 transition-all cursor-pointer h-full">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                <Gift className="h-8 w-8 text-pink-600" />
-                <CardTitle className="text-base">ثبت هدیه</CardTitle>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href="/dashboard/assistant">
-            <Card className="hover:bg-muted/50 transition-all cursor-pointer h-full">
-              <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                <Bot className="h-8 w-8 text-cyan-500" />
-                <CardTitle className="text-base">دستیار</CardTitle>
-              </CardContent>
-            </Card>
-          </Link>
+      {financials && sales && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+          <KpiCard label="موجودی کل" icon={Wallet} value={fa(financials.totalBalance)} unit="تومان" note="بانک‌ها و صندوق" />
+          <KpiCard label="مطالبات" icon={ArrowDownLeft} value={fa(financials.totalReceivables)} unit="تومان" note="طلب از مشتریان" />
+          <KpiCard
+            label="بدهی‌ها"
+            icon={Landmark}
+            value={financials.totalPayables ? fa(financials.totalPayables) : '—'}
+            unit={financials.totalPayables ? 'تومان' : undefined}
+            note={financials.totalPayables ? 'به تأمین‌کنندگان' : 'بدون بدهی'}
+          />
+          <KpiCard
+            label="فروش امروز"
+            icon={Zap}
+            value={sales.today.total ? fa(sales.today.total) : '—'}
+            unit={sales.today.total ? 'تومان' : undefined}
+            delta={
+              change === null
+                ? undefined
+                : {
+                    text: `${change > 0 ? '+' : ''}${new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(change)}٪`,
+                    tone: change > 0 ? 'pos' : change < 0 ? 'neg' : 'neu',
+                  }
+            }
+            note={`${fa(sales.today.count)} سفارش · نسبت به دیروز`}
+          />
+          <KpiCard
+            label="فروش دیروز"
+            icon={ShoppingCart}
+            value={sales.yesterday.total ? fa(sales.yesterday.total) : '—'}
+            unit={sales.yesterday.total ? 'تومان' : undefined}
+          />
         </div>
-      </div>
+      )}
 
-      {/* Financial Overview */}
-      {financials && <FinancialCards financials={financials} />}
+      <QuickActions actions={actions} />
 
-      {/* Sales Analytics & Alerts - 2 Column Layout */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Left Column: Sales Chart */}
+      <div className="grid gap-4 lg:grid-cols-3">
         {sales && (
-          <div>
-            <SalesChart sales={sales} />
+          <div className="lg:col-span-2">
+            <SalesChart dailySales={sales.dailySales} reportHref={canSeeSales ? '/dashboard/reports/sales' : undefined} />
           </div>
         )}
-
-        {/* Right Column: Alerts & Activity */}
-        <div className="space-y-6">
-          {lowStockItems && <LowStockAlert items={lowStockItems} />}
+        <div className={sales ? undefined : 'lg:col-span-3'}>
           <MyTasksWidget tasks={userTasks} />
         </div>
       </div>
 
-      {/* Recent Activity - Full Width */}
-      <RecentActivity activities={recentActivity} />
+      {(lowStockItems || sales) && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {lowStockItems && (
+            <div className={sales ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <LowStockAlert items={lowStockItems} />
+            </div>
+          )}
+          {sales && (
+            <div className={lowStockItems ? undefined : 'lg:col-span-3'}>
+              <TopProducts products={sales.topProducts} />
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/dashboard/suppliers/orders">
-          <Card className="hover:bg-muted/50 hover:scale-[1.02] transition-all duration-300 cursor-pointer animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                بخش خرید
-              </CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground hover:animate-wiggle" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold">سفارشات خرید</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                ثبت و مدیریت سفارشات خرید
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/dashboard/inventory">
-          <Card className="hover:bg-muted/50 hover:scale-[1.02] transition-all duration-300 cursor-pointer animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                انبارداری
-              </CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground hover:animate-wiggle" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold">مدیریت موجودی</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                مدیریت کالاها و موجودی انبار
-              </p>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+      <RecentActivity activities={recentActivity} />
     </div>
   );
 }

@@ -1,143 +1,56 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatJalaliDate } from '@/lib/date-utils';
-import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { SectionCard } from './section-card';
 
-interface SalesChartProps {
-  sales: {
-    today: {
-      total: number;
-      count: number;
-    };
-    yesterday: {
-      total: number;
-    };
-    dailySales: Array<{
-      date: string;
-      total: number;
-      count: number;
-    }>;
-    topProducts: Array<{
-      id: string;
-      name: string;
-      units: number;
-    }>;
-  };
-}
+const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
+const INDIGO = '#353DB2';
 
-export function SalesChart({ sales }: SalesChartProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(amount);
-  };
-
-  const percentageChange = sales.yesterday.total > 0
-    ? ((sales.today.total - sales.yesterday.total) / sales.yesterday.total) * 100
-    : 0;
-
-  const getTrendIcon = () => {
-    if (percentageChange > 0) return <ArrowUp className="h-4 w-4 text-green-600" />;
-    if (percentageChange < 0) return <ArrowDown className="h-4 w-4 text-red-600" />;
-    return <Minus className="h-4 w-4 text-gray-600" />;
-  };
-
+/** Daily sales over the last 30 days: one indigo series on hairline gridlines. */
+export function SalesChart({
+  dailySales,
+  reportHref,
+}: {
+  dailySales: Array<{ date: string; total: number; count: number }>;
+  reportHref?: string;
+}) {
+  const total = dailySales.reduce((sum, day) => sum + day.total, 0);
   return (
-    <div className="space-y-4">
-      {/* Today's Sales Card */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="animate-fade-in-up hover:scale-[1.02] transition-transform duration-300" style={{ animationDelay: '0.1s' }}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">فروش امروز</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(sales.today.total)} تومان</div>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="animate-bounce-in">{getTrendIcon()}</span>
-              <p className="text-xs text-muted-foreground">
-                {percentageChange > 0 && '+'}
-                {percentageChange.toFixed(1)}% نسبت به دیروز
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {sales.today.count} سفارش
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="animate-fade-in-up hover:scale-[1.02] transition-transform duration-300" style={{ animationDelay: '0.2s' }}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">فروش دیروز</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(sales.yesterday.total)} تومان</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sales Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>روند فروش (30 روز اخیر)</CardTitle>
-          <CardDescription>نمودار فروش روزانه</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={sales.dailySales}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="date" 
-                tickFormatter={(value) => {
-                  const date = new Date(value);
-                  return formatJalaliDate(date, 'jMM/jDD');
-                }}
-                style={{ fontSize: '12px' }}
-              />
-              <YAxis 
-                tickFormatter={(value) => formatCurrency(value)}
-                style={{ fontSize: '12px' }}
-              />
-              <Tooltip
-                formatter={(value: number) => [formatCurrency(value) + ' تومان', 'فروش']}
-                labelFormatter={(label) => formatJalaliDate(new Date(label))}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="total" 
-                stroke="#8884d8" 
-                strokeWidth={2}
-                dot={{ r: 3 }}
-                activeDot={{ r: 5 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Top Products */}
-      {sales.topProducts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>پرفروش‌ترین محصولات</CardTitle>
-            <CardDescription>5 محصول برتر در 30 روز اخیر</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {sales.topProducts.map((product, index) => (
-                <div key={product.id} className="flex items-center">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm ml-3">
-                    {index + 1}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{product.name}</p>
-                    <p className="text-xs text-muted-foreground">{product.units} عدد</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+    <SectionCard
+      title="روند فروش"
+      count="۳۰ روز اخیر"
+      aside={<span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] text-brand">جمع کل {fa(total)} تومان</span>}
+      link={reportHref ? { href: reportHref, label: 'گزارش کامل ←' } : undefined}
+    >
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={dailySales} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+          <CartesianGrid stroke="#E3E3E3" strokeDasharray="0" vertical={false} />
+          <XAxis
+            dataKey="date"
+            tickFormatter={(value) => formatJalaliDate(new Date(value), 'jMM/jDD')}
+            tick={{ fontSize: 11, fill: '#6B7280' }}
+            axisLine={false}
+            tickLine={false}
+            reversed
+            minTickGap={24}
+          />
+          <YAxis
+            orientation="right"
+            tickFormatter={(value) => `${fa(value / 1_000_000)} م`}
+            tick={{ fontSize: 11, fill: '#6B7280' }}
+            axisLine={false}
+            tickLine={false}
+            width={48}
+          />
+          <Tooltip
+            formatter={(value: number) => [`${fa(value)} تومان`, 'فروش']}
+            labelFormatter={(label) => formatJalaliDate(new Date(label))}
+            contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit' }}
+          />
+          <Area type="monotone" dataKey="total" stroke={INDIGO} strokeWidth={1.75} fill={INDIGO} fillOpacity={0.08} dot={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </SectionCard>
   );
 }

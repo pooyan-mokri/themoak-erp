@@ -1,93 +1,62 @@
-'use client';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Package } from 'lucide-react';
 import Link from 'next/link';
+import { SectionCard } from './section-card';
 
 interface LowStockItem {
   id: string;
   name: string;
   sku: string;
   totalStock: number;
-  warehouses: Array<{
-    name: string;
-    quantity: number;
-  }>;
+  warehouses: Array<{ name: string; quantity: number }>;
 }
 
-interface LowStockAlertProps {
-  items: LowStockItem[];
-}
+const fa = (n: number) => new Intl.NumberFormat('fa-IR').format(n);
 
-export function LowStockAlert({ items }: LowStockAlertProps) {
-  if (items.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            موجودی پایین
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            همه محصولات موجودی کافی دارند ✓
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
+/** Products running low: a meter, the name and SKU, what is left and where, and its status in words. */
+export function LowStockAlert({ items }: { items: LowStockItem[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-orange-600" />
-          هشدار موجودی پایین ({items.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {items.map((item) => (
-            <Link
-              key={item.id}
-              href={`/dashboard/inventory/products/${item.id}`}
-              className="block"
-            >
-              <Alert className="border-l-4 border-l-orange-500 hover:bg-accent cursor-pointer">
-                <AlertDescription>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-2xl font-bold text-orange-600">{item.totalStock}</p>
-                      <p className="text-xs text-muted-foreground">واحد باقی‌مانده</p>
-                    </div>
-                  </div>
-                  {item.warehouses.length > 0 && (
-                    <div className="mt-2 pt-2 border-t">
-                      <p className="text-xs text-muted-foreground mb-1">توزیع انبار:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {item.warehouses.map((wh, index) => (
-                          <span
-                            key={index}
-                            className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded"
-                          >
-                            {wh.name}: {wh.quantity}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </AlertDescription>
-              </Alert>
-            </Link>
-          ))}
+    <SectionCard
+      title="هشدار موجودی"
+      count={fa(items.length)}
+      link={{ href: '/dashboard/inventory/products', label: 'همه ←' }}
+    >
+      {items.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">همهٔ کالاها موجودی کافی دارند.</p>
+      ) : (
+        <div className="divide-y">
+          {items.map((item) => {
+            const out = item.totalStock <= 0;
+            return (
+              <Link
+                key={item.id}
+                href={`/dashboard/inventory/products/${item.id}`}
+                className="-mx-2 flex min-h-11 items-center gap-3 rounded px-2 py-1.5 transition-colors duration-150 hover:bg-brand/[.04]"
+              >
+                <span className="flex h-7 w-1.5 shrink-0 items-end bg-secondary">
+                  <span
+                    className={`block w-full ${out ? 'h-full bg-danger' : 'bg-warning'}`}
+                    style={out ? undefined : { height: `${Math.max(20, Math.min(100, item.totalStock * 15))}%` }}
+                  />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-[12.5px]" dir="ltr" style={{ textAlign: 'start' }}>
+                    {item.name}
+                  </span>
+                  <span className="block truncate text-[11.5px] text-muted-foreground">
+                    <span className="font-mono">{item.sku}</span>
+                    {item.warehouses.length > 0 && ` · ${item.warehouses.map((w) => `${w.name}: ${fa(w.quantity)}`).join('، ')}`}
+                  </span>
+                </span>
+                <span className="w-8 shrink-0 text-end text-[13.5px] font-medium tabular-nums">{fa(item.totalStock)}</span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${out ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning'}`}
+                >
+                  {out ? 'تمام شد' : 'کم'}
+                </span>
+              </Link>
+            );
+          })}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </SectionCard>
   );
 }

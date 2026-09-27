@@ -1,10 +1,7 @@
-'use client';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Clock, AlertCircle } from 'lucide-react';
-import { formatJalaliDate } from '@/lib/date-utils';
 import Link from 'next/link';
+import { CheckCircle2, Circle, CircleDot } from 'lucide-react';
+import { formatJalaliDate } from '@/lib/date-utils';
+import { SectionCard } from './section-card';
 
 interface Task {
   id: string;
@@ -15,101 +12,43 @@ interface Task {
   priority: string;
 }
 
-interface MyTasksWidgetProps {
-  tasks: Task[];
-}
+const fa = (n: number) => new Intl.NumberFormat('fa-IR').format(n);
+const STATUS: Record<string, { label: string; className: string }> = {
+  PENDING: { label: 'در انتظار', className: 'bg-secondary text-muted-foreground' },
+  IN_PROGRESS: { label: 'در جریان', className: 'bg-brand-soft text-brand' },
+  COMPLETED: { label: 'تکمیل شده', className: 'bg-success-soft text-success' },
+};
 
-export function MyTasksWidget({ tasks }: MyTasksWidgetProps) {
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'COMPLETED':
-        return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-      case 'IN_PROGRESS':
-        return <Clock className="h-4 w-4 text-blue-600" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-orange-600" />;
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
-      PENDING: { variant: 'outline', label: 'در انتظار' },
-      IN_PROGRESS: { variant: 'default', label: 'در حال انجام' },
-      COMPLETED: { variant: 'secondary', label: 'تکمیل شده' },
-    };
-
-    const config = variants[status] || variants.PENDING;
-    return <Badge variant={config.variant as any}>{config.label}</Badge>;
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'HIGH':
-        return 'text-red-600';
-      case 'MEDIUM':
-        return 'text-orange-600';
-      default:
-        return 'text-gray-600';
-    }
-  };
-
-  if (tasks.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5" />
-            وظایف من
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            شما وظیفه باز ندارید ✓
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
+/** The signed-in user's open tasks, from their projects. */
+export function MyTasksWidget({ tasks }: { tasks: Task[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5" />
-            وظایف من ({tasks.length})
-          </CardTitle>
-          <Link href="/dashboard/projects" className="text-sm text-primary hover:underline">
-            مشاهده همه
-          </Link>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              className="flex items-start gap-3 p-3 rounded-lg border hover:bg-accent cursor-pointer"
-            >
-              {getStatusIcon(task.status)}
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{task.title}</p>
-                  {getStatusBadge(task.status)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  پروژه: {task.projectName}
-                </p>
-                {task.deadline && (
-                  <p className={`text-xs ${getPriorityColor(task.priority)}`}>
-                    مهلت: {formatJalaliDate(task.deadline)}
+    <SectionCard title="وظایف من" count={fa(tasks.length)} link={{ href: '/dashboard/projects', label: 'همه ←' }}>
+      {tasks.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">وظیفهٔ بازی ندارید.</p>
+      ) : (
+        <div className="divide-y">
+          {tasks.map((task) => {
+            const status = STATUS[task.status] ?? STATUS.PENDING;
+            const Icon = task.status === 'COMPLETED' ? CheckCircle2 : task.status === 'IN_PROGRESS' ? CircleDot : Circle;
+            const late = task.deadline && task.status !== 'COMPLETED' && new Date(task.deadline) < new Date();
+            return (
+              <div key={task.id} className="flex items-start gap-2.5 py-2">
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px]">{task.title}</p>
+                  <p className="truncate text-[11.5px] text-muted-foreground">
+                    {task.projectName}
+                    {task.deadline && (
+                      <span className={late ? 'text-danger' : undefined}> · مهلت {formatJalaliDate(task.deadline)}</span>
+                    )}
                   </p>
-                )}
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${status.className}`}>{status.label}</span>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </SectionCard>
   );
 }

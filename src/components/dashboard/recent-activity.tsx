@@ -1,8 +1,5 @@
-'use client';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity } from 'lucide-react';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { SectionCard } from './section-card';
 
 interface ActivityItem {
   id: string;
@@ -12,69 +9,30 @@ interface ActivityItem {
   timestamp: Date;
 }
 
-interface RecentActivityProps {
-  activities: ActivityItem[];
-}
+const fa = (n: number) => new Intl.NumberFormat('fa-IR').format(n);
 
-const actionIcons: Record<string, string> = {
-  CREATE_ORDER: '🛒',
-  UPDATE_INVENTORY: '📦',
-  RECORD_EXPENSE: '💰',
-  CREATE_CUSTOMER: '👤',
-  CREATE_INVOICE: '📄',
-  CREATE_USER: '👥',
-  UPDATE_PRODUCT: '✏️',
-  DELETE_ORDER: '🗑️',
-  default: '📋'
-};
-
-export function RecentActivity({ activities }: RecentActivityProps) {
-  if (activities.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            فعالیت‌های اخیر
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            فعالیتی ثبت نشده است
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
+/** Who did what, newest first. */
+export function RecentActivity({ activities }: { activities: ActivityItem[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="h-5 w-5" />
-          فعالیت‌های اخیر
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {activities.map((activity) => (
-            <div key={activity.id} className="flex gap-3 pb-4 border-b last:border-0 last:pb-0">
-              <div className="text-2xl">
-                {actionIcons[activity.action] || actionIcons.default}
+    <SectionCard title="فعالیت‌های اخیر" count={fa(activities.length)}>
+      {activities.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">هنوز فعالیتی ثبت نشده است.</p>
+      ) : (
+        <div className="divide-y">
+          {activities.map((activity, index) => (
+            <div key={activity.id} className="flex items-start gap-3 py-2.5">
+              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${index === 0 ? 'bg-brand' : 'bg-muted-foreground/40'}`} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-medium">{activity.userName}</p>
+                <p className="text-[12.5px] text-muted-foreground">{activity.description}</p>
               </div>
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{activity.userName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatJalaliDate(activity.timestamp, 'jMM/jDD HH:mm')}
-                  </p>
-                </div>
-                <p className="text-sm text-muted-foreground">{activity.description}</p>
-              </div>
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                {formatJalaliDate(activity.timestamp, 'jMM/jDD HH:mm')}
+              </span>
             </div>
           ))}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </SectionCard>
   );
 }
