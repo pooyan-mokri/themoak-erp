@@ -321,8 +321,8 @@ export async function getUserTasks() {
       title: task.title,
       projectName: task.project.name,
       status: task.status,
-      deadline: undefined, // Task model doesn't have deadline field
-      priority: 'MEDIUM' // Task model doesn't have priority field
+      deadline: task.dueDate ?? undefined,
+      priority: task.priority,
     }));
   } catch (error) {
     console.error('Error fetching user tasks:', error);

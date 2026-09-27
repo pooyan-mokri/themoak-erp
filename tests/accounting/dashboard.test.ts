@@ -4,7 +4,7 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
-import { getDashboardFinancials } from '@/actions/dashboard';
+import { getDashboardFinancials, getUserTasks } from '@/actions/dashboard';
 import { getBalanceSheet } from '@/actions/reports';
 import { recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { FinancialCards } from '@/components/dashboard/financial-cards';
@@ -209,4 +209,29 @@ test('«مطالبات» adds what customers still owe on their unpaid and partl
   await prisma.order.create({ data: { totalAmount: 6_000_000, paidAmount: 0, paymentStatus: 'UNPAID' } });
 
   assert.equal((await getDashboardFinancials()).totalReceivables, 15_000_000);
+});
+
+// ─── The other dashboard cards ────────────────────────────────────────────────
+
+test('«my tasks» lists the signed-in user\'s open tasks, newest first, with their real due date and priority', async () => {
+  await prisma.user.create({ data: { id: 'test-user', name: 'Test', email: 'test@example.com', password: 'x' } });
+  await prisma.user.create({ data: { id: 'other', name: 'Other', email: 'other@example.com', password: 'x' } });
+  const project = await prisma.project.create({ data: { name: 'غرفه' } });
+  const task = (title: string, data: Record<string, unknown>) =>
+    prisma.task.create({ data: { title, projectId: project.id, assignedTo: 'test-user', ...data } as any });
+  await task('طراحی', { priority: 'HIGH', dueDate: new Date('2026-10-01T20:30:00Z'), createdAt: new Date('2026-09-01') });
+  await task('چاپ', { status: 'IN_PROGRESS', priority: 'URGENT', createdAt: new Date('2026-09-02') });
+  await task('تمام‌شده', { status: 'DONE', createdAt: new Date('2026-09-03') });
+  await task('مال دیگری', { assignedTo: 'other', createdAt: new Date('2026-09-04') });
+
+  const tasks = await getUserTasks();
+  assert.deepEqual(
+    tasks.map((t: any) => [t.title, t.projectName, t.status, t.priority, t.deadline?.toISOString()]),
+    [
+      ['چاپ', 'غرفه', 'IN_PROGRESS', 'URGENT', undefined],
+      ['طراحی', 'غرفه', 'TODO', 'HIGH', '2026-10-01T20:30:00.000Z'],
+    ],
+  );
+  setTestRole(null);
+  assert.deepEqual(await getUserTasks(), []);
 });
