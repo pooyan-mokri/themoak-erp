@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Mail, Phone, MapPin, Calendar, Star, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -32,8 +32,8 @@ export function Customer360({ customer }: Customer360Props) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col items-center mb-6">
+          {/* Drawn here from the name: a customer's name never goes to an outside avatar service. */}
           <Avatar className="h-24 w-24 mb-4">
-            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${customer.name}`} />
             <AvatarFallback>{customer.name.substring(0, 2)}</AvatarFallback>
           </Avatar>
           <h3 className="text-xl font-bold">{customer.name}</h3>
