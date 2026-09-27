@@ -5,7 +5,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { checkPermission } from '@/lib/access';
-import { INVALID_RECEIPT_MESSAGE, RECEIPT_MAX_BYTES, isReceiptRef } from '@/lib/receipt-ref';
+import { INVALID_RECEIPT_MESSAGE, RECEIPT_EXTENSIONS, RECEIPT_MAX_BYTES, isReceiptRef } from '@/lib/receipt-ref';
 import { STORAGE_MISSING_MESSAGE, deleteReceiptFile, sniffReceiptType, storeReceipt } from '@/lib/receipt-storage';
 
 // Who records money records its receipt: finance staff for any row, sales staff
@@ -62,39 +62,39 @@ export async function uploadProductImage(formData: FormData) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
   try {
-    const file = formData.get('file') as File;
+    const file = formData.get('file');
 
-    if (!file) {
-      return { success: false, error: 'No file provided' };
-    }
-
-    // Validate file type - only images
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      return {
-        success: false,
-        error: 'Invalid file type. Only JPG, PNG and WEBP allowed.',
-      };
+    if (!(file instanceof Blob) || file.size === 0) {
+      return { success: false, error: 'فایلی انتخاب نشده است.' };
     }
 
     // Validate file size (10MB for product images)
     if (file.size > 10 * 1024 * 1024) {
       return {
         success: false,
-        error: 'File size too large. Max 10MB allowed.',
+        error: 'حجم عکس نباید بیشتر از ۱۰ مگابایت باشد.',
       };
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // The bytes decide the type and the extension: the name and the type the
+    // browser sends are the caller's to choose, and a name like
+    // "x.png/../../y.html" wrote outside the folder, or an .html page into it.
+    const type = sniffReceiptType(buffer);
+    if (!type || type === 'application/pdf') {
+      return {
+        success: false,
+        error: 'فقط عکس JPG، PNG یا WEBP قابل آپلود است.',
+      };
+    }
 
     // Create uploads directory if it doesn't exist
     const uploadDir = join(process.cwd(), 'public', 'uploads', 'products');
     await mkdir(uploadDir, { recursive: true });
 
     // Generate unique filename
-    const ext = file.name.split('.').pop();
-    const filename = `${randomUUID()}.${ext}`;
+    const filename = `${randomUUID()}.${RECEIPT_EXTENSIONS[type]}`;
     const filepath = join(uploadDir, filename);
 
     // Write file
@@ -108,7 +108,7 @@ export async function uploadProductImage(formData: FormData) {
     };
   } catch (error) {
     console.error('Upload error:', error);
-    return { success: false, error: 'Failed to upload file' };
+    return { success: false, error: 'آپلود عکس انجام نشد.' };
   }
 }
 
@@ -116,9 +116,9 @@ export async function deleteProductImage(url: string) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
   try {
-    // Extract filename from URL
-    const filename = url.split('/').pop();
-    if (!filename) return { success: false, error: 'Invalid URL' };
+    // Only a file this action wrote: /uploads/products/<uuid>.<ext> (older ones kept the name's extension).
+    const filename = /^\/uploads\/products\/([0-9a-f-]{36}\.[A-Za-z0-9]{1,5})$/i.exec(url)?.[1];
+    if (!filename) return { success: false, error: 'نشانی عکس نامعتبر است.' };
 
     const filepath = join(
       process.cwd(),
@@ -133,6 +133,6 @@ export async function deleteProductImage(url: string) {
     return { success: true };
   } catch (error) {
     console.error('Delete error:', error);
-    return { success: false, error: 'Failed to delete file' };
+    return { success: false, error: 'حذف عکس انجام نشد.' };
   }
 }
