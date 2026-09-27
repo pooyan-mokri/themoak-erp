@@ -26,9 +26,10 @@ interface PayrollWrapperProps {
   initialPayrolls: Payroll[];
   employees: any[];
   accounts: any[];
+  isAdmin?: boolean;
 }
 
-export function PayrollWrapper({ initialPayrolls, employees, accounts }: PayrollWrapperProps) {
+export function PayrollWrapper({ initialPayrolls, employees, accounts, isAdmin = false }: PayrollWrapperProps) {
   const [payrolls, setPayrolls] = useState(initialPayrolls);
 
   const handlePayrollCreated = useCallback(async () => {
@@ -40,7 +41,7 @@ export function PayrollWrapper({ initialPayrolls, employees, accounts }: Payroll
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <PayrollForm employees={employees} onSuccess={handlePayrollCreated} />
-      <PayrollList payrolls={payrolls} accounts={accounts} />
+      <PayrollList payrolls={payrolls} accounts={accounts} isAdmin={isAdmin} />
     </div>
   );
 }

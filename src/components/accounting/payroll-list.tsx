@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PayrollPaymentForm } from './payroll-payment-form';
-import { DollarSign } from 'lucide-react';
+import { PayrollEditDialog } from './payroll-edit-dialog';
+import { DollarSign, Pencil } from 'lucide-react';
 
 interface Payroll {
   id: string;
@@ -30,18 +31,22 @@ interface Payroll {
   periodMonth: number;
   periodYear: number;
   status: string;
+  description?: string;
   payments: any[];
 }
 
 interface PayrollListProps {
   payrolls: Payroll[];
   accounts: any[];
+  /** Admins may correct a recorded payslip. */
+  isAdmin?: boolean;
 }
 
-export function PayrollList({ payrolls: initialPayrolls, accounts }: PayrollListProps) {
+export function PayrollList({ payrolls: initialPayrolls, accounts, isAdmin = false }: PayrollListProps) {
   const [payrolls, setPayrolls] = useState(initialPayrolls);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<Payroll | undefined>(undefined);
+  const [editing, setEditing] = useState<Payroll | undefined>(undefined);
 
   // Update payrolls when initialPayrolls prop changes
   useEffect(() => {
@@ -138,15 +143,23 @@ export function PayrollList({ payrolls: initialPayrolls, accounts }: PayrollList
                       </TableCell>
                       <TableCell>{getStatusBadge(payroll.status)}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePayment(payroll)}
-                          disabled={payroll.status === 'PAID' || remainingAmount(payroll) <= 0}
-                        >
-                          <DollarSign className="h-4 w-4 ml-1" />
-                          پرداخت
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePayment(payroll)}
+                            disabled={payroll.status === 'PAID' || remainingAmount(payroll) <= 0}
+                          >
+                            <DollarSign className="h-4 w-4 ml-1" />
+                            پرداخت
+                          </Button>
+                          {isAdmin && (
+                            <Button variant="ghost" size="sm" onClick={() => setEditing(payroll)} title="ویرایش فیش حقوقی">
+                              <Pencil className="h-4 w-4 ml-1" />
+                              ویرایش
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -156,6 +169,20 @@ export function PayrollList({ payrolls: initialPayrolls, accounts }: PayrollList
           </div>
         </CardContent>
       </Card>
+
+      {editing && (
+        <PayrollEditDialog
+          key={editing.id}
+          payroll={editing}
+          title={`${editing.employee.name} - ${editing.periodYear}/${monthNames[editing.periodMonth - 1]}`}
+          open
+          onOpenChange={(open) => !open && setEditing(undefined)}
+          onSaved={() => {
+            setEditing(undefined);
+            window.location.reload();
+          }}
+        />
+      )}
 
       {selectedPayroll && (
         <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>

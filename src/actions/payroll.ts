@@ -6,7 +6,9 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
-import { checkPermission, requirePermission } from '@/lib/access';
+import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
+import { logActivity } from '@/lib/activity-log';
+import { auth } from '@/auth';
 
 // --- Schemas ---
 
@@ -243,6 +245,80 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
       success: false,
     };
   }
+}
+
+const PayrollEditSchema = z.object({
+  amount: z.coerce.number().min(0.01, 'حقوق پایه باید بیشتر از صفر باشد'),
+  bonuses: z.coerce.number().min(0, 'پاداش نمی‌تواند منفی باشد'),
+  deductions: z.coerce.number().min(0, 'کسورات نمی‌تواند منفی باشد'),
+  description: z.string().optional(),
+});
+
+/**
+ * Correct a payslip already recorded — the base pay, a bonus or sales
+ * commission added, a deduction. Admin only, and written to the activity log.
+ * It moves no money: payments already made stay exactly as they are, and the
+ * payslip's status follows its new net pay. A net pay below what has already
+ * been paid is refused.
+ */
+export async function updatePayroll(
+  payrollId: string,
+  input: { amount: number; bonuses: number; deductions: number; description?: string },
+): Promise<ActionResult> {
+  if ((await getCurrentRole()) !== 'ADMIN') {
+    return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند فیش حقوقی را ویرایش کند.' };
+  }
+  const parsed = PayrollEditSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, errors: parsed.error.flatten().fieldErrors, message: 'مبلغ‌ها را درست وارد کنید.' };
+  }
+  const { amount, bonuses, deductions, description } = parsed.data;
+  const netAmount = amount + bonuses - deductions;
+  if (!(netAmount > 0)) return { success: false, message: 'حقوق خالص (حقوق + پاداش − کسورات) باید بیشتر از صفر باشد.' };
+
+  try {
+    const change = await prisma.$transaction(async (tx: any) => {
+      // One edit or payment at a time on this payslip.
+      const locked = await tx.$queryRaw`SELECT id FROM "Payroll" WHERE id = ${payrollId} FOR UPDATE`;
+      if (locked.length === 0) throw new Error('فیش حقوقی یافت نشد.');
+      const payroll = await tx.payroll.findUnique({ where: { id: payrollId }, include: { employee: true } });
+      const paid = Number(payroll.paidAmount);
+      if (netAmount < paid - 0.01) {
+        throw new Error(
+          `حقوق خالص جدید (${Math.round(netAmount).toLocaleString('fa-IR')} تومان) کمتر از مبلغی است که پرداخت شده ` +
+            `(${Math.round(paid).toLocaleString('fa-IR')} تومان).`,
+        );
+      }
+      await tx.payroll.update({
+        where: { id: payrollId },
+        data: {
+          amount: new Prisma.Decimal(amount),
+          bonuses: new Prisma.Decimal(bonuses),
+          deductions: new Prisma.Decimal(deductions),
+          netAmount: new Prisma.Decimal(netAmount),
+          description: description === undefined ? undefined : description || null,
+          status: paid >= netAmount - 0.01 ? 'PAID' : paid > 0 ? 'PARTIAL' : 'PENDING',
+        },
+      });
+      return {
+        who: `${payroll.employee.name} ${payroll.periodYear}/${payroll.periodMonth}`,
+        before: Number(payroll.netAmount),
+      };
+    });
+
+    const session = await auth();
+    await logActivity(
+      session?.user?.id,
+      'UPDATE_PAYROLL',
+      `فیش حقوقی ${change.who} ویرایش شد: خالص ${Math.round(change.before).toLocaleString('en-US')} → ${Math.round(netAmount).toLocaleString('en-US')} تومان ` +
+        `(حقوق ${amount}، پاداش ${bonuses}، کسورات ${deductions}).`,
+    );
+  } catch (error: unknown) {
+    return { success: false, message: error instanceof Error ? error.message : 'خطا در ویرایش فیش حقوقی.' };
+  }
+
+  revalidatePath('/dashboard/accounting/payroll');
+  return { success: true, message: 'فیش حقوقی ویرایش شد.' };
 }
 
 export async function getPayrolls(employeeId?: string, status?: string) {
