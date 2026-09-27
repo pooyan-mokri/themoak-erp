@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { latestRates, totalsByCurrency } from '@/lib/money-totals';
+import { isNonOperating } from '@/lib/profit-rows';
 
 // Financial Reports
 
@@ -14,7 +15,7 @@ import { latestRates, totalsByCurrency } from '@/lib/money-totals';
 export async function getProfitLossReport(startDate: Date, endDate: Date) {
   await requirePermission('profit.view');
   try {
-    const transactions = await prisma.transaction.findMany({
+    const rows = await prisma.transaction.findMany({
       where: {
         date: {
           gte: startDate,
@@ -26,8 +27,12 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
         amountInToman: true,
         category: true,
         date: true,
+        exchangeGroupId: true,
+        transferGroupId: true,
       },
     });
+    // Capital, loans, currency exchanges and transfers are not revenue or expense (src/lib/profit-rows.ts).
+    const transactions = rows.filter((t: any) => !isNonOperating(t));
 
     const income = transactions
       .filter((t: any) => t.type === 'INCOME')

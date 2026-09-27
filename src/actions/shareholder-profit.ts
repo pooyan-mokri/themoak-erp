@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { isNonOperating } from '@/lib/profit-rows';
 
 // --- Schemas ---
 
@@ -68,19 +69,19 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
         success: false,
       };
     }
-    // Calculate company profit for the period
-    // Exclude shareholder deposits and withdrawals from profit calculation
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        date: {
-          gte: startDate,
-          lte: endDate,
+    // Calculate company profit for the period, as the profit and loss report
+    // does: capital, loans, currency exchanges and transfers are not profit
+    // (src/lib/profit-rows.ts).
+    const transactions = (
+      await prisma.transaction.findMany({
+        where: {
+          date: {
+            gte: startDate,
+            lte: endDate,
+          },
         },
-        category: {
-          notIn: ['Shareholder Deposit', 'Shareholder Profit Withdrawal'],
-        },
-      },
-    });
+      })
+    ).filter((tx: any) => !isNonOperating(tx));
 
     let totalIncome = 0;
     let totalExpense = 0;
