@@ -27,6 +27,19 @@ async function lockOrderAndAccount(tx: any, orderId: string, accountId: string) 
   await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
 }
 
+// The purchase-order page's names for each status.
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'پیش‌نویس',
+  PENDING_PAYMENT: 'منتظر پرداخت',
+  PARTIALLY_PAID: 'پرداخت جزئی',
+  PAID: 'پرداخت شده',
+  IN_PRODUCTION: 'در حال تولید',
+  ARRIVED: 'رسیده به مقصد',
+  PARTIALLY_RECEIVED: 'نیمه دریافت شده',
+  RECEIVED: 'دریافت شده',
+  CANCELLED: 'لغو شده',
+};
+
 // Workflow Actions
 export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
   // Moving an order along is procurement work; marking it paid is a payment.
@@ -56,13 +69,18 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
     };
 
     if (!validTransitions[order.status]?.includes(newStatus)) {
-      return { success: false, message: `تغییر وضعیت از ${order.status} به ${newStatus} مجاز نیست` };
+      const label = (status: string) => STATUS_LABELS[status] ?? status;
+      return { success: false, message: `تغییر وضعیت از «${label(order.status)}» به «${label(newStatus)}» مجاز نیست` };
     }
 
-    await prisma.purchaseOrder.update({
-      where: { id: orderId },
+    // Only over the status checked above: a payment or receipt that moved the order meanwhile is not overwritten.
+    const { count } = await prisma.purchaseOrder.updateMany({
+      where: { id: orderId, status: order.status },
       data: { status: newStatus }
     });
+    if (count === 0) {
+      return { success: false, message: 'وضعیت این سفارش هم‌زمان تغییر کرد؛ صفحه را تازه کنید.' };
+    }
 
     revalidatePath('/dashboard/suppliers/orders');
     revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
@@ -230,6 +248,7 @@ export async function recordPurchasePartialPayment(input: {
 
   if (!accountId) return { success: false, message: 'لطفا حساب پرداخت را انتخاب کنید.' };
   if (!amount || amount <= 0) return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
+  if (date && Number.isNaN(new Date(date).getTime())) return { success: false, message: 'تاریخ پرداخت نامعتبر است.' };
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {

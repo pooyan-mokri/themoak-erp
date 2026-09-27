@@ -22,7 +22,7 @@ const createPurchaseOrderSchema = z.object({
   supplierId: z.string().min(1, 'تامین‌کننده الزامی است'),
   items: z.array(z.object({
     productId: z.string().min(1, 'محصول الزامی است'),
-    quantity: z.number().min(1, 'تعداد باید بیشتر از ۰ باشد'),
+    quantity: z.number().int('تعداد باید عدد صحیح باشد').min(1, 'تعداد باید بیشتر از ۰ باشد'),
     unitCost: z.number().min(0, 'قیمت خرید نمی‌تواند منفی باشد'),
     currency: z.enum(['TOMAN', 'USD', 'EUR', 'CNY']).default('TOMAN'),
   })).min(1, 'حداقل یک محصول باید انتخاب شود'),
