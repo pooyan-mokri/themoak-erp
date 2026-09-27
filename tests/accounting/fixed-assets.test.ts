@@ -6,6 +6,8 @@ import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
 import { createAsset, deleteAsset, getAssets, postDepreciation } from '@/actions/fixed-assets';
 import { getProfitLossReport } from '@/actions/reports';
+import { deleteExpense, updateExpense } from '@/actions/accounting';
+import { Currency } from '@/lib/types';
 import { assertBooksAddUp } from './ledger';
 
 // The actions log every refusal these tests provoke on purpose.
@@ -98,4 +100,18 @@ test('a fully depreciated or unknown asset is not depreciated; an asset is delet
   assert.equal((await deleteAsset(old.id)).success, true);
   assert.equal(await prisma.fixedAsset.count(), 0);
   assert.equal((await deleteAsset('nothing')).success, false);
+});
+
+test('a depreciation row deleted from the expense list leaves its expense account at 0; it cannot be edited there', async () => {
+  const laptop = await asset(yearsAgo(2));
+  assert.equal((await postDepreciation(laptop.id)).success, true);
+  assert.equal((await postDepreciation(laptop.id)).success, true, 'posted twice by mistake');
+  const [first, second] = await prisma.transaction.findMany({ where: { category: 'Depreciation' } });
+
+  assert.match((await updateExpense({ id: first.id, amount: 1, currency: Currency.TOMAN, category: 'Depreciation' })).message!, /سند استهلاک قابل ویرایش نیست/);
+  assert.equal((await deleteExpense(second.id)).success, true);
+  const account = await prisma.account.findUniqueOrThrow({ where: { id: first.accountId! } });
+  assert.equal(Number(account.balance), 0, 'nothing was taken off it, so nothing is given back');
+  assert.equal(await prisma.transaction.count({ where: { category: 'Depreciation' } }), 1);
+  assert.equal(Number((await prisma.transaction.findUniqueOrThrow({ where: { id: first.id } })).amount), 2_000_000);
 });

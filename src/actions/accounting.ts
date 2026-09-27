@@ -581,7 +581,17 @@ const SYSTEM_OWNED_RELATIONS = {
   PayrollPayment: { select: { id: true } },
   ShareholderWithdrawal: { select: { id: true } },
   siteRefund: { select: { id: true } },
+  account: { select: { type: true } },
 };
+
+/**
+ * Whether booking this expense moved its account's balance. Depreciation sits
+ * on an EXPENSE account kept at 0 (src/actions/fixed-assets.ts), so deleting or
+ * correcting it must not move that account either.
+ */
+function movedBalance(expense: { accountId: string | null; category?: string | null; account?: { type: string } | null }): boolean {
+  return !!expense.accountId && !(expense.category === 'Depreciation' && expense.account?.type === 'EXPENSE');
+}
 
 /**
  * Some EXPENSE rows are not standalone expenses — they are the accounting leg
@@ -646,7 +656,7 @@ export async function deleteExpense(id: string): Promise<ActionResult> {
       // Undo exactly what this row did to the balance, in the account's own
       // currency — balanceEffect replays the same rule the reconciliation
       // report uses, so the two can never disagree.
-      if (expense.accountId) {
+      if (movedBalance(expense)) {
         await tx.account.update({
           where: { id: expense.accountId },
           data: { balance: { increment: new Prisma.Decimal(-balanceEffect(expense as any)) } },
@@ -722,6 +732,10 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
         rate = Number(latestRate.rateToToman);
       }
       const newAmountInToman = amount * rate;
+      // Depreciation never moved its EXPENSE account; an edit here would.
+      if (existing.accountId && !movedBalance(existing)) {
+        throw new Error('سند استهلاک قابل ویرایش نیست؛ آن را حذف کنید و استهلاک را دوباره ثبت کنید.');
+      }
       const wasAccountPaid = !!existing.accountId;
 
       if (wasAccountPaid) {
