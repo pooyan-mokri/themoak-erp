@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
+import { orderNet } from '@/lib/order-balance';
 
 /**
  * Helpers for the sales actions that must not be server actions themselves:
@@ -45,7 +46,7 @@ export async function bookOrderPayment(
   if (order.siteReference !== null) throw new Error(WEBSITE_ORDER_LOCKED);
   if (order.status === 'CANCELLED') throw new Error('این سفارش لغو شده است و نمی‌توان برای آن پرداخت ثبت کرد.');
 
-  const totalAmount = Number(order.totalAmount) - Number(order.discount);
+  const totalAmount = orderNet(order);
   const remainingDebt = totalAmount - Number(order.paidAmount);
   if (amount > remainingDebt) {
     throw new Error(`مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString()} تومان) باشد.`);
@@ -112,14 +113,15 @@ export async function syncInvoiceWithOrder(orderId: string, client: any = prisma
 
   const order = await client.order.findUnique({
     where: { id: orderId },
-    select: { totalAmount: true, discount: true, paidAmount: true },
+    select: { totalAmount: true, discount: true, paidAmount: true, wooId: true, siteReference: true },
   });
   if (!order) return;
 
   const subtotal = Number(order.totalAmount);
   const discount = Number(order.discount);
   const tax = Number(invoice.tax);
-  const total = subtotal - discount + tax;
+  // Never negative (src/lib/order-balance.ts).
+  const total = orderNet(order) + tax;
   const paidAmount = Number(order.paidAmount);
 
   let status: string = 'PAID';

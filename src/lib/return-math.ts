@@ -29,12 +29,16 @@ export type PaymentStatus = 'PAID' | 'PARTIAL' | 'UNPAID';
 
 export type OrderChange = {
   newTotal: number;
+  /** Order.discount after the change: goods that come back take their share of it with them. */
+  newDiscount: number;
   newPaid: number;
   paymentStatus: PaymentStatus;
   /** Cash received into the chosen account now. */
   cashIn: number;
   /** Cash paid back out of the chosen account now. */
   cashOut: number;
+  /** How much the customer's bill (total less discount) moved: + owes more, − owes less. */
+  owedChange: number;
 };
 
 /**
@@ -86,54 +90,87 @@ function statusOf(netOwed: number, paid: number): PaymentStatus {
 }
 
 /**
- * Goods worth `value` come back. Only what the customer has paid beyond the
- * new net total goes back as cash; the rest just lowers the customer's debt.
+ * The part of the order discount that goods worth `value` take with them when
+ * they come back: value × discount ÷ total (the total before they come back),
+ * in whole Toman, never more than the discount there is.
+ */
+export function discountShare(order: Pick<OrderMoney, 'totalAmount' | 'discount'>, value: number): number {
+  if (!(order.discount > 0) || !(order.totalAmount > 0) || !(value > 0)) return 0;
+  return Math.min(order.discount, Math.round((value * order.discount) / order.totalAmount));
+}
+
+/**
+ * The order's total and discount once goods worth `returnedValue` come back
+ * and goods worth `newValue` go out in their place (0 for a plain return).
+ * The returned goods take their discount share with them; the new goods carry
+ * none. The discount never exceeds the total, so the net is never negative.
+ */
+function afterSwap(order: OrderMoney, returnedValue: number, newValue: number) {
+  const newTotal = Math.max(0, order.totalAmount - returnedValue + newValue);
+  const newDiscount = Math.max(0, Math.min(order.discount - discountShare(order, returnedValue), newTotal));
+  const netOwed = newTotal - newDiscount;
+  const owedChange = netOwed - Math.max(0, order.totalAmount - order.discount);
+  return { newTotal, newDiscount, netOwed, owedChange };
+}
+
+/**
+ * Goods worth `value` come back, less their share of the discount. Only what
+ * the customer has paid beyond the new net total goes back as cash; the rest
+ * just lowers the customer's debt.
  */
 export function returnChange(order: OrderMoney, value: number): OrderChange {
-  const newTotal = Math.max(0, order.totalAmount - value);
-  const netOwed = Math.max(0, newTotal - order.discount);
+  const { newTotal, newDiscount, netOwed, owedChange } = afterSwap(order, value, 0);
   const newPaid = Math.min(order.paidAmount, netOwed);
-  return { newTotal, newPaid, paymentStatus: statusOf(netOwed, newPaid), cashIn: 0, cashOut: order.paidAmount - newPaid };
+  return {
+    newTotal,
+    newDiscount,
+    newPaid,
+    paymentStatus: statusOf(netOwed, newPaid),
+    cashIn: 0,
+    cashOut: order.paidAmount - newPaid,
+    owedChange,
+  };
 }
 
 /**
- * Of a positive exchange difference, the most the cashier may collect now:
- * what the customer owes on the order after the exchange, at most the
- * difference. A credit the customer holds on the order pays first.
+ * Of what an exchange adds to the bill (goods worth `newValue` out for goods
+ * worth `returnedValue` back), the most the cashier may collect now: what the
+ * customer owes on the order after the exchange, at most that addition. A
+ * credit the customer holds on the order pays first.
  */
-export function receivableNow(order: OrderMoney, difference: number): number {
-  if (difference <= 0) return 0;
-  const netOwed = Math.max(0, Math.max(0, order.totalAmount + difference) - order.discount);
-  return Math.max(0, Math.min(difference, netOwed - order.paidAmount));
+export function receivableNow(order: OrderMoney, returnedValue: number, newValue: number): number {
+  const { netOwed, owedChange } = afterSwap(order, returnedValue, newValue);
+  if (owedChange <= 0) return 0;
+  return Math.max(0, Math.min(owedChange, netOwed - order.paidAmount));
 }
 
 /**
- * The new goods are worth `difference` more (or, when negative, less) than
- * the goods given back.
- * - More: the difference is owed on the order, except `receivedNow`
+ * Goods worth `newValue` go out for goods worth `returnedValue` back; the
+ * returned goods take their discount share with them.
+ * - The bill grows: the addition is owed on the order, except `receivedNow`
  *   (0..receivableNow) that the cashier collects now.
- * - Less: what the customer paid beyond the new net total is paid back only
- *   when the cashier chooses `refundNow`; otherwise it stays paid on the
- *   order, as the customer's credit.
+ * - The bill shrinks: what the customer paid beyond the new net total is paid
+ *   back only when the cashier chooses `refundNow`; otherwise it stays paid on
+ *   the order, as the customer's credit.
  */
 export function exchangeChange(
   order: OrderMoney,
-  difference: number,
+  returnedValue: number,
+  newValue: number,
   choice: { receivedNow?: number; refundNow?: boolean },
 ): OrderChange {
-  const newTotal = Math.max(0, order.totalAmount + difference);
-  const netOwed = Math.max(0, newTotal - order.discount);
+  const { newTotal, newDiscount, netOwed, owedChange } = afterSwap(order, returnedValue, newValue);
   let newPaid = order.paidAmount;
   let cashIn = 0;
   let cashOut = 0;
-  if (difference > 0) {
+  if (owedChange > 0) {
     cashIn = choice.receivedNow ?? 0;
     newPaid = order.paidAmount + cashIn;
-  } else if (difference < 0 && choice.refundNow && order.paidAmount > netOwed) {
+  } else if (owedChange < 0 && choice.refundNow && order.paidAmount > netOwed) {
     cashOut = order.paidAmount - netOwed;
     newPaid = netOwed;
   }
-  return { newTotal, newPaid, paymentStatus: statusOf(netOwed, newPaid), cashIn, cashOut };
+  return { newTotal, newDiscount, newPaid, paymentStatus: statusOf(netOwed, newPaid), cashIn, cashOut, owedChange };
 }
 
 /** Units of a line still sold: bought, less those returned or exchanged away. */

@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import { getProducts } from '@/actions/product';
 import { getOrderMoney } from '@/actions/order-return';
 import { accountLabel } from '@/lib/account-label';
-import { exchangeChange, lineValue, receivableNow, type OrderMoney } from '@/lib/return-math';
+import { discountShare, exchangeChange, lineValue, receivableNow, type OrderMoney } from '@/lib/return-math';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
@@ -122,15 +122,19 @@ export function ExchangeItemDialog({
   const exchangePrice = selectedProduct
     ? lineValue(commission, Number(selectedProduct.sellPrice), Number(quantity) || 0)
     : 0;
-  const priceDifference = exchangePrice - originalPrice;
+  // The goods given back take their share of the order discount with them.
+  const share = money ? discountShare(money, originalPrice) : 0;
+  // What the exchange adds to (+) or takes off (−) the customer's bill.
+  const priceDifference = money ? exchangeChange(money, originalPrice, exchangePrice, {}).owedChange : exchangePrice - originalPrice;
   // Of a pricier swap, what the customer still owes after it (a credit on the order pays first).
-  const receivable = money ? receivableNow(money, priceDifference) : 0;
+  const receivable = money ? receivableNow(money, originalPrice, exchangePrice) : 0;
   const received = receivable > 0 ? Number(receivedNow) || 0 : 0;
   const receivedTooMuch = receivable > 0 && (received < 0 || received > receivable + 0.01);
   // What could go back to the customer, before the cashier decides.
-  const refundDue = money && priceDifference < 0 ? exchangeChange(money, priceDifference, { refundNow: true }).cashOut : 0;
+  const refundDue =
+    money && priceDifference < 0 ? exchangeChange(money, originalPrice, exchangePrice, { refundNow: true }).cashOut : 0;
   const change = money && selectedProduct
-    ? exchangeChange(money, priceDifference, { receivedNow: received, refundNow: refundChoice === 'refund' })
+    ? exchangeChange(money, originalPrice, exchangePrice, { receivedNow: received, refundNow: refundChoice === 'refund' })
     : null;
   const cashIn = change?.cashIn ?? 0;
   const cashOut = change?.cashOut ?? 0;
@@ -353,6 +357,12 @@ export function ExchangeItemDialog({
                     {exchangePrice.toLocaleString('fa-IR')} تومان
                   </span>
                 </div>
+                {share > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm">سهم کالای فعلی از تخفیف سفارش:</span>
+                    <span className="text-sm font-medium text-red-600">-{share.toLocaleString('fa-IR')} تومان</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center border-t pt-2">
                   <span className="text-sm font-medium">
                     {priceDifference > 0 ? 'مبلغ اضافی:' : 'مابه‌التفاوت به نفع مشتری:'}

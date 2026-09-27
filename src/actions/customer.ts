@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { accountForViewer, productForViewer } from '@/lib/sales-records';
+import { customerBalance } from '@/lib/order-balance';
 
 // const prisma = new PrismaClient();
 
@@ -234,20 +235,25 @@ export async function updateCustomerNotes(id: string, notes: string) {
 
 // CRM Enhancement Functions
 
+// What customerBalance reads of an order. Not exported: a "use server" file may only export async functions.
+const BALANCE_FIELDS = {
+  totalAmount: true,
+  discount: true,
+  paidAmount: true,
+  wooId: true,
+  siteReference: true,
+  status: true,
+} as const;
+
 export async function getCustomersWithDebt() {
   await requirePermission('sales.view');
   try {
     const customers = await prisma.customer.findMany({
       include: {
+        // Debt and credit over every order that is not cancelled (src/lib/order-balance.ts).
         orders: {
-          where: {
-            paymentStatus: { in: ['PARTIAL', 'UNPAID'] }
-          },
-          select: {
-            totalAmount: true,
-            discount: true,
-            paidAmount: true,
-          }
+          where: { status: { not: 'CANCELLED' } },
+          select: BALANCE_FIELDS,
         }
       },
       orderBy: { createdAt: 'desc' },
@@ -255,14 +261,11 @@ export async function getCustomersWithDebt() {
 
     // Calculate debt for each customer
     return customers.map((customer: any) => {
-      const totalDebt = customer.orders.reduce((sum: any, order: any) => {
-        const orderTotal = Number(order.totalAmount) - Number(order.discount);
-        const debt = orderTotal - Number(order.paidAmount);
-        return sum + debt;
-      }, 0);
+      const { orders, ...rest } = customer;
+      const { debt: totalDebt, credit: totalCredit } = customerBalance(orders);
 
       return {
-        ...customer,
+        ...rest,
         phone: customer.phone ?? undefined,
         email: customer.email ?? undefined,
         address: customer.address ?? undefined,
@@ -273,6 +276,7 @@ export async function getCustomersWithDebt() {
         taxId: customer.taxId ?? undefined,
         commissionRate: customer.commissionRate ? Number(customer.commissionRate) : undefined,
         totalDebt,
+        totalCredit,
       };
     });
   } catch (error) {
@@ -308,12 +312,8 @@ export async function getCustomerById(id: string) {
 
     if (!customer) return undefined;
 
-    // Calculate debt
-    const totalDebt = customer.orders.reduce((sum: any, order: any) => {
-      const orderTotal = Number(order.totalAmount) - Number(order.discount);
-      const debt = orderTotal - Number(order.paidAmount);
-      return sum + debt;
-    }, 0);
+    // Debt and credit over every order that is not cancelled (src/lib/order-balance.ts).
+    const { debt: totalDebt, credit: totalCredit } = customerBalance(customer.orders);
 
     // Calculate stats
     const totalOrders = customer.orders.length;
@@ -400,6 +400,7 @@ export async function getCustomerById(id: string) {
       })),
       stats: {
         totalDebt,
+        totalCredit,
         totalOrders,
         totalSpent,
         averageOrderValue,
@@ -415,22 +416,11 @@ export async function calculateCustomerDebt(customerId: string): Promise<number>
   await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
-      where: {
-        customerId,
-        paymentStatus: { in: ['PARTIAL', 'UNPAID'] }
-      },
-      select: {
-        totalAmount: true,
-        discount: true,
-        paidAmount: true,
-      }
+      where: { customerId, status: { not: 'CANCELLED' } },
+      select: BALANCE_FIELDS,
     });
 
-    return orders.reduce((sum: any, order: any) => {
-      const orderTotal = Number(order.totalAmount) - Number(order.discount);
-      const debt = orderTotal - Number(order.paidAmount);
-      return sum + debt;
-    }, 0);
+    return customerBalance(orders).debt;
   } catch (error) {
     console.error('Error calculating customer debt:', error);
     return 0;
@@ -443,9 +433,7 @@ export async function getCustomerStats(customerId: string) {
     const orders = await prisma.order.findMany({
       where: { customerId },
       select: {
-        totalAmount: true,
-        paidAmount: true,
-        discount: true,
+        ...BALANCE_FIELDS,
         paymentStatus: true,
         createdAt: true,
       }
@@ -453,11 +441,7 @@ export async function getCustomerStats(customerId: string) {
 
     const totalOrders = orders.length;
     const totalSpent = orders.reduce((sum: any, order: any) => sum + Number(order.paidAmount), 0);
-    const totalDebt = orders.reduce((sum: any, order: any) => {
-      if (order.paymentStatus === 'PAID') return sum;
-      const orderTotal = Number(order.totalAmount) - Number(order.discount);
-      return sum + (orderTotal - Number(order.paidAmount));
-    }, 0);
+    const totalDebt = customerBalance(orders).debt;
     const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
 
     // Calculate order frequency (orders per month)

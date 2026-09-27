@@ -174,14 +174,27 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         throw new Error(`موجودی کافی برای کالای تعویضی "${exchangeProduct.name}" در انبار انتخابی وجود ندارد.`);
       }
 
-      // 4. Calculate price difference (each side net of the partner's
-      //    commission on a consignment sale, whose total is stored net)
+      // 4. Value of each side (net of the partner's commission on a
+      //    consignment sale, whose total is stored net). The goods given back
+      //    take their share of the order discount with them; the new goods
+      //    carry none.
       const money = orderMoney(order);
       const originalPrice = lineValue(money, Number(originalItem.price), quantity);
       const exchangePrice = lineValue(money, Number(exchangeProduct.sellPrice), quantity);
-      const priceDifference = exchangePrice - originalPrice;
+
+      // 5. Recompute order totals (src/lib/return-math.ts; the dialog shows
+      //    the same figures from the same function).
+      //    - the bill grows → owed on the order, except what the cashier
+      //      collects now (receivedNow).
+      //    - the bill shrinks → only the portion the customer actually
+      //      overpaid relative to the new total can go back, and only when
+      //      the cashier chooses to refund it; otherwise it stays paid on the
+      //      order as the customer's credit.
+      const change = exchangeChange(money, originalPrice, exchangePrice, { receivedNow, refundNow });
+      // What the exchange added to (or took off) the customer's bill.
+      const priceDifference = change.owedChange;
       // A credit the customer holds on the order pays the difference first.
-      const receivable = receivableNow(money, priceDifference);
+      const receivable = receivableNow(money, originalPrice, exchangePrice);
       if ((receivedNow ?? 0) > receivable + 0.01) {
         throw new Error(
           receivable < priceDifference - 0.01
@@ -189,16 +202,6 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
             : 'مبلغ دریافتی نمی‌تواند بیشتر از مابه‌التفاوت باشد.',
         );
       }
-
-      // 5. Recompute order totals (src/lib/return-math.ts; the dialog shows
-      //    the same figures from the same function).
-      //    - priceDifference > 0  → owed on the order, except what the
-      //      cashier collects now (receivedNow).
-      //    - priceDifference < 0  → only the portion the customer actually
-      //      overpaid relative to the new total can go back, and only when
-      //      the cashier chooses to refund it; otherwise it stays paid on the
-      //      order as the customer's credit.
-      const change = exchangeChange(money, priceDifference, { receivedNow, refundNow });
       const txType: TransactionType | null =
         change.cashIn > 0 ? TransactionType.INCOME : change.cashOut > 0 ? TransactionType.EXPENSE : null;
       const txAmount = change.cashIn || change.cashOut;
@@ -265,6 +268,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         where: { id: orderId },
         data: {
           totalAmount: new Prisma.Decimal(change.newTotal),
+          discount: new Prisma.Decimal(change.newDiscount),
           paidAmount: new Prisma.Decimal(change.newPaid),
           paymentStatus: change.paymentStatus,
         },
@@ -324,16 +328,9 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         },
       });
 
-      // 9. Update original order item status
-      // Check if all quantity is exchanged
-      const exchangedQuantity = await tx.orderExchange.aggregate({
-        where: { originalItemId },
-        _sum: { quantity: true },
-      });
-      const totalExchanged = exchangedQuantity._sum.quantity || 0;
-      
-      if (totalExchanged >= originalItem.quantity) {
-        // All quantity exchanged
+      // 9. Update original order item status: this exchange leaves none of
+      //    the line sold (earlier returns and exchanges took the rest).
+      if (quantity >= remaining) {
         await tx.orderItem.update({
           where: { id: originalItemId },
           data: { status: 'EXCHANGED' },
@@ -469,6 +466,9 @@ export async function getOrderExchanges(orderId: string) {
       account: ex.account ? accountForViewer(ex.account, canSeeBalance) : undefined,
       transaction: ex.transaction ? {
         ...ex.transaction,
+        amount: Number(ex.transaction.amount),
+        amountInToman: Number(ex.transaction.amountInToman),
+        rateSnapshot: Number(ex.transaction.rateSnapshot),
         description: ex.transaction.description ?? undefined,
         category: ex.transaction.category ?? undefined,
         accountId: ex.transaction.accountId ?? undefined,

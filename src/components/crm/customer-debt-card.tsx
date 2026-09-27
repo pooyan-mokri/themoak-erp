@@ -5,10 +5,12 @@ import { AlertTriangle, CheckCircle } from "lucide-react";
 interface CustomerDebtCardProps {
   creditLimit: number;
   totalDebt: number;
+  /** What the customer has paid beyond their orders, and their credit balance («بستانکار»). */
+  totalCredit?: number;
   paymentTerms: number;
 }
 
-export function CustomerDebtCard({ creditLimit, totalDebt, paymentTerms }: CustomerDebtCardProps) {
+export function CustomerDebtCard({ creditLimit, totalDebt, totalCredit = 0, paymentTerms }: CustomerDebtCardProps) {
   const creditUsage = creditLimit > 0 ? (totalDebt / creditLimit) * 100 : 0;
   const isOverLimit = totalDebt > creditLimit && creditLimit > 0;
 
@@ -32,6 +34,14 @@ export function CustomerDebtCard({ creditLimit, totalDebt, paymentTerms }: Custo
               )}
             </div>
             <p className="text-xs text-muted-foreground mb-4">کل بدهی جاری</p>
+            {totalCredit > 0 && (
+              <div className="flex justify-between mb-4 text-sm">
+                <span className="text-muted-foreground">بستانکار (اعتبار مشتری):</span>
+                <span className="font-medium text-green-600">
+                  {new Intl.NumberFormat('fa-IR').format(Math.round(totalCredit))} تومان
+                </span>
+              </div>
+            )}
             
             {creditLimit > 0 && (
               <div className="space-y-1">

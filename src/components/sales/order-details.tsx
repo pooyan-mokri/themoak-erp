@@ -12,6 +12,7 @@ import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { mayAttachReceipt } from '@/lib/receipt-ref';
 import { TransactionReceipt } from '@/components/accounting/transaction-receipt';
 import { WEBSITE_ORDER_LOCKED, formatShipTo, type SiteOrderData } from '@/lib/site-sale-data';
+import { exchangeSettlement, orderTotals } from '@/lib/order-balance';
 
 import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
@@ -153,6 +154,23 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
   // A website order ships to the address sent with it, not necessarily the customer's latest one.
   const customerAddress = (order.siteReference && formatShipTo(order.siteData?.shipTo)) || order.customer?.address;
 
+  // The bill as the invoice shows it (src/lib/order-balance.ts).
+  const totals = orderTotals(order);
+  // What became of each exchange's difference. Of a cheaper exchange's difference that was not paid
+  // back, what the order still holds beyond its net is the customer's credit; the rest lowered the debt.
+  let creditLeft = totals.credit;
+  const settlements = new Map(
+    exchanges.map((ex: any) => {
+      const difference = Number(ex.priceDifference);
+      const cash = ex.transaction ? Number(ex.transaction.amountInToman) : 0;
+      const cashIn = ex.transaction?.type === 'INCOME' ? cash : 0;
+      const cashOut = ex.transaction?.type === 'EXPENSE' ? cash : 0;
+      const toCredit = difference < 0 ? Math.min(Math.max(0, -difference - cashOut), creditLeft) : 0;
+      creditLeft -= toCredit;
+      return [ex.id, exchangeSettlement({ difference, cashIn, cashOut, toCredit })] as const;
+    }),
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -271,9 +289,36 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                 ))}
               </div>
               <Separator className="my-4" />
-              <div className="flex justify-between items-center font-bold text-lg">
-                <span>جمع کل</span>
-                <span>{Number(order.totalAmount).toLocaleString()} تومان</span>
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <span>جمع کل</span>
+                  <span>{totals.gross.toLocaleString()} تومان</span>
+                </div>
+                {totals.discount > 0 && (
+                  <div className="flex justify-between items-center text-red-600">
+                    <span>تخفیف</span>
+                    <span>-{totals.discount.toLocaleString()} تومان</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center font-bold text-lg">
+                  <span>مبلغ قابل پرداخت</span>
+                  <span>{totals.net.toLocaleString()} تومان</span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>پرداخت‌شده</span>
+                  <span>{totals.paid.toLocaleString()} تومان</span>
+                </div>
+                {totals.credit > 0 ? (
+                  <div className="flex justify-between items-center font-medium text-green-600">
+                    <span>بستانکار</span>
+                    <span>{totals.credit.toLocaleString()} تومان</span>
+                  </div>
+                ) : (
+                  <div className={`flex justify-between items-center font-medium ${totals.remaining > 0 ? 'text-red-600' : ''}`}>
+                    <span>باقی‌مانده</span>
+                    <span>{totals.remaining.toLocaleString()} تومان</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -301,7 +346,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                         </div>
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>تعداد: {ret.quantity}</span>
-                          <span>مبلغ: {Number(ret.refundAmount).toLocaleString()} تومان</span>
+                          <span>وجه پس‌داده‌شده: {Number(ret.transaction?.amountInToman ?? 0).toLocaleString()} تومان</span>
                         </div>
                         {ret.reason && (
                           <div className="text-sm text-muted-foreground">دلیل: {ret.reason}</div>
@@ -324,10 +369,13 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                         </div>
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>تعداد: {ex.quantity}</span>
-                          <span>
-                            {ex.priceDifference > 0 && `مابه‌التفاوت دریافتی: ${Number(ex.priceDifference).toLocaleString()} تومان`}
-                            {ex.priceDifference < 0 && `مابه‌التفاوت پرداختی: ${Math.abs(Number(ex.priceDifference)).toLocaleString()} تومان`}
-                            {ex.priceDifference === 0 && 'بدون مابه‌التفاوت'}
+                          <span className="flex flex-col items-end">
+                            {(settlements.get(ex.id) ?? []).length === 0 && 'بدون مابه‌التفاوت'}
+                            {(settlements.get(ex.id) ?? []).map((part) => (
+                              <span key={part.label}>
+                                {part.label}: {Math.round(part.amount).toLocaleString()} تومان
+                              </span>
+                            ))}
                           </span>
                         </div>
                       </div>

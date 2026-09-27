@@ -3,6 +3,8 @@
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { requirePermission } from '@/lib/access';
+import { SOLD_ORDER_STATUS } from '@/lib/order-status';
+import { effectiveQuantity } from '@/lib/return-math';
 
 interface DateRange {
   startDate?: Date;
@@ -22,12 +24,15 @@ export async function getSalesAnalytics(range?: DateRange) {
           gte: startDate,
           lte: endDate,
         },
-        status: { in: ['COMPLETED', 'DELIVERED'] },
+        status: SOLD_ORDER_STATUS,
       },
       include: {
         items: {
           include: {
             product: true,
+            // Units returned or exchanged away are not sold.
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
           },
         },
         customer: true,
@@ -50,7 +55,7 @@ export async function getSalesAnalytics(range?: DateRange) {
           gte: previousStartDate,
           lt: startDate,
         },
-        status: { in: ['COMPLETED', 'DELIVERED'] },
+        status: SOLD_ORDER_STATUS,
       },
     });
 
@@ -87,8 +92,8 @@ export async function getSalesAnalytics(range?: DateRange) {
           revenue: 0,
         };
       }
-      acc[productId].quantity += item.quantity;
-      acc[productId].revenue += item.quantity * Number(item.price);
+      acc[productId].quantity += effectiveQuantity(item);
+      acc[productId].revenue += effectiveQuantity(item) * Number(item.price);
       return acc;
     }, {} as Record<string, { id: string; name: string; quantity: number; revenue: number }>);
 
@@ -123,8 +128,8 @@ export async function getSalesAnalytics(range?: DateRange) {
       if (!acc[type]) {
         acc[type] = { type, revenue: 0, quantity: 0 };
       }
-      acc[type].revenue += item.quantity * Number(item.price);
-      acc[type].quantity += item.quantity;
+      acc[type].revenue += effectiveQuantity(item) * Number(item.price);
+      acc[type].quantity += effectiveQuantity(item);
       return acc;
     }, {} as Record<string, { type: string; revenue: number; quantity: number }>);
 

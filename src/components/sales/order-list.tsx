@@ -17,6 +17,7 @@ import * as XLSX from 'xlsx';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { orderTotals } from '@/lib/order-balance';
 
 type Customer = {
   id: string;
@@ -196,7 +197,7 @@ export function OrderList({ orders }: OrderListProps) {
       'مبلغ کل (تومان)': Number(order.totalAmount),
       'تخفیف (تومان)': Number(order.discount || 0),
       'مبلغ پرداختی (تومان)': Number(order.paidAmount || 0),
-      'باقیمانده (تومان)': Number(order.totalAmount) - Number(order.paidAmount || 0),
+      'باقیمانده (تومان)': orderTotals(order).remaining,
       'وضعیت پرداخت': order.paymentStatus === 'PAID' ? 'پرداخت شده' :
                       order.paymentStatus === 'PARTIAL' ? 'پرداخت جزئی' : 'پرداخت نشده',
       'تعداد اقلام': order.items.reduce((acc, item) => acc + item.quantity, 0),

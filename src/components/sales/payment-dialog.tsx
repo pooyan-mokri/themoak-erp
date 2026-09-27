@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { recordOrderPayment } from '@/actions/sales';
 import { getAccountOptions } from '@/actions/account-options';
 import { accountLabel } from '@/lib/account-label';
+import { orderNet } from '@/lib/order-balance';
 import { useRequestId } from '@/components/ui/request-id';
 import { ReceiptUpload } from '@/components/accounting/receipt-upload';
 
@@ -33,6 +34,8 @@ type OrderWithDetails = {
   discount?: number;
   paidAmount?: number;
   paymentStatus: string;
+  wooId?: number | null;
+  siteReference?: string | null;
   customer?: {
     name: string;
   };
@@ -58,7 +61,8 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
     renewRequestId();
   }, [order.id, renewRequestId]);
 
-  const totalAmount = Number(order.totalAmount) - Number(order.discount || 0);
+  // The same net as the server's payment check (src/lib/order-balance.ts).
+  const totalAmount = orderNet(order);
   const paidAmount = Number(order.paidAmount || 0);
   const remainingDebt = totalAmount - paidAmount;
 
