@@ -173,13 +173,12 @@ async function ensureMarketingExpensesAccount() {
     });
 
     if (!existingAccount) {
-      await prisma.account.create({
-        data: {
-          name: 'Marketing Expenses',
-          type: 'EXPENSE',
-          currency: 'TOMAN',
-          balance: 0,
-        },
+      // Created under one fixed id: pages opened at the same moment all find
+      // it missing, and a plain create made one copy each (the name is not
+      // unique). ON CONFLICT DO NOTHING on the id leaves the first one alone.
+      await prisma.account.createMany({
+        data: [{ id: 'marketing-expenses', name: 'Marketing Expenses', type: 'EXPENSE', currency: 'TOMAN', balance: 0 }],
+        skipDuplicates: true,
       });
     }
   } catch (error) {
