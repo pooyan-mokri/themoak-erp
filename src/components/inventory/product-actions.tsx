@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -74,15 +73,15 @@ export function ProductActions({ products, canSeeCost, canSeeSellPrice, canManag
   };
 
   return (
-    <div className="flex gap-2">
+    <>
       <Button variant="outline" onClick={handleExport}>
-        <Download className="mr-2 h-4 w-4" />
+        <Download className="h-4 w-4" />
         خروجی اکسل
       </Button>
       {canManage && (
         <>
           <Button variant="outline" onClick={handleImportClick} disabled={importing}>
-            <Upload className="mr-2 h-4 w-4" />
+            <Upload className="h-4 w-4" />
             {importing ? 'در حال وارد کردن...' : 'ورود از اکسل'}
           </Button>
           <input 
@@ -94,6 +93,6 @@ export function ProductActions({ products, canSeeCost, canSeeSellPrice, canManag
           />
         </>
       )}
-    </div>
+    </>
   );
 }

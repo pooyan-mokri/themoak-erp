@@ -1,11 +1,30 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Edit, Trash, ExternalLink } from 'lucide-react';
-import { GiftProductDialog } from './gift-product-dialog';
-import { ProductForm } from './product-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import {
+  ArrowDown,
+  ArrowUp,
+  Barcode,
+  ClipboardCheck,
+  Edit,
+  ExternalLink,
+  Globe,
+  Package,
+  PackageCheck,
+  PackageX,
+  Plus,
+  Search,
+  Trash,
+  TriangleAlert,
+  Wallet,
+} from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +35,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { useState } from 'react';
+} from '@/components/ui/alert-dialog';
+import { PageHeader } from '@/components/layout/page-header';
+import { KpiCard } from '@/components/dashboard/kpi-card';
 import { deleteProduct } from '@/actions/product';
-import { toast } from 'sonner';
-import { DataTable, DataTableColumn } from '@/components/ui/data-table';
-import Link from 'next/link';
+import { cn } from '@/lib/utils';
+import { foldSearchText } from './audit-count-view';
+import { GiftProductDialog } from './gift-product-dialog';
+import { ProductForm } from './product-form';
+import { ProductActions as ExcelActions } from './product-actions';
+import { LOW_STOCK_BELOW, PRODUCT_TYPE_LABELS, STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
 
 interface Product {
   id: string;
@@ -38,8 +61,13 @@ interface Product {
   siteUrl?: string;
 }
 
+/** Units in every warehouse, and in the physical ones (what can be sold). */
+export type ProductStock = { total: number; sellable: number };
+
 interface ProductTableProps {
   products: Product[];
+  /** By product id; null when the stock could not be read. */
+  stock: Record<string, ProductStock> | null;
   canSeeCost: boolean;
   canSeeSellPrice: boolean;
   canEditCost: boolean;
@@ -47,160 +75,468 @@ interface ProductTableProps {
   canGift: boolean;
 }
 
-const getProductTypeLabel = (type?: string) => {
-  const types: Record<string, string> = {
-    SALEABLE: 'محصول فروختنی',
-    FIXED_ASSET: 'دارایی ثابت',
-    CONSUMABLE: 'کالای مصرفی',
-    OTHER: 'سایر',
-  };
-  return types[type || 'SALEABLE'] || 'نامشخص';
-};
+type Row = Product & { total: number; sellable: number; value: number };
 
-const getProductTypeBadge = (type?: string) => {
-  const badges: Record<string, string> = {
-    SALEABLE: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    FIXED_ASSET: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-    CONSUMABLE: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-    OTHER: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
-  };
-  return badges[type || 'SALEABLE'] || badges.OTHER;
-};
+const VIEWS = [
+  { id: 'all', label: 'همه', match: () => true },
+  { id: 'low', label: 'موجودی کم', match: (r: Row) => stockStatus(r.total) === 'low' },
+  { id: 'out', label: 'ناموجود', match: (r: Row) => stockStatus(r.total) === 'out' },
+] as const;
 
-export function ProductTable({ products, canSeeCost, canSeeSellPrice, canEditCost, canManage, canGift }: ProductTableProps) {
-  const columns: DataTableColumn<Product>[] = [
-    {
-      key: 'name',
-      label: 'نام کالا',
-      sortable: true,
-      render: (product) => {
-        // The website's front-of-frame photo first: many frames share a code
-        // family and a colour, and the photo is what tells them apart.
-        const photo = product.imageUrl || product.image;
-        return (
-          <div className="flex items-center gap-3">
-            {photo ? (
-              <img src={photo} alt={product.name} loading="lazy" className="h-10 w-10 shrink-0 rounded border object-cover bg-gray-50" />
-            ) : (
-              <div className="h-10 w-10 shrink-0 rounded border bg-gray-50 dark:bg-gray-900" />
-            )}
-            <Link
-              href={`/dashboard/inventory/products/${product.id}`}
-              className="font-medium text-primary hover:underline"
-            >
-              {product.name}
-            </Link>
-            {product.siteUrl && (
-              <a
-                href={product.siteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="مشاهده در سایت"
-                className="text-muted-foreground hover:text-primary"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: 'sku',
-      label: 'SKU',
-      sortable: true,
-      render: (product) => product.sku,
-    },
-    {
-      key: 'barcode',
-      label: 'بارکد',
-      sortable: true,
-      render: (product) => (
-        product.barcode ? (
-          <span className="font-mono text-sm">{product.barcode}</span>
-        ) : (
-          <span className="text-muted-foreground text-sm">-</span>
-        )
-      ),
-    },
-    {
-      key: 'productType',
-      label: 'نوع کالا',
-      sortable: true,
-      render: (product) => (
-        <Badge variant="outline" className={getProductTypeBadge(product.productType)}>
-          {getProductTypeLabel(product.productType)}
-        </Badge>
-      ),
-    },
-    ...(canSeeCost ? [{
-      key: 'costPrice',
-      label: 'قیمت خرید',
-      sortable: true,
-      render: (product: Product) => `${Number(product.costPrice).toLocaleString('fa-IR')} تومان`,
-    }] : []),
-    ...(canSeeSellPrice ? [{
-      key: 'sellPrice',
-      label: 'قیمت فروش',
-      sortable: true,
-      render: (product: Product) => `${Number(product.sellPrice).toLocaleString('fa-IR')} تومان`,
-    }] : []),
-    {
-      key: 'wooId',
-      label: 'ووکامرس (قدیمی)',
-      sortable: true,
-      render: (product) =>
-        product.wooId ? (
-          <span className="text-green-600 text-xs bg-green-100 px-2 py-1 rounded-full">ثبت‌شده</span>
-        ) : (
-          <span className="text-gray-500 text-xs bg-gray-100 px-2 py-1 rounded-full">داخلی</span>
-        ),
-    },
-    ...(canManage ? [{
-      key: 'actions',
-      label: 'عملیات',
-      sortable: false,
-      className: 'text-right',
-      render: (product: Product) => (
-        <ProductActions
-          product={product}
-          canEditCost={canEditCost}
-          canSeeSellPrice={canSeeSellPrice}
-          canManage={canManage}
-          canGift={canGift}
-        />
-      ),
-    }] : []),
-  ];
+type SortKey = 'name' | 'sku' | 'barcode' | 'productType' | 'total' | 'sellable' | 'costPrice' | 'sellPrice' | 'value';
+const PAGE_SIZE = 25;
+const RECEIVING_HREF = '/dashboard/suppliers/orders';
+const AUDITS_HREF = '/dashboard/inventory/audits';
+const NEW_HREF = '/dashboard/inventory/products/new';
 
+const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
+
+function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <DataTable
-      data={products}
-      columns={columns}
-      searchable={true}
-      searchPlaceholder="جستجو در کالاها (نام، SKU، شناسهٔ سایت)..."
-      searchKeys={['name', 'sku', 'webId']}
-      filterable={true}
-      filters={[
-        {
-          key: 'productType',
-          label: 'نوع کالا',
-          options: [
-            { value: 'SALEABLE', label: 'محصول فروختنی' },
-            { value: 'FIXED_ASSET', label: 'دارایی ثابت' },
-            { value: 'CONSUMABLE', label: 'کالای مصرفی' },
-            { value: 'OTHER', label: 'سایر' },
-          ],
-        },
-      ]}
-      defaultSort={{ key: 'name', direction: 'asc' }}
-      pageSize={15}
-      emptyMessage="هیچ کالایی یافت نشد."
-    />
+    <kbd className="rounded border bg-secondary px-1 font-mono text-[10px] font-normal leading-4 text-muted-foreground">
+      {children}
+    </kbd>
   );
 }
 
-function ProductActions({
+export function ProductTable({ products, stock, canSeeCost, canSeeSellPrice, canEditCost, canManage, canGift }: ProductTableProps) {
+  const router = useRouter();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<(typeof VIEWS)[number]['id']>('all');
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('all');
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+  const [page, setPage] = useState(0);
+  const [cursor, setCursor] = useState(0);
+
+  const rows = useMemo<Row[]>(
+    () =>
+      products.map((p) => {
+        const s = stock?.[p.id] ?? { total: 0, sellable: 0 };
+        // Stock value is units × cost: only for roles that see the cost (the cost is not sent otherwise).
+        return { ...p, total: s.total, sellable: s.sellable, value: canSeeCost ? s.total * Number(p.costPrice ?? 0) : 0 };
+      }),
+    [products, stock, canSeeCost],
+  );
+  const searchText = useMemo(
+    () =>
+      new Map(
+        rows.map((r) => [r.id, [r.name, r.sku, r.webId, r.barcode].filter((v): v is string => !!v).map(foldSearchText)]),
+      ),
+    [rows],
+  );
+
+  // The type filter scopes everything: figures, view counts and the table.
+  const scoped = useMemo(() => (type === 'all' ? rows : rows.filter((r) => (r.productType || 'SALEABLE') === type)), [rows, type]);
+  const currentView = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
+  const filtered = useMemo(() => {
+    const q = foldSearchText(query);
+    const list = scoped.filter((r) => {
+      if (stock && !currentView.match(r)) return false;
+      if (q && !(searchText.get(r.id) ?? []).some((t) => t.includes(q))) return false;
+      return true;
+    });
+    const value = (r: Row): number | string =>
+      sort.key === 'name' ? r.name
+      : sort.key === 'sku' ? r.sku
+      : sort.key === 'barcode' ? r.barcode ?? ''
+      : sort.key === 'productType' ? productTypeLabel(r.productType)
+      : sort.key === 'costPrice' ? Number(r.costPrice ?? 0)
+      : sort.key === 'sellPrice' ? Number(r.sellPrice ?? 0)
+      : r[sort.key];
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const va = value(a);
+      const vb = value(b);
+      if (typeof va === 'string' && typeof vb === 'string') return va.localeCompare(vb, 'fa') * dir;
+      return (va > vb ? 1 : va < vb ? -1 : 0) * dir;
+    });
+  }, [scoped, stock, currentView, query, searchText, sort]);
+
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRows = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  useEffect(() => {
+    setPage(0);
+    setCursor(0);
+  }, [view, query, type, sort]);
+
+  const counts = {
+    all: scoped.length,
+    low: scoped.filter((r) => stockStatus(r.total) === 'low').length,
+    out: scoped.filter((r) => stockStatus(r.total) === 'out').length,
+  };
+  const units = scoped.reduce((sum, r) => sum + r.total, 0);
+  const sellableUnits = scoped.reduce((sum, r) => sum + r.sellable, 0);
+  const stockValue = scoped.reduce((sum, r) => sum + r.value, 0);
+
+  // J/K move, Enter opens the product, F or / searches; R receiving, A stock counts, N a new product. Not while typing.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (/INPUT|TEXTAREA|SELECT/.test(target.tagName) || target.isContentEditable)) return;
+      if (target?.closest?.('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"], [role="combobox"]')) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      // By key position, so the shortcuts work on a Persian layout too.
+      const key = event.code;
+      // Enter on a focused link or button is that control's own.
+      if (key === 'Enter' && target && /^(A|BUTTON)$/.test(target.tagName)) return;
+      if (key === 'KeyJ' || key === 'ArrowDown') {
+        event.preventDefault();
+        setCursor((c) => Math.min(pageRows.length - 1, c + 1));
+      } else if (key === 'KeyK' || key === 'ArrowUp') {
+        event.preventDefault();
+        setCursor((c) => Math.max(0, c - 1));
+      } else if (key === 'Enter' && pageRows[cursor]) {
+        event.preventDefault();
+        router.push(`/dashboard/inventory/products/${pageRows[cursor].id}`);
+      } else if (key === 'KeyF' || key === 'Slash') {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      } else if (key === 'KeyR') {
+        event.preventDefault();
+        router.push(RECEIVING_HREF);
+      } else if (key === 'KeyA') {
+        event.preventDefault();
+        router.push(AUDITS_HREF);
+      } else if (key === 'KeyN' && canManage) {
+        event.preventDefault();
+        router.push(NEW_HREF);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pageRows, cursor, router, canManage]);
+
+  const SortHead = ({ k, children, end, className }: { k: SortKey; children: React.ReactNode; end?: boolean; className?: string }) => (
+    <th className={cn('h-9 whitespace-nowrap bg-secondary px-3 text-xs font-normal text-muted-foreground', end ? 'text-end' : 'text-start', className)}>
+      <button
+        type="button"
+        onClick={() => setSort((s) => ({ key: k, dir: s.key === k && s.dir === 'asc' ? 'desc' : 'asc' }))}
+        className="inline-flex items-center gap-1 hover:text-foreground"
+      >
+        {children}
+        {sort.key === k && (sort.dir === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />)}
+      </button>
+    </th>
+  );
+  const Head = ({ children, end, className }: { children?: React.ReactNode; end?: boolean; className?: string }) => (
+    <th className={cn('h-9 whitespace-nowrap bg-secondary px-3 text-xs font-normal text-muted-foreground', end ? 'text-end' : 'text-start', className)}>
+      {children}
+    </th>
+  );
+
+  const filtersOn = view !== 'all' || !!query || type !== 'all';
+  const columnCount = 4 + (stock ? 3 : 0) + (canSeeCost ? 2 : 0) + (canSeeSellPrice ? 1 : 0) + 1 + (canManage ? 1 : 0);
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="تعریف کالا"
+        description={
+          <>
+            {fa(products.length)} کالا · <Kbd>J</Kbd> <Kbd>K</Kbd> حرکت، <Kbd>↵</Kbd> باز کردن، <Kbd>F</Kbd> جستجو
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link href={RECEIVING_HREF} title="سفارش‌های خرید و دریافت کالا در انبار">
+                <PackageCheck className="h-4 w-4" />
+                ورود کالا
+                <Kbd>R</Kbd>
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={AUDITS_HREF}>
+                <ClipboardCheck className="h-4 w-4" />
+                انبارگردانی
+                <Kbd>A</Kbd>
+              </Link>
+            </Button>
+            <ExcelActions products={products} canSeeCost={canSeeCost} canSeeSellPrice={canSeeSellPrice} canManage={canManage} />
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/inventory/products/labels">
+                <Barcode className="h-4 w-4" />
+                چاپ گروهی بارکد
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/inventory/web-ids">
+                <Globe className="h-4 w-4" />
+                شناسه‌های سایت
+              </Link>
+            </Button>
+            {canManage && (
+              <Button asChild>
+                <Link href={NEW_HREF}>
+                  <Plus className="h-4 w-4" />
+                  افزودن کالا
+                  <kbd className="rounded border border-white/30 px-1 font-mono text-[10px] font-normal leading-4 text-white/80">N</kbd>
+                </Link>
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          label="کالاها"
+          icon={Package}
+          value={fa(scoped.length)}
+          note={stock ? `${fa(units)} عدد در همهٔ انبارها` : undefined}
+        />
+        {stock && (
+          <>
+            <KpiCard label="موجودی کم" icon={TriangleAlert} value={fa(counts.low)} note={`کمتر از ${fa(LOW_STOCK_BELOW)} عدد`} />
+            <KpiCard label="ناموجود" icon={PackageX} value={fa(counts.out)} note="موجودی صفر یا کمتر" />
+            {canSeeCost ? (
+              <KpiCard label="ارزش موجودی" icon={Wallet} value={fa(stockValue)} unit="تومان" note="به قیمت خرید" />
+            ) : (
+              <KpiCard label="قابل فروش" value={fa(sellableUnits)} unit="عدد" note="در انبارهای فیزیکی" />
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {stock &&
+          VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => setView(v.id)}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] transition-colors duration-150',
+                view === v.id ? 'border-foreground bg-foreground text-white' : 'bg-card hover:border-foreground/40',
+              )}
+            >
+              {v.label}
+              <span className="font-mono text-[11px] opacity-70">{fa(counts[v.id])}</span>
+            </button>
+          ))}
+        <div className="flex-1" />
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setQuery('');
+                e.currentTarget.blur();
+              }
+            }}
+            placeholder="نام، SKU، بارکد یا شناسهٔ سایت"
+            className="ps-8"
+          />
+        </div>
+        <Select value={type} onValueChange={setType}>
+          <SelectTrigger className="w-full sm:w-44" aria-label="نوع کالا">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">همهٔ انواع کالا</SelectItem>
+            {Object.entries(PRODUCT_TYPE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13.5px]">
+            <thead>
+              <tr className="border-b">
+                <SortHead k="name">نام کالا</SortHead>
+                <SortHead k="sku">SKU</SortHead>
+                <SortHead k="barcode" className="hidden 2xl:table-cell">بارکد</SortHead>
+                <SortHead k="productType" className="hidden 2xl:table-cell">نوع</SortHead>
+                {stock && <SortHead k="total" end>موجودی</SortHead>}
+                {stock && <SortHead k="sellable" end>قابل فروش</SortHead>}
+                {canSeeCost && <SortHead k="costPrice" end>قیمت خرید (تومان)</SortHead>}
+                {canSeeSellPrice && <SortHead k="sellPrice" end>قیمت فروش (تومان)</SortHead>}
+                {canSeeCost && <SortHead k="value" end className="hidden xl:table-cell">ارزش موجودی</SortHead>}
+                {stock && <Head>وضعیت</Head>}
+                <Head className="hidden 2xl:table-cell">ووکامرس (قدیمی)</Head>
+                {canManage && <Head end>عملیات</Head>}
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.length === 0 && (
+                <tr>
+                  <td colSpan={columnCount} className="h-24 px-4 text-center text-[13px] text-muted-foreground">
+                    {products.length === 0 ? (
+                      <>هنوز کالایی تعریف نشده است. با «افزودن کالا» یا «ورود از اکسل» شروع کنید.</>
+                    ) : (
+                      <>
+                        کالایی با این نما، نوع یا جستجو پیدا نشد.{' '}
+                        {filtersOn && (
+                          <button
+                            className="text-brand hover:underline"
+                            onClick={() => {
+                              setView('all');
+                              setQuery('');
+                              setType('all');
+                            }}
+                          >
+                            نمایش همه
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              )}
+              {pageRows.map((product, index) => {
+                const photo = product.imageUrl || product.image;
+                const status = STOCK_STATUS[stockStatus(product.total)];
+                return (
+                  <tr
+                    key={product.id}
+                    onClick={() => {
+                      setCursor(index);
+                      router.push(`/dashboard/inventory/products/${product.id}`);
+                    }}
+                    className={cn(
+                      'h-11 cursor-pointer border-b transition-colors duration-150 last:border-0 hover:bg-brand/[.04]',
+                      index === cursor && 'shadow-[inset_-2px_0_0_#353DB2]',
+                    )}
+                  >
+                    <td className="px-3 py-1.5">
+                      <div className="flex min-w-[200px] items-center gap-2.5">
+                        {/* The website's front-of-frame photo first: many frames share a code
+                            family and a colour, and the photo is what tells them apart. */}
+                        {photo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={photo} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-md border bg-secondary object-cover object-[50%_60%]" />
+                        ) : (
+                          <div className="h-9 w-9 shrink-0 rounded-md border bg-secondary" />
+                        )}
+                        <Link
+                          href={`/dashboard/inventory/products/${product.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="min-w-0 truncate font-medium hover:text-brand hover:underline"
+                        >
+                          <bdi>{product.name}</bdi>
+                        </Link>
+                        {product.siteUrl && (
+                          <a
+                            href={product.siteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="مشاهده در سایت"
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 text-muted-foreground hover:text-brand"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-3 font-mono text-[12px]">
+                      <div className="flex flex-col items-start">
+                        <span dir="ltr">{product.sku}</span>
+                        {/* The barcode sits under the SKU until the screen has room for its own column. */}
+                        {product.barcode && (
+                          <span dir="ltr" className="text-[11px] text-muted-foreground 2xl:hidden">
+                            {product.barcode}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="hidden whitespace-nowrap px-3 font-mono text-[12px] text-muted-foreground 2xl:table-cell">
+                      <span dir="ltr">{product.barcode || '—'}</span>
+                    </td>
+                    <td className="hidden whitespace-nowrap px-3 2xl:table-cell">
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[11.5px] text-muted-foreground">
+                        {productTypeLabel(product.productType)}
+                      </span>
+                    </td>
+                    {stock && <td className="px-3 text-end font-medium tabular-nums">{fa(product.total)}</td>}
+                    {stock && <td className="px-3 text-end tabular-nums text-muted-foreground">{fa(product.sellable)}</td>}
+                    {canSeeCost && <td className="whitespace-nowrap px-3 text-end tabular-nums">{fa(Number(product.costPrice))}</td>}
+                    {canSeeSellPrice && <td className="whitespace-nowrap px-3 text-end tabular-nums">{fa(Number(product.sellPrice))}</td>}
+                    {canSeeCost && (
+                      <td className="hidden whitespace-nowrap px-3 text-end tabular-nums text-muted-foreground xl:table-cell">
+                        {product.value ? fa(product.value) : '—'}
+                      </td>
+                    )}
+                    {stock && (
+                      <td className="px-3">
+                        <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px]', status.tone)}>{status.label}</span>
+                      </td>
+                    )}
+                    <td className="hidden whitespace-nowrap px-3 text-[12.5px] text-muted-foreground 2xl:table-cell">
+                      {product.wooId ? 'ثبت‌شده' : 'داخلی'}
+                    </td>
+                    {canManage && (
+                      <td className="px-3" onClick={(e) => e.stopPropagation()}>
+                        <RowActions
+                          product={product}
+                          canEditCost={canEditCost}
+                          canSeeSellPrice={canSeeSellPrice}
+                          canManage={canManage}
+                          canGift={canGift}
+                        />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+            {filtered.length > 0 && stock && (
+              <tfoot>
+                <tr className="border-t bg-secondary text-[12.5px]">
+                  <td className="h-9 px-3 text-muted-foreground" colSpan={2}>
+                    {fa(filtered.length)} کالا
+                  </td>
+                  <td className="hidden 2xl:table-cell" />
+                  <td className="hidden 2xl:table-cell" />
+                  <td className="px-3 text-end font-medium tabular-nums">{fa(filtered.reduce((sum, r) => sum + r.total, 0))}</td>
+                  <td className="px-3 text-end tabular-nums text-muted-foreground">{fa(filtered.reduce((sum, r) => sum + r.sellable, 0))}</td>
+                  {canSeeCost && <td />}
+                  {canSeeSellPrice && <td />}
+                  {canSeeCost && (
+                    <td className="hidden px-3 text-end font-medium tabular-nums xl:table-cell">
+                      {fa(filtered.reduce((sum, r) => sum + r.value, 0))}
+                    </td>
+                  )}
+                  <td />
+                  <td className="hidden 2xl:table-cell" />
+                  {canManage && <td />}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        {pages > 1 && (
+          <div className="flex items-center justify-between border-t px-3 py-2 text-[12.5px] text-muted-foreground">
+            <span>
+              {fa(page * PAGE_SIZE + 1)} تا {fa(Math.min(filtered.length, (page + 1) * PAGE_SIZE))} از {fa(filtered.length)}
+            </span>
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                قبلی
+              </Button>
+              <Button variant="outline" size="sm" disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)}>
+                بعدی
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RowActions({
   product,
   canEditCost,
   canSeeSellPrice,
@@ -221,7 +557,7 @@ function ProductActions({
     setIsDeleting(true);
     const result = await deleteProduct(product.id);
     setIsDeleting(false);
-    
+
     if (result.success) {
       toast.success(result.message);
       setIsDeleteOpen(false);
@@ -231,24 +567,24 @@ function ProductActions({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center justify-end gap-0.5">
       {canGift && <GiftProductDialog productId={product.id} productName={product.name} />}
-      
+
       {canManage && (
         <>
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Edit className="h-4 w-4 text-blue-500" />
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="ویرایش">
+                <Edit className="h-4 w-4" />
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>ویرایش محصول</DialogTitle>
               </DialogHeader>
-              <ProductForm 
-                initialData={product} 
-                onSuccess={() => setIsEditOpen(false)} 
+              <ProductForm
+                initialData={product}
+                onSuccess={() => setIsEditOpen(false)}
                 canEditCost={canEditCost}
                 canSeeSellPrice={canSeeSellPrice}
               />
@@ -257,21 +593,31 @@ function ProductActions({
 
           <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Trash className="h-4 w-4 text-red-500" />
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-danger-soft hover:text-danger" title="حذف">
+                <Trash className="h-4 w-4" />
               </Button>
             </AlertDialogTrigger>
-              <AlertDialogContent>
+            <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>آیا از حذف این کالا اطمینان دارید؟</AlertDialogTitle>
+                <AlertDialogTitle>
+                  حذف «<bdi>{product.name}</bdi>»؟
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  این عملیات قابل بازگشت نیست. در صورت وجود موجودی یا سفارش، امکان حذف وجود ندارد.
+                  کالای <span className="font-mono">{product.sku}</span> برای همیشه حذف می‌شود و این عملیات قابل بازگشت نیست. در صورت
+                  وجود موجودی یا سفارش، امکان حذف وجود ندارد.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>انصراف</AlertDialogCancel>
-                <AlertDialogAction onClick={(e: React.MouseEvent) => { e.preventDefault(); handleDelete(); }} disabled={isDeleting}>
-                  {isDeleting ? 'در حال حذف...' : 'حذف'}
+                <AlertDialogAction
+                  className={buttonVariants({ variant: 'destructive' })}
+                  onClick={(e: React.MouseEvent) => {
+                    e.preventDefault();
+                    handleDelete();
+                  }}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? 'در حال حذف...' : 'حذف کالا'}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

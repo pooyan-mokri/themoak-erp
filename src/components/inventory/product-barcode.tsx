@@ -2,8 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { SectionCard } from '@/components/dashboard/section-card';
 import { generateProductBarcodeAction } from '@/actions/product';
 import { barcodeFormatFor, isStandardBarcode } from '@/lib/barcode-format';
 import { BarcodeDisplay } from './barcode-display';
@@ -18,9 +17,11 @@ interface ProductBarcodeProps {
     sku: string;
     barcode?: string;
   };
+  /** May issue a barcode (stock.manage); printing and the SVG are for everyone. */
+  canManage?: boolean;
 }
 
-export function ProductBarcode({ product }: ProductBarcodeProps) {
+export function ProductBarcode({ product, canManage = false }: ProductBarcodeProps) {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
   const barcodeRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,7 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
     }
   };
 
+  // The label page picks the print size.
   const handlePrint = () => {
     window.open(`/dashboard/inventory/products/${product.id}/barcode`, '_blank');
   };
@@ -79,85 +81,64 @@ export function ProductBarcode({ product }: ProductBarcodeProps) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Barcode className="h-5 w-5" />
-              بارکد محصول
-            </CardTitle>
-            <CardDescription>
-              بارکد یکتا برای این محصول
-            </CardDescription>
+    <SectionCard
+      title="بارکد"
+      aside={
+        !product.barcode &&
+        canManage && (
+          <Button onClick={() => handleGenerate(false)} disabled={isGenerating} size="sm">
+            <Barcode className="h-4 w-4" />
+            {isGenerating ? 'در حال تولید...' : 'تولید بارکد'}
+          </Button>
+        )
+      }
+    >
+      {product.barcode ? (
+        <div className="space-y-3">
+          <div ref={barcodeRef} className="flex flex-col items-center rounded-md border bg-white px-4 py-3">
+            <p className="max-w-full truncate text-[12px] text-muted-foreground">
+              <bdi>{product.name}</bdi> · <span className="font-mono" dir="ltr">{product.sku}</span>
+            </p>
+            <div className="my-2 w-52 max-w-full">
+              <BarcodeDisplay barcode={product.barcode} format={barcodeFormatFor(product.barcode)} />
+            </div>
+            <p className="font-mono text-[15px] tracking-[.2em]" dir="ltr">
+              {product.barcode}
+            </p>
           </div>
-          {!product.barcode && (
-            <Button onClick={() => handleGenerate(false)} disabled={isGenerating} size="sm">
-              {isGenerating ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  در حال تولید...
-                </>
-              ) : (
-                <>
-                  <Barcode className="h-4 w-4 mr-2" />
-                  تولید بارکد
-                </>
-              )}
-            </Button>
+          {!isStandardBarcode(product.barcode) && (
+            <p className="rounded-md bg-warning-soft px-3 py-2 text-[12.5px] text-warning">
+              این بارکد استاندارد نیست؛ برای خوانده شدن بهتر، «تولید مجدد» را بزنید.
+            </p>
           )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {product.barcode ? (
-          <div className="space-y-4">
-            <div ref={barcodeRef} className="flex flex-col items-center p-6 border rounded-lg bg-white">
-              <div className="text-center mb-2">
-                <div className="font-semibold text-sm">{product.name}</div>
-                <div className="text-xs text-muted-foreground mt-1">SKU: {product.sku}</div>
-              </div>
-              <div className="w-56 max-w-full mb-2">
-                <BarcodeDisplay barcode={product.barcode} format={barcodeFormatFor(product.barcode)} />
-              </div>
-              <div className="font-mono text-2xl font-bold tracking-wider text-center mb-4">
-                {product.barcode}
-              </div>
-              <div className="text-xs text-center text-muted-foreground">
-                بارکد یکتا
-              </div>
-            </div>
-            {!isStandardBarcode(product.barcode) && (
-              <p className="text-sm text-center text-amber-600">
-                این بارکد استاندارد نیست؛ برای خوانده شدن بهتر، «تولید مجدد» را بزنید.
-              </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handlePrint} variant="outline" size="sm" title="اندازهٔ برچسب را در صفحهٔ چاپ انتخاب کنید">
+              <Printer className="h-4 w-4" />
+              چاپ برچسب
+            </Button>
+            <Button onClick={handleDownload} variant="outline" size="sm">
+              <Download className="h-4 w-4" />
+              دانلود SVG
+            </Button>
+            {canManage && (
+              <Button onClick={() => handleGenerate(true)} variant="outline" size="sm" disabled={isGenerating}>
+                <RefreshCw className="h-4 w-4" />
+                {isGenerating ? 'در حال تولید...' : 'تولید مجدد'}
+              </Button>
             )}
-            <div className="flex gap-2 justify-center">
-              <Button onClick={handlePrint} variant="outline">
-                <Printer className="h-4 w-4 mr-2" />
-                چاپ
-              </Button>
-              <Button onClick={handleDownload} variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                دانلود SVG
-              </Button>
-              <Button onClick={() => handleGenerate(true)} variant="outline" disabled={isGenerating}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                تولید مجدد
-              </Button>
-            </div>
-            <Badge variant="secondary" className="w-full justify-center">
-              این بارکد در تمام سیستم قابل استفاده است
-            </Badge>
           </div>
-        ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            <Barcode className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>این محصول هنوز بارکد ندارد.</p>
-            <p className="text-sm mt-2">برای تولید بارکد یکتا، روی دکمه "تولید بارکد" کلیک کنید.</p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          <p className="text-[11.5px] text-muted-foreground">بارکد یکتا؛ در همهٔ بخش‌های سیستم خوانده می‌شود.</p>
+        </div>
+      ) : (
+        <div className="py-6 text-center text-[13px] text-muted-foreground">
+          <p>این کالا هنوز بارکد ندارد.</p>
+          <p className="mt-1 text-[12px]">
+            {canManage
+              ? 'برای ساخت بارکد یکتا «تولید بارکد» را بزنید.'
+              : 'ساخت بارکد با نقش‌هایی است که اجازهٔ مدیریت کالا دارند.'}
+          </p>
+        </div>
+      )}
+    </SectionCard>
   );
 }
-

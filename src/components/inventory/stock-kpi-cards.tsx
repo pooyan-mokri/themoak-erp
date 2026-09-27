@@ -1,7 +1,7 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, CheckCircle, DollarSign } from 'lucide-react';
+import { Boxes, PackageCheck, Wallet } from 'lucide-react';
+import { KpiCard } from '@/components/dashboard/kpi-card';
 
 interface StockKPICardsProps {
   product: {
@@ -10,55 +10,27 @@ interface StockKPICardsProps {
     /** Absent without cost.view. */
     stockValue?: number;
   };
+  /** Warehouses holding a row for this product. */
+  warehouseCount?: number;
 }
 
-export function StockKPICards({ product }: StockKPICardsProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fa-IR').format(amount) + ' تومان';
-  };
+const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
 
+/** Units everywhere, units that can be sold, and (for cost viewers) what they are worth. Grid items of the page's strip. */
+export function StockKPICards({ product, warehouseCount }: StockKPICardsProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">موجودی کل</CardTitle>
-          <Package className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{product.totalStock}</div>
-          <p className="text-xs text-muted-foreground">
-            تمام انبارها
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">قابل فروش</CardTitle>
-          <CheckCircle className="h-4 w-4 text-green-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{product.availableStock}</div>
-          <p className="text-xs text-muted-foreground">
-            انبارهای فیزیکی
-          </p>
-        </CardContent>
-      </Card>
-
+    <>
+      <KpiCard
+        label="موجودی کل"
+        icon={Boxes}
+        value={fa(product.totalStock)}
+        unit="عدد"
+        note={warehouseCount !== undefined ? `در ${fa(warehouseCount)} انبار` : 'تمام انبارها'}
+      />
+      <KpiCard label="قابل فروش" icon={PackageCheck} value={fa(product.availableStock)} unit="عدد" note="انبارهای فیزیکی" />
       {product.stockValue !== undefined && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ارزش موجودی</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(product.stockValue)}</div>
-            <p className="text-xs text-muted-foreground">
-              بر اساس قیمت تمام شده
-            </p>
-          </CardContent>
-        </Card>
+        <KpiCard label="ارزش موجودی" icon={Wallet} value={fa(product.stockValue)} unit="تومان" note="بر اساس قیمت تمام‌شده" />
       )}
-    </div>
+    </>
   );
 }

@@ -23,6 +23,7 @@ export async function getProductDetail(productId: string) {
         sku: true,
         barcode: true,
         productType: true,
+        webId: true,
         costPrice: canSeeCost,
         sellPrice: canSeeSellPrice,
         image: true,
@@ -53,6 +54,9 @@ export async function getProductDetail(productId: string) {
       name: product.name,
       sku: product.sku,
       barcode: product.barcode ?? undefined,
+      // For editing from the product page: without them the form would reset the type and the site ID.
+      productType: product.productType,
+      webId: product.webId ?? undefined,
       image: product.image ?? undefined,
       imageUrl: product.imageUrl ?? undefined,
       siteUrl: product.siteUrl ?? undefined,

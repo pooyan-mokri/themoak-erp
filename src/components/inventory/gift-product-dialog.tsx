@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,6 +25,7 @@ interface GiftProductDialogProps {
 }
 
 export function GiftProductDialog({ productId, productName }: GiftProductDialogProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [quantity, setQuantity] = useState(1);
@@ -31,20 +34,22 @@ export function GiftProductDialog({ productId, productName }: GiftProductDialogP
 
   const handleGift = () => {
     if (!recipient) {
-      alert('لطفا نام گیرنده را وارد کنید.');
+      toast.error('لطفا نام گیرنده را وارد کنید.');
       return;
     }
 
     startTransition(async () => {
       const result = await giftProduct(productId, quantity, recipient, note);
       if (result.success) {
-        alert('هدیه با موفقیت ثبت شد.');
+        toast.success('هدیه با موفقیت ثبت شد.');
         setOpen(false);
         setQuantity(1);
         setRecipient('');
         setNote('');
+        // The gift took stock: show the new quantities.
+        router.refresh();
       } else {
-        alert('error' in result ? result.error : result.message);
+        toast.error('error' in result ? result.error : result.message);
       }
     });
   };
@@ -52,8 +57,8 @@ export function GiftProductDialog({ productId, productName }: GiftProductDialogP
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="هدیه دادن">
-          <Gift className="h-4 w-4 text-purple-500" />
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="هدیه دادن">
+          <Gift className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
@@ -65,7 +70,7 @@ export function GiftProductDialog({ productId, productName }: GiftProductDialogP
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="quantity" className="text-right">
+            <Label htmlFor="quantity" className="text-start">
               تعداد
             </Label>
             <Input
@@ -78,7 +83,7 @@ export function GiftProductDialog({ productId, productName }: GiftProductDialogP
             />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="recipient" className="text-right">
+            <Label htmlFor="recipient" className="text-start">
               گیرنده
             </Label>
             <Input
@@ -90,7 +95,7 @@ export function GiftProductDialog({ productId, productName }: GiftProductDialogP
             />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="note" className="text-right">
+            <Label htmlFor="note" className="text-start">
               یادداشت
             </Label>
             <Textarea
