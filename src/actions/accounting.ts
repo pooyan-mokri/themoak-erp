@@ -1505,6 +1505,15 @@ const TRANSFER_CATEGORY = 'انتقال وجه';
 const OUT_PREFIX = '[خروج]';
 const IN_PREFIX = '[ورود]';
 
+/**
+ * Toman per 1 unit of `currency`: 1 for Toman, else the latest recorded rate,
+ * which a transfer's legs keep as their Toman equivalent (the journal shows it).
+ * Refused, as a deposit is, when no rate is recorded.
+ */
+async function tomanRateOf(client: any, currency: string): Promise<number> {
+  return (await inAccountCurrency(client, { currency }, 0)).rate;
+}
+
 const TransferSchema = z.object({
   amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
   fromAccountId: z.string().min(1, 'حساب مبدأ الزامی است'),
@@ -1563,6 +1572,9 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     const desc = description || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
     // The two legs share one id, so they are listed, corrected and removed as one transfer.
     const transferGroupId = randomUUID();
+    // A dollar transfer's Toman equivalent is its dollars at the latest rate, not the dollars.
+    const rate = await tomanRateOf(prisma, fromAccount.currency);
+    const amountInToman = new Decimal(amount).times(rate);
 
     await prisma.$transaction(async (tx: any) => {
       // Debit source
@@ -1570,8 +1582,8 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
         data: {
           amount: new Prisma.Decimal(amount),
           currency: fromAccount.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: new Prisma.Decimal(amount),
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman,
           type: TransactionType.TRANSFER,
           accountId: fromAccountId,
           category: TRANSFER_CATEGORY,
@@ -1588,8 +1600,8 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
         data: {
           amount: new Prisma.Decimal(amount),
           currency: toAccount.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: new Prisma.Decimal(amount),
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman,
           type: TransactionType.TRANSFER,
           accountId: toAccountId,
           category: TRANSFER_CATEGORY,
@@ -1811,11 +1823,17 @@ export async function updateInternalTransfer(input: {
       const desc = description?.trim() || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
       const transferGroupId = existing.groupId ?? randomUUID();
       const txDate = date ? new Date(date) : (existing.from ?? existing.to)!.date;
+      let rate: number;
+      try {
+        rate = await tomanRateOf(tx, fromAccount.currency);
+      } catch (error) {
+        throw new TransferRefusal(error instanceof Error ? error.message : String(error));
+      }
       const leg = (accountId: string, prefix: string) => ({
         amount: new Prisma.Decimal(amount),
         currency: fromAccount.currency,
-        rateSnapshot: new Prisma.Decimal(1),
-        amountInToman: new Prisma.Decimal(amount),
+        rateSnapshot: new Prisma.Decimal(rate),
+        amountInToman: new Decimal(amount).times(rate),
         accountId,
         description: `${prefix} ${desc}`,
         date: txDate,
