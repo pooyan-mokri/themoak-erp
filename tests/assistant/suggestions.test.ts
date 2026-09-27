@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { suggestionGroups } from '@/components/assistant/assistant-suggestions';
 import { ROLE_PERMISSIONS } from '@/lib/permissions';
 
-const accessOf = (role: keyof typeof ROLE_PERMISSIONS) => {
-  const has = (p: string) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(p);
+const accessOf = (role: string) => {
+  const has = (p: string) => ((ROLE_PERMISSIONS as Record<string, readonly string[]>)[role] ?? []).includes(p);
   return { stock: has('stock.view'), finance: has('finance.view'), salesManage: has('sales.manage') };
 };
 
