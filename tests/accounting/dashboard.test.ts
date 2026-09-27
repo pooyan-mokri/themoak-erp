@@ -6,6 +6,7 @@ import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { getDashboardFinancials, getDashboardSales, getLowStockItems, getRecentActivity, getUserTasks } from '@/actions/dashboard';
 import { getSalesByProduct } from '@/actions/accounting';
+import { getARAgingReport } from '@/actions/invoice';
 import { getBalanceSheet } from '@/actions/reports';
 import { recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { FinancialCards } from '@/components/dashboard/financial-cards';
@@ -300,4 +301,33 @@ test('recent activity is for the admin only, newest first, as many as asked for'
     setTestRole(role);
     assert.deepEqual(await getRecentActivity(), [], String(role));
   }
+});
+
+// ─── The same figure on every screen ─────────────────────────────────────────
+
+test('«مطالبات» on the dashboard is the total of the receivables aging report', async () => {
+  const [sara, reza] = await Promise.all([prisma.customer.create({ data: { name: 'سارا' } }), prisma.customer.create({ data: { name: 'رضا' } })]);
+  const order = (customerId: string | null, totalAmount: number, paidAmount: number, paymentStatus: string, createdAt: Date, status = 'COMPLETED') =>
+    prisma.order.create({ data: { customerId, totalAmount, paidAmount, paymentStatus, createdAt, status } });
+  await order(sara.id, 10_000_000, 0, 'UNPAID', new Date());
+  await order(sara.id, 8_000_000, 3_000_000, 'PARTIAL', new Date(Date.now() - 45 * 86_400_000));
+  await order(reza.id, 4_000_000, 1_000_000, 'PARTIAL', new Date(Date.now() - 100 * 86_400_000));
+  await order(reza.id, 9_000_000, 0, 'UNPAID', new Date(), 'CANCELLED');
+  await order(null, 6_000_000, 0, 'UNPAID', new Date());
+
+  const aging = await getARAgingReport();
+  const agingTotal = aging.reduce((sum: number, row: any) => sum + row.totalDue, 0);
+  assert.equal(agingTotal, 18_000_000);
+  assert.equal((await getDashboardFinancials()).totalReceivables, agingTotal);
+});
+
+test('the balance sheet values own and consignment stock at cost', async () => {
+  const own = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  const partner = await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true } });
+  const product = await prisma.product.create({ data: { name: 'PANJ', sku: 'P1', costPrice: 4_000_000, sellPrice: 10_000_000 } });
+  await prisma.inventory.create({ data: { productId: product.id, warehouseId: own.id, quantity: 3 } });
+  await prisma.inventory.create({ data: { productId: product.id, warehouseId: partner.id, quantity: 2 } });
+  const sheet = await getBalanceSheet(new Date());
+  assert.deepEqual([sheet.assets.inventory, sheet.assets.consignmentInventory], [12_000_000, 8_000_000]);
+  assert.equal(sheet.assets.total, 20_000_000 + sheet.assets.cash + sheet.assets.accountsReceivable);
 });

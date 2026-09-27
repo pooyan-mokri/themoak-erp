@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { getProfitLossReport } from '@/actions/reports';
-import { getTransactions, payEmployeeDebt, recordDeposit, recordExpense, recordInternalTransfer } from '@/actions/accounting';
+import { getExpenseBreakdown, getTransactions, payEmployeeDebt, recordDeposit, recordExpense, recordInternalTransfer } from '@/actions/accounting';
 import { exchangeCurrency } from '@/actions/currency-exchange';
 import { createLoan, recordLoanPayment } from '@/actions/loan';
 import { depositShareholderFunds, withdrawShareholderFunds } from '@/actions/shareholder';
@@ -184,4 +184,16 @@ test('the shareholders\' profit for a period is the same net profit, split by th
   );
   assert.equal(profits.reduce((sum: number, p: any) => sum + p.amount, 0), report.summary.netProfit);
   assert.ok(reza);
+});
+
+test('the expense breakdown adds up to the P&L\'s expenses over the same rows', async () => {
+  for (const [, book] of NON_TRADING) await book();
+  ok(await recordExpense(undefined, form({ amount: '2000000', currency: 'TOMAN', category: 'اجاره', accountId: 'bank', description: 'دفتر' })));
+  ok(await recordExpense(undefined, form({ amount: '3', currency: 'USD', category: 'اشتراک', accountId: 'usd' })));
+  await prisma.transaction.create({ data: { type: 'EXPENSE', amount: 7_000, amountInToman: 7_000, category: 'COGS' } });
+
+  const breakdown = await getExpenseBreakdown();
+  const report = await getProfitLossReport(FROM, TO);
+  assert.equal(breakdown.reduce((sum: number, row: any) => sum + row.amount, 0), report.summary.expenses);
+  assert.equal(report.summary.expenses, 2_000_000 + 300_000 + 7_000);
 });
