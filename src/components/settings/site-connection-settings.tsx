@@ -1,10 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PageHeader } from '@/components/layout/page-header';
+import { cn } from '@/lib/utils';
+import type { SiteOrderRow, SiteOrderSummary } from './site-orders';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,11 +50,28 @@ function age(iso: string) {
   return `${fa(Math.floor(minutes / 1_440))} روز`;
 }
 
+/** An order's state as on the orders page: cancelled, or how far it is paid. */
+function orderStatus(o: Pick<SiteOrderRow, 'status' | 'paymentStatus'>) {
+  if (o.status === 'CANCELLED') return { label: 'لغو شده', tone: 'bg-danger-soft text-danger' };
+  if (o.paymentStatus === 'PAID') return { label: 'پرداخت شده', tone: 'bg-success-soft text-success' };
+  if (o.paymentStatus === 'PARTIAL') return { label: 'پرداخت جزئی', tone: 'bg-brand-soft text-brand' };
+  return { label: 'پرداخت نشده', tone: 'bg-warning-soft text-warning' };
+}
+
+const NO_ORDERS: SiteOrderSummary = { today: 0, week: 0, revenue7d: 0, total: 0, recent: [] };
+
 type Busy = 'save' | 'test' | 'sync' | 'check' | 'enable' | 'disable' | 'resync' | 'release' | 'retry';
 /** A site check, and what its confirm button does: switch on, or send everything again. */
 type Preview = { purpose: 'enable' | 'resync'; result: Extract<StockPushPreview, { ok: true }> };
 
-export function SiteConnectionSettings({ initial }: { initial: SiteConnectionForm }) {
+export function SiteConnectionSettings({
+  initial,
+  siteOrders = NO_ORDERS,
+}: {
+  initial: SiteConnectionForm;
+  /** The website's orders from the ERP: today, 7 days and the latest few. */
+  siteOrders?: SiteOrderSummary;
+}) {
   const router = useRouter();
   const [siteUrl, setSiteUrl] = useState(initial.siteUrl);
   const [secret, setSecret] = useState('');
@@ -147,8 +168,142 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
   const pushUsable = usable && warehouseId === (initial.warehouseId ?? '');
   const warehouseName = (id: string) => initial.warehouses.find((w) => w.id === id)?.name ?? id;
 
+  // The connection at a glance, from what is saved and the stock push panel.
+  const connection: { label: string; tone: string; note: string } = !initial.siteUrl || !initial.hasSecret
+    ? { label: 'تنظیم نشده', tone: 'bg-warning-soft text-warning', note: 'آدرس سایت و رمز وبهوک را ذخیره کنید.' }
+    : !panel
+      ? { label: 'در حال خواندن', tone: 'bg-secondary text-muted-foreground', note: 'وضعیت ارسال موجودی خوانده می‌شود.' }
+      : !panel.enabled
+        ? { label: 'ارسال موجودی خاموش', tone: 'bg-secondary text-muted-foreground', note: 'فروش‌های سایت ثبت می‌شوند؛ موجودی فرستاده نمی‌شود.' }
+        : panel.status.paused
+          ? { label: 'ارسال متوقف شده', tone: 'bg-danger-soft text-danger', note: panel.status.paused.why }
+          : panel.status.failingSince
+            ? { label: 'ارسال ناموفق', tone: 'bg-danger-soft text-danger', note: `از ${when(panel.status.failingSince)}` }
+            : {
+                label: 'برقرار',
+                tone: 'bg-success-soft text-success',
+                note: panel.status.lastOkAt ? `آخرین ارسال موفق: ${when(panel.status.lastOkAt)}` : 'هنوز ارسالی نشده',
+              };
+  const matched = last?.ok ? (last.updated ?? 0) + (last.unchanged ?? 0) : null;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      <PageHeader
+        title="اتصال سایت"
+        description={
+          initial.siteUrl ? (
+            <span className="font-mono text-[12px]" dir="ltr">
+              {initial.siteUrl}
+            </span>
+          ) : (
+            'سایت هنوز وصل نشده است'
+          )
+        }
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/inventory/web-ids">شناسه‌های سایت</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/sales/site-review">بررسی پول سفارش‌های سایت</Link>
+            </Button>
+          </>
+        }
+      />
+
+      {/* The site at a glance */}
+      <div className="grid overflow-hidden rounded-lg border bg-card sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-x-reverse">
+        <div className="border-b p-4 lg:border-b-0">
+          <p className="text-xs text-muted-foreground">وضعیت اتصال</p>
+          <span className={cn('mt-2 inline-flex rounded-full px-2 py-0.5 text-[11.5px]', connection.tone)}>{connection.label}</span>
+          <p className="mt-1.5 text-[11.5px] text-muted-foreground">{connection.note}</p>
+        </div>
+        <div className="border-b p-4 lg:border-b-0">
+          <p className="text-xs text-muted-foreground">سفارش‌های سایت امروز</p>
+          <p className="mt-1.5 text-[19px] font-medium tabular-nums">{fa(siteOrders.today)}</p>
+          <p className="mt-0.5 text-[11.5px] text-muted-foreground">{fa(siteOrders.week)} سفارش در ۷ روز اخیر · بدون لغوشده‌ها</p>
+        </div>
+        <div className="border-b p-4 sm:border-b-0">
+          <p className="text-xs text-muted-foreground">فروش سایت در ۷ روز</p>
+          <p className="mt-1.5 text-[19px] font-medium tabular-nums">
+            {fa(Math.round(siteOrders.revenue7d))}
+            <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+          </p>
+          <p className="mt-0.5 text-[11.5px] text-muted-foreground">مبلغ پس از تخفیف</p>
+        </div>
+        <div className="p-4">
+          <p className="text-xs text-muted-foreground">کالاهای جفت‌شده با سایت</p>
+          <p className="mt-1.5 text-[19px] font-medium tabular-nums">{matched === null ? '—' : fa(matched)}</p>
+          <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+            {matched === null ? 'هنوز هم‌گام‌سازی موفقی نبوده' : `از ${fa(last?.read ?? 0)} کالای سایت، در آخرین هم‌گام‌سازی`}
+            {panel && (
+              <>
+                {' · '}
+                <span className={panel.pending ? 'text-warning' : undefined}>{fa(panel.pending)} تغییر در صف</span>
+                {' · '}
+                <span className={panel.skipped.length ? 'text-danger' : undefined}>{fa(panel.skipped.length)} رد شده</span>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {/* Latest website orders */}
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="flex items-center justify-between px-4 pb-3 pt-4">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            سفارش‌های سایت
+            <span className="rounded bg-secondary px-1.5 font-mono text-[11px] font-normal text-muted-foreground">{fa(siteOrders.total)}</span>
+          </h3>
+          <Link href="/dashboard/sales/history" className="text-xs text-brand hover:underline">
+            همه سفارش‌ها
+          </Link>
+        </div>
+        {siteOrders.recent.length === 0 ? (
+          <p className="border-t px-4 py-8 text-center text-[13px] text-muted-foreground">
+            هنوز سفارشی از سایت ثبت نشده است. سفارش‌های سایت بعد از اتصال، خودکار اینجا و در «سفارش‌ها و فروش» می‌آیند.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>سفارش</TableHead>
+                <TableHead>مرجع سایت</TableHead>
+                <TableHead>مشتری</TableHead>
+                <TableHead className="text-end">مبلغ (تومان)</TableHead>
+                <TableHead>وضعیت</TableHead>
+                <TableHead>زمان</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {siteOrders.recent.map((order) => {
+                const status = orderStatus(order);
+                return (
+                  <TableRow key={order.id}>
+                    <TableCell>
+                      <Link href={`/dashboard/sales/history/${order.id}`} className="font-mono font-bold hover:text-brand">
+                        #{order.number}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="font-mono text-[12px] text-muted-foreground" dir="ltr" style={{ textAlign: 'end' }}>
+                      {order.reference}
+                    </TableCell>
+                    <TableCell className="max-w-[180px] truncate">{order.customer}</TableCell>
+                    <TableCell className="text-end font-medium">{fa(Math.round(order.final))}</TableCell>
+                    <TableCell>
+                      <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px]', status.tone)}>{status.label}</span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-[12px] text-muted-foreground">
+                      {formatJalaliDate(order.createdAt, 'jMM/jDD HH:mm')}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>اتصال به سایت</CardTitle>
@@ -157,7 +312,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="siteUrl">آدرس سایت</Label>
             <Input
               id="siteUrl"
@@ -169,7 +324,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
             <p className="text-xs text-muted-foreground">همان آدرسی که کاتالوگ و وبهوک سایت روی آن هستند.</p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="webhookSecret">رمز وبهوک</Label>
             <Input
               id="webhookSecret"
@@ -186,7 +341,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>حساب دریافت پول فروش سایت</Label>
               <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger>
@@ -201,7 +356,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>انبار سایت</Label>
               <Select value={warehouseId} onValueChange={setWarehouseId}>
                 <SelectTrigger>
@@ -242,25 +397,25 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
         </CardHeader>
         <CardContent className="space-y-4">
           {last ? (
-            <div className={`rounded-lg border p-3 text-sm ${last.ok ? '' : 'border-red-200 bg-red-50 dark:bg-red-950/30'}`}>
+            <div className={cn('rounded-md p-3 text-[13px]', last.ok ? 'bg-secondary' : 'bg-danger-soft text-danger')}>
               <div className="font-medium">{last.message}</div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className={cn('mt-1 text-xs', last.ok ? 'text-muted-foreground' : '')}>
                 آخرین اجرا: {formatJalaliDate(last.at)}{' '}
                 {new Date(last.at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
               </div>
               {last.ok && (
-                <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                   <li>بدون تغییر: {fa(last.unchanged ?? 0)}</li>
                   {!!last.notInErp?.length && (
                     <li>
                       در سایت هست ولی هیچ کالایی در ERP این شناسه را ندارد ({fa(last.notInErp.length)}):{' '}
-                      <span dir="ltr">{listPreview(last.notInErp)}</span>
+                      <span dir="ltr" className="font-mono">{listPreview(last.notInErp)}</span>
                     </li>
                   )}
                   {!!last.notOnSite?.length && (
                     <li>
                       در ERP شناسه دارد ولی سایت برنگرداند ({fa(last.notOnSite.length)}):{' '}
-                      <span dir="ltr">{listPreview(last.notOnSite)}</span>
+                      <span dir="ltr" className="font-mono">{listPreview(last.notOnSite)}</span>
                     </li>
                   )}
                   {!!last.skipped?.length && (
@@ -273,7 +428,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
               )}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">هنوز اجرا نشده است.</p>
+            <p className="text-[13px] text-muted-foreground">هنوز اجرا نشده است.</p>
           )}
           <Button onClick={sync} disabled={busy !== null || !usable}>
             {busy === 'sync' ? 'در حال هم‌گام‌سازی...' : 'هم‌گام‌سازی الان'}
@@ -291,15 +446,22 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
         </CardHeader>
         <CardContent className="space-y-4">
           {!panel ? (
-            <p className="text-sm text-muted-foreground">در حال خواندن وضعیت...</p>
+            <p className="text-[13px] text-muted-foreground">در حال خواندن وضعیت...</p>
           ) : (
             <>
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-[13px]">
                 وضعیت:
-                <Badge variant={panel.enabled ? 'default' : 'secondary'}>{panel.enabled ? 'روشن' : 'خاموش'}</Badge>
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-[11.5px]',
+                    panel.enabled ? 'bg-success-soft text-success' : 'bg-secondary text-muted-foreground',
+                  )}
+                >
+                  {panel.enabled ? 'روشن' : 'خاموش'}
+                </span>
               </div>
 
-              <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <div className="rounded-md bg-warning-soft p-3 text-xs text-warning">
                 فقط وقتی روشن کنید که سایت تأیید کرده باشد: کالاها را فقط با شناسهٔ سایت (webId) تطبیق می‌دهد، در
                 createSale برای هر قلم webId می‌فرستد، و ثبت فروش‌هایش در ERP روشن است. وگرنه موجودی فریمی که فروشش
                 هنوز در ERP ثبت نشده به سایت برمی‌گردد و فریم دو بار فروخته می‌شود.
@@ -330,16 +492,16 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
               )}
 
               {preview && (
-                <div className="rounded-lg border p-3 text-sm space-y-2">
+                <div className="space-y-2 rounded-md border p-3 text-[13px]">
                   <div className="font-medium">
                     سایت تأیید کرد که موجودی انبار «{warehouseName(preview.result.warehouseId)}» (
-                    <span dir="ltr">{preview.result.warehouseId}</span>) را می‌گیرد.
+                    <span dir="ltr" className="font-mono">{preview.result.warehouseId}</span>) را می‌گیرد.
                   </div>
-                  <ul className="text-xs space-y-1">
-                    <li className={preview.result.goingOut.length ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
+                  <ul className="space-y-1 text-xs">
+                    <li className={preview.result.goingOut.length ? 'text-danger' : 'text-muted-foreground'}>
                       در سایت موجود است ولی در ERP نه، پس در سایت ناموجود می‌شود: {fa(preview.result.goingOut.length)}
                       {!!preview.result.goingOut.length && (
-                        <div dir="ltr" className="mt-1 text-right">
+                        <div dir="ltr" className="mt-1 text-right font-mono">
                           {preview.result.goingOut.join('، ')}
                         </div>
                       )}
@@ -349,7 +511,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
                       {!!preview.result.comingIn.length && (
                         <>
                           {' '}
-                          <span dir="ltr">{listPreview(preview.result.comingIn)}</span>
+                          <span dir="ltr" className="font-mono">{listPreview(preview.result.comingIn)}</span>
                         </>
                       )}
                     </li>
@@ -359,7 +521,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
                       {!!preview.result.notOnSite.length && (
                         <>
                           {' '}
-                          <span dir="ltr">{listPreview(preview.result.notOnSite)}</span>
+                          <span dir="ltr" className="font-mono">{listPreview(preview.result.notOnSite)}</span>
                         </>
                       )}
                     </li>
@@ -388,15 +550,16 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
 
               {panel.enabled && (
                 <div
-                  className={`rounded-lg border p-3 text-sm space-y-1 ${
-                    panel.status.paused || panel.status.failingSince ? 'border-red-200 bg-red-50 dark:bg-red-950/30' : ''
-                  }`}
+                  className={cn(
+                    'space-y-1 rounded-md p-3 text-[13px]',
+                    panel.status.paused || panel.status.failingSince ? 'bg-danger-soft' : 'bg-secondary',
+                  )}
                 >
                   <div>آخرین ارسال موفق: {panel.status.lastOkAt ? when(panel.status.lastOkAt) : 'هنوز نه'}</div>
-                  {panel.status.failingSince && <div>ناموفق از: {when(panel.status.failingSince)}</div>}
+                  {panel.status.failingSince && <div className="text-danger">ناموفق از: {when(panel.status.failingSince)}</div>}
                   {panel.status.paused ? (
                     <div className="space-y-2 pt-1">
-                      <div className="font-medium">ارسال خودکار متوقف شد: {panel.status.paused.why}</div>
+                      <div className="font-medium text-danger">ارسال خودکار متوقف شد: {panel.status.paused.why}</div>
                       <div className="text-xs text-muted-foreground">
                         از {when(panel.status.paused.at)}؛ تا آن وقت هر ۱۰ دقیقه یک بار امتحان می‌شود. بعد از درست
                         کردن تنظیمات سایت یا ERP، «تلاش دوباره» را بزنید.
@@ -418,7 +581,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
               )}
 
               {panel.hold?.state === 'held' && (
-                <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 space-y-2">
+                <div className="space-y-2 rounded-md bg-warning-soft p-3 text-[13px] text-warning">
                   <div className="font-medium">
                     {fa(panel.hold.webIds.length)} فریم منتظر تأیید شما برای ناموجود شدن در سایت
                   </div>
@@ -428,7 +591,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
                     می‌شوند. اگر صفر شدنشان درست است آزاد کنید؛ اگر نه، اول موجودی ERP را درست کنید. فریمی که
                     موجودی‌اش در ERP بیشتر از صفر شود، خودش از این فهرست بیرون می‌رود و با ارسال بعدی فرستاده می‌شود.
                   </p>
-                  <div dir="ltr" className="text-xs text-right">
+                  <div dir="ltr" className="text-right font-mono text-xs">
                     {panel.hold.webIds.join('، ')}
                   </div>
                   <Button
@@ -436,18 +599,18 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
                     onClick={() => run('release', () => releaseStockHold(panel.hold?.webIds ?? []))}
                     disabled={busy !== null}
                   >
-                    {busy === 'release' ? 'در حال آزاد کردن...' : 'آزاد کردن'}
+                    {busy === 'release' ? 'در حال آزاد کردن...' : `آزاد کردن ${fa(panel.hold.webIds.length)} فریم`}
                   </Button>
                 </div>
               )}
 
               {panel.skipped.length > 0 && (
-                <div className="text-sm space-y-1">
+                <div className="space-y-1 text-[13px]">
                   <div className="font-medium">شناسه‌هایی که سایت نپذیرفت ({fa(panel.skipped.length)})</div>
-                  <ul className="text-xs text-muted-foreground space-y-1">
+                  <ul className="space-y-1 text-xs text-muted-foreground">
                     {panel.skipped.map((s) => (
                       <li key={s.webId}>
-                        <span dir="ltr">{s.webId}</span>: {s.why}
+                        <span dir="ltr" className="font-mono">{s.webId}</span>: {s.why}
                         {s.at && ` (${when(s.at)})`}
                       </li>
                     ))}
