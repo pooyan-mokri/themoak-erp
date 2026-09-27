@@ -113,12 +113,12 @@ const TransferSchema = z.object({
   sourceWarehouseId: z.string().min(1, 'انبار مبدا الزامی است'),
   targetWarehouseId: z.string().min(1, 'انبار مقصد الزامی است'),
   productId: z.string().min(1, 'محصول الزامی است'),
-  quantity: z.coerce.number().min(1, 'تعداد باید بیشتر از صفر باشد'),
+  quantity: z.coerce.number().int().min(1, 'تعداد باید بیشتر از صفر باشد'),
 });
 
 const BatchSettlementItemSchema = z.object({
   productId: z.string().min(1),
-  quantity: z.coerce.number().min(1),
+  quantity: z.coerce.number().int().min(1),
   // Whatever the partner reports it sold for: a discount, a bundle price, anything.
   unitPrice: z.coerce.number().min(0),
   /** The partner's sale channel; missing means their default one. */
@@ -275,35 +275,22 @@ export async function transferStock(prevState: ActionState, formData: FormData):
   }
 
   const { sourceWarehouseId, targetWarehouseId, productId, quantity } = validatedFields.data;
+  if (sourceWarehouseId === targetWarehouseId) {
+    return { message: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند.' };
+  }
 
   try {
     await prisma.$transaction(async (tx: any) => {
-      // Check source stock
-      const sourceStock = await tx.inventory.findUnique({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: sourceWarehouseId,
-          },
-        },
-      });
-
-      if (!sourceStock || sourceStock.quantity < quantity) {
-        throw new Error('موجودی انبار مبدا کافی نیست.');
-      }
-
-      // Decrement source
-      await tx.inventory.update({
-        where: {
-          productId_warehouseId: {
-            productId,
-            warehouseId: sourceWarehouseId,
-          },
-        },
+      // Decrement source, only while enough is left: the check is part of the update.
+      const taken = await tx.inventory.updateMany({
+        where: { productId, warehouseId: sourceWarehouseId, quantity: { gte: quantity } },
         data: {
           quantity: { decrement: quantity },
         },
       });
+      if (taken.count === 0) {
+        throw new Error('موجودی انبار مبدا کافی نیست.');
+      }
 
       // Increment target
       await tx.inventory.upsert({
@@ -368,23 +355,24 @@ export async function transferStockBatch(input: {
   if (validItems.length === 0) {
     return { success: false, message: 'حداقل یک کالا به لیست اضافه کنید.' };
   }
+  // Stock is counted in whole units: 1.5 was rounded by the database, taking 1 and adding 2.
+  if (validItems.some((i) => !Number.isInteger(i.quantity))) {
+    return { success: false, message: 'تعداد هر کالا باید عددی صحیح باشد.' };
+  }
 
   try {
     await prisma.$transaction(async (tx: any) => {
       for (const item of validItems) {
-        const sourceStock = await tx.inventory.findUnique({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: sourceWarehouseId } },
+        // Only while enough is left: a concurrent transfer or sale cannot drive it below 0.
+        const taken = await tx.inventory.updateMany({
+          where: { productId: item.productId, warehouseId: sourceWarehouseId, quantity: { gte: item.quantity } },
+          data: { quantity: { decrement: item.quantity } },
         });
 
-        if (!sourceStock || sourceStock.quantity < item.quantity) {
+        if (taken.count === 0) {
           const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
           throw new Error(`موجودی انبار مبدا برای «${product?.name ?? item.productId}» کافی نیست.`);
         }
-
-        await tx.inventory.update({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: sourceWarehouseId } },
-          data: { quantity: { decrement: item.quantity } },
-        });
 
         await tx.inventory.upsert({
           where: { productId_warehouseId: { productId: item.productId, warehouseId: targetWarehouseId } },
@@ -696,17 +684,14 @@ export async function recordConsignmentSales(input: {
           }
         }
 
-        // Decrement partner inventory and record movements
+        // Decrement partner inventory and record movements. Only while enough
+        // is left: a return of the partner's stock does not wait on the lock above.
         for (const item of group.lines) {
-          await tx.inventory.update({
-            where: {
-              productId_warehouseId: {
-                productId: item.productId,
-                warehouseId: partnerWarehouseId,
-              },
-            },
+          const taken = await tx.inventory.updateMany({
+            where: { productId: item.productId, warehouseId: partnerWarehouseId, quantity: { gte: item.quantity } },
             data: { quantity: { decrement: item.quantity } },
           });
+          if (taken.count === 0) throw new Error('موجودی همکار هم‌زمان تغییر کرد؛ دوباره تلاش کنید.');
           await tx.inventoryMovement.create({
             data: {
               productId: item.productId,
@@ -1320,15 +1305,16 @@ export async function returnConsignmentStock(input: {
           );
         }
 
-        await tx.inventory.update({
-          where: {
-            productId_warehouseId: {
-              productId: item.productId,
-              warehouseId: partnerWarehouseId,
-            },
-          },
+        // Only while enough is left, should a sale have taken some meanwhile.
+        const taken = await tx.inventory.updateMany({
+          where: { productId: item.productId, warehouseId: partnerWarehouseId, quantity: { gte: item.quantity } },
           data: { quantity: { decrement: item.quantity } },
         });
+        if (taken.count === 0) {
+          throw new Error(
+            `موجودی کافی نیست برای ${stock.product?.name ?? item.productId} (درخواست: ${item.quantity})`,
+          );
+        }
 
         await tx.inventory.upsert({
           where: {
@@ -1389,17 +1375,11 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
       return undefined;
     }
 
-    const [movements, orders] = await Promise.all([
-      prisma.inventoryMovement.findMany({
-        where: {
-          OR: [
-            { toWarehouseId: partnerWarehouseId },
-            { fromWarehouseId: partnerWarehouseId },
-          ],
-        },
-        include: { product: { select: { name: true, sku: true } } },
-        orderBy: { createdAt: 'desc' },
-        take: 200,
+    const [returned, orders] = await Promise.all([
+      // Every return of unsold goods, not a page of the latest movements.
+      prisma.inventoryMovement.aggregate({
+        where: { fromWarehouseId: partnerWarehouseId, type: 'RETURN' },
+        _sum: { quantity: true },
       }),
       prisma.order.findMany({
         where: {
@@ -1427,9 +1407,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
           .reduce((q: number, it: any) => q + it.quantity, 0),
       0,
     );
-    const returnedQty = movements
-      .filter((m: any) => m.fromWarehouseId === partnerWarehouseId && m.type === 'RETURN')
-      .reduce((s: number, m: any) => s + m.quantity, 0);
+    const returnedQty = returned._sum.quantity ?? 0;
 
     const currentStockQty = warehouse.inventory.reduce(
       (s: number, inv: any) => s + inv.quantity,
