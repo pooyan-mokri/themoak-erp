@@ -134,33 +134,35 @@ export async function getProducts() {
   }
 }
 
-export async function giftProduct(productId: string, quantity: number, recipient: string, note?: string) {
+export async function giftProduct(productId: string, quantity: number, recipient: string, note?: string, warehouseId?: string) {
   // A gift takes stock and books its cost as an expense: it needs both.
   const denied = (await checkPermission('stock.manage')) ?? (await checkPermission('finance.manage'));
   if (denied) return denied;
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return { success: false, error: 'تعداد هدیه باید عددی صحیح و بیشتر از صفر باشد.' };
+  }
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       // 1. Find product to get cost price
       const product = await tx.product.findUnique({ where: { id: productId } });
-      if (!product) throw new Error('Product not found');
+      if (!product) throw new Error('کالا یافت نشد.');
 
-      // 2. Find stock (simplification: take from first warehouse with enough stock)
+      // 2. The warehouse the caller chose, else one of our own live warehouses
+      //    holding enough: never a partner's consignment stock unless chosen.
       const inventory = await tx.inventory.findFirst({
-        where: { productId, quantity: { gte: quantity } },
+        where: warehouseId
+          ? { productId, warehouseId, quantity: { gte: quantity } }
+          : { productId, quantity: { gte: quantity }, warehouse: { isVirtual: false, isArchived: false } },
       });
 
-      if (!inventory) throw new Error('Insufficient stock');
+      if (!inventory) throw new Error(`موجودی کافی برای هدیهٔ «${product.name}» وجود ندارد.`);
 
-      // 3. Decrement stock
-      await tx.inventory.update({
-        where: {
-            productId_warehouseId: {
-                productId,
-                warehouseId: inventory.warehouseId
-            }
-        },
+      // 3. Decrement stock, only while enough is left (a concurrent sale may have taken it)
+      const taken = await tx.inventory.updateMany({
+        where: { productId, warehouseId: inventory.warehouseId, quantity: { gte: quantity } },
         data: { quantity: { decrement: quantity } }
       });
+      if (taken.count === 0) throw new Error(`موجودی کافی برای هدیهٔ «${product.name}» وجود ندارد.`);
 
       // 4. Find/Create Expense Account
       let expenseAccount = await tx.account.findFirst({ where: { name: 'Marketing Expenses' } });
@@ -172,14 +174,14 @@ export async function giftProduct(productId: string, quantity: number, recipient
 
       // 5. Create Expense Transaction
       const totalCost = Number(product.costPrice) * quantity;
-      await tx.transaction.create({
+      const expense = await tx.transaction.create({
         data: {
           type: 'EXPENSE',
           amount: totalCost,
           amountInToman: totalCost,
           currency: 'TOMAN',
           category: 'Marketing/Gift',
-          description: `Gift to ${recipient}: ${note || ''}`,
+          description: `هدیه به ${recipient}${note ? `: ${note}` : ''}`,
           accountId: expenseAccount.id,
           date: new Date(),
         }
@@ -191,7 +193,19 @@ export async function giftProduct(productId: string, quantity: number, recipient
         data: { balance: { decrement: totalCost } }
       });
 
-      return { success: true, message: 'Gift processed successfully' };
+      // 7. The warehouse's movement history shows the stock that left as a gift.
+      await tx.inventoryMovement.create({
+        data: {
+          productId,
+          fromWarehouseId: inventory.warehouseId,
+          quantity,
+          type: 'ADJUSTMENT',
+          referenceId: expense.id,
+          note: `هدیه به ${recipient}`,
+        },
+      });
+
+      return { success: true, message: 'هدیه با موفقیت ثبت شد.' };
     });
     kickSiteHook();
 
@@ -204,7 +218,7 @@ export async function giftProduct(productId: string, quantity: number, recipient
     return result;
   } catch (error: unknown) {
     console.error('Error gifting product:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to gift product' };
+    return { success: false, error: error instanceof Error ? error.message : 'خطا در ثبت هدیه.' };
   }
 }
 
