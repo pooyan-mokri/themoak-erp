@@ -11,12 +11,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Trash2 } from 'lucide-react';
+import { CheckCheck, Trash2 } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { PaymentModal } from './payment-modal';
-import { deleteConsignmentOrder } from '@/actions/consignment';
+import { deleteConsignmentOrder, markSettlementPaidOutside } from '@/actions/consignment';
 import { formatJalaliDate } from '@/lib/date-utils';
 import {
   Select,
@@ -29,11 +29,13 @@ import {
 interface SettlementListProps {
   settlements: any[];
   accounts: any[];
+  /** Admins may close an invoice whose money came in outside the ERP. */
+  isAdmin?: boolean;
 }
 
 const ALL_CHANNELS = 'ALL';
 
-export function SettlementList({ settlements, accounts }: SettlementListProps) {
+export function SettlementList({ settlements, accounts, isAdmin = false }: SettlementListProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [channel, setChannel] = useState(ALL_CHANNELS);
@@ -44,6 +46,25 @@ export function SettlementList({ settlements, accounts }: SettlementListProps) {
     [settlements],
   );
   const shown = channel === ALL_CHANNELS ? settlements : settlements.filter((s) => s.channelName === channel);
+
+  const handleSettledOutside = (orderId: string, orderNumber: number, remaining: number) => {
+    if (
+      !confirm(
+        `فاکتور #${orderNumber} با مانده ${remaining.toLocaleString('fa-IR')} تومان «پرداخت‌شده» ثبت شود؟\n\n` +
+          'هیچ پولی به هیچ حسابی اضافه نمی‌شود و انبار دست نمی‌خورد. فقط وقتی بزنید که این پول قبلاً دریافت شده و در موجودی حساب‌ها آمده است.',
+      )
+    )
+      return;
+    startTransition(async () => {
+      const result = await markSettlementPaidOutside(orderId, remaining);
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message || 'خطا در ثبت تسویه');
+      }
+    });
+  };
 
   const handleDelete = (orderId: string, orderNumber: number) => {
     if (
@@ -167,6 +188,17 @@ export function SettlementList({ settlements, accounts }: SettlementListProps) {
                             remainingAmount={Number(s.remainingAmount)}
                             accounts={accounts}
                           />
+                        )}
+                        {isAdmin && !fullyPaid && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={isPending}
+                            onClick={() => handleSettledOutside(s.id, s.number, Number(s.remainingAmount))}
+                            title="تسویه‌شده بیرون از سیستم (بدون ثبت پول)"
+                          >
+                            <CheckCheck className="h-4 w-4" />
+                          </Button>
                         )}
                         <Button
                           variant="ghost"

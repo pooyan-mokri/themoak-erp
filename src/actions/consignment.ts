@@ -14,6 +14,8 @@ import { balanceEffect, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
+import { logActivity } from '@/lib/activity-log';
+import { auth } from '@/auth';
 import {
   CHANNELS_FIELD,
   DEFAULT_CHANNEL_NAME,
@@ -1055,6 +1057,66 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   revalidatePath('/dashboard/consignment/commissions');
   revalidatePath('/dashboard/accounting');
   return { message: 'پرداخت با موفقیت ثبت شد.', success: true };
+}
+
+/**
+ * Close a consignment invoice whose money was collected outside the ERP and is
+ * already in the account balances (a balance correction took it in). It books
+ * nothing — no money row, no account balance, no stock — it only records that
+ * the partner owes nothing more on this invoice. Admin only, written to the
+ * activity log and tagged on the invoice, and refused when the screen showed a
+ * different remaining amount than the invoice has now.
+ */
+export async function markSettlementPaidOutside(orderId: string, expectedRemaining: number): Promise<ActionResult> {
+  if ((await getCurrentRole()) !== 'ADMIN') {
+    return { success: false, message: 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند فاکتور را بدون ثبت پول تسویه‌شده کند.' };
+  }
+  try {
+    const closed = await prisma.$transaction(async (tx: any) => {
+      const locked = await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+      if (locked.length === 0) throw new Error('فاکتور یافت نشد.');
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { returns: true, exchanges: true } }, commissions: true },
+      });
+      if (order.status === 'CANCELLED') throw new Error('این فاکتور لغو شده است.');
+      if (order.siteReference !== null) throw new Error(WEBSITE_ORDER_LOCKED);
+
+      const { grossAmount, commissionAmount, paidAmount, remainingAmount } = consignmentAmounts(order);
+      if (remainingAmount <= 0.01) throw new Error('این فاکتور مانده‌ای ندارد.');
+      if (Math.abs(remainingAmount - expectedRemaining) > 0.5) {
+        throw new Error('مانده این فاکتور از زمان باز شدن صفحه تغییر کرده است؛ صفحه را تازه کنید.');
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidAmount: new Prisma.Decimal(paidAmount + remainingAmount),
+          paymentStatus: 'PAID',
+          // As a full payment stores it (paySettlement): net of the partner's commission.
+          totalAmount: new Prisma.Decimal(grossAmount - commissionAmount),
+          status: 'COMPLETED',
+          tags: { push: 'تسویه بیرون از سیستم' },
+        },
+      });
+      return { number: order.number as number, amount: remainingAmount };
+    });
+
+    const session = await auth();
+    await logActivity(
+      session?.user?.id,
+      'SETTLE_OUTSIDE',
+      `فاکتور امانی #${closed.number} پرداخت‌شده ثبت شد، بدون ثبت پول (مانده ${Math.round(closed.amount).toLocaleString('en-US')} تومان بیرون از سیستم دریافت شده بود).`,
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'خطا در ثبت تسویه.';
+    return { success: false, message };
+  }
+
+  revalidatePath('/dashboard/consignment/settlement');
+  revalidatePath('/dashboard/consignment/reports');
+  revalidatePath('/dashboard/consignment/commissions');
+  return { success: true, message: 'فاکتور پرداخت‌شده ثبت شد؛ هیچ پولی جابه‌جا نشد.' };
 }
 
 /**

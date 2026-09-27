@@ -3,7 +3,7 @@ import { getProducts } from '@/actions/product';
 import { getAccountOptions } from '@/actions/account-options';
 import { SettlementForm } from '@/components/consignment/settlement-form';
 import { SettlementList } from '@/components/consignment/settlement-list';
-import { requireRouteAccess } from '@/lib/access';
+import { getCurrentRole, requireRouteAccess } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +13,7 @@ export default async function SettlementPage() {
   const products = await getProducts();
   const pendingSettlements = await getPendingSettlements();
   const accounts = await getAccountOptions();
+  const isAdmin = (await getCurrentRole()) === 'ADMIN';
 
   return (
     <div className="space-y-6">
@@ -24,7 +25,7 @@ export default async function SettlementPage() {
       </p>
       <div className="space-y-6">
         <SettlementForm partners={partners} products={products} />
-        <SettlementList settlements={pendingSettlements} accounts={accounts} />
+        <SettlementList settlements={pendingSettlements} accounts={accounts} isAdmin={isAdmin} />
       </div>
     </div>
   );
