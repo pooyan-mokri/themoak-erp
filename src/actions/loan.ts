@@ -183,6 +183,10 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     // Calculate principal and interest if not provided
     const principalAmount = principal !== undefined ? principal : amount;
     const interestAmount = interest !== undefined ? interest : 0;
+    // What is received is the principal plus the interest; the loan goes down by the principal.
+    if (Math.abs(principalAmount + interestAmount - amount) > 0.5) {
+      return { message: 'مبلغ پرداختی باید برابر اصل به‌علاوه بهره باشد.', success: false };
+    }
 
     // The payment form is Toman-denominated (capped at loan.remaining, which
     // is Toman), so `amount` IS the Toman figure. The cash lands in the
@@ -192,10 +196,18 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
       await inAccountCurrency(prisma, account, amountInToman);
 
     const transactionDate = date ? new Date(date) : new Date();
-    const newRemaining = remainingAmount - principalAmount;
 
     // Create payment and update loan
     await prisma.$transaction(async (tx: any) => {
+      // The loan is locked and read again: two repayments at the same moment
+      // cannot both pass the check above and take it below zero.
+      await tx.$queryRaw`SELECT id FROM "Loan" WHERE id = ${loanId} FOR UPDATE`;
+      const current = Number((await tx.loan.findUnique({ where: { id: loanId } })).remaining);
+      if (amount > current) {
+        throw new Error(`مبلغ پرداختی بیشتر از باقیمانده قرض است. (باقیمانده: ${current.toLocaleString('fa-IR')} تومان)`);
+      }
+      const newRemaining = current - principalAmount;
+
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.INCOME,
