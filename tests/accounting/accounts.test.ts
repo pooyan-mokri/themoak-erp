@@ -62,7 +62,8 @@ test('a new account starts with its opening balance as a row, so its ledger adds
 });
 
 test('an account needs a name, a type and a known currency', async () => {
-  for (const fields of [{ name: '' }, { type: '' }, { currency: 'GBP' }, { currency: '' }, { initialBalance: 'abc' }]) {
+  const cases: Record<string, string>[] = [{ name: '' }, { type: '' }, { currency: 'GBP' }, { currency: '' }, { initialBalance: 'abc' }];
+  for (const fields of cases) {
     const result = await createAccount(undefined, accountForm(fields));
     assert.notEqual(result.success, true, JSON.stringify(fields));
     assert.match(result.message!, /فیلدهای الزامی/);
