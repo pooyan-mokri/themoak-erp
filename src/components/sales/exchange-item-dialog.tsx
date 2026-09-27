@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import { getProducts } from '@/actions/product';
 import { getOrderMoney } from '@/actions/order-return';
 import { accountLabel } from '@/lib/account-label';
-import { discountShare, exchangeChange, lineValue, receivableNow, type OrderMoney } from '@/lib/return-math';
+import { exchangeChange, lineValue, receivableNow, swapDiscount, type OrderMoney } from '@/lib/return-math';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
@@ -140,8 +140,8 @@ export function ExchangeItemDialog({
     (sum, line) => sum + (line.productId ? lineValue(commission, Number(line.price) || 0, Number(line.quantity) || 0) : 0),
     0,
   );
-  // The goods given back take their share of the order discount with them.
-  const share = money ? discountShare(money, originalPrice) : 0;
+  // The goods given back pass their share of the order discount to the new goods (at most their worth).
+  const discount = money ? swapDiscount(money, originalPrice, exchangePrice) : { share: 0, carried: 0, lost: 0 };
   // What the exchange adds to (+) or takes off (−) the customer's bill.
   const priceDifference = money ? exchangeChange(money, originalPrice, exchangePrice, {}).owedChange : exchangePrice - originalPrice;
   // Of a pricier swap, what the customer still owes after it (a credit on the order pays first).
@@ -422,10 +422,15 @@ export function ExchangeItemDialog({
                     {originalPrice.toLocaleString('fa-IR')} تومان
                   </span>
                 </div>
-                {share > 0 && (
+                {discount.carried > 0 && (
+                  <p className="text-xs text-muted-foreground text-right">
+                    {discount.carried.toLocaleString('fa-IR')} تومان تخفیفِ کالای فعلی به کالای تعویضی منتقل می‌شود
+                  </p>
+                )}
+                {discount.lost > 0 && (
                   <div className="flex justify-between items-center">
-                    <span className="text-sm">سهم کالای فعلی از تخفیف سفارش:</span>
-                    <span className="text-sm font-medium text-red-600">-{share.toLocaleString('fa-IR')} تومان</span>
+                    <span className="text-sm">تخفیفی که به کالای تعویضی نمی‌رسد:</span>
+                    <span className="text-sm font-medium text-red-600">-{discount.lost.toLocaleString('fa-IR')} تومان</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">

@@ -39,11 +39,11 @@ test('returned goods take their proportional share of the discount; the refund i
   });
   // Rounded to whole Toman.
   assert.equal(discountShare(money({ totalAmount: 3 * A, discount: 100_000 }), A), 33_333);
-  // An exchange's returned side takes its share too; the new goods carry none.
+  // In an exchange the share moves to the new goods instead (exchange-discount tests below).
   const swapped = exchangeChange(order, A, PRICIER, {});
   assert.deepEqual(
     { total: swapped.newTotal, discount: swapped.newDiscount, owed: swapped.owedChange, paid: swapped.newPaid },
-    { total: A + PRICIER, discount: 200_000, owed: PRICIER - A + 200_000, paid: 1_600_000 },
+    { total: A + PRICIER, discount: 400_000, owed: PRICIER - A, paid: 1_600_000 },
   );
 });
 

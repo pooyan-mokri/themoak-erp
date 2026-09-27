@@ -102,14 +102,31 @@ export function discountShare(order: Pick<OrderMoney, 'totalAmount' | 'discount'
 }
 
 /**
+ * What happens to the discount share of goods worth `returnedValue` that come
+ * back while goods worth `newValue` go out in their place:
+ * - `carried`: moves to the new goods and stays on the order (one amount for
+ *   all the new lines together), at most what the new goods are worth, so the
+ *   order's net never goes below zero;
+ * - `lost`: the rest, which leaves the order as on a plain return.
+ * A plain return (`newValue` 0) carries nothing: its whole share leaves.
+ */
+export function swapDiscount(order: OrderMoney, returnedValue: number, newValue: number) {
+  const share = discountShare(order, returnedValue);
+  const carried = Math.min(share, Math.max(0, newValue));
+  return { share, carried, lost: share - carried };
+}
+
+/**
  * The order's total and discount once goods worth `returnedValue` come back
  * and goods worth `newValue` go out in their place (0 for a plain return).
- * The returned goods take their discount share with them; the new goods carry
- * none. The discount never exceeds the total, so the net is never negative.
+ * Of the returned goods' discount share, what the new goods can carry stays;
+ * the rest leaves. The discount never exceeds the total, so the net is never
+ * negative.
  */
 function afterSwap(order: OrderMoney, returnedValue: number, newValue: number) {
   const newTotal = Math.max(0, order.totalAmount - returnedValue + newValue);
-  const newDiscount = Math.max(0, Math.min(order.discount - discountShare(order, returnedValue), newTotal));
+  const { lost } = swapDiscount(order, returnedValue, newValue);
+  const newDiscount = Math.max(0, Math.min(order.discount - lost, newTotal));
   const netOwed = newTotal - newDiscount;
   const owedChange = netOwed - Math.max(0, order.totalAmount - order.discount);
   return { newTotal, newDiscount, netOwed, owedChange };
@@ -149,7 +166,8 @@ export function receivableNow(order: OrderMoney, returnedValue: number, newValue
 
 /**
  * Goods worth `newValue` go out for goods worth `returnedValue` back; the
- * returned goods take their discount share with them.
+ * returned goods' discount share moves to the new goods (swapDiscount), so the
+ * bill moves by the price difference alone.
  * - The bill grows: the addition is owed on the order, except `receivedNow`
  *   (0..receivableNow) that the cashier collects now.
  * - The bill shrinks: what the customer paid beyond the new net total is paid

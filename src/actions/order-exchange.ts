@@ -253,8 +253,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
 
       // 4. Value of each side (net of the partner's commission on a
       //    consignment sale, whose total is stored net). The goods given back
-      //    take their share of the order discount with them; the new goods
-      //    carry none.
+      //    pass their share of the order discount to the new goods, at most
+      //    what those are worth (src/lib/return-math.ts, swapDiscount).
       const money = orderMoney(order);
       const originalPrice = lineValue(money, Number(originalItem.price), quantity);
       const exchangePrice = newLines.reduce((sum, line) => sum + lineValue(money, line.price, line.quantity), 0);
