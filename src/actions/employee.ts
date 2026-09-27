@@ -203,6 +203,20 @@ export async function deleteEmployee(id: string) {
       };
     }
 
+    // Payslips go with the employee (onDelete: Cascade), and with them the
+    // record of what was paid, while the money rows stay; an out-of-pocket
+    // expense would make the delete fail with a database error.
+    const [payrolls, transactions] = await Promise.all([
+      prisma.payroll.count({ where: { employeeId: id } }),
+      prisma.transaction.count({ where: { employeeId: id } }),
+    ]);
+    if (payrolls > 0 || transactions > 0) {
+      return {
+        success: false,
+        message: 'این کارمند فیش حقوقی یا تراکنش ثبت‌شده دارد و نمی‌تواند حذف شود.',
+      };
+    }
+
     await prisma.employee.delete({
       where: { id },
     });
