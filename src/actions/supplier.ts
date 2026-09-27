@@ -425,6 +425,12 @@ export async function getPurchaseOrder(orderId: string) {
   }
 }
 
+// A refusal found inside a transaction: thrown so everything rolls back, then shown to the user as it is.
+class ReceiveRefusal extends Error {}
+
+/** Goods come in once the order has arrived, and until every line is received. */
+const RECEIVABLE_STATUSES = ['ARRIVED', 'PARTIALLY_RECEIVED'];
+
 export async function receivePurchaseOrderItems(
   orderId: string,
   warehouseId: string,
@@ -432,8 +438,20 @@ export async function receivePurchaseOrderItems(
 ): Promise<ActionResult> {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
+  // One quantity per line: the same line sent twice in one call adds up.
+  const quantities = new Map<string, number>();
+  for (const { itemId, receivedQuantity } of receivedItems) {
+    if (!Number.isInteger(receivedQuantity) || receivedQuantity <= 0) {
+      return { success: false, error: 'تعداد دریافتی هر قلم باید عدد صحیح و بزرگ‌تر از صفر باشد.' };
+    }
+    quantities.set(itemId, (quantities.get(itemId) ?? 0) + receivedQuantity);
+  }
+  if (quantities.size === 0) return { success: false, error: 'لطفا حداقل یک آیتم را برای دریافت انتخاب کنید' };
   try {
     await prisma.$transaction(async (tx: any) => {
+      // Hold the order: a second receipt (a double click, another tab) waits, then reads what this one received.
+      await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
+
       // 1. Get Order with products and all costs
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
@@ -448,7 +466,16 @@ export async function receivePurchaseOrderItems(
         }
       });
 
-      if (!order) throw new Error('سفارش یافت نشد');
+      if (!order) throw new ReceiveRefusal('سفارش یافت نشد');
+      if (!RECEIVABLE_STATUSES.includes(order.status)) {
+        throw new ReceiveRefusal('این سفارش در وضعیت دریافت کالا نیست؛ کالا پس از ثبت رسیدن به مقصد دریافت می‌شود.');
+      }
+
+      // The receive dialog offers live physical warehouses only; a stale page must not put goods elsewhere.
+      const warehouse = await tx.warehouse.findUnique({ where: { id: warehouseId } });
+      if (!warehouse || warehouse.isArchived || warehouse.isVirtual) {
+        throw new ReceiveRefusal('انبار دریافت باید یک انبار فیزیکی و فعال باشد.');
+      }
 
       // Get exchange rates
       const exchangeRates = await tx.exchangeRate.findMany({
@@ -460,7 +487,7 @@ export async function receivePurchaseOrderItems(
         if (currency === 'TOMAN') return 1;
         const rate = exchangeRates.find((r: any) => r.currency === currency);
         if (!rate) {
-          throw new Error(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+          throw new ReceiveRefusal(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
         }
         return Number(rate.rateToToman);
       };
@@ -468,17 +495,16 @@ export async function receivePurchaseOrderItems(
       // Additional costs (order-level + arrival) are allocated PRO RATA ON VALUE
       // by the shared helper in @/lib/landed-cost, which the purchase-order UI
       // uses too so the displayed and stored landed cost can never diverge.
-      let allItemsReceived = true;
-
       // 2. Process each received item
-      for (const receivedItem of receivedItems) {
+      for (const [itemId, receivedQuantity] of quantities) {
+        const receivedItem = { itemId, receivedQuantity };
         const orderItem = order.items.find((item: any) => item.id === receivedItem.itemId);
-        if (!orderItem) continue;
+        if (!orderItem) throw new ReceiveRefusal('قلم دریافتی جزو این سفارش نیست.');
 
         const newReceivedQuantity = (orderItem.receivedQuantity || 0) + receivedItem.receivedQuantity;
         
         if (newReceivedQuantity > orderItem.quantity) {
-          throw new Error(`تعداد دریافت شده برای ${orderItem.product.name} بیشتر از تعداد سفارش داده شده است`);
+          throw new ReceiveRefusal(`تعداد دریافت شده برای ${orderItem.product.name} بیشتر از تعداد سفارش داده شده است`);
         }
 
         // Landed cost per unit = own unit cost + value-weighted share of the
@@ -501,8 +527,8 @@ export async function receivePurchaseOrderItems(
           }
         });
 
-        // Process based on product type
-        const product = orderItem.product;
+        // Process based on product type. Read afresh: an earlier line of this receipt may be the same product.
+        const product = await tx.product.findUniqueOrThrow({ where: { id: orderItem.productId } });
         const productType = product.productType;
         const purchaseDate = new Date();
         const purchasePrice = landedCostPerUnit; // Use landed cost per unit, not average
@@ -594,12 +620,14 @@ export async function receivePurchaseOrderItems(
             });
           }
         } else if (productType === 'FIXED_ASSET') {
-          // Create a new FixedAsset entry for each fixed asset
+          // Create a new FixedAsset entry for each fixed asset. productId is unique on FixedAsset, so only the
+          // product's first asset ever carries it: a later receipt of the same product must not repeat it.
+          const linked = await tx.fixedAsset.findUnique({ where: { productId: orderItem.productId }, select: { id: true } });
           for (let i = 0; i < receivedItem.receivedQuantity; i++) {
             await tx.fixedAsset.create({
               data: {
                 name: `${product.name}${receivedItem.receivedQuantity > 1 ? ` #${i + 1}` : ''}`,
-                productId: i === 0 ? orderItem.productId : undefined,
+                productId: i === 0 && !linked ? orderItem.productId : undefined,
                 assetType: 'FIXED',
                 purchaseDate: purchaseDate,
                 purchasePrice: purchasePrice,
@@ -612,14 +640,14 @@ export async function receivePurchaseOrderItems(
             });
           }
         }
-
-        // Check if all items are fully received
-        if (newReceivedQuantity < orderItem.quantity) {
-          allItemsReceived = false;
-        }
       }
 
-      // 3. Update Order Status
+      // 3. Update Order Status: RECEIVED only once every line of the order is in, not just the lines sent now.
+      const lines = await tx.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: orderId },
+        select: { quantity: true, receivedQuantity: true },
+      });
+      const allItemsReceived = lines.every((line: any) => line.receivedQuantity >= line.quantity);
       const newStatus = allItemsReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
       await tx.purchaseOrder.update({
         where: { id: orderId },
@@ -638,141 +666,27 @@ export async function receivePurchaseOrderItems(
     }
     return { success: true, message: 'کالاها با موفقیت دریافت و به موجودی اضافه شدند' };
   } catch (error: unknown) {
+    if (error instanceof ReceiveRefusal) return { success: false, error: error.message };
     console.error('Error receiving purchase order items:', error);
-    const message = error instanceof Error ? error.message : 'خطا در دریافت کالاها';
-    return { success: false, error: message };
+    return { success: false, error: 'خطا در دریافت کالاها' };
   }
 }
 
-// Keep the old function for backward compatibility, but mark as deprecated
+// Keep the old function for backward compatibility, but mark as deprecated. It used to put the whole order into
+// stock with no movement, no received quantities and no landed cost, even after part of it was received; it now
+// receives every line's remaining quantity through receivePurchaseOrderItems.
 export async function receivePurchaseOrder(orderId: string, warehouseId: string): Promise<ActionResult> {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
-  try {
-    await prisma.$transaction(async (tx: any) => {
-      // 1. Get Order with products
-      const order = await tx.purchaseOrder.findUnique({
-        where: { id: orderId },
-        include: { 
-          items: {
-            include: {
-              product: true
-            }
-          }
-        }
-      });
-
-      if (!order) throw new Error('سفارش یافت نشد');
-      if (order.status === 'RECEIVED') throw new Error('این سفارش قبلاً دریافت شده است');
-
-      // 2. Process each item based on productType
-      for (const item of order.items) {
-        const product = item.product;
-        const productType = product.productType;
-        const purchaseDate = new Date();
-        const purchasePrice = Number(item.unitCost);
-
-        if (productType === 'SALEABLE' || productType === 'OTHER') {
-          // Add to Inventory for sellable products
-        await tx.inventory.upsert({
-          where: {
-            productId_warehouseId: {
-              productId: item.productId,
-              warehouseId: warehouseId
-            }
-          },
-          update: {
-            quantity: { increment: item.quantity }
-          },
-          create: {
-            productId: item.productId,
-            warehouseId: warehouseId,
-            quantity: item.quantity
-          }
-        });
-        } else if (productType === 'CONSUMABLE') {
-          // Add to FixedAsset for consumable items
-          // If a FixedAsset with this productId exists, increment quantity
-          // Otherwise, create a new one
-          const existingAsset = await tx.fixedAsset.findUnique({
-            where: { productId: item.productId }
-          });
-
-          if (existingAsset) {
-            // Update quantity for existing consumable asset
-            await tx.fixedAsset.update({
-              where: { id: existingAsset.id },
-              data: {
-                quantity: { increment: item.quantity },
-                // Update purchase price to latest
-                purchasePrice: purchasePrice,
-                purchaseDate: purchaseDate
-              }
-            });
-          } else {
-            // Create new consumable asset
-            await tx.fixedAsset.create({
-              data: {
-                name: product.name,
-                productId: item.productId,
-                assetType: 'CONSUMABLE',
-                purchaseDate: purchaseDate,
-                purchasePrice: purchasePrice,
-                salvageValue: 0,
-                usefulLife: 1, // Default 1 year for consumables
-                quantity: item.quantity,
-                depreciationMethod: 'STRAIGHT_LINE',
-                currentValue: purchasePrice
-              }
-            });
-          }
-        } else if (productType === 'FIXED_ASSET') {
-          // Create a new FixedAsset entry for each fixed asset purchase
-          // Each fixed asset is tracked individually, so create one per quantity
-          // Only the first one gets productId (due to unique constraint)
-          for (let i = 0; i < item.quantity; i++) {
-            await tx.fixedAsset.create({
-              data: {
-                name: `${product.name}${item.quantity > 1 ? ` #${i + 1}` : ''}`,
-                productId: i === 0 ? item.productId : undefined, // Only first one gets productId
-                assetType: 'FIXED',
-                purchaseDate: purchaseDate,
-                purchasePrice: purchasePrice,
-                salvageValue: 0, // Can be updated later if needed
-                usefulLife: 5, // Default 5 years, can be updated later
-                quantity: 1, // Fixed assets are typically 1 per entry
-                depreciationMethod: 'STRAIGHT_LINE',
-                currentValue: purchasePrice
-              }
-            });
-          }
-        }
-      }
-
-      // 3. Update Order Status
-      await tx.purchaseOrder.update({
-        where: { id: orderId },
-        data: { status: 'RECEIVED' }
-      });
-      
-      // 4. Create Financial Transaction (Expense) - Simplified
-      // Assuming payment is made upon receipt or tracked separately. 
-      // We'll skip auto-transaction creation for now to keep it simple, 
-      // or we could add an "Accounts Payable" entry if we had that module.
-    });
-    kickSiteHook();
-
-    try {
-      revalidatePath('/dashboard/suppliers/orders');
-      revalidatePath('/dashboard/inventory');
-      revalidatePath('/dashboard/inventory/assets');
-    } catch (error) {
-      // Ignore revalidatePath error outside of Next.js context
-    }
-    return { success: true, message: 'سفارش با موفقیت دریافت و به موجودی اضافه شد' };
-  } catch (error: unknown) {
-    console.error('Error receiving purchase order:', error);
-    const message = error instanceof Error ? error.message : 'خطا در دریافت سفارش';
-    return { success: false, error: message };
-  }
+  const items = await prisma.purchaseOrderItem.findMany({
+    where: { purchaseOrderId: orderId },
+    select: { id: true, quantity: true, receivedQuantity: true },
+  });
+  if (items.length === 0) return { success: false, error: 'سفارش یافت نشد' };
+  const remaining = items
+    .filter((item: any) => item.quantity > item.receivedQuantity)
+    .map((item: any) => ({ itemId: item.id, receivedQuantity: item.quantity - item.receivedQuantity }));
+  if (remaining.length === 0) return { success: false, error: 'این سفارش قبلاً دریافت شده است' };
+  const result = await receivePurchaseOrderItems(orderId, warehouseId, remaining);
+  return result.success ? { success: true, message: 'سفارش با موفقیت دریافت و به موجودی اضافه شد' } : result;
 }

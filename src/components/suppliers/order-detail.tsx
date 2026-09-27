@@ -482,7 +482,7 @@ export function OrderDetail({
                   ثبت رسیدن به مقصد
                 </Button>
               )}
-              {order.status === 'ARRIVED' && canReceive && (
+              {(order.status === 'ARRIVED' || order.status === 'PARTIALLY_RECEIVED') && canReceive && (
                 <Button 
                   onClick={() => setShowReceiveDialog(true)}
                   variant="default"
