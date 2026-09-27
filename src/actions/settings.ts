@@ -27,7 +27,7 @@ export async function getSetting(key: string) {
 
 export async function saveSetting(key: string, value: any) {
   if (SITE_SETTING_KEYS.includes(key)) {
-    return { success: false, error: 'This setting can only be changed from its own settings page' };
+    return { success: false, error: 'این تنظیم فقط از صفحهٔ خودش تغییر می‌کند.' };
   }
   const session = await auth();
   if (!session?.user || session.user.role !== Role.ADMIN) {
@@ -43,7 +43,7 @@ export async function saveSetting(key: string, value: any) {
     return { success: true };
   } catch (error) {
     console.error(`Error saving setting ${key}:`, error);
-    return { success: false, error: 'Failed to save setting' };
+    return { success: false, error: 'ذخیرهٔ تنظیمات انجام نشد.' };
   }
 }
 
@@ -101,7 +101,7 @@ export async function saveWooSettings(settings: { warehouseId?: string }) {
     woo = stored?.value ? withoutWooConnection(JSON.parse(stored.value)) : {};
   } catch (error) {
     console.error('Error reading setting woo_settings:', error);
-    return { success: false, error: 'Failed to save setting' };
+    return { success: false, error: 'ذخیرهٔ تنظیمات انجام نشد.' };
   }
   return await saveSetting('woo_settings', { ...woo, warehouseId: settings.warehouseId });
 }

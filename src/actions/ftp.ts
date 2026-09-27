@@ -5,6 +5,11 @@ import { saveSetting } from './settings';
 import { readSystemSetting } from '@/lib/system-settings';
 import { auth } from '@/auth';
 import { Role } from '@prisma/client';
+import { ACCESS_DENIED_MESSAGE } from '@/lib/access';
+
+// The folder rule of a receipt reference (src/lib/receipt-ref.ts): a folder the
+// receipt viewer would refuse makes every upload fail.
+const FOLDER = /^(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$/;
 
 export async function saveFTPCredentials(credentials: {
   host: string;
@@ -18,15 +23,29 @@ export async function saveFTPCredentials(credentials: {
   const session = await auth();
 
   if (!session?.user || session.user.role !== Role.ADMIN) {
-    return { success: false, error: 'Unauthorized' };
+    return { success: false, error: ACCESS_DENIED_MESSAGE };
+  }
+
+  const basePath = (credentials.basePath ?? '').trim().replace(/\/+$/, '');
+  if (!credentials.host?.trim() || !credentials.user?.trim()) {
+    return { success: false, error: 'آدرس سرور و نام کاربری FTP را وارد کنید.' };
+  }
+  if (!Number.isInteger(credentials.port) || credentials.port < 1 || credentials.port > 65535) {
+    return { success: false, error: 'پورت FTP باید عددی بین ۱ تا ۶۵۵۳۵ باشد.' };
+  }
+  if (basePath && !FOLDER.test(basePath)) {
+    return {
+      success: false,
+      error: 'مسیر پوشه باید با / شروع شود و فقط حروف و اعداد انگلیسی، نقطه، - و _ داشته باشد؛ مثل /uploads/receipts',
+    };
   }
 
   try {
-    await saveSetting('ftp_credentials', credentials);
-    return { success: true };
+    const saved = await saveSetting('ftp_credentials', { ...credentials, basePath: basePath || undefined });
+    return saved.success ? { success: true } : saved;
   } catch (error) {
     console.error('Error saving FTP credentials:', error);
-    return { success: false, error: 'Failed to save credentials' };
+    return { success: false, error: 'ذخیرهٔ تنظیمات FTP انجام نشد.' };
   }
 }
 
@@ -60,7 +79,7 @@ export async function testFTPConnectionAction() {
   const session = await auth();
 
   if (!session?.user || session.user.role !== Role.ADMIN) {
-    return { success: false, error: 'Unauthorized' };
+    return { success: false, error: ACCESS_DENIED_MESSAGE };
   }
 
   try {
@@ -70,7 +89,7 @@ export async function testFTPConnectionAction() {
     console.error('Error testing FTP connection:', error);
     return {
       success: false,
-      error: error?.message || 'Failed to test connection',
+      error: error?.message || 'آزمایش اتصال FTP انجام نشد.',
     };
   }
 }

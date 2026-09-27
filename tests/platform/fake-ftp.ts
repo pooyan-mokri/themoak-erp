@@ -47,7 +47,8 @@ client.downloadTo = async (destination: Writable, path: string) => {
 client.list = async (dir = '') => {
   const prefix = `${dir.replace(/\/+$/, '')}/`;
   const inside = [...fakeFtp.files.keys()].filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes('/'));
-  if (inside.length === 0 && !fakeFtp.dirs.has(dir)) throw noSuchFile(dir);
+  const root = prefix === '/';
+  if (inside.length === 0 && !root && !fakeFtp.dirs.has(dir)) throw noSuchFile(dir);
   return inside.map((path) => ({ name: path.slice(prefix.length), size: fakeFtp.files.get(path)!.length, isFile: true, modifiedAt: undefined }));
 };
 client.remove = async (path: string) => {
