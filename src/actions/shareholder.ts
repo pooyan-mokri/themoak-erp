@@ -121,6 +121,9 @@ export async function updateShareholder(id: string, prevState: ActionState, form
       where: { id },
       select: { percentage: true },
     });
+    if (!currentShareholder) {
+      return { message: 'صاحب سهام یافت نشد.', success: false };
+    }
 
     const existingShareholders = await prisma.shareholder.findMany({
       where: { NOT: { id } },
@@ -177,6 +180,16 @@ export async function deleteShareholder(id: string): Promise<ActionResult> {
       return {
         success: false,
         message: `نمی‌توان این صاحب سهام را حذف کرد چون ${transactions.length} تراکنش مرتبط دارد.`,
+      };
+    }
+
+    // Profits go with the shareholder (onDelete: Cascade), and with them the
+    // record of every payout, while the payout's money row stays.
+    const profits = await prisma.shareholderProfit.count({ where: { shareholderId: id } });
+    if (profits > 0) {
+      return {
+        success: false,
+        message: `نمی‌توان این صاحب سهام را حذف کرد چون ${profits} سود محاسبه‌شده دارد.`,
       };
     }
 
