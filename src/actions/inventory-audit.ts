@@ -95,41 +95,48 @@ export async function createInventoryAudit(
       return { success: false, message: 'لطفاً انبار را انتخاب کنید.' };
     }
 
-    // Check if warehouse exists
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
+    // One transaction holding the warehouse row: two creates at once (a double click) cannot both find no
+    // active audit and each start one, which would later correct the same shortfall twice.
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // Check if warehouse exists
+      const [warehouse] = await tx.$queryRaw`SELECT id FROM "Warehouse" WHERE id = ${warehouseId} FOR UPDATE`;
+      if (!warehouse) return { refused: 'انبار یافت نشد.' };
+
+      // Check if there's an active audit for this warehouse
+      const activeAudit = await tx.inventoryAudit.findFirst({
+        where: {
+          warehouseId,
+          status: { in: ['PLANNED', 'IN_PROGRESS'] },
+        },
+      });
+
+      if (activeAudit) {
+        return { refused: `یک انبارگردانی فعال برای این انبار وجود دارد: ${activeAudit.auditNumber}` };
+      }
+
+      // The number is random within the year; on the rare clash with an earlier audit, draw another.
+      const taken = new Set(
+        (await tx.inventoryAudit.findMany({ select: { auditNumber: true } })).map((a: any) => a.auditNumber),
+      );
+      let auditNumber = generateAuditNumber();
+      while (taken.has(auditNumber)) auditNumber = generateAuditNumber();
+
+      const audit = await tx.inventoryAudit.create({
+        data: {
+          auditNumber,
+          warehouseId,
+          description: description || undefined,
+          status: 'PLANNED',
+          createdBy: session.user.id,
+        },
+      });
+      return { audit };
     });
 
-    if (!warehouse) {
-      return { success: false, message: 'انبار یافت نشد.' };
+    if (outcome.refused) {
+      return { success: false, message: outcome.refused };
     }
-
-    // Check if there's an active audit for this warehouse
-    const activeAudit = await prisma.inventoryAudit.findFirst({
-      where: {
-        warehouseId,
-        status: { in: ['PLANNED', 'IN_PROGRESS'] },
-      },
-    });
-
-    if (activeAudit) {
-      return {
-        success: false,
-        message: `یک انبارگردانی فعال برای این انبار وجود دارد: ${activeAudit.auditNumber}`,
-      };
-    }
-
-    const auditNumber = generateAuditNumber();
-
-    const audit = await prisma.inventoryAudit.create({
-      data: {
-        auditNumber,
-        warehouseId,
-        description: description || undefined,
-        status: 'PLANNED',
-        createdBy: session.user.id,
-      },
-    });
+    const audit = outcome.audit;
 
     revalidatePath('/dashboard/inventory/audits');
     console.log('=== createInventoryAudit SUCCESS ===', audit.id);
@@ -140,10 +147,9 @@ export async function createInventoryAudit(
     };
   } catch (error: unknown) {
     console.error('=== createInventoryAudit ERROR ===', error);
-    const message = error instanceof Error ? error.message : 'لطفاً دوباره تلاش کنید.';
     return {
       success: false,
-      message: `خطا در ایجاد انبارگردانی: ${message}`,
+      message: 'خطا در ایجاد انبارگردانی. لطفاً دوباره تلاش کنید.',
     };
   }
 }
