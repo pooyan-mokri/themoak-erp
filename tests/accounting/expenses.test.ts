@@ -68,6 +68,17 @@ test('a Toman expense paid from a dollar account leaves it in dollars; a fractio
   await assertBooksAddUp();
 });
 
+test('a dollar expense from a dollar account, and its edit, are booked exactly as typed', async () => {
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 103_456.7, date: new Date('2026-09-25T08:00:00Z') } });
+  assert.equal((await expense({ amount: '250.5', currency: 'USD', accountId: 'usd' })).success, true);
+  const { id } = await onlyRow();
+  assert.equal((await onlyRow()).amount.toString(), '250.5');
+  assert.equal((await updateExpense({ id, amount: 99.99, currency: Currency.USD, category: 'اشتراک' })).success, true);
+  assert.equal((await onlyRow()).amount.toString(), '99.99');
+  assert.equal((await prisma.account.findUniqueOrThrow({ where: { id: 'usd' } })).balance.toString(), '900.01');
+  await assertBooksAddUp();
+});
+
 test('an expense an employee paid moves no company money and is owed to them', async () => {
   const sara = await prisma.employee.create({ data: { name: 'سارا', salary: 1 } });
   const result = await expense({ accountId: 'none', employeeId: sara.id, description: 'پیک' });

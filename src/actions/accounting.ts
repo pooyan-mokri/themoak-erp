@@ -487,9 +487,10 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
           throw new Error('حساب پرداخت یافت نشد');
         }
 
-        // The money leaves the account in the account's own currency.
+        // The money leaves the account in the account's own currency; an
+        // amount already in it is taken as typed, not × rate ÷ rate in floats.
         const { amount: amountInAccountCurrency, rate: accountRate } =
-          await inAccountCurrency(tx, account, amountInToman);
+          currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, amountInToman);
 
         // Check if account has sufficient balance
         const accountBalance = Number(account.balance);
@@ -736,7 +737,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
         if (!account) throw new Error('حساب پرداخت یافت نشد');
 
         const { amount: amountInAccountCurrency, rate: accountRate } =
-          await inAccountCurrency(tx, account, newAmountInToman);
+          currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, newAmountInToman);
 
         if (Number(account.balance) < amountInAccountCurrency) {
           throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی فعلی: ${Number(account.balance).toLocaleString('fa-IR')} ${account.currency}`);
@@ -1472,9 +1473,9 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     await prisma.$transaction(async (tx: any) => {
       const account = await tx.account.findUnique({ where: { id: accountId } });
       if (!account) throw new Error('حساب یافت نشد');
-      // The money leaves the account in the account's own currency.
+      // The money leaves the account in the account's own currency (as typed when it is in it).
       const { amount: amountInAccountCurrency, rate: accountRate } =
-        await inAccountCurrency(tx, account, amountInToman);
+        currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, amountInToman);
       if (Number(account.balance) < amountInAccountCurrency) {
         throw new Error(`موجودی حساب "${account.name}" کافی نیست.`);
       }
@@ -2009,9 +2010,9 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
       const account = await tx.account.findUnique({ where: { id: accountId } });
       if (!account) throw new Error('حساب یافت نشد');
 
-      // The money lands in the account in the account's own currency.
+      // The money lands in the account in the account's own currency (as typed when it is in it).
       const { amount: amountInAccountCurrency, rate: accountRate } =
-        await inAccountCurrency(tx, account, amountInToman);
+        currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, amountInToman);
 
       await tx.transaction.create({
         data: {

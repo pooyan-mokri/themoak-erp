@@ -324,9 +324,10 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
 
     const transactionDate = date ? new Date(date) : new Date();
 
-    // The money lands in the account in the account's own currency.
+    // The money lands in the account in the account's own currency; an amount
+    // already in it is taken as typed, not × rate ÷ rate in floats.
     const { amount: amountInAccountCurrency, rate: accountRate } =
-      await inAccountCurrency(prisma, account, amountInToman);
+      currency === account.currency ? { amount, rate } : await inAccountCurrency(prisma, account, amountInToman);
 
     // Create transaction and update account balance
     // Type: INCOME (money comes in) but with shareholderId (creates Accounts Payable - debt to shareholder)
@@ -457,9 +458,9 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       amountInToman = amount * rate;
     }
 
-    // The money leaves the account in the account's own currency.
+    // The money leaves the account in the account's own currency (as typed when it is in it).
     const { amount: amountInAccountCurrency, rate: accountRate } =
-      await inAccountCurrency(prisma, account, amountInToman);
+      currency === account.currency ? { amount, rate } : await inAccountCurrency(prisma, account, amountInToman);
 
     // Check account balance
     const accountBalance = Number(account.balance);

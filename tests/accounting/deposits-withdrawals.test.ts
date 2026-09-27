@@ -105,3 +105,15 @@ test('a payment is refused, moving nothing, without a payee, above the balance, 
   assert.equal(await prisma.transaction.count({ where: { type: 'EXPENSE' } }), 0);
   assert.deepEqual([await balanceOf('bank'), await balanceOf('usd')], [10_000_000, 100]);
 });
+
+test('dollars into or out of a dollar account are booked exactly as typed, whatever the rate', async () => {
+  // 250.5 × 103,456.7 ÷ 103,456.7 is 250.49999999999997 in floating point.
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 103_456.7, date: new Date('2026-09-25T08:00:00Z') } });
+  assert.equal((await deposit({ amount: '250.5', currency: 'USD', accountId: 'usd' })).success, true);
+  assert.equal((await lastRow()).amount.toString(), '250.5');
+  assert.equal((await payment({ amount: '99.99', currency: 'USD', accountId: 'usd' })).success, true);
+  assert.equal((await lastRow()).amount.toString(), '99.99');
+  assert.equal((await balanceOf('usd')), 250.51);
+  assert.equal((await prisma.account.findUniqueOrThrow({ where: { id: 'usd' } })).balance.toString(), '250.51');
+  await assertBooksAddUp();
+});
