@@ -1,14 +1,30 @@
-import { getAccounts } from '@/actions/accounting';
+import Link from 'next/link';
+import { History } from 'lucide-react';
+import { getAccounts, getInternalTransfers } from '@/actions/accounting';
 import { TransferForm } from '@/components/accounting/transfer-form';
+import { recentTransfers } from '@/components/accounting/recent-entries';
+import { PageHeader } from '@/components/layout/page-header';
+import { Button } from '@/components/ui/button';
 import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewTransferPage() {
   await requireRouteAccess('/dashboard/accounting');
-  const accounts = await getAccounts();
+  const [accounts, transfers] = await Promise.all([getAccounts(), getInternalTransfers()]);
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">انتقال وجه بین حساب‌ها</h1>
-      <TransferForm accounts={accounts} />
+    <div className="space-y-4">
+      <PageHeader
+        title="انتقال داخلی"
+        description="جابجایی پول بین حساب‌های خود شرکت، فقط بین حساب‌هایی با ارز یکسان؛ در سود و زیان اثری ندارد."
+        actions={
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/accounting/transfers">
+              <History className="h-4 w-4" />
+              انتقال‌های ثبت‌شده
+            </Link>
+          </Button>
+        }
+      />
+      <TransferForm accounts={accounts} recent={recentTransfers(transfers)} />
     </div>
   );
 }

@@ -75,13 +75,13 @@ export function TransactionReceipt({ transactionId, receiptUrl, canAttach, canRe
             href={viewUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center h-8 w-8 rounded-full hover:bg-muted"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
             title="مشاهده رسید"
           >
             {isPdfReceipt(receiptUrl) ? (
-              <FileText className="h-4 w-4 text-red-500" />
+              <FileText className="h-4 w-4" />
             ) : (
-              <ImageIcon className="h-4 w-4 text-blue-500" />
+              <ImageIcon className="h-4 w-4" />
             )}
           </a>
         ) : (
@@ -102,7 +102,7 @@ export function TransactionReceipt({ transactionId, receiptUrl, canAttach, canRe
             title={receiptUrl ? 'تعویض رسید' : 'آپلود رسید'}
           >
             {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 text-muted-foreground" />
             ) : receiptUrl ? (
               <RefreshCw className="h-4 w-4 text-muted-foreground" />
             ) : (
