@@ -290,12 +290,18 @@ test('a total that is not the sum of the lines, or a discount below 0 or above t
   await assertInvariants();
 });
 
-test('an unknown customer is refused in Persian and nothing is written', async () => {
+test('an unknown customer, an unknown invoice account or a sale date that cannot be read is refused in Persian, and nothing is written', async () => {
   const s = await shop();
   const before = await snapshot();
   const result = await sell(s, 1, { customerId: 'no-such-customer' });
   assert.deepEqual(result, { success: false, message: 'مشتری یافت نشد.' });
+  assert.deepEqual(await sell(s, 1, { invoiceAccountId: 'no-such-account' }), { success: false, message: 'حساب نمایش‌داده‌شده روی فاکتور یافت نشد.' });
+  assert.deepEqual(await sell(s, 1, { saleDate: 'دیروز' }), { success: false, message: 'تاریخ فروش نامعتبر است.' });
   assert.deepEqual(await snapshot(), before);
+
+  // The account whose card the credit invoice shows is kept on the order.
+  assert.equal((await sell(s, 1, { invoiceAccountId: s.bank.id, paidAmount: 0, accountId: '' })).success, true);
+  assert.equal((await theOrder()).invoiceAccountId, s.bank.id);
 });
 
 test('very large amounts are booked exactly', async () => {

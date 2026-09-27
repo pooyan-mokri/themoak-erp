@@ -228,6 +228,7 @@ test('a report that is not whole units, has no lines, has a negative price, name
   assert.equal((await report(w, 0)).message, invalid);
   assert.equal((await report(w, 1, { unitPrice: -1 })).message, invalid);
   assert.equal((await report(w, 1, { saleDate: '' })).message, invalid);
+  assert.equal((await report(w, 1, { saleDate: 'نامعتبر' })).message, 'تاریخ فروش نامعتبر است.');
   assert.equal((await recordConsignmentSales({ partnerWarehouseId: w.warehouse.id, saleDate: DAY, items: [] })).message, invalid);
   const notPartner = await recordConsignmentSales({ partnerWarehouseId: store.id, saleDate: DAY, items: [{ productId: w.frame.id, quantity: 1, unitPrice: PRICE }] });
   assert.equal(notPartner.message, 'انبار همکار یا مشتری مرتبط یافت نشد.');
@@ -261,6 +262,7 @@ test('a settlement paid in parts: PARTIAL, then PAID at the net, on the day give
   assert.equal((await pay({ amount: '0' })).message, 'اطلاعات پرداخت نامعتبر است.');
   assert.equal((await pay({ amount: '-5' })).message, 'اطلاعات پرداخت نامعتبر است.');
   assert.equal((await pay({ receiptUrl: 'https://evil.example/r.png' })).message, INVALID_RECEIPT_MESSAGE);
+  assert.equal((await pay({ paymentDate: 'نامعتبر' })).message, 'تاریخ پرداخت نامعتبر است.');
   assert.equal((await paySettlement(undefined, form({ orderId: 'no-such-order', accountId: w.bank.id }))).message, 'سفارش یافت نشد.');
   assert.equal((await paySettlement(undefined, form({ orderId: order.id, accountId: 'no-such-account' }))).message, 'حساب مقصد یافت نشد.');
   assert.deepEqual(await snapshot(), before);

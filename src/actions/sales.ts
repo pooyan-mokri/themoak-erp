@@ -58,6 +58,7 @@ export async function createOrder(data: OrderData) {
   const requestId = readRequestId(data.requestId);
   const receiptUrl = readReceiptRef(data.receiptUrl);
   if (receiptUrl === null) return { success: false, message: INVALID_RECEIPT_MESSAGE };
+  if (Number.isNaN(orderDate.getTime())) return { success: false, message: 'تاریخ فروش نامعتبر است.' };
 
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };
@@ -121,6 +122,9 @@ export async function createOrder(data: OrderData) {
           },
         });
         if (!customer) throw new Error('مشتری یافت نشد.');
+      }
+      if (invoiceAccountId && !(await tx.account.findUnique({ where: { id: invoiceAccountId }, select: { id: true } }))) {
+        throw new Error('حساب نمایش‌داده‌شده روی فاکتور یافت نشد.');
       }
 
       // 2. Create Transaction (Income) ONLY if there is a payment

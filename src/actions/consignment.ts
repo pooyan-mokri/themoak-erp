@@ -446,6 +446,7 @@ export async function recordConsignmentSales(input: {
   const requestId = readRequestId(input.requestId);
   // Normalise to start-of-day to make per-date matching deterministic
   const day = new Date(saleDate);
+  if (Number.isNaN(day.getTime())) return { message: 'تاریخ فروش نامعتبر است.' };
   day.setHours(0, 0, 0, 0);
   const dayStart = new Date(day);
   const dayEnd = new Date(day);
@@ -931,6 +932,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   }
 
   const { orderId, accountId, amount, paymentDate } = validatedFields.data;
+  if (paymentDate && Number.isNaN(new Date(paymentDate).getTime())) return { message: 'تاریخ پرداخت نامعتبر است.' };
   const requestId = readRequestId(formData.get('requestId'));
   const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
   if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE };
