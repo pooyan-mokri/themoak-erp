@@ -312,7 +312,7 @@ export async function getSalesOverTime(
       let periodKey: string;
       
       if (interval === 'day') {
-        periodKey = order.createdAt.toISOString().substring(0, 10); // YYYY-MM-DD
+        periodKey = tehranDay(order.createdAt); // YYYY-MM-DD, in Tehran
       } else if (interval === 'week') {
         // Simple week grouping by ISO week
         const date = order.createdAt;
@@ -320,7 +320,7 @@ export async function getSalesOverTime(
         const week = Math.ceil(((date.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
         periodKey = `${date.getFullYear()}-W${week.toString().padStart(2, '0')}`;
       } else {
-        periodKey = order.createdAt.toISOString().substring(0, 7); // YYYY-MM
+        periodKey = tehranDay(order.createdAt).substring(0, 7); // YYYY-MM, in Tehran
       }
 
       if (!salesByPeriod[periodKey]) {
