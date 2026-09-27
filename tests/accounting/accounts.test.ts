@@ -1,5 +1,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { AccessDenied } from '@/lib/access';
@@ -12,8 +14,10 @@ import {
   updateAccount,
 } from '@/actions/accounting';
 import { getAccountOptions } from '@/actions/account-options';
+import { AccountList } from '@/components/accounting/account-list';
 import { assertBooksAddUp, balanceOf, openAccount } from './ledger';
 
+(globalThis as any).React = React;
 // The actions log every refusal these tests provoke on purpose.
 console.error = () => {};
 
@@ -131,4 +135,13 @@ test('an account picker gets every account without its balance; it needs account
     await assert.rejects(getAccountOptions(), (error: unknown) => error instanceof AccessDenied, String(role));
   }
   assert.equal(await balanceOf('bank'), 77_123_457);
+});
+
+test('the account list names each account type in Persian', () => {
+  const account = (type: string) => ({ id: type, name: `حساب ${type}`, type, currency: 'TOMAN', balance: 0 });
+  const html = renderToStaticMarkup(
+    React.createElement(AccountList, { accounts: ['BANK', 'CASH', 'PERSON', 'CRYPTO', 'EXPENSE'].map(account) as any }),
+  );
+  for (const label of ['بانک', 'صندوق', 'شخص', 'کیف پول دیجیتال', 'حساب هزینه']) assert.ok(html.includes(`>${label}<`), label);
+  for (const raw of ['>BANK<', '>CASH<', '>PERSON<', '>CRYPTO<', '>EXPENSE<']) assert.ok(!html.includes(raw), raw);
 });

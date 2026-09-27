@@ -35,6 +35,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AccountForm } from './account-form';
 
+
+/** The account types as the account form names them; EXPENSE is the system's P&L buckets. */
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  BANK: 'بانک',
+  CASH: 'صندوق',
+  PERSON: 'شخص',
+  CRYPTO: 'کیف پول دیجیتال',
+  EXPENSE: 'حساب هزینه',
+};
 interface Account {
   id: string;
   name: string;
@@ -76,7 +85,7 @@ export function AccountList({ accounts }: AccountListProps) {
                 <TableRow key={account.id}>
                   <TableCell className="font-medium">{account.name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{account.type}</Badge>
+                    <Badge variant="outline">{ACCOUNT_TYPE_LABELS[account.type] ?? account.type}</Badge>
                   </TableCell>
                   <TableCell>{account.currency}</TableCell>
                   <TableCell dir="ltr" className="text-right">{Number(account.balance).toLocaleString()}</TableCell>
