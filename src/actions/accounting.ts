@@ -12,6 +12,7 @@ import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balan
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
+import { isNonOperating } from '@/lib/profit-rows';
 import { randomUUID } from 'node:crypto';
 
 // const prisma = new PrismaClient(); // Removed local instance
@@ -592,6 +593,8 @@ function systemOwnerOf(expense: any): string | null {
   if (expense.category === 'COGS') return 'بهای تمام‌شده کالای فروش امانی';
   if (expense.category === 'CONSIGNMENT_COMMISSION') return 'کمیسیون همکار امانی';
   if (expense.category === 'Currency Exchange') return 'مبادله ارز';
+  // The loan's own record (amount, remaining) would stay as it was.
+  if (expense.category === EMPLOYEE_LOAN_CATEGORY) return 'قرض به کارمند';
   // Money of an order (a refund recorded on the website review page, a settlement cost):
   // changed only from the order's own screens, which keep the order in step.
   if (expense.orderId) return 'پول یک سفارش';
@@ -822,11 +825,13 @@ export async function getExpenseBreakdown() {
     for (const expense of expenses) {
       // COGS and gift totals are cost data.
       if (!canSeeCost && isCostRow(expense)) continue;
+      // Not a cost at all: a loan, capital paid out, a currency bought (src/lib/profit-rows.ts).
+      if (isNonOperating(expense)) continue;
 
       // Extract category from description "Category - Description"
-      const description = expense.description || 'Uncategorized';
+      const description = expense.description || 'سایر';
       const parts = description.split(' - ');
-      const category = parts.length > 0 ? parts[0] : 'Uncategorized';
+      const category = parts.length > 0 ? parts[0] : 'سایر';
 
       if (!expenseByCategory[category]) {
         expenseByCategory[category] = 0;
