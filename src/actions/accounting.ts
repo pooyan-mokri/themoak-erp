@@ -13,6 +13,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
 import { isNonOperating } from '@/lib/profit-rows';
+import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { randomUUID } from 'node:crypto';
 
 // const prisma = new PrismaClient(); // Removed local instance
@@ -2054,9 +2055,10 @@ export async function getTransactions(range?: { from?: string; to?: string }) {
   await requirePermission('finance.view');
   try {
     const canSeeCost = await hasPermission('cost.view');
-    const from = range?.from ? new Date(range.from) : undefined;
-    const to = range?.to ? new Date(range.to) : undefined;
-    if (to) to.setHours(23, 59, 59, 999);
+    // A period of calendar days is Tehran's days (src/lib/tehran-day.ts), «to» included whole.
+    const from = range?.from ? (isDay(range.from) ? tehranDayStart(range.from) : new Date(range.from)) : undefined;
+    const to = range?.to ? (isDay(range.to) ? tehranDayEnd(range.to) : new Date(range.to)) : undefined;
+    if (to && !isDay(range!.to!)) to.setHours(23, 59, 59, 999);
     const transactions = await prisma.transaction.findMany({
       where: from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {},
       orderBy: { date: 'desc' },

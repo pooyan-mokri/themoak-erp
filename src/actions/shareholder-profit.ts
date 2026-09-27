@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { isNonOperating } from '@/lib/profit-rows';
+import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 
 // --- Schemas ---
 
@@ -47,8 +48,13 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
   }
 
   const { periodStart, periodEnd, description } = validatedFields.data;
-  const startDate = new Date(periodStart);
-  const endDate = new Date(periodEnd);
+  // The period is whole Tehran days: the date picker sends the Tehran midnight
+  // a day starts at, and the last day's own rows belong in it too.
+  const startDate = tehranDayStart(tehranDay(new Date(periodStart)));
+  const endDate = tehranDayEnd(tehranDay(new Date(periodEnd)));
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
+    return { message: 'بازه دوره معتبر نیست.', success: false };
+  }
 
   try {
     // Check if profit for this period already exists

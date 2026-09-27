@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
 import { requirePermission } from '@/lib/access';
 import { latestRates, PAYABLE_PURCHASE_ORDERS, totalsByCurrency, unpaidOnPurchaseOrder } from '@/lib/money-totals';
+import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
 
 import { prisma } from '@/lib/prisma';
 
@@ -85,14 +86,11 @@ export async function getDashboardFinancials() {
 export async function getDashboardSales() {
   await requirePermission('finance.view');
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Tehran's days, not the server's (it runs in UTC): src/lib/tehran-day.ts.
+    const todayInTehran = tehranDay(new Date());
+    const today = tehranDayStart(todayInTehran);
+    const yesterday = tehranDayStart(addDays(todayInTehran, -1));
+    const thirtyDaysAgo = tehranDayStart(addDays(todayInTehran, -30));
 
     // Sales today
     const ordersToday = await prisma.order.findMany({
@@ -137,14 +135,14 @@ export async function getDashboardSales() {
     // Last 30 days daily sales for chart
     const dailySales = await prisma.$queryRaw<Array<{ date: Date; total: number; count: number }>>`
       SELECT 
-        DATE("createdAt") as date,
+        DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tehran') as date,
         SUM("totalAmount")::float as total,
         COUNT(*)::int as count
       FROM "Order"
       WHERE "createdAt" >= ${thirtyDaysAgo}
         AND status != 'CANCELLED'
-      GROUP BY DATE("createdAt")
-      ORDER BY DATE("createdAt") ASC
+      GROUP BY 1
+      ORDER BY 1 ASC
     `;
 
     // Top 5 products

@@ -5,6 +5,7 @@ import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { latestRates, totalsByCurrency } from '@/lib/money-totals';
 import { isNonOperating } from '@/lib/profit-rows';
+import { tehranDay } from '@/lib/tehran-day';
 
 // Financial Reports
 
@@ -63,7 +64,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
     const monthlyData: Record<string, { income: number; expenses: number; profit: number }> = {};
     
     transactions.forEach((t: any) => {
-      const monthKey = t.date.toISOString().substring(0, 7); // YYYY-MM
+      const monthKey = tehranDay(t.date).substring(0, 7); // YYYY-MM, in Tehran
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { income: 0, expenses: 0, profit: 0 };
       }
