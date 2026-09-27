@@ -21,6 +21,7 @@ import { useState } from 'react';
 const initialState: {
   message: string;
   errors: Record<string, string[]>;
+  success?: boolean;
 } = {
   message: '',
   errors: {},
@@ -162,7 +163,7 @@ export function CampaignForm() {
           {state.message && (
             <div
               className={`text-sm p-3 rounded ${
-                Object.keys(state.errors || {}).length === 0
+                state.success
                   ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
                   : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
               }`}
