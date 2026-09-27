@@ -15,6 +15,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { localDateString } from '@/lib/date-utils';
 import { useState } from 'react';
 
 const initialState: {
@@ -94,7 +95,7 @@ export function CampaignForm() {
                 name="startDate"
                 defaultValue={startDate ? new Date(startDate) : undefined}
                 onChange={(selectedDate) => {
-                  setStartDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setStartDate(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="startDate" value={startDate} />
@@ -110,7 +111,7 @@ export function CampaignForm() {
                 name="endDate"
                 defaultValue={endDate ? new Date(endDate) : undefined}
                 onChange={(selectedDate) => {
-                  setEndDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setEndDate(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="endDate" value={endDate} />

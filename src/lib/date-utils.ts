@@ -192,6 +192,17 @@ export function formatDateForInput(date: Date | string | undefined): string {
 }
 
 /**
+ * The calendar day `date` falls on where the browser is, as YYYY-MM-DD in
+ * Latin digits: what a day picked in the Jalali picker (local midnight) means.
+ * `toISOString().slice(0, 10)` gives the UTC day instead, which in Tehran is
+ * the day before for any time before 03:30, local midnight included.
+ */
+export function localDateString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
  * Get Jalali month name
  * @param monthNumber - Month number (1-12)
  * @returns Jalali month name in Persian

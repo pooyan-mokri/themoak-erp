@@ -15,6 +15,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { localDateString } from '@/lib/date-utils';
 import { useState, useEffect } from 'react';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { accountLabel } from '@/lib/account-label';
@@ -361,7 +362,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                 name="date"
                 defaultValue={date ? new Date(date) : undefined}
                 onChange={(selectedDate) => {
-                  setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setDate(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="date" value={date} />

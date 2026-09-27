@@ -18,6 +18,7 @@ import { getConsignmentReport } from '@/actions/consignment-reports';
 import { CHANNELS_FIELD } from '@/lib/consignment-channels';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { INVALID_RECEIPT_MESSAGE } from '@/lib/receipt-ref';
+import { localDateString } from '@/lib/date-utils';
 import { DENIED, NON_SELLERS, assertInvariants, balanceOf, openAccount, quantityOf, snapshot, stockIn } from '../sales/world';
 
 // The actions log every refusal these tests provoke on purpose.
@@ -155,6 +156,23 @@ test('a line reported at a price of 0 owes nothing: its order is booked settled 
   assert.deepEqual(await expenses('COGS'), [COST], 'the frame still left at its cost');
   assert.equal(await quantityOf(w.frame.id, w.warehouse.id), 19);
   await assertInvariants();
+});
+
+test('a day picked in the Jalali calendar is the day the sale and its settlement are booked on, in Tehran', async () => {
+  process.env.TZ = 'Asia/Tehran';
+  const w = await world();
+  // Picking 1405/07/05 gives its local midnight: 20:30 UTC on 26 Sept.
+  const picked = new Date('2026-09-26T20:30:00.000Z');
+  assert.equal(picked.toISOString().slice(0, 10), '2026-09-26', 'the UTC day the forms used to send');
+  assert.equal(localDateString(picked), '2026-09-27');
+  assert.equal(localDateString(new Date('2026-09-27T20:29:59.000Z')), '2026-09-27', '23:59 in Tehran is still that day');
+
+  assert.equal((await report(w, 1, { saleDate: localDateString(picked) })).success, true);
+  const order = await prisma.order.findFirstOrThrow();
+  assert.equal(tehranDay(order.createdAt), '2026-09-27');
+  assert.equal((await paySettlement(undefined, form({ orderId: order.id, accountId: w.bank.id, paymentDate: localDateString(picked) }))).success, true);
+  const income = await prisma.transaction.findFirstOrThrow({ where: { type: 'INCOME' } });
+  assert.equal(tehranDay(income.date), '2026-09-27');
 });
 
 test('sales on different days are different orders; a day whose order was cancelled starts a new one', async () => {
