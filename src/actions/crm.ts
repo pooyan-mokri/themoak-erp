@@ -576,11 +576,11 @@ export async function getCRMDashboardStats() {
         include: { customer: true }
       }),
       // What each customer bought: every order but the cancelled ones. An
-      // order's total already has its returns taken off; the discount is not.
-      prisma.order.groupBy({
-        by: ['customerId'],
+      // order's total already has its returns and exchanges in it (since
+      // 2026-05-07); the discount is not.
+      prisma.order.findMany({
         where: { status: { not: 'CANCELLED' }, customerId: { not: null } },
-        _sum: { totalAmount: true, discount: true },
+        select: { customerId: true, totalAmount: true, discount: true },
       }),
       // Recent 10 activity logs
       !isAdmin ? Promise.resolve([]) : prisma.activityLog.findMany({
@@ -597,12 +597,16 @@ export async function getCRMDashboardStats() {
       })
     ]);
 
-    // The top 5 of all customers by what they bought, after discount
-    const top = topCustomers
-      .map((row: any) => ({
-        id: row.customerId as string,
-        totalRevenue: Number(row._sum.totalAmount ?? 0) - Number(row._sum.discount ?? 0),
-      }))
+    // The top 5 of all customers by what they bought: each order worth its
+    // total less its discount, never below 0 (a discounted order returned in
+    // full is worth nothing, not less).
+    const value = new Map<string, number>();
+    for (const order of topCustomers as any[]) {
+      const worth = Math.max(0, Number(order.totalAmount) - Number(order.discount ?? 0));
+      value.set(order.customerId, (value.get(order.customerId) ?? 0) + worth);
+    }
+    const top = [...value.entries()]
+      .map(([id, totalRevenue]) => ({ id, totalRevenue }))
       .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5);
     const named = await prisma.customer.findMany({
