@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { checkPermission } from '@/lib/access';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { PURCHASE_ORDER_STATUS_LABELS, canMovePurchaseOrder } from '@/lib/purchase-order-status';
 
 /** A figure in the account's own unit, for balance messages. */
 const inUnit = (amount: number, currency: string) =>
@@ -27,19 +28,6 @@ async function lockOrderAndAccount(tx: any, orderId: string, accountId: string) 
   await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
 }
 
-// The purchase-order page's names for each status.
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'پیش‌نویس',
-  PENDING_PAYMENT: 'منتظر پرداخت',
-  PARTIALLY_PAID: 'پرداخت جزئی',
-  PAID: 'پرداخت شده',
-  IN_PRODUCTION: 'در حال تولید',
-  ARRIVED: 'رسیده به مقصد',
-  PARTIALLY_RECEIVED: 'نیمه دریافت شده',
-  RECEIVED: 'دریافت شده',
-  CANCELLED: 'لغو شده',
-};
-
 // Workflow Actions
 export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
   // Moving an order along is procurement work; marking it paid is a payment.
@@ -57,19 +45,8 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
     }
 
     // Validate status transition
-    const validTransitions: Record<string, string[]> = {
-      'DRAFT': ['PENDING_PAYMENT', 'CANCELLED'],
-      'PENDING_PAYMENT': ['PARTIALLY_PAID', 'PAID', 'CANCELLED'],
-      'PARTIALLY_PAID': ['PAID', 'CANCELLED'],
-      'PAID': ['IN_PRODUCTION', 'CANCELLED'],
-      'IN_PRODUCTION': ['ARRIVED', 'CANCELLED'],
-      'ARRIVED': ['RECEIVED', 'CANCELLED'],
-      'RECEIVED': [],
-      'CANCELLED': [],
-    };
-
-    if (!validTransitions[order.status]?.includes(newStatus)) {
-      const label = (status: string) => STATUS_LABELS[status] ?? status;
+    if (!canMovePurchaseOrder(order.status, newStatus)) {
+      const label = (status: string) => PURCHASE_ORDER_STATUS_LABELS[status] ?? status;
       return { success: false, message: `تغییر وضعیت از «${label(order.status)}» به «${label(newStatus)}» مجاز نیست` };
     }
 

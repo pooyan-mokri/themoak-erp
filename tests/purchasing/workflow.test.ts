@@ -6,6 +6,7 @@ import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
 import { recordArrival, recordPurchasePartialPayment, recordPurchasePayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { DUPLICATE_REQUEST_MESSAGE } from '@/lib/request-id';
+import { canMovePurchaseOrder } from '@/lib/purchase-order-status';
 import { balanceOf } from '../accounting/ledger';
 import { EUR_RATE, OPENING, USD_RATE, assertPurchaseInvariants, order, purchasingWorld, type World } from './world';
 
@@ -46,6 +47,8 @@ test('status: every allowed move goes through; every other one is refused in Per
   const all = Object.keys(allowed);
   for (const from of all) {
     for (const to of all) {
+      // The order page offers a move (the cancel button among them) exactly when the server accepts it.
+      assert.equal(canMovePurchaseOrder(from, to), allowed[from].includes(to), `page: ${from} → ${to}`);
       const po = await tenFrames(from);
       const result = await updatePurchaseOrderStatus(po.id, to);
       if (allowed[from].includes(to)) {
@@ -60,6 +63,17 @@ test('status: every allowed move goes through; every other one is refused in Per
     }
   }
   assert.deepEqual(await updatePurchaseOrderStatus('missing', 'CANCELLED'), { success: false, message: 'سفارش یافت نشد' });
+  // A partly received order cannot be cancelled, so the page shows no cancel button for it.
+  assert.equal(canMovePurchaseOrder('PARTIALLY_RECEIVED', 'CANCELLED'), false);
+  assert.equal(canMovePurchaseOrder('UNKNOWN', 'CANCELLED'), false);
+});
+
+test('status and arrival refusals carry their Persian reason in message, which the order page shows', async () => {
+  const po = await tenFrames('PARTIALLY_RECEIVED');
+  const cancel = await updatePurchaseOrderStatus(po.id, 'CANCELLED');
+  assert.deepEqual(cancel, { success: false, message: 'تغییر وضعیت از «نیمه دریافت شده» به «لغو شده» مجاز نیست' });
+  const arrival = await recordArrival(po.id, [], 'toman');
+  assert.deepEqual(arrival, { success: false, message: 'این سفارش در وضعیت در حال تولید نیست' });
 });
 
 test('status: procurement moves take stock.manage or finance.manage; paid moves take finance.manage', async () => {

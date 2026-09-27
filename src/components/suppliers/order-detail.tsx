@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
+import { canMovePurchaseOrder } from '@/lib/purchase-order-status';
 import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatJalaliDate } from '@/lib/date-utils';
@@ -252,7 +253,7 @@ export function OrderDetail({
       if (result.success) {
         router.refresh();
       } else {
-        setError(result.error || 'خطا در تغییر وضعیت');
+        setError(result.message || result.error || 'خطا در تغییر وضعیت');
       }
     } catch (err) {
       setError('خطا در ارتباط با سرور');
@@ -341,7 +342,7 @@ export function OrderDetail({
         setArrivalCosts([]);
         setArrivalAccount('');
       } else {
-        setError(result.error || 'خطا در ثبت رسیدن به مقصد');
+        setError(result.message || result.error || 'خطا در ثبت رسیدن به مقصد');
       }
     } catch (err) {
       setError('خطا در ارتباط با سرور');
@@ -376,8 +377,10 @@ export function OrderDetail({
       { key: 'RECEIVED', label: 'دریافت شده', icon: '✅' },
     ];
 
-    // Treat a partially-paid order as still at the "pending payment" stage
-    const effectiveStatus = order.status === 'PARTIALLY_PAID' ? 'PENDING_PAYMENT' : order.status;
+    // Treat a partially-paid order as still at the "pending payment" stage, and a partly received one as
+    // arrived, with receiving still to finish.
+    const effectiveStatus =
+      order.status === 'PARTIALLY_PAID' ? 'PENDING_PAYMENT' : order.status === 'PARTIALLY_RECEIVED' ? 'ARRIVED' : order.status;
     const currentIndex = steps.findIndex(s => s.key === effectiveStatus);
     return steps.map((step, index) => ({
       ...step,
@@ -491,7 +494,7 @@ export function OrderDetail({
                   دریافت کالا
                 </Button>
               )}
-              {order.status !== 'RECEIVED' && canChangeStatus && (
+              {canMovePurchaseOrder(order.status, 'CANCELLED') && canChangeStatus && (
                 <Button 
                   onClick={() => handleStatusChange('CANCELLED')}
                   variant="destructive"

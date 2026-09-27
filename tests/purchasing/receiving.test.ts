@@ -64,6 +64,29 @@ test('a partial then a full receipt: stock, PURCHASE movements, received quantit
   await assertPurchaseInvariants();
 });
 
+test('a partly received order takes the rest in later receipts, each adding only its own units, never more than remain', async () => {
+  const po = await arrivedPanj();
+  const receive = (quantity: number) => receivePurchaseOrderItems(po.id, w.shop.id, [{ itemId: po.items[0].id, receivedQuantity: quantity }]);
+  assert.equal((await receive(3)).success, true);
+  assert.equal(await statusOf(po.id), 'PARTIALLY_RECEIVED');
+  // 3 in, 7 remain: 8 more is refused whole.
+  const over = await receive(8);
+  assert.equal(over.success, false);
+  assert.match(over.error!, /بیشتر از تعداد سفارش/);
+  assert.equal((await receive(3)).success, true);
+  assert.deepEqual([(await item(po.items[0].id)).receivedQuantity, await qty(w.panj.id, w.shop.id), await statusOf(po.id)], [6, 6, 'PARTIALLY_RECEIVED']);
+  assert.equal((await receive(4)).success, true);
+  assert.deepEqual([(await item(po.items[0].id)).receivedQuantity, await qty(w.panj.id, w.shop.id), await statusOf(po.id)], [10, 10, 'RECEIVED']);
+  // Received in full: nothing more comes in, and the whole-order receive has nothing left to add.
+  assert.equal((await receive(1)).success, false);
+  assert.equal((await receivePurchaseOrder(po.id, w.shop.id)).success, false);
+  const movements = await prisma.inventoryMovement.findMany({ where: { type: 'PURCHASE', referenceId: po.id }, orderBy: { createdAt: 'asc' } });
+  assert.deepEqual(movements.map((m: any) => m.quantity), [3, 3, 4]);
+  assert.equal(await qty(w.panj.id, w.shop.id), 10);
+  await assertStockInvariants();
+  await assertPurchaseInvariants();
+});
+
 test('cost of record: a weighted average of the stock on hand and the landed cost, which is counted once over all receipts', async () => {
   // 5 on hand at 300,000.
   const po = await arrivedPanj();
