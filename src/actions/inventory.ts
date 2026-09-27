@@ -56,32 +56,70 @@ export async function getInventoryByWarehouse(warehouseId: string) {
   }
 }
 
+// A refusal found inside a transaction: thrown so everything rolls back, then shown to the user as it is.
+class StockRefusal extends Error {}
+
+const NOT_WHOLE_UNITS = 'تعداد باید عدد صحیح و بزرگ‌تر از صفر باشد.';
+
+/** Refuses stock into or out of a warehouse that does not exist or is archived (an archived one must stay empty). */
+async function assertLiveWarehouses(tx: any, ids: string[]) {
+  const found = await tx.warehouse.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, isArchived: true } });
+  for (const id of ids) {
+    const warehouse = found.find((w: any) => w.id === id);
+    if (!warehouse) throw new StockRefusal('انبار یافت نشد.');
+    if (warehouse.isArchived) {
+      throw new StockRefusal(`انبار «${warehouse.name}» آرشیو شده است؛ ابتدا آن را از آرشیو خارج کنید.`);
+    }
+  }
+}
+
+/** Takes units out of a row only if it holds them, in one statement, so two takes at once can never both pass. */
+async function takeStock(tx: any, productId: string, warehouseId: string, quantity: number): Promise<boolean> {
+  const { count } = await tx.inventory.updateMany({
+    where: { productId, warehouseId, quantity: { gte: quantity } },
+    data: { quantity: { decrement: quantity } },
+  });
+  return count === 1;
+}
+
+/** Sets a row to a counted quantity, booking the difference as an ADJUSTMENT movement. */
 export async function updateStock(productId: string, warehouseId: string, quantity: number) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
+  if (!Number.isInteger(quantity) || quantity < 0) {
+    return { success: false, error: 'موجودی باید عدد صحیح و بزرگ‌تر یا برابر صفر باشد.' };
+  }
   try {
-    await prisma.inventory.upsert({
-      where: {
-        productId_warehouseId: {
+    await prisma.$transaction(async (tx: any) => {
+      await assertLiveWarehouses(tx, [warehouseId]);
+      // Lock the row (or its absence) so the difference booked is the difference applied.
+      const [row] = await tx.$queryRaw`
+        SELECT "quantity" FROM "Inventory" WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId} FOR UPDATE`;
+      const difference = quantity - (row?.quantity ?? 0);
+      if (difference === 0) return;
+      await tx.inventory.upsert({
+        where: { productId_warehouseId: { productId, warehouseId } },
+        update: { quantity },
+        create: { productId, warehouseId, quantity },
+      });
+      await tx.inventoryMovement.create({
+        data: {
           productId,
-          warehouseId,
+          fromWarehouseId: difference < 0 ? warehouseId : null,
+          toWarehouseId: difference > 0 ? warehouseId : null,
+          quantity: Math.abs(difference),
+          type: 'ADJUSTMENT',
+          note: difference > 0 ? 'افزایش موجودی' : 'کاهش موجودی',
         },
-      },
-      update: {
-        quantity,
-      },
-      create: {
-        productId,
-        warehouseId,
-        quantity,
-      },
+      });
     });
     kickSiteHook();
 
     revalidatePath('/dashboard/inventory');
     return { success: true };
   } catch (error) {
-    return { success: false, error: 'Failed to update stock' };
+    if (error instanceof StockRefusal) return { success: false, error: error.message };
+    return { success: false, error: 'خطا در ثبت موجودی.' };
   }
 }
 
@@ -95,13 +133,21 @@ export async function adjustStock(
 ) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
+  if (!Number.isInteger(adjustment) || adjustment === 0) {
+    return { success: false, error: 'مقدار تغییر باید عدد صحیح و غیر صفر باشد.' };
+  }
   try {
     await prisma.$transaction(async (tx: any) => {
-      await tx.inventory.upsert({
-        where: { productId_warehouseId: { productId, warehouseId } },
-        update: { quantity: { increment: adjustment } },
-        create: { productId, warehouseId, quantity: adjustment },
-      });
+      await assertLiveWarehouses(tx, [warehouseId]);
+      if (adjustment > 0) {
+        await tx.inventory.upsert({
+          where: { productId_warehouseId: { productId, warehouseId } },
+          update: { quantity: { increment: adjustment } },
+          create: { productId, warehouseId, quantity: adjustment },
+        });
+      } else if (!(await takeStock(tx, productId, warehouseId, -adjustment))) {
+        throw new StockRefusal('موجودی این کالا در انبار برای این کاهش کافی نیست.');
+      }
 
       await tx.inventoryMovement.create({
         data: {
@@ -119,10 +165,11 @@ export async function adjustStock(
     kickSiteHook();
 
     revalidatePath('/dashboard/inventory');
-    return { success: true, message: 'Stock adjusted successfully' };
+    return { success: true, message: 'موجودی با موفقیت تنظیم شد.' };
   } catch (error) {
+    if (error instanceof StockRefusal) return { success: false, error: error.message };
     console.error('Error adjusting stock:', error);
-    return { success: false, error: 'Failed to adjust stock' };
+    return { success: false, error: 'خطا در تنظیم موجودی.' };
   }
 }
 
@@ -137,31 +184,27 @@ export async function transferStock(
 ) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
+  if (!Number.isInteger(quantity) || quantity <= 0) return { success: false, error: NOT_WHOLE_UNITS };
+  if (fromWarehouseId === toWarehouseId) {
+    return { success: false, error: 'انبار مبدا و مقصد نمی‌توانند یکسان باشند' };
+  }
   try {
     await prisma.$transaction(async (tx: any) => {
-      // 1. Check source stock
-      const sourceStock = await tx.inventory.findUnique({
-        where: { productId_warehouseId: { productId, warehouseId: fromWarehouseId } },
-      });
+      await assertLiveWarehouses(tx, [fromWarehouseId, toWarehouseId]);
 
-      if (!sourceStock || sourceStock.quantity < quantity) {
-        throw new Error('موجودی انبار مبدا کافی نیست');
+      // 1. Decrement source, only if it holds enough
+      if (!(await takeStock(tx, productId, fromWarehouseId, quantity))) {
+        throw new StockRefusal('موجودی انبار مبدا کافی نیست');
       }
 
-      // 2. Decrement source
-      await tx.inventory.update({
-        where: { productId_warehouseId: { productId, warehouseId: fromWarehouseId } },
-        data: { quantity: { decrement: quantity } },
-      });
-
-      // 3. Increment target
+      // 2. Increment target
       await tx.inventory.upsert({
         where: { productId_warehouseId: { productId, warehouseId: toWarehouseId } },
         update: { quantity: { increment: quantity } },
         create: { productId, warehouseId: toWarehouseId, quantity },
       });
 
-      // 4. Record movement
+      // 3. Record movement
       await tx.inventoryMovement.create({
         data: {
           productId,
@@ -180,8 +223,9 @@ export async function transferStock(
     revalidatePath('/dashboard/inventory');
     return { success: true, message: 'جابجایی موجودی با موفقیت انجام شد' };
   } catch (error: any) {
+    if (error instanceof StockRefusal) return { success: false, error: error.message };
     console.error('Error transferring stock:', error);
-    return { success: false, error: error.message || 'Failed to transfer stock' };
+    return { success: false, error: 'خطا در جابجایی موجودی' };
   }
 }
 
@@ -210,23 +254,16 @@ export async function transferStockBatch(input: {
   if (validItems.length === 0) {
     return { success: false, error: 'حداقل یک کالا به لیست اضافه کنید' };
   }
+  if (validItems.some((i) => !Number.isInteger(i.quantity))) return { success: false, error: NOT_WHOLE_UNITS };
 
   try {
     await prisma.$transaction(async (tx: any) => {
+      await assertLiveWarehouses(tx, [fromWarehouseId, toWarehouseId]);
       for (const item of validItems) {
-        const sourceStock = await tx.inventory.findUnique({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: fromWarehouseId } },
-        });
-
-        if (!sourceStock || sourceStock.quantity < item.quantity) {
+        if (!(await takeStock(tx, item.productId, fromWarehouseId, item.quantity))) {
           const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
-          throw new Error(`موجودی انبار مبدا برای «${product?.name ?? item.productId}» کافی نیست`);
+          throw new StockRefusal(`موجودی انبار مبدا برای «${product?.name ?? item.productId}» کافی نیست`);
         }
-
-        await tx.inventory.update({
-          where: { productId_warehouseId: { productId: item.productId, warehouseId: fromWarehouseId } },
-          data: { quantity: { decrement: item.quantity } },
-        });
 
         await tx.inventory.upsert({
           where: { productId_warehouseId: { productId: item.productId, warehouseId: toWarehouseId } },
@@ -252,8 +289,9 @@ export async function transferStockBatch(input: {
     revalidatePath('/dashboard/inventory');
     return { success: true, message: `جابجایی ${validItems.length} کالا با موفقیت انجام شد` };
   } catch (error: any) {
+    if (error instanceof StockRefusal) return { success: false, error: error.message };
     console.error('Error in batch transfer:', error);
-    return { success: false, error: error.message || 'خطا در جابجایی موجودی' };
+    return { success: false, error: 'خطا در جابجایی موجودی' };
   }
 }
 
@@ -267,7 +305,8 @@ export async function getWarehouseDashboardStats() {
       lowStockItems,
       totalInventoryValue
     ] = await Promise.all([
-      prisma.warehouse.count(),
+      // Archived warehouses are hidden from every list, so the count leaves them out too.
+      prisma.warehouse.count({ where: { isArchived: false } }),
       prisma.product.count(),
       prisma.inventory.count({
         where: { quantity: { lte: 10 } } // Assuming 10 is low stock threshold
