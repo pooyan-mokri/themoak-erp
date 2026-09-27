@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { MONTH_NAMES, currentPeriod } from './payroll-periods';
 
 const initialState = {
   message: '',
@@ -28,6 +29,7 @@ interface PayrollFormProps {
   onSuccess?: () => void;
 }
 
+/** A new payslip: employee, month and year, base pay, bonus and deductions. Shown in a dialog. */
 export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
   const [state, dispatch] = useFormState(createPayroll, initialState);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
@@ -41,7 +43,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
     // Only process if message has changed
     if (state.message && state.message !== lastMessageRef.current) {
       lastMessageRef.current = state.message;
-      
+
       if (state.success) {
         toast.success(state.message);
         if (onSuccess) {
@@ -75,185 +77,149 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
   const deductionsNum = Number(deductions) || 0;
   const netAmount = amountNum + bonusesNum - deductionsNum;
 
-  // Get current Jalali month and year
-  const now = new Date();
-  const jalaliDate = new Intl.DateTimeFormat('fa-IR', {
-    year: 'numeric',
-    month: 'numeric',
-  }).formatToParts(now);
-  const yearValue = jalaliDate.find((p) => p.type === 'year')?.value || '1403';
-  const monthValue = jalaliDate.find((p) => p.type === 'month')?.value || '1';
-  const currentYear = parseInt(yearValue, 10) || 1403;
-  const currentMonth = parseInt(monthValue, 10) || 1;
+  // The current Jalali month and year. (Reading them from Intl's fa-IR parts gave Persian
+  // digits that parseInt cannot read, so the form always opened on month 1 of 1403.)
+  const { year: currentYear, month: currentMonth } = currentPeriod();
+
+  const errors = state.errors as Record<string, string[] | undefined> | undefined;
+  const FieldError = ({ name }: { name: string }) =>
+    errors?.[name] ? <p className="text-[12.5px] text-danger">{errors[name]?.[0]}</p> : null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>ثبت فیش حقوقی جدید</CardTitle>
-      </CardHeader>
-      <form action={dispatch}>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="employeeId">کارمند *</Label>
-            <Select
-              name="employeeId"
-              required
-              value={selectedEmployeeId}
-              onValueChange={setSelectedEmployeeId}
-            >
-              <SelectTrigger id="employeeId">
-                <SelectValue placeholder="انتخاب کارمند" />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {employee.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.employeeId?.[0]}</p>
-            )}
-          </div>
+    <form action={dispatch} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="employeeId">کارمند *</Label>
+        <Select name="employeeId" required value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
+          <SelectTrigger id="employeeId">
+            <SelectValue placeholder="انتخاب کارمند" />
+          </SelectTrigger>
+          <SelectContent>
+            {employees.map((employee) => (
+              <SelectItem key={employee.id} value={employee.id}>
+                {employee.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <FieldError name="employeeId" />
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="periodMonth">ماه *</Label>
-              <Select name="periodMonth" required defaultValue={currentMonth.toString()}>
-                <SelectTrigger id="periodMonth">
-                  <SelectValue placeholder="انتخاب ماه" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                    <SelectItem key={month} value={month.toString()}>
-                      {month}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodMonth?.[0]}</p>
-              )}
-            </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="periodMonth">ماه *</Label>
+          <Select name="periodMonth" required defaultValue={currentMonth.toString()}>
+            <SelectTrigger id="periodMonth">
+              <SelectValue placeholder="انتخاب ماه" />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                <SelectItem key={month} value={month.toString()}>
+                  {month.toLocaleString('fa-IR')} · {MONTH_NAMES[month - 1]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FieldError name="periodMonth" />
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="periodYear">سال *</Label>
-              <Input
-                id="periodYear"
-                name="periodYear"
-                type="number"
-                min="1400"
-                placeholder="1403"
-                required
-                defaultValue={currentYear ? currentYear.toString() : '1403'}
-              />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.periodYear?.[0]}</p>
-              )}
-            </div>
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="periodYear">سال *</Label>
+          <Input
+            id="periodYear"
+            name="periodYear"
+            type="number"
+            min="1400"
+            placeholder="1403"
+            required
+            className="tabular-nums"
+            defaultValue={currentYear.toString()}
+          />
+          <FieldError name="periodYear" />
+        </div>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="amount">مبلغ حقوق (تومان) *</Label>
-            <Input
-              id="amount"
-              name="amount"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
-            )}
-            {selectedEmployee && (
-              <p className="text-xs text-muted-foreground">
-                حقوق پایه: {selectedEmployee.salary?.toLocaleString('fa-IR')} تومان
-              </p>
-            )}
-          </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="amount">مبلغ حقوق (تومان) *</Label>
+        <Input
+          id="amount"
+          name="amount"
+          type="number"
+          step="0.01"
+          min="0"
+          placeholder="0"
+          required
+          className="tabular-nums"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <FieldError name="amount" />
+        {selectedEmployee && (
+          <p className="text-xs text-muted-foreground">حقوق پایه: {selectedEmployee.salary?.toLocaleString('fa-IR')} تومان</p>
+        )}
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="bonuses">پاداش (تومان)</Label>
-              <Input
-                id="bonuses"
-                name="bonuses"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0"
-                value={bonuses}
-                onChange={(e) => setBonuses(e.target.value)}
-              />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.bonuses?.[0]}</p>
-              )}
-            </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="bonuses">پاداش (تومان)</Label>
+          <Input
+            id="bonuses"
+            name="bonuses"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0"
+            className="tabular-nums"
+            value={bonuses}
+            onChange={(e) => setBonuses(e.target.value)}
+          />
+          <FieldError name="bonuses" />
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="deductions">کسورات (تومان)</Label>
-              <Input
-                id="deductions"
-                name="deductions"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0"
-                value={deductions}
-                onChange={(e) => setDeductions(e.target.value)}
-              />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.deductions && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.deductions?.[0]}</p>
-              )}
-            </div>
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="deductions">کسورات (تومان)</Label>
+          <Input
+            id="deductions"
+            name="deductions"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0"
+            className="tabular-nums"
+            value={deductions}
+            onChange={(e) => setDeductions(e.target.value)}
+          />
+          <FieldError name="deductions" />
+        </div>
+      </div>
 
-          {amount && (
-            <div className="p-3 bg-muted rounded-md">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">خالص قابل پرداخت:</span>
-                <span className="text-lg font-bold text-green-600">
-                  {netAmount.toLocaleString('fa-IR')} تومان
-                </span>
-              </div>
-            </div>
+      {amount && (
+        <div className="flex items-center justify-between rounded-md bg-secondary px-3 py-2.5">
+          <span className="text-[13px] text-muted-foreground">خالص قابل پرداخت</span>
+          <span className="text-[15px] font-medium tabular-nums">{netAmount.toLocaleString('fa-IR')} تومان</span>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor="description">توضیحات</Label>
+        <Textarea id="description" name="description" placeholder="توضیحات (اختیاری)..." rows={3} />
+        <FieldError name="description" />
+      </div>
+
+      {state.message && (
+        <div
+          className={cn(
+            'rounded-md px-3 py-2 text-[13px]',
+            state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
           )}
+        >
+          {state.message}
+        </div>
+      )}
 
-          <div className="space-y-2">
-            <Label htmlFor="description">توضیحات</Label>
-            <Textarea
-              id="description"
-              name="description"
-              placeholder="توضیحات (اختیاری)..."
-              rows={3}
-            />
-            {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
-            )}
-          </div>
-
-          {state.message && (
-            <div
-              className={`text-sm p-3 rounded ${
-                state.success
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-              }`}
-            >
-              {state.message}
-            </div>
-          )}
-        </CardContent>
-        <CardFooter className="flex justify-end">
-          <SubmitButton />
-        </CardFooter>
-      </form>
-    </Card>
+      <div className="flex justify-end">
+        <SubmitButton />
+      </div>
+    </form>
   );
 }
 
@@ -265,4 +231,3 @@ function SubmitButton() {
     </Button>
   );
 }
-

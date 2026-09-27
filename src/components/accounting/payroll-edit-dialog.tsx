@@ -91,21 +91,21 @@ export function PayrollEditDialog({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <div className="rounded-lg border p-3 text-sm space-y-1 bg-muted/30">
-            <div className="flex justify-between font-bold">
-              <span>حقوق خالص:</span>
-              <span className={belowPaid ? 'text-red-600' : ''}>{fmt(net)} تومان</span>
+          <div className="space-y-1 rounded-md bg-secondary p-3 text-[13px]">
+            <div className="flex justify-between font-medium">
+              <span>حقوق خالص</span>
+              <span className={belowPaid ? 'tabular-nums text-danger' : 'tabular-nums'}>{fmt(net)} تومان</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>پرداخت‌شده تا امروز:</span>
-              <span>{fmt(payroll.paidAmount)} تومان</span>
+              <span>پرداخت‌شده تا امروز</span>
+              <span className="tabular-nums">{fmt(payroll.paidAmount)} تومان</span>
             </div>
             <div className="flex justify-between">
-              <span>باقیمانده بعد از ویرایش:</span>
-              <span className="text-orange-600">{fmt(Math.max(0, net - payroll.paidAmount))} تومان</span>
+              <span>باقیمانده بعد از ویرایش</span>
+              <span className="tabular-nums">{fmt(Math.max(0, net - payroll.paidAmount))} تومان</span>
             </div>
             {belowPaid && (
-              <p className="text-xs text-red-600">حقوق خالص نمی‌تواند از مبلغی که پرداخت شده کمتر باشد.</p>
+              <p className="rounded bg-danger-soft px-2 py-1 text-xs text-danger">حقوق خالص نمی‌تواند از مبلغی که پرداخت شده کمتر باشد.</p>
             )}
             <p className="text-xs text-muted-foreground">
               ویرایش فیش پولی جابه‌جا نمی‌کند؛ پرداخت‌های قبلی همان می‌مانند و باقیمانده از روی مبلغ تازه حساب می‌شود.
