@@ -19,7 +19,7 @@ import { CHANNELS_FIELD } from '@/lib/consignment-channels';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { INVALID_RECEIPT_MESSAGE } from '@/lib/receipt-ref';
 import { localDateString } from '@/lib/date-utils';
-import { DENIED, NON_SELLERS, assertInvariants, balanceOf, openAccount, quantityOf, snapshot, stockIn } from '../sales/world';
+import { DENIED, NON_SELLERS, assertInvariants, balanceOf, openAccount, quantityOf, sleep, snapshot, stockIn } from '../sales/world';
 
 // The actions log every refusal these tests provoke on purpose.
 console.error = () => {};
@@ -187,6 +187,23 @@ test('sales on different days are different orders; a day whose order was cancel
     rows.map((o: any) => [tehranDay(o.createdAt), o.status, o.items.length]),
     [['2026-09-20', 'CANCELLED', 1], ['2026-09-21', 'COMPLETED', 1], ['2026-09-20', 'COMPLETED', 1]],
   );
+});
+
+test('two reports for one partner at the same moment run one after the other: the second sees the stock the first took', async () => {
+  const w = await world();
+  beforeQuery.fn = async (params) => {
+    if (params.model === 'Order' && params.action === 'create') await sleep(150);
+  };
+  const results = await Promise.all([
+    report(w, 15, { requestId: 'consignment-race-01' }),
+    report(w, 10, { channel: 'حضوری', requestId: 'consignment-race-02' }),
+  ]);
+  beforeQuery.fn = null;
+  assert.deepEqual(results.map((r) => r.success === true).sort(), [false, true]);
+  assert.match(results.find((r) => !r.success)!.message ?? '', /موجودی کافی نیست/);
+  assert.equal(await prisma.order.count(), 1);
+  assert.ok((await quantityOf(w.frame.id, w.warehouse.id)) >= 5);
+  await assertInvariants();
 });
 
 test('a report that fails half way leaves no order, no commission, no expense, no movement and the stock as it was', async () => {
