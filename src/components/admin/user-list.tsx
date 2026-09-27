@@ -21,6 +21,7 @@ import {
 import { Role } from '@prisma/client';
 import { ROLES, ROLE_LABELS } from '@/lib/permissions';
 import { MoreHorizontal, Trash } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { formatJalaliDate } from '@/lib/date-utils';
 interface UserListProps {
@@ -29,12 +30,14 @@ interface UserListProps {
 
 export function UserList({ users }: UserListProps) {
   const handleRoleChange = async (userId: string, newRole: Role) => {
-    await updateUserRole(userId, newRole);
+    const result = await updateUserRole(userId, newRole);
+    if (!result.success) toast.error(result.message);
   };
 
   const handleDelete = async (userId: string) => {
     if (confirm('آیا از حذف این کاربر اطمینان دارید؟')) {
-      await deleteUser(userId);
+      const result = await deleteUser(userId);
+      if (!result.success) toast.error(result.message);
     }
   };
 

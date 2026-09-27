@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logActivity } from '@/lib/activity-log';
 import { hashPassword, verifyPassword, getCurrentUser } from '@/lib/auth-utils';
+import { ROLE_LABELS } from '@/lib/permissions';
 
 import { prisma } from '@/lib/prisma';
 
@@ -30,6 +31,15 @@ async function isAdmin() {
 }
 
 const ADMIN_ONLY = 'فقط مدیر سیستم می‌تواند کاربران را مدیریت کند.';
+const LAST_ADMIN = 'دست‌کم یک مدیر سیستم باید بماند؛ اول کاربر دیگری را مدیر سیستم کنید.';
+
+/** Taking ADMIN from the only admin would leave nobody able to manage users. */
+async function removesLastAdmin(userId: string, newRole: string) {
+  if (newRole === 'ADMIN') return false;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (user?.role !== 'ADMIN') return false;
+  return (await prisma.user.count({ where: { role: 'ADMIN', NOT: { id: userId } } })) === 0;
+}
 
 export async function getUsers() {
   // Non-admin pages list users too (projects, audits), but never to a stranger.
@@ -103,7 +113,7 @@ export async function createUser(prevState: any, formData: FormData) {
     });
 
     const currentUser = await getCurrentUser();
-    await logActivity(currentUser?.id, 'CREATE_USER', `کاربر ${name} با نقش ${role} ایجاد شد.`);
+    await logActivity(currentUser?.id, 'CREATE_USER', `کاربر ${name} با نقش ${ROLE_LABELS[role]} ایجاد شد.`);
 
   } catch (error) {
     return { message: 'خطا در ایجاد کاربر.' };
@@ -144,6 +154,7 @@ export async function updateUser(id: string, prevState: any, formData: FormData)
     if (existingUser) {
       return { message: 'این ایمیل توسط کاربر دیگری استفاده شده است.' };
     }
+    if (await removesLastAdmin(id, role)) return { message: LAST_ADMIN };
 
     const user = await prisma.user.update({
       where: { id },
@@ -168,13 +179,14 @@ export async function updateUser(id: string, prevState: any, formData: FormData)
 export async function updateUserRole(userId: string, newRole: Role) {
   if (!(await isAdmin())) return { success: false, message: ADMIN_ONLY };
   try {
+    if (await removesLastAdmin(userId, newRole)) return { success: false, message: LAST_ADMIN };
     const user = await prisma.user.update({
       where: { id: userId },
       data: { role: newRole },
     });
 
     const currentUser = await getCurrentUser();
-    await logActivity(currentUser?.id, 'UPDATE_ROLE', `نقش کاربر ${user.name} به ${newRole} تغییر یافت.`);
+    await logActivity(currentUser?.id, 'UPDATE_ROLE', `نقش کاربر ${user.name} به ${ROLE_LABELS[newRole] ?? newRole} تغییر یافت.`);
     revalidatePath('/dashboard/settings/users');
     return { success: true, message: 'نقش کاربر تغییر یافت.' };
   } catch (error) {
@@ -190,11 +202,11 @@ export async function deleteUser(userId: string) {
         return { success: false, message: 'شما نمی‌توانید حساب خود را حذف کنید.' };
     }
 
-    await prisma.user.delete({
+    const deleted = await prisma.user.delete({
       where: { id: userId },
     });
     
-    await logActivity(currentUser?.id, 'DELETE_USER', `کاربر با شناسه ${userId} حذف شد.`);
+    await logActivity(currentUser?.id, 'DELETE_USER', `کاربر ${deleted.name} (${deleted.email}) حذف شد.`);
     
     revalidatePath('/dashboard/settings/users');
     return { success: true, message: 'کاربر حذف شد.' };
