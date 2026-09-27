@@ -1,7 +1,6 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, DollarSign, TrendingUp, Zap } from 'lucide-react';
+import { SectionCard } from '@/components/dashboard/section-card';
 
 interface SalesAnalyticsCardsProps {
   analytics: {
@@ -15,68 +14,37 @@ interface SalesAnalyticsCardsProps {
   };
 }
 
+const fa = (n: number, digits = 0) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: digits }).format(n);
+
+/** Sales so far, from the orders that were not cancelled: units, money (sales.view), pace and the price it really sold at. */
 export function SalesAnalyticsCards({ analytics }: SalesAnalyticsCardsProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fa-IR').format(amount) + ' تومان';
-  };
+  const rows: Array<{ label: string; value: string; unit: string; note?: string }> = [
+    { label: 'کل فروش', value: fa(analytics.totalUnitsSold), unit: 'عدد', note: 'واحد فروخته شده' },
+    ...(analytics.totalRevenue !== undefined
+      ? [{ label: 'درآمد کل', value: fa(analytics.totalRevenue), unit: 'تومان', note: 'از ابتدا تا کنون' }]
+      : []),
+    { label: 'سرعت فروش', value: fa(analytics.velocityPerMonth, 1), unit: 'در ماه', note: `${fa(analytics.velocityPerWeek, 1)} در هفته` },
+    ...(analytics.avgSellingPrice !== undefined
+      ? [{ label: 'میانگین قیمت', value: fa(analytics.avgSellingPrice), unit: 'تومان', note: 'قیمت واقعی فروش' }]
+      : []),
+  ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">کل فروش</CardTitle>
-          <BarChart3 className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{analytics.totalUnitsSold}</div>
-          <p className="text-xs text-muted-foreground">
-            واحد فروخته شده
-          </p>
-        </CardContent>
-      </Card>
-
-      {analytics.totalRevenue !== undefined && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">درآمد کل</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">
-              از ابتدا تا کنون
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">سرعت فروش</CardTitle>
-          <Zap className="h-4 w-4 text-orange-600" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{analytics.velocityPerMonth.toFixed(1)}</div>
-          <p className="text-xs text-muted-foreground">
-            واحد در ماه
-          </p>
-        </CardContent>
-      </Card>
-
-      {analytics.avgSellingPrice !== undefined && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">میانگین قیمت</CardTitle>
-            <TrendingUp className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(analytics.avgSellingPrice)}</div>
-            <p className="text-xs text-muted-foreground">
-              قیمت واقعی فروش
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+    <SectionCard title="عملکرد فروش">
+      <dl className="divide-y">
+        {rows.map((row) => (
+          <div key={row.label} className="flex min-h-11 items-center justify-between gap-3 py-2">
+            <dt>
+              <span className="block text-[13.5px]">{row.label}</span>
+              {row.note && <span className="block text-[11.5px] text-muted-foreground">{row.note}</span>}
+            </dt>
+            <dd className="text-end text-[15px] font-medium tabular-nums">
+              {row.value}
+              <small className="ms-1 text-[11px] font-normal text-muted-foreground">{row.unit}</small>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </SectionCard>
   );
 }

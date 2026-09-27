@@ -2,19 +2,39 @@ import { getProducts } from '@/actions/product';
 import { getCustomers } from '@/actions/customer';
 import { getAccountOptions } from '@/actions/account-options';
 import { getWarehouses } from '@/actions/warehouse';
+import { getInventoryByWarehouse } from '@/actions/inventory';
 import { POSInterface } from '@/components/sales/pos-interface';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 import { DEFAULT_SITE_WAREHOUSE_NAME, pickWithDefault } from '@/lib/site-connection';
 
-export default async function POSPage() {
+/** Quantity by warehouse, then product, for the cards and the cart (read with the inventory action). */
+async function stockByWarehouse(warehouseIds: string[]): Promise<Record<string, Record<string, number>> | null> {
+  try {
+    const rows = await Promise.all(warehouseIds.map((id) => getInventoryByWarehouse(id)));
+    return Object.fromEntries(
+      warehouseIds.map((id, index) => [
+        id,
+        Object.fromEntries(rows[index].map((row: { productId: string; quantity: number }) => [row.productId, row.quantity])),
+      ]),
+    );
+  } catch (error) {
+    // No stock is better than wrong stock: the cards then show none.
+    console.error('POS stock:', error);
+    return null;
+  }
+}
+
+export default async function POSPage({ searchParams }: { searchParams?: { product?: string } }) {
   await requireRouteAccess('/dashboard/sales');
-  const [products, customers, allAccounts, warehouses] = await Promise.all([
+  const [products, customers, allAccounts, warehouses, canSell, canSeeStock] = await Promise.all([
     getProducts(),
     getCustomers(),
     getAccountOptions(),
     getWarehouses(),
+    hasPermission('sales.manage'),
+    hasPermission('stock.view'),
   ]);
-  
+
   // Filter accounts to only show Bank and Cash
   const accounts = allAccounts.filter((a: any) => a.type === 'BANK' || a.type === 'CASH');
 
@@ -25,15 +45,19 @@ export default async function POSPage() {
   const defaultWarehouseId =
     pickWithDefault(physicalWarehouses, null, DEFAULT_SITE_WAREHOUSE_NAME) ?? physicalWarehouses[0]?.id ?? '';
 
+  // Quantities are stock.view; a role without it sells without them.
+  const stock = canSeeStock ? await stockByWarehouse(physicalWarehouses.map((w: any) => w.id)) : null;
+
   return (
-    <div className="h-full">
-      <POSInterface 
-        products={products} 
-        customers={customers} 
-        accounts={accounts}
-        warehouses={physicalWarehouses}
-        defaultWarehouseId={defaultWarehouseId}
-      />
-    </div>
+    <POSInterface
+      products={products}
+      customers={customers}
+      accounts={accounts}
+      warehouses={physicalWarehouses}
+      defaultWarehouseId={defaultWarehouseId}
+      stock={stock}
+      canSell={canSell}
+      initialProductId={typeof searchParams?.product === 'string' ? searchParams.product : undefined}
+    />
   );
 }

@@ -93,7 +93,7 @@ export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPri
                 required 
                 defaultValue={initialData?.name}
               />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.name && <p className="text-sm text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.name}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="sku">کد کالا (SKU) *</Label>
@@ -104,7 +104,7 @@ export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPri
                 required 
                 defaultValue={initialData?.sku}
               />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.sku && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sku}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.sku && <p className="text-sm text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.sku}</p>}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="productType">نوع کالا *</Label>
@@ -124,7 +124,7 @@ export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPri
                 </SelectContent>
               </Select>
               <input type="hidden" name="productType" value={productType} />
-              {(state.errors as Record<string, string[] | undefined> | undefined)?.productType && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.productType}</p>}
+              {(state.errors as Record<string, string[] | undefined> | undefined)?.productType && <p className="text-sm text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.productType}</p>}
             </div>
             {canEditCost && (
               <div className="space-y-2">
@@ -137,7 +137,7 @@ export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPri
                   required 
                   defaultValue={initialData ? Number(initialData.costPrice) : undefined}
                 />
-                {(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice}</p>}
+                {(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice && <p className="text-sm text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.costPrice}</p>}
               </div>
             )}
             {canSeeSellPrice && (
@@ -154,7 +154,7 @@ export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPri
                   required={productType === 'SALEABLE'}
                   defaultValue={initialData ? Number(initialData.sellPrice) : undefined}
                 />
-                {(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice && <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice}</p>}
+                {(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice && <p className="text-sm text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.sellPrice}</p>}
               </div>
             )}
             <WebIdField
@@ -171,7 +171,7 @@ export function ProductForm({ initialData, onSuccess, canEditCost, canSeeSellPri
             />
           </div>
           {state.message && !state.success && (
-            <div className="text-sm p-2 rounded bg-red-100 text-red-700">
+            <div className="rounded-md bg-danger-soft p-2 text-sm text-danger">
               {state.message}
             </div>
           )}
@@ -232,7 +232,7 @@ function WebIdField({ initialWebId, error }: { initialWebId?: string; error?: st
       <p className="text-xs text-muted-foreground">
         خالی یعنی این کالا در سایت فروخته نمی‌شود. بعد از ثبت قفل می‌شود.
       </p>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }

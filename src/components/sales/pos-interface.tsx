@@ -2,38 +2,22 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Check, ShoppingCart, UserPlus } from 'lucide-react';
+import { toast } from 'sonner';
 import { ProductGrid } from './product-grid';
-import { CartSummary } from './cart-summary';
+import { CartSummary, CartTotals } from './cart-summary';
 import { Button } from '@/components/ui/button';
 import { createOrder } from '@/actions/sales';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
 import { TagInput } from '@/components/ui/tag-input';
 import { QuickCustomerForm } from './quick-customer-form';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ShoppingCart } from 'lucide-react';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { PageHeader } from '@/components/layout/page-header';
 import { accountLabel } from '@/lib/account-label';
 import { useRequestId } from '@/components/ui/request-id';
 import { ReceiptUpload } from '@/components/accounting/receipt-upload';
@@ -45,11 +29,15 @@ interface Product {
   sellPrice: any;
   image?: string;
   imageUrl?: string;
+  barcode?: string;
+  webId?: string;
 }
 
 interface Customer {
   id: string;
   name: string;
+  phone?: string;
+  segment?: string;
 }
 
 interface Account {
@@ -72,11 +60,32 @@ interface POSInterfaceProps {
   warehouses: Warehouse[];
   /** The warehouse a sale starts in (مشاهیر). */
   defaultWarehouseId?: string;
+  /** Quantity by warehouse, then product; null when the role may not see stock (stock.view). */
+  stock?: Record<string, Record<string, number>> | null;
+  /** May record the sale and create a customer (sales.manage); the server checks it too. */
+  canSell?: boolean;
+  /** A product to start the cart with («فروش سریع» on the product page). */
+  initialProductId?: string;
 }
 
-export function POSInterface({ products, customers: initialCustomers, accounts, warehouses, defaultWarehouseId }: POSInterfaceProps) {
+const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
+const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
+
+export function POSInterface({
+  products,
+  customers: initialCustomers,
+  accounts,
+  warehouses,
+  defaultWarehouseId,
+  stock = null,
+  canSell = true,
+  initialProductId,
+}: POSInterfaceProps) {
   const router = useRouter();
-  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
+  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>(() => {
+    const first = initialProductId ? products.find((p) => p.id === initialProductId) : undefined;
+    return first ? [{ product: first, quantity: 1 }] : [];
+  });
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>(
@@ -88,6 +97,8 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [discount, setDiscount] = useState<string>('0');
+  // A percent helper: typing a percent sets the discount amount, which is what is stored.
+  const [discountPercent, setDiscountPercent] = useState<string>('');
   const [paidAmount, setPaidAmount] = useState<string>('');
   // True once the cashier types a paid amount: a later discount edit leaves it alone.
   const [paidEdited, setPaidEdited] = useState(false);
@@ -133,13 +144,24 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     (sum, item) => sum + Number(item.product.sellPrice) * item.quantity,
     0
   );
+  const units = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // Calculate final amount based on discount
   const finalAmount = totalAmount - (Number(discount) || 0);
 
+  const customer = customers.find((c) => c.id === selectedCustomer);
+  const warehouse = warehouses.find((w) => w.id === selectedWarehouse);
+  const warehouseStock = stock ? stock[selectedWarehouse] ?? {} : null;
+
   // Reset checkout state when opening dialog
   const openCheckout = () => {
+    // The customer is picked beside the cart; say so before the checkout opens.
+    if (!selectedCustomer) {
+      toast.error('لطفا مشتری را انتخاب کنید.');
+      return;
+    }
     setDiscount('0');
+    setDiscountPercent('');
     setPaidAmount(totalAmount.toString());
     setPaidEdited(false);
     // Every sale picks its receiving account: two accounts can have nearly the same name.
@@ -149,6 +171,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     setOrderTags([]);
     setInvoiceAccountId('');
     setReceiptUrl('');
+    setIsCartOpen(false);
     setIsCheckoutOpen(true);
   };
 
@@ -162,6 +185,15 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       // This ensures the paid amount reflects the discount
       setPaidAmount(newFinalAmount.toString());
     }
+  };
+
+  // The percent is only a way to type the amount: the amount in Toman is what the order stores.
+  const handleDiscountPercentChange = (value: string) => {
+    setDiscountPercent(value);
+    const percent = Number(value);
+    if (value === '' || !Number.isFinite(percent)) return;
+    const clamped = Math.min(100, Math.max(0, percent));
+    handleDiscountChange(String(Math.round((totalAmount * clamped) / 100)));
   };
 
   // Handle credit sale toggle
@@ -227,6 +259,8 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       setCart([]);
       setIsCheckoutOpen(false);
       setSelectedCustomer('');
+      // Fresh stock on the cards after the sale.
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -234,104 +268,175 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
 
   const debt = finalAmount - (paidAmount === '' ? finalAmount : Number(paidAmount));
 
-  // Auto open cart sheet on mobile when adding item
+  // On a phone the cart is a sheet: open it when the first item goes in.
   const handleAddToCart = (product: Product) => {
     addToCart(product);
-    // Open cart sheet on mobile when first item is added
-    if (cart.length === 0) {
+    if (cart.length === 0 && !isDesktop()) {
       setIsCartOpen(true);
     }
   };
 
-  return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] gap-4 relative">
-      {/* Products Section - Full width on mobile */}
-      <div className="flex-1 overflow-y-auto p-2 md:p-4 bg-white rounded-lg border shadow-sm">
-        <ProductGrid products={products} onAddToCart={handleAddToCart} cart={cart} />
+  // Warehouse and customer, beside the cart on a desktop and in the sheet on a phone.
+  const saleSetup = (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">انبار فروش *</Label>
+        <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+          <SelectTrigger>
+            <SelectValue placeholder="انتخاب انبار" />
+          </SelectTrigger>
+          <SelectContent>
+            {warehouses.map((w) => (
+              <SelectItem key={w.id} value={w.id}>
+                {w.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      
-      {/* Cart Section - Desktop: Side panel */}
-      <div className="hidden md:flex md:w-96 bg-white rounded-lg border shadow-sm flex flex-col">
-        <div className="flex-1 overflow-y-auto">
-          <CartSummary
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">مشتری *</Label>
+          {canSell && (
+            <button
+              type="button"
+              onClick={() => setIsNewCustomerOpen(true)}
+              className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              مشتری جدید
+            </button>
+          )}
+        </div>
+        <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+          <SelectTrigger>
+            <SelectValue placeholder="انتخاب مشتری" />
+          </SelectTrigger>
+          <SelectContent>
+            {customers.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {customer && (customer.phone || customer.segment) && (
+          <p className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+            {customer.phone && (
+              <span className="font-mono" dir="ltr">
+                {customer.phone}
+              </span>
+            )}
+            {customer.segment && (
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px]">{customer.segment}</span>
+            )}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  const confirmButton = (
+    <>
+      <Button className="h-11 w-full text-[14px]" disabled={cart.length === 0 || !canSell} onClick={openCheckout}>
+        <Check className="h-4 w-4" />
+        تأیید و تسویه
+      </Button>
+      {!canSell && (
+        <p className="text-center text-[12px] text-muted-foreground">
+          ثبت فروش فقط برای نقش‌هایی است که اجازهٔ فروش دارند.
+        </p>
+      )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-4 md:h-[calc(100vh-104px)]">
+      <PageHeader
+        title="صندوق فروش"
+        description={
+          <>
+            <span className="hidden md:inline">
+              <span className="font-mono text-[11px]">F</span> جستجو، <span className="font-mono text-[11px]">↵</span> افزودن
+              اولین نتیجه ·{' '}
+            </span>
+            اسکنر بارکد مستقیم در جستجو می‌نویسد
+          </>
+        }
+      />
+
+      <div className="relative flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
+        {/* Catalogue */}
+        <section className="min-h-0 min-w-0 flex-1">
+          <ProductGrid
+            products={products}
+            onAddToCart={handleAddToCart}
             cart={cart}
-            onRemove={removeFromCart}
-            onUpdateQuantity={updateQuantity}
-            total={totalAmount}
+            stock={warehouseStock}
+            warehouseName={warehouse?.name}
           />
-        </div>
-        <div className="p-4 border-t bg-gray-50 flex-shrink-0">
-          <Button
-            className="w-full h-12 text-lg font-semibold"
-            disabled={cart.length === 0}
-            onClick={openCheckout}
-          >
-            تسویه حساب ({totalAmount.toLocaleString()} تومان)
-          </Button>
-        </div>
+        </section>
+
+        {/* Cart — desktop */}
+        <aside className="hidden min-h-0 shrink-0 flex-col rounded-lg border bg-card md:flex md:w-[320px] lg:w-[360px] xl:w-[400px]">
+          <div className="space-y-3 border-b p-4">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-medium">سبد فروش</h2>
+              <span className="text-[12px] text-muted-foreground">
+                {cart.length ? `${fa(units)} عدد` : 'خالی'}
+              </span>
+            </div>
+            {saleSetup}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <CartSummary cart={cart} onRemove={removeFromCart} onUpdateQuantity={updateQuantity} stock={warehouseStock} />
+          </div>
+          <div className="space-y-3 border-t p-4">
+            <CartTotals cart={cart} />
+            {confirmButton}
+          </div>
+        </aside>
       </div>
 
       {/* Mobile: Fixed bottom button to open cart */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t shadow-lg z-40">
-        <Button
-          className="w-full h-16 text-lg font-semibold relative"
-          disabled={cart.length === 0}
-          onClick={() => setIsCartOpen(true)}
-        >
-          <ShoppingCart className="ml-2 h-6 w-6" />
-          {cart.length > 0 ? (
-            <>
-              <span className="absolute top-2 left-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                {cart.reduce((sum, item) => sum + item.quantity, 0)}
-              </span>
-              سبد خرید ({totalAmount.toLocaleString()} تومان)
-            </>
-          ) : (
-            'سبد خرید خالی است'
-          )}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card p-3 md:hidden">
+        <Button className="h-12 w-full text-[14px]" disabled={cart.length === 0} onClick={() => setIsCartOpen(true)}>
+          <ShoppingCart className="h-5 w-5" />
+          {cart.length > 0 ? `سبد فروش · ${fa(units)} عدد · ${fa(totalAmount)} تومان` : 'سبد فروش خالی است'}
         </Button>
       </div>
 
       {/* Mobile: Cart Sheet (Bottom Sheet) */}
       <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
-        <SheetContent side="bottom" className="h-[85vh] flex flex-col">
-          <SheetHeader>
-            <SheetTitle className="text-right">سبد خرید</SheetTitle>
+        <SheetContent side="bottom" className="flex h-[85vh] flex-col gap-0 bg-card p-0">
+          <SheetHeader className="border-b p-4">
+            <SheetTitle className="text-start text-sm font-medium">سبد فروش</SheetTitle>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto mt-4">
-            <CartSummary
-              cart={cart}
-              onRemove={removeFromCart}
-              onUpdateQuantity={updateQuantity}
-              total={totalAmount}
-            />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b p-4">{saleSetup}</div>
+            <CartSummary cart={cart} onRemove={removeFromCart} onUpdateQuantity={updateQuantity} stock={warehouseStock} />
           </div>
-          <div className="p-4 border-t bg-gray-50 flex-shrink-0 space-y-2">
-            <div className="flex justify-between items-center text-lg font-bold">
-              <span>جمع کل:</span>
-              <span>{totalAmount.toLocaleString()} تومان</span>
-            </div>
-            <Button
-              className="w-full h-14 text-lg font-semibold"
-              disabled={cart.length === 0}
-              onClick={() => {
-                setIsCartOpen(false);
-                openCheckout();
-              }}
-            >
-              تسویه حساب
-            </Button>
+          <div className="space-y-3 border-t p-4">
+            <CartTotals cart={cart} />
+            {confirmButton}
           </div>
         </SheetContent>
       </Sheet>
 
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle className="text-right">نهایی کردن سفارش</DialogTitle>
+            <DialogTitle className="text-start">نهایی کردن سفارش</DialogTitle>
           </DialogHeader>
-          <div className="space-y-5 md:space-y-4 py-4">
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border bg-secondary px-3 py-2 text-[12.5px] text-muted-foreground">
+              مشتری: <span className="font-medium text-foreground">{customer?.name ?? '—'}</span>
+              {' · '}انبار: <span className="text-foreground">{warehouse?.name ?? '—'}</span>
+              {' · '}
+              <span className="tabular-nums">{fa(units)} عدد</span>
+            </div>
+
             <JalaliDatePicker
               name="saleDate"
               label="تاریخ فروش"
@@ -340,52 +445,10 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               required
             />
 
-            <div className="space-y-2">
-              <Label className="text-base md:text-sm">انبار فروش *</Label>
-              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-                <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
-                  <SelectValue placeholder="انتخاب انبار" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-base md:text-sm">مشتری *</Label>
-                <Button 
-                  variant="link" 
-                  size="sm" 
-                  className="text-base md:text-sm h-10 md:h-8"
-                  onClick={() => setIsNewCustomerOpen(true)}
-                >
-                  + مشتری جدید
-                </Button>
-              </div>
-              <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
-                  <SelectValue placeholder="انتخاب مشتری" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-base md:text-sm">حساب دریافت وجه {paidAmount !== '0' && Number(paidAmount) > 0 ? '*' : ''}</Label>
+            <div className="space-y-1.5">
+              <Label>حساب دریافت وجه {paidAmount !== '0' && Number(paidAmount) > 0 ? '*' : ''}</Label>
               <Select value={selectedAccount} onValueChange={setSelectedAccount} disabled={isCreditSale}>
-                <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
+                <SelectTrigger>
                   <SelectValue placeholder="انتخاب صندوق/بانک" />
                 </SelectTrigger>
                 <SelectContent>
@@ -400,22 +463,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               {(() => {
                 const acc = accounts.find((a) => a.id === selectedAccount);
                 if (!acc || (!acc.cardNumber && !acc.sheba)) return null;
-                return (
-                  <div className="text-xs bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded p-2 space-y-1" dir="ltr">
-                    {acc.cardNumber && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-blue-600 dark:text-blue-400 font-mono tracking-widest">{acc.cardNumber}</span>
-                        <span className="text-blue-500 text-[10px] mr-2">شماره کارت</span>
-                      </div>
-                    )}
-                    {acc.sheba && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-blue-600 dark:text-blue-400 font-mono text-[11px]">{acc.sheba}</span>
-                        <span className="text-blue-500 text-[10px] mr-2">شبا</span>
-                      </div>
-                    )}
-                  </div>
-                );
+                return <AccountNumbers account={acc} />;
               })()}
               {!isCreditSale && (
                 <ReceiptUpload
@@ -426,29 +474,19 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               )}
             </div>
 
-            <div className="flex items-center space-x-2 space-x-reverse bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-900">
-              <Checkbox
-                id="creditSale"
-                checked={isCreditSale}
-                onCheckedChange={handleCreditSaleChange}
-                className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
-              />
-              <label
-                htmlFor="creditSale"
-                className="text-base md:text-sm font-medium leading-none cursor-pointer text-orange-900 dark:text-orange-100"
-              >
+            <div className="flex items-center gap-2 rounded-md border p-3">
+              <Checkbox id="creditSale" checked={isCreditSale} onCheckedChange={handleCreditSaleChange} />
+              <label htmlFor="creditSale" className="cursor-pointer text-[13.5px] font-medium leading-none">
                 فروش نسیه (بدهکار کردن مشتری)
               </label>
             </div>
 
             {isCreditSale && (
-              <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900">
-                <Label className="text-base md:text-sm text-blue-800 dark:text-blue-200">
-                  حساب بانکی برای درج در فاکتور
-                </Label>
-                <p className="text-xs text-blue-600 dark:text-blue-400">شماره کارت و شبا این حساب در فاکتور چاپ میشه</p>
+              <div className="space-y-1.5 rounded-md border p-3">
+                <Label>حساب بانکی برای درج در فاکتور</Label>
+                <p className="text-xs text-muted-foreground">شماره کارت و شبا این حساب در فاکتور چاپ میشه</p>
                 <Select value={invoiceAccountId} onValueChange={setInvoiceAccountId}>
-                  <SelectTrigger className="h-12 md:h-10 text-base md:text-sm">
+                  <SelectTrigger>
                     <SelectValue placeholder="انتخاب حساب (اختیاری)" />
                   </SelectTrigger>
                   <SelectContent>
@@ -462,28 +500,47 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                 {invoiceAccountId && (() => {
                   const acc = accounts.find((a) => a.id === invoiceAccountId);
                   if (!acc) return null;
-                  return (
-                    <div className="text-xs bg-white dark:bg-blue-900/20 border border-blue-200 rounded p-2 space-y-1" dir="ltr">
-                      {acc.cardNumber && <div className="font-mono tracking-widest text-blue-700">{acc.cardNumber}</div>}
-                      {acc.sheba && <div className="font-mono text-[11px] text-blue-600">{acc.sheba}</div>}
-                    </div>
-                  );
+                  return <AccountNumbers account={acc} />;
                 })()}
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-4">
-              <div className="space-y-2">
-                <Label className="text-base md:text-sm">تخفیف (تومان)</Label>
-                <Input 
-                  type="number" 
-                  value={discount} 
-                  onChange={(e) => handleDiscountChange(e.target.value)}
-                  className="h-12 md:h-10 text-base md:text-sm"
-                />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>تخفیف (تومان)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    value={discount}
+                    onChange={(e) => {
+                      setDiscountPercent('');
+                      handleDiscountChange(e.target.value);
+                    }}
+                    className="min-w-0 flex-1"
+                  />
+                  <div className="relative w-20 shrink-0">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={discountPercent}
+                      onChange={(e) => handleDiscountPercentChange(e.target.value)}
+                      aria-label="تخفیف به درصد"
+                      placeholder="درصد"
+                      className="pe-7"
+                    />
+                    <span className="pointer-events-none absolute end-2.5 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">٪</span>
+                  </div>
+                </div>
+                {Number(discount) > 0 && totalAmount > 0 && (
+                  <p className="text-[11.5px] text-muted-foreground">
+                    {new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format((Number(discount) / totalAmount) * 100)}٪
+                    از مبلغ کل
+                  </p>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label className="text-base md:text-sm">مبلغ پرداختی</Label>
+              <div className="space-y-1.5">
+                <Label>مبلغ پرداختی (تومان)</Label>
                 <Input
                   type="number"
                   value={paidAmount}
@@ -493,7 +550,6 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                     setPaidEdited(true);
                   }}
                   disabled={isCreditSale}
-                  className="h-12 md:h-10 text-base md:text-sm"
                 />
               </div>
             </div>
@@ -505,40 +561,36 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               onChange={setOrderTags}
             />
 
-            <div className="pt-4 border-t space-y-3 md:space-y-2">
-              <div className="flex justify-between text-base md:text-sm">
-                <span>مبلغ کل:</span>
-                <span>{totalAmount.toLocaleString()} تومان</span>
+            <dl className="space-y-1.5 border-t pt-3 text-[13px]">
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">مبلغ کل</dt>
+                <dd className="tabular-nums">{fa(totalAmount)}</dd>
               </div>
-              <div className="flex justify-between text-base md:text-sm text-red-600">
-                <span>تخفیف:</span>
-                <span>{(Number(discount) || 0).toLocaleString()} تومان</span>
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">تخفیف</dt>
+                <dd className="tabular-nums">{(Number(discount) || 0) > 0 ? `− ${fa(Number(discount) || 0)}` : fa(0)}</dd>
               </div>
-              <div className="flex justify-between text-xl md:text-lg font-bold">
-                <span>مبلغ قابل پرداخت:</span>
-                <span>{finalAmount.toLocaleString()} تومان</span>
+              <div className="flex items-baseline justify-between border-t pt-2">
+                <dt className="font-medium">مبلغ قابل پرداخت</dt>
+                <dd className="text-[17px] font-medium tabular-nums">
+                  {fa(finalAmount)}
+                  <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+                </dd>
               </div>
               {debt > 0 && (
-                <div className="flex justify-between text-base md:text-sm text-orange-600 font-medium bg-orange-50 p-3 md:p-2 rounded">
-                  <span>مانده حساب (بدهی):</span>
-                  <span>{debt.toLocaleString()} تومان</span>
+                <div className="flex justify-between rounded-md bg-warning-soft px-3 py-2 text-warning">
+                  <dt>مانده حساب (بدهی)</dt>
+                  <dd className="font-medium tabular-nums">{fa(debt)} تومان</dd>
                 </div>
               )}
-            </div>
+            </dl>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-3 md:gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setIsCheckoutOpen(false)}
-              className="w-full sm:w-auto h-14 md:h-12 text-base md:text-sm font-semibold"
-            >
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => setIsCheckoutOpen(false)} className="w-full sm:w-auto">
               انصراف
             </Button>
-            <Button
-              onClick={handleCheckout}
-              disabled={isSubmitting}
-              className="w-full sm:w-auto h-14 md:h-12 text-base md:text-sm font-semibold"
-            >
+            <Button onClick={handleCheckout} disabled={isSubmitting} className="w-full sm:w-auto">
+              <Check className="h-4 w-4" />
               {isSubmitting ? 'در حال ثبت...' : (isCreditSale ? 'ثبت سفارش و بدهی' : 'تایید و پرداخت')}
             </Button>
           </DialogFooter>
@@ -547,11 +599,11 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
 
       {/* New Customer Dialog */}
       <Dialog open={isNewCustomerOpen} onOpenChange={setIsNewCustomerOpen}>
-        <DialogContent className="max-w-[500px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-[500px] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-right">تعریف مشتری جدید</DialogTitle>
+            <DialogTitle className="text-start">تعریف مشتری جدید</DialogTitle>
           </DialogHeader>
-          <QuickCustomerForm 
+          <QuickCustomerForm
             onSuccess={(customerId, customerData) => {
               setIsNewCustomerOpen(false);
               // Add new customer to the list if we have the data
@@ -571,7 +623,27 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
       </Dialog>
 
       {/* Mobile: Add padding bottom for fixed button */}
-      <div className="md:hidden h-24"></div>
+      <div className="h-20 md:hidden"></div>
+    </div>
+  );
+}
+
+/** A bank account's card number and IBAN, as the cashier reads them to the customer. */
+function AccountNumbers({ account }: { account: Account }) {
+  return (
+    <div className="space-y-1 rounded-md border bg-secondary px-3 py-2 text-xs" dir="ltr">
+      {account.cardNumber && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono tracking-widest">{account.cardNumber}</span>
+          <span className="text-[11px] text-muted-foreground">شماره کارت</span>
+        </div>
+      )}
+      {account.sheba && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-mono text-[11px]">{account.sheba}</span>
+          <span className="text-[11px] text-muted-foreground">شبا</span>
+        </div>
+      )}
     </div>
   );
 }

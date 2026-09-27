@@ -1,11 +1,17 @@
 'use client';
 
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { BackButton } from '@/components/ui/back-button';
-import { Package2, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
+import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Edit, ExternalLink, Image as ImageIcon, ShoppingCart } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { PageHeader } from '@/components/layout/page-header';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { cn } from '@/lib/utils';
+import { ProductForm } from './product-form';
+import { STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
 
 interface ProductHeaderProps {
   product: {
@@ -13,103 +19,163 @@ interface ProductHeaderProps {
     name: string;
     sku: string;
     barcode?: string;
+    productType?: string;
+    webId?: string;
     image?: string;
     imageUrl?: string;
     siteUrl?: string;
+    costPrice?: number;
+    sellPrice?: number;
+    totalStock: number;
     createdAt: Date;
     updatedAt: Date;
   };
   showBackButton?: boolean;
+  /** «فروش سریع»: may sell (sales.manage). */
+  canSell?: boolean;
+  /** «ویرایش»: may change products (stock.manage). */
+  canManage?: boolean;
+  canEditCost?: boolean;
+  canSeeSellPrice?: boolean;
 }
 
-export function ProductHeader({ product, showBackButton = false }: ProductHeaderProps) {
+const pill = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px]';
+
+export function ProductHeader({
+  product,
+  showBackButton = false,
+  canSell = false,
+  canManage = false,
+  canEditCost = false,
+  canSeeSellPrice = false,
+}: ProductHeaderProps) {
+  const router = useRouter();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const status = STOCK_STATUS[stockStatus(product.totalStock)];
+
   return (
-    <Card className="p-6">
+    <div className="space-y-3">
       {showBackButton && (
-        <div className="mb-4">
-          <BackButton href="/dashboard/inventory/products" label="بازگشت به لیست محصولات" />
-        </div>
+        <Link
+          href="/dashboard/inventory/products"
+          className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        >
+          <ArrowRight className="h-3.5 w-3.5" />
+          بازگشت به فهرست کالاها
+        </Link>
       )}
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-start">
         {/* Product Image */}
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           {product.imageUrl ? (
             // The website's photo: a plain <img>, so a change of image host on
             // the site can never break this page the way next/image would.
-            <div className="relative w-32 h-32 rounded-lg overflow-hidden border bg-gray-100">
-              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+            <div className="relative h-24 w-24 overflow-hidden rounded-md border bg-secondary">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover object-[50%_60%]" />
             </div>
           ) : product.image ? (
-            <div className="relative w-32 h-32 rounded-lg overflow-hidden border bg-gray-100">
+            <div className="relative h-24 w-24 overflow-hidden rounded-md border bg-secondary">
               {product.image.startsWith('/uploads/') ? (
                 // Use regular img tag for local uploads
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
               ) : (
                 // Use Next.js Image for external URLs
-                <Image
-                  src={product.image}
-                  alt={product.name}
-                  fill
-                  className="object-cover"
-                />
+                <Image src={product.image} alt={product.name} fill className="object-cover" />
               )}
             </div>
           ) : (
-            <div className="w-32 h-32 rounded-lg border flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-              <ImageIcon className="h-12 w-12 text-muted-foreground" />
+            <div className="grid h-24 w-24 place-items-center rounded-md border bg-secondary text-muted-foreground">
+              <ImageIcon className="h-8 w-8" strokeWidth={1.5} />
             </div>
           )}
         </div>
 
         {/* Product Info */}
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">{product.name}</h1>
-              <div className="flex items-center gap-3 mt-2">
-                <Badge variant="outline" className="font-mono">
-                  SKU: {product.sku}
-                </Badge>
-                {product.barcode && (
-                  <Badge variant="outline" className="font-mono">
-                    بارکد: {product.barcode}
-                  </Badge>
+        <div className="min-w-0 flex-1 space-y-3">
+          <PageHeader
+            title={product.name}
+            description={
+              <>
+                ایجاد <span className="tabular-nums">{formatJalaliDate(product.createdAt)}</span>
+                {' · '}
+                آخرین تغییر <span className="tabular-nums">{formatJalaliDate(product.updatedAt)}</span>
+              </>
+            }
+            actions={
+              <>
+                {product.siteUrl && (
+                  <Button variant="outline" asChild>
+                    <a href={product.siteUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                      مشاهده در سایت
+                    </a>
+                  </Button>
                 )}
-                <Badge variant="secondary">
-                  <Package2 className="h-3 w-3 ml-1" />
-                  محصول فعال
-                </Badge>
-              </div>
-              {product.siteUrl && (
-                <a
-                  href={product.siteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 mt-2 text-sm text-primary hover:underline"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  مشاهده در سایت
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 flex gap-6 text-sm text-muted-foreground">
-            <div>
-              <span className="font-medium">تاریخ ایجاد:</span>{' '}
-              {formatJalaliDate(product.createdAt)}
-            </div>
-            <div>
-              <span className="font-medium">آخرین بروزرسانی:</span>{' '}
-              {formatJalaliDate(product.updatedAt)}
-            </div>
+                {canManage && (
+                  <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline">
+                        <Edit className="h-4 w-4" />
+                        ویرایش
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>ویرایش محصول</DialogTitle>
+                      </DialogHeader>
+                      <ProductForm
+                        initialData={product}
+                        onSuccess={() => {
+                          setIsEditOpen(false);
+                          router.refresh();
+                        }}
+                        canEditCost={canEditCost}
+                        canSeeSellPrice={canSeeSellPrice}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                )}
+                {canSell && (
+                  <Button asChild>
+                    <Link href={`/dashboard/sales/pos?product=${encodeURIComponent(product.id)}`}>
+                      <ShoppingCart className="h-4 w-4" />
+                      فروش سریع
+                    </Link>
+                  </Button>
+                )}
+              </>
+            }
+          />
+          <div className="flex flex-wrap gap-1.5">
+            <span className={cn(pill, status.tone)}>{status.label}</span>
+            <span className={cn(pill, 'bg-secondary text-muted-foreground')}>{productTypeLabel(product.productType)}</span>
+            <span className={cn(pill, 'border text-muted-foreground')}>
+              SKU
+              <span className="font-mono text-foreground" dir="ltr">
+                {product.sku}
+              </span>
+            </span>
+            {product.barcode && (
+              <span className={cn(pill, 'border text-muted-foreground')}>
+                بارکد
+                <span className="font-mono text-foreground" dir="ltr">
+                  {product.barcode}
+                </span>
+              </span>
+            )}
+            {product.webId && (
+              <span className={cn(pill, 'border text-muted-foreground')}>
+                شناسهٔ سایت
+                <span className="font-mono text-foreground" dir="ltr">
+                  {product.webId}
+                </span>
+              </span>
+            )}
           </div>
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
