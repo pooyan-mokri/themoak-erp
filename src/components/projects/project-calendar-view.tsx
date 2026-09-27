@@ -50,18 +50,19 @@ const jalaliMonths = [
 
 const jalaliWeekDays = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
 
+// Status colour only where it is status (design system §12): a task's priority and state.
 const priorityColors: Record<string, string> = {
-  LOW: 'bg-blue-100 text-blue-700 border-blue-200',
-  MEDIUM: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  HIGH: 'bg-orange-100 text-orange-700 border-orange-200',
-  URGENT: 'bg-red-100 text-red-700 border-red-200',
+  LOW: 'border-transparent bg-secondary text-muted-foreground',
+  MEDIUM: 'border-transparent bg-secondary text-muted-foreground',
+  HIGH: 'border-transparent bg-warning-soft text-warning',
+  URGENT: 'border-transparent bg-danger-soft text-danger',
 };
 
 const statusColors: Record<string, string> = {
-  TODO: 'bg-gray-100 text-gray-700 border-gray-200',
-  IN_PROGRESS: 'bg-blue-100 text-blue-700 border-blue-200',
-  REVIEW: 'bg-purple-100 text-purple-700 border-purple-200',
-  DONE: 'bg-green-100 text-green-700 border-green-200',
+  TODO: 'border-transparent bg-secondary text-muted-foreground',
+  IN_PROGRESS: 'border-transparent bg-brand-soft text-brand',
+  REVIEW: 'border-transparent bg-warning-soft text-warning',
+  DONE: 'border-transparent bg-success-soft text-success',
 };
 
 const statusLabels: Record<string, string> = {
@@ -243,14 +244,14 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
   };
 
   return (
-    <Card className="animate-fade-in-up">
+    <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5" />
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
             تقویم وظایف پروژه
-            <span className="text-xs text-muted-foreground">
-              ({tasksWithDates.length} وظیفه با تاریخ)
+            <span className="text-xs font-normal text-muted-foreground">
+              ({tasksWithDates.length.toLocaleString('fa-IR')} وظیفه با تاریخ)
             </span>
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -277,8 +278,8 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
             </Button>
           </div>
         </div>
-        <div className="text-2xl font-bold text-center mt-4">
-          {jalaliMonths[currentMonth]} {currentYear}
+        <div className="mt-3 text-center text-[15px] font-medium">
+          {jalaliMonths[currentMonth]} {currentYear.toLocaleString('fa-IR', { useGrouping: false })}
         </div>
       </CardHeader>
       <CardContent>
@@ -286,7 +287,7 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
           {jalaliWeekDays.map((day) => (
             <div
               key={day}
-              className="text-center font-semibold text-sm text-muted-foreground p-2"
+              className="p-2 text-center text-xs text-muted-foreground"
             >
               {day}
             </div>
@@ -300,28 +301,28 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
             return (
               <div
                 key={index}
-                className={`min-h-[100px] border rounded-lg p-1 text-sm ${
+                className={`min-h-[100px] rounded-md border p-1 text-sm transition-colors duration-150 ${
                   !dayData.isCurrentMonth
-                    ? 'bg-muted/30 text-muted-foreground'
-                    : 'bg-background'
+                    ? 'bg-secondary/60 text-muted-foreground'
+                    : 'bg-card'
                 } ${
                   isTodayDate
-                    ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950'
+                    ? 'border-brand bg-brand-soft/40'
                     : ''
-                } hover:bg-muted/50 transition-colors`}
+                } hover:bg-brand/[.04]`}
               >
                 <div
-                  className={`font-semibold mb-1 ${
-                    isTodayDate ? 'text-blue-600 dark:text-blue-400' : ''
+                  className={`mb-1 text-[12px] tabular-nums ${
+                    isTodayDate ? 'font-medium text-brand' : ''
                   }`}
                 >
-                  {dayData.day}
+                  {dayData.day.toLocaleString('fa-IR')}
                 </div>
                 <div className="space-y-1">
                   {dayData.isProjectStart && (
                     <Badge
                       variant="outline"
-                      className="text-xs w-full justify-start bg-green-100 text-green-700 border-green-200"
+                      className="w-full justify-start rounded border-transparent bg-brand-soft text-[11px] text-brand"
                     >
                       شروع پروژه
                     </Badge>
@@ -329,7 +330,7 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
                   {dayData.isProjectEnd && (
                     <Badge
                       variant="outline"
-                      className="text-xs w-full justify-start bg-purple-100 text-purple-700 border-purple-200"
+                      className="w-full justify-start rounded border-transparent bg-brand-soft text-[11px] text-brand"
                     >
                       پایان پروژه
                     </Badge>
@@ -340,7 +341,7 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
                         <div className="cursor-pointer">
                           <Badge
                             variant="outline"
-                            className={`text-xs w-full justify-start ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700'}`}
+                            className={`w-full justify-start rounded text-[11px] ${priorityColors[task.priority] || 'border-transparent bg-secondary text-muted-foreground'}`}
                           >
                             <span className="truncate">{task.title}</span>
                           </Badge>
@@ -349,7 +350,7 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
                       <PopoverContent className="w-80">
                         <div className="space-y-2">
                           <div>
-                            <h4 className="font-semibold">{task.title}</h4>
+                            <h4 className="font-medium">{task.title}</h4>
                             <p className="text-sm text-muted-foreground">
                               مهلت: {task.dueDate ? formatJalaliDate(task.dueDate) : '-'}
                             </p>
@@ -373,7 +374,7 @@ export function ProjectCalendarView({ tasks, projectId, projectStartDate, projec
                   ))}
                   {dayData.tasks.length > 2 && (
                     <div className="text-xs text-muted-foreground">
-                      +{dayData.tasks.length - 2} وظیفه دیگر
+                      +{(dayData.tasks.length - 2).toLocaleString('fa-IR')} وظیفه دیگر
                     </div>
                   )}
                 </div>
