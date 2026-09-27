@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { toLatinDigits } from '@/lib/digits';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
@@ -128,7 +129,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error creating loan:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت قرض.',
+      message: userMessage(error, 'خطا در ثبت قرض.'),
       success: false,
     };
   }
@@ -287,7 +288,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error recording loan payment:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت.',
+      message: userMessage(error, 'خطا در ثبت بازپرداخت.'),
       success: false,
     };
   }

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { logActivity } from '@/lib/activity-log';
 import { toLatinDigits } from '@/lib/digits';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
@@ -121,7 +122,7 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
   } catch (error: unknown) {
     console.error('Error creating payroll:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت فیش حقوقی.',
+      message: userMessage(error, 'خطا در ثبت فیش حقوقی.'),
       success: false,
     };
   }
@@ -281,7 +282,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error recording payroll payment:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت پرداخت.',
+      message: userMessage(error, 'خطا در ثبت پرداخت.'),
       success: false,
     };
   }
@@ -354,7 +355,7 @@ export async function updatePayroll(
         `(حقوق ${amount}، پاداش ${bonuses}، کسورات ${deductions}).`,
     );
   } catch (error: unknown) {
-    return { success: false, message: error instanceof Error ? error.message : 'خطا در ویرایش فیش حقوقی.' };
+    return { success: false, message: userMessage(error, 'خطا در ویرایش فیش حقوقی.') };
   }
 
   revalidatePath('/dashboard/accounting/payroll');

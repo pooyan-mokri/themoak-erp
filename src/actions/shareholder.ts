@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
 /** A submission already booked under this id (src/lib/request-id.ts). */
@@ -90,7 +91,7 @@ export async function createShareholder(prevState: ActionState, formData: FormDa
     return { message: 'صاحب سهام با موفقیت ایجاد شد.', success: true };
   } catch (error: unknown) {
     console.error('Error creating shareholder:', error);
-    const message = error instanceof Error ? error.message : 'خطا در ایجاد صاحب سهام.';
+    const message = userMessage(error, 'خطا در ایجاد صاحب سهام.');
     return {
       message,
       success: false,
@@ -164,7 +165,7 @@ export async function updateShareholder(id: string, prevState: ActionState, form
     return { message: 'صاحب سهام با موفقیت به‌روزرسانی شد.', success: true };
   } catch (error: unknown) {
     console.error('Error updating shareholder:', error);
-    const message = error instanceof Error ? error.message : 'خطا در به‌روزرسانی صاحب سهام.';
+    const message = userMessage(error, 'خطا در به‌روزرسانی صاحب سهام.');
     return {
       message,
       success: false,
@@ -207,7 +208,7 @@ export async function deleteShareholder(id: string): Promise<ActionResult> {
     return { success: true, message: 'صاحب سهام با موفقیت حذف شد.' };
   } catch (error: unknown) {
     console.error('Error deleting shareholder:', error);
-    const message = error instanceof Error ? error.message : 'خطا در حذف صاحب سهام.';
+    const message = userMessage(error, 'خطا در حذف صاحب سهام.');
     return {
       success: false,
       message,
@@ -394,7 +395,7 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error depositing funds:', error);
-    const message = error instanceof Error ? error.message : 'خطا در واریز مبلغ.';
+    const message = userMessage(error, 'خطا در واریز مبلغ.');
     return {
       message,
       success: false,
@@ -544,7 +545,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error withdrawing funds:', error);
-    const message = error instanceof Error ? error.message : 'خطا در پرداخت مبلغ.';
+    const message = userMessage(error, 'خطا در پرداخت مبلغ.');
     return {
       message,
       success: false,

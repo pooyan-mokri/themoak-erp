@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { isNonOperating } from '@/lib/profit-rows';
 import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
@@ -166,7 +167,7 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
   } catch (error: unknown) {
     console.error('Error calculating shareholder profits:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در محاسبه سود.',
+      message: userMessage(error, 'خطا در محاسبه سود.'),
       success: false,
     };
   }
@@ -318,7 +319,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error withdrawing profit:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در برداشت سود.',
+      message: userMessage(error, 'خطا در برداشت سود.'),
       success: false,
     };
   }

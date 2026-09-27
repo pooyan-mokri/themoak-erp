@@ -65,7 +65,7 @@ test('a failure at any step of a money action leaves nothing half-written', asyn
   });
   await prisma.transaction.create({ data: { type: 'EXPENSE', amount: 400_000, amountInToman: 400_000, employeeId: sara.id, category: 'پیک' } });
 
-  const cases: [string, string, string, () => Promise<{ success?: boolean }>, number?][] = [
+  const cases: [string, string, string, () => Promise<{ success?: boolean; message?: string }>, number?][] = [
     ['salary: the payment record', 'PayrollPayment', 'create', () => recordPayrollPayment(undefined, form({ payrollId: payslip.id, amount: '1000000', accountId: 'bank' }))],
     ['salary: the balance', 'Account', 'update', () => recordPayrollPayment(undefined, form({ payrollId: payslip.id, amount: '1000000', accountId: 'bank' }))],
     ['loan: the balance', 'Account', 'update', () => createLoan(undefined, form({ borrowerId: sara.id, amount: '500000', accountId: 'bank' }))],
@@ -87,7 +87,24 @@ test('a failure at any step of a money action leaves nothing half-written', asyn
     const before = await snapshot();
     const result = await failingAt(model, action, run, nth);
     assert.notEqual(result.success, true, name);
+    // The user reads a Persian message, not the database's English.
+    assert.match(result.message ?? '', /[\u0600-\u06FF]/, `${name}: ${result.message}`);
+    assert.doesNotMatch(result.message ?? '', /database/, name);
     assert.deepEqual(await snapshot(), before, `${name} left something behind`);
   }
   await assertBooksAddUp();
+});
+
+test('an employee or shareholder that is gone is answered in Persian, not with the database\'s error', async () => {
+  const { deleteEmployee, updateEmployee } = await import('@/actions/employee');
+  const { deleteShareholder } = await import('@/actions/shareholder');
+  for (const result of [
+    await deleteEmployee('nobody'),
+    await updateEmployee('nobody', undefined, form({ name: 'X', salary: '1' })),
+    await deleteShareholder('nobody'),
+  ]) {
+    assert.equal(result.success, false);
+    assert.match(result.message ?? '', /[\u0600-\u06FF]/, result.message);
+    assert.doesNotMatch(result.message ?? '', /prisma|Record to/i, result.message);
+  }
 });

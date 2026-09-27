@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { auth } from '@/auth';
 import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
@@ -122,7 +123,7 @@ export async function createAccount(prevState: ActionState, formData: FormData):
     try {
       rate = await tomanRateOf(prisma, currency);
     } catch (error) {
-      return { message: error instanceof Error ? error.message : 'خطا در ایجاد حساب.' };
+      return { message: userMessage(error, 'خطا در ایجاد حساب.') };
     }
   }
 
@@ -204,7 +205,7 @@ export async function getAccounts() {
     }));
   } catch (error) {
     console.error('Error fetching accounts:', error);
-    throw new Error(`Failed to fetch accounts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Failed to fetch accounts: ${userMessage(error, 'Unknown error')}`);
   }
 }
 
@@ -542,8 +543,8 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
       stack: errorObj.stack
     });
 
-    // Return more specific error message if available
-    if (errorObj.message) {
+    // Return more specific error message if available (a Persian refusal, never a database error)
+    if (userMessage(error, '')) {
       return { message: `خطا در ثبت هزینه: ${errorObj.message}`, success: false };
     }
 
@@ -799,7 +800,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
     return { success: true, message: 'هزینه با موفقیت ویرایش شد.' };
   } catch (error: unknown) {
     console.error('Error updating expense:', error);
-    const message = error instanceof Error ? error.message : 'خطا در ویرایش هزینه.';
+    const message = userMessage(error, 'خطا در ویرایش هزینه.');
     return { success: false, message };
   }
 }
@@ -1057,7 +1058,7 @@ export async function adjustAccountBalance(input: {
     console.error('Error adjusting account balance:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'خطا در اصلاح موجودی.',
+      message: userMessage(error, 'خطا در اصلاح موجودی.'),
     };
   }
 }
@@ -1124,7 +1125,7 @@ export async function recordBalanceBaseline(accountId: string): Promise<ActionRe
     console.error('Error recording balance baseline:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'خطا در ثبت مانده پایه.',
+      message: userMessage(error, 'خطا در ثبت مانده پایه.'),
     };
   }
 }
@@ -1437,7 +1438,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error paying employee debt:', error);
-    const message = error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت بدهی.';
+    const message = userMessage(error, 'خطا در ثبت بازپرداخت بدهی.');
     return {
       message,
       success: false,
@@ -1529,7 +1530,7 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     });
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
-    return { message: error instanceof Error ? error.message : 'خطا در ثبت برداشت.', success: false };
+    return { message: userMessage(error, 'خطا در ثبت برداشت.'), success: false };
   }
 
   revalidatePath('/dashboard/accounting/transactions');
@@ -1656,7 +1657,7 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     });
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
-    return { message: error instanceof Error ? error.message : 'خطا در انتقال وجه.', success: false };
+    return { message: userMessage(error, 'خطا در انتقال وجه.'), success: false };
   }
 
   revalidatePath('/dashboard/accounting/transactions');
@@ -2064,7 +2065,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
     });
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
-    const message = error instanceof Error ? error.message : 'خطا در ثبت واریز.';
+    const message = userMessage(error, 'خطا در ثبت واریز.');
     return { message, success: false };
   }
 

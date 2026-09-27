@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { ActionState, ActionResult } from '@/lib/types';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { toLatinDigits } from '@/lib/digits';
 
 // --- Schemas ---
@@ -99,7 +100,7 @@ export async function createEmployee(prevState: ActionState, formData: FormData)
   } catch (error: unknown) {
     console.error('Error creating employee:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت کارمند.',
+      message: userMessage(error, 'خطا در ثبت کارمند.'),
       success: false,
     };
   }
@@ -185,7 +186,7 @@ export async function updateEmployee(id: string, prevState: ActionState, formDat
   } catch (error: unknown) {
     console.error('Error updating employee:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در به‌روزرسانی کارمند.',
+      message: userMessage(error, 'خطا در به‌روزرسانی کارمند.'),
       success: false,
     };
   }
@@ -232,7 +233,7 @@ export async function deleteEmployee(id: string) {
     console.error('Error deleting employee:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'خطا در حذف کارمند.',
+      message: userMessage(error, 'خطا در حذف کارمند.'),
     };
   }
 }
