@@ -10,7 +10,7 @@ const SECTIONS = [
   'دستیار هوش مصنوعی برای پرسش از داده‌ها',
 ];
 
-export default function LoginPage() {
+export default function LoginPage({ searchParams }: { searchParams: { callbackUrl?: string } }) {
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-2">
       <main className="flex min-h-screen flex-col px-6 py-8 sm:px-12 lg:px-16">
@@ -22,7 +22,7 @@ export default function LoginPage() {
         <div className="my-auto w-full max-w-[400px] py-12">
           <h1 className="text-[22px] font-semibold leading-snug">ورود به سامانه</h1>
           <p className="mt-1 text-[13.5px] text-muted-foreground">برای ورود ایمیل و رمز عبور خود را وارد کنید.</p>
-          <LoginForm />
+          <LoginForm callbackUrl={searchParams?.callbackUrl ?? ''} />
         </div>
 
         <footer className="text-[11.5px] text-muted-foreground">
