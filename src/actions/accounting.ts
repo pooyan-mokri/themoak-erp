@@ -794,6 +794,8 @@ export async function getSalesByProduct() {
   await requirePermission('sales.view');
   try {
     const orderItems = await prisma.orderItem.findMany({
+      // A cancelled order sold nothing (as reports.ts and the dashboard count it).
+      where: { order: { status: { not: 'CANCELLED' } } },
       include: {
         product: true,
       },

@@ -4,7 +4,8 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
-import { getDashboardFinancials, getUserTasks } from '@/actions/dashboard';
+import { getDashboardFinancials, getDashboardSales, getLowStockItems, getRecentActivity, getUserTasks } from '@/actions/dashboard';
+import { getSalesByProduct } from '@/actions/accounting';
 import { getBalanceSheet } from '@/actions/reports';
 import { recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { FinancialCards } from '@/components/dashboard/financial-cards';
@@ -234,4 +235,69 @@ test('«my tasks» lists the signed-in user\'s open tasks, newest first, with th
   );
   setTestRole(null);
   assert.deepEqual(await getUserTasks(), []);
+});
+
+test('sales by product leave out cancelled orders, as every other sales figure does', async () => {
+  const warehouse = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  const panj = await prisma.product.create({ data: { name: 'PANJ', sku: 'P1', costPrice: 1, sellPrice: 10_000_000 } });
+  const raw = await prisma.product.create({ data: { name: 'RAW', sku: 'R1', costPrice: 1, sellPrice: 9_000_000 } });
+  const order = (status: string, productId: string, quantity: number, price: number) =>
+    prisma.order.create({ data: { totalAmount: quantity * price, status, items: { create: [{ productId, warehouseId: warehouse.id, quantity, price }] } } });
+  await order('COMPLETED', panj.id, 2, 10_000_000);
+  await order('CANCELLED', panj.id, 5, 10_000_000);
+  await order('COMPLETED', raw.id, 1, 9_000_000);
+  assert.deepEqual(await getSalesByProduct(), [
+    { name: 'PANJ', quantity: 2, total: 20_000_000 },
+    { name: 'RAW', quantity: 1, total: 9_000_000 },
+  ]);
+});
+
+test('the sales card counts today\'s and yesterday\'s uncancelled orders, and the five best sellers of 30 days', async () => {
+  const warehouse = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  const products = await Promise.all(
+    ['A', 'B', 'C', 'D', 'E', 'F'].map((sku) => prisma.product.create({ data: { name: `عینک ${sku}`, sku, costPrice: 1, sellPrice: 1 } })),
+  );
+  const now = Date.now();
+  const sell = (productId: string, quantity: number, status = 'COMPLETED', createdAt = new Date(now - 60_000)) =>
+    prisma.order.create({ data: { totalAmount: quantity * 1_000_000, status, createdAt, items: { create: [{ productId, warehouseId: warehouse.id, quantity, price: 1_000_000 }] } } });
+  for (const [i, product] of products.entries()) await sell(product.id, i + 1);
+  await sell(products[0].id, 100, 'CANCELLED');
+  await sell(products[0].id, 50, 'COMPLETED', new Date(now - 40 * 86_400_000));
+
+  const sales = await getDashboardSales();
+  assert.deepEqual(sales.today, { total: 21_000_000, count: 6 });
+  assert.deepEqual(sales.topProducts.map((p: any) => [p.name, p.units]), [
+    ['عینک F', 6], ['عینک E', 5], ['عینک D', 4], ['عینک C', 3], ['عینک B', 2],
+  ]);
+  assert.equal(sales.dailySales.reduce((sum: number, d: any) => sum + d.total, 0), 21_000_000);
+});
+
+test('low stock lists the ten products with the least stock below the threshold, across warehouses', async () => {
+  const [a, b] = [await prisma.warehouse.create({ data: { name: 'الف' } }), await prisma.warehouse.create({ data: { name: 'ب' } })];
+  for (let i = 0; i < 13; i++) {
+    const product = await prisma.product.create({ data: { name: `P${i}`, sku: `S${i}`, costPrice: 1, sellPrice: 1 } });
+    await prisma.inventory.create({ data: { productId: product.id, warehouseId: a.id, quantity: i } });
+    if (i === 12) await prisma.inventory.create({ data: { productId: product.id, warehouseId: b.id, quantity: 3 } });
+  }
+  const low = await getLowStockItems(5);
+  assert.deepEqual(low.map((p: any) => [p.sku, p.totalStock]), [['S0', 0], ['S1', 1], ['S2', 2], ['S3', 3], ['S4', 4]]);
+  const ten = await getLowStockItems();
+  assert.equal(ten.length, 10);
+  assert.ok(!ten.some((p: any) => p.sku === 'S12'), '12 + 3 in two warehouses is not low');
+});
+
+test('recent activity is for the admin only, newest first, as many as asked for', async () => {
+  await prisma.user.create({ data: { id: 'test-user', name: 'پویان', email: 'test@example.com', password: 'x' } });
+  for (let i = 0; i < 7; i++) {
+    await prisma.activityLog.create({ data: { userId: i === 6 ? null : 'test-user', action: `A${i}`, details: `کار ${i}`, createdAt: new Date(Date.UTC(2026, 8, 1, i)) } });
+  }
+  const recent = await getRecentActivity();
+  assert.deepEqual(recent.map((a: any) => [a.action, a.userName, a.description]), [
+    ['A6', 'System', 'کار 6'], ['A5', 'پویان', 'کار 5'], ['A4', 'پویان', 'کار 4'], ['A3', 'پویان', 'کار 3'], ['A2', 'پویان', 'کار 2'],
+  ]);
+  assert.equal((await getRecentActivity(2)).length, 2);
+  for (const role of ['ACCOUNTANT', 'AUDITOR', 'SALES', null]) {
+    setTestRole(role);
+    assert.deepEqual(await getRecentActivity(), [], String(role));
+  }
 });
