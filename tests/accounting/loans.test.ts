@@ -75,7 +75,6 @@ test('a loan is refused for an unknown employee or account, a balance that canno
     [{ accountId: 'usd-no-rate' }, /نرخ تبدیل/],
     [{ amount: '0' }, /فیلدهای الزامی/],
     [{ amount: '-100' }, /فیلدهای الزامی/],
-    [{ amount: '۵۰۰۰' }, /فیلدهای الزامی/],
     [{ interestRate: '101' }, /فیلدهای الزامی/],
     [{ interestRate: '-1' }, /فیلدهای الزامی/],
     [{ borrowerId: '' }, /فیلدهای الزامی/],
@@ -88,6 +87,18 @@ test('a loan is refused for an unknown employee or account, a balance that canno
   assert.equal(await prisma.loan.count(), 0);
   assert.equal(await prisma.transaction.count({ where: { NOT: { category: 'موجودی اولیه' } } }), 0);
   assert.equal(await balanceOf('bank'), 100_000_000);
+});
+
+test('a loan and its repayment typed in Persian digits are read as the numbers they are', async () => {
+  const lent = await createLoan(undefined, form({ borrowerId: sara.id, amount: '۵٬۰۰۰٬۰۰۰', accountId: 'bank', interestRate: '۴٫۵' }));
+  assert.equal(lent.success, true, lent.message);
+  const loan = await prisma.loan.findFirstOrThrow();
+  assert.deepEqual([Number(loan.amount), Number(loan.interestRate)], [5_000_000, 4.5]);
+  const paid = await recordLoanPayment(undefined, form({ loanId: loan.id, amount: '۱۱۰۰۰۰۰', principal: '۱۰۰۰۰۰۰', interest: '١٠٠٠٠٠', accountId: 'bank' }));
+  assert.equal(paid.success, true, paid.message);
+  assert.equal(Number((await prisma.loan.findFirstOrThrow()).remaining), 4_000_000);
+  assert.equal(await balanceOf('bank'), 96_100_000);
+  await assertLoansAddUp();
 });
 
 test('repaying part, then the rest: each repayment is an INCOME row and a payment record; the loan ends PAID', async () => {

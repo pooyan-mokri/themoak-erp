@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { ActionState, ActionResult } from '@/lib/types';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { toLatinDigits } from '@/lib/digits';
 
 // --- Schemas ---
 
@@ -28,13 +29,15 @@ export async function createEmployee(prevState: ActionState, formData: FormData)
 
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
-    nationalId: formData.get('nationalId') || undefined,
-    phone: formData.get('phone') || undefined,
+    // Latin digits, so a national id typed on a Persian keyboard is still the
+    // same id to the uniqueness check, and a salary is a number (src/lib/digits.ts).
+    nationalId: toLatinDigits(formData.get('nationalId'))?.toString().trim() || undefined,
+    phone: toLatinDigits(formData.get('phone')) || undefined,
     email: formData.get('email') || undefined,
     address: formData.get('address') || undefined,
     position: formData.get('position') || undefined,
     hireDate: formData.get('hireDate') || undefined,
-    salary: formData.get('salary'),
+    salary: toLatinDigits(formData.get('salary')),
   });
 
   if (!validatedFields.success) {
@@ -108,13 +111,15 @@ export async function updateEmployee(id: string, prevState: ActionState, formDat
 
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
-    nationalId: formData.get('nationalId') || undefined,
-    phone: formData.get('phone') || undefined,
+    // Latin digits, so a national id typed on a Persian keyboard is still the
+    // same id to the uniqueness check, and a salary is a number (src/lib/digits.ts).
+    nationalId: toLatinDigits(formData.get('nationalId'))?.toString().trim() || undefined,
+    phone: toLatinDigits(formData.get('phone')) || undefined,
     email: formData.get('email') || undefined,
     address: formData.get('address') || undefined,
     position: formData.get('position') || undefined,
     hireDate: formData.get('hireDate') || undefined,
-    salary: formData.get('salary'),
+    salary: toLatinDigits(formData.get('salary')),
   });
 
   if (!validatedFields.success) {

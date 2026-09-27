@@ -38,3 +38,15 @@ export function addDays(day: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** The Jalali year and month (1–12) a moment falls in, in Tehran. */
+export function jalaliYearMonth(date: Date): { year: number; month: number } {
+  // nu-latn: the fa-IR digits (۱۴۰۵) are not something Number can read.
+  const parts = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', {
+    timeZone: 'Asia/Tehran',
+    year: 'numeric',
+    month: 'numeric',
+  }).formatToParts(date);
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return { year: part('year'), month: part('month') };
+}

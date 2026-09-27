@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toLatinDigits } from '@/lib/digits';
 
 interface EditablePayroll {
   id: string;
@@ -41,15 +42,17 @@ export function PayrollEditDialog({
   const [description, setDescription] = useState(payroll.description ?? '');
   const [saving, startSaving] = useTransition();
 
-  const net = (Number(amount) || 0) + (Number(bonuses) || 0) - (Number(deductions) || 0);
+  // A Persian keyboard types ۰–۹, which Number cannot read (src/lib/digits.ts).
+  const num = (value: string) => Number(toLatinDigits(value));
+  const net = (num(amount) || 0) + (num(bonuses) || 0) - (num(deductions) || 0);
   const belowPaid = net < payroll.paidAmount - 0.01;
 
   const save = () =>
     startSaving(async () => {
       const result = await updatePayroll(payroll.id, {
-        amount: Number(amount),
-        bonuses: Number(bonuses) || 0,
-        deductions: Number(deductions) || 0,
+        amount: num(amount),
+        bonuses: num(bonuses) || 0,
+        deductions: num(deductions) || 0,
         description,
       });
       if (result.success) {

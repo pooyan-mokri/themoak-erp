@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
 import { logActivity } from '@/lib/activity-log';
+import { toLatinDigits } from '@/lib/digits';
 import { auth } from '@/auth';
 
 // --- Schemas ---
@@ -38,11 +39,12 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
 
   const validatedFields = PayrollSchema.safeParse({
     employeeId: formData.get('employeeId'),
-    amount: formData.get('amount'),
-    bonuses: formData.get('bonuses') || undefined,
-    deductions: formData.get('deductions') || undefined,
-    periodMonth: formData.get('periodMonth'),
-    periodYear: formData.get('periodYear'),
+    // A Persian keyboard types ۰–۹, which Number cannot read (src/lib/digits.ts).
+    amount: toLatinDigits(formData.get('amount')),
+    bonuses: toLatinDigits(formData.get('bonuses')) || undefined,
+    deductions: toLatinDigits(formData.get('deductions')) || undefined,
+    periodMonth: toLatinDigits(formData.get('periodMonth')),
+    periodYear: toLatinDigits(formData.get('periodYear')),
     description: formData.get('description') || undefined,
   });
 
@@ -125,7 +127,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
 
   const validatedFields = PayrollPaymentSchema.safeParse({
     payrollId: formData.get('payrollId'),
-    amount: formData.get('amount'),
+    amount: toLatinDigits(formData.get('amount')),
     accountId: formData.get('accountId'),
     description: formData.get('description') || undefined,
     date: formData.get('date') || undefined,

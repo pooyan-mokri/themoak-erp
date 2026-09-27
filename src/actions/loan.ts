@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { toLatinDigits } from '@/lib/digits';
 
 // --- Schemas ---
 
@@ -37,9 +38,10 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
 
   const validatedFields = LoanSchema.safeParse({
     borrowerId: formData.get('borrowerId'),
-    amount: formData.get('amount'),
+    // A Persian keyboard types ۰–۹, which Number cannot read (src/lib/digits.ts).
+    amount: toLatinDigits(formData.get('amount')),
     accountId: formData.get('accountId'),
-    interestRate: formData.get('interestRate') || undefined,
+    interestRate: toLatinDigits(formData.get('interestRate')) || undefined,
     description: formData.get('description') || undefined,
     dueDate: formData.get('dueDate') || undefined,
   });
@@ -126,9 +128,9 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
 
   const validatedFields = LoanPaymentSchema.safeParse({
     loanId: formData.get('loanId'),
-    amount: formData.get('amount'),
-    principal: formData.get('principal') || undefined,
-    interest: formData.get('interest') || undefined,
+    amount: toLatinDigits(formData.get('amount')),
+    principal: toLatinDigits(formData.get('principal')) || undefined,
+    interest: toLatinDigits(formData.get('interest')) || undefined,
     accountId: formData.get('accountId'),
     description: formData.get('description') || undefined,
     date: formData.get('date') || undefined,

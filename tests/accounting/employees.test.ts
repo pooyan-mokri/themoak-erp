@@ -54,6 +54,19 @@ test('a national id or email already in use, a bad email, a missing name or a ne
   assert.equal(await prisma.employee.count(), 1);
 });
 
+test('a national id and salary typed in Persian digits are the same id and number', async () => {
+  const created = await createEmployee(undefined, employeeForm({ nationalId: '۰۰۱۲۳۴۵۶۷۸', phone: '۰۹۱۲۱۲۳۴۵۶۷', salary: '۳۰٬۰۰۰٬۰۰۰' }));
+  assert.equal(created.success, true, created.message);
+  const [sara] = await getEmployees();
+  assert.deepEqual([sara.nationalId, sara.phone, sara.salary], ['0012345678', '09121234567', 30_000_000]);
+  // The same id in Latin digits, or in Arabic-Indic ones, is already in use.
+  for (const nationalId of ['0012345678', '٠٠١٢٣٤٥٦٧٨']) {
+    const again = await createEmployee(undefined, employeeForm({ nationalId, email: 'other@example.com' }));
+    assert.match(again.message!, /کد ملی قبلاً ثبت شده/, nationalId);
+  }
+  assert.equal(await prisma.employee.count(), 1);
+});
+
 test('an edit keeps an employee\'s own national id and email, and refuses another\'s', async () => {
   await createEmployee(undefined, employeeForm());
   await createEmployee(undefined, employeeForm({ name: 'رضا', nationalId: '0022222222', email: 'reza@example.com' }));

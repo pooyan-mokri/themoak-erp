@@ -69,7 +69,6 @@ test('a payslip is refused for a period already paid, an unknown employee, a bad
     [{ periodYear: '1399', periodMonth: '9' }, /فیلدهای الزامی/],
     [{ amount: '0', periodMonth: '9' }, /فیلدهای الزامی/],
     [{ amount: '-1000', periodMonth: '9' }, /فیلدهای الزامی/],
-    [{ amount: '۳۰۰۰۰۰۰۰', periodMonth: '9' }, /فیلدهای الزامی/],
     [{ bonuses: '-1', periodMonth: '9' }, /فیلدهای الزامی/],
     [{ deductions: '30000000', periodMonth: '9' }, /حقوق خالص .* باید بیشتر از صفر/],
     [{ deductions: '40000000', periodMonth: '9' }, /حقوق خالص .* باید بیشتر از صفر/],
@@ -80,6 +79,24 @@ test('a payslip is refused for a period already paid, an unknown employee, a bad
     assert.match(result.message!, message, JSON.stringify(fields));
   }
   assert.equal(await prisma.payroll.count(), 1);
+});
+
+test('a payslip and a payment typed in Persian digits are read as the numbers they are', async () => {
+  const created = await createPayroll(
+    undefined,
+    form({ employeeId: sara.id, amount: '۳۰٬۰۰۰٬۰۰۰', bonuses: '٥٠٠٠٠٠٠', deductions: '۱۵۰۰۰۰۰٫۵', periodMonth: '۷', periodYear: '۱۴۰۵' }),
+  );
+  assert.equal(created.success, true, created.message);
+  const p = await prisma.payroll.findFirstOrThrow();
+  assert.deepEqual(
+    [Number(p.amount), Number(p.bonuses), Number(p.deductions), Number(p.netAmount), p.periodMonth, p.periodYear],
+    [30_000_000, 5_000_000, 1_500_000.5, 33_499_999.5, 7, 1405],
+  );
+  const paid = await pay(p.id, '۱۰۰۰۰۰۰۰');
+  assert.equal(paid.success, true, paid.message);
+  assert.equal(Number((await prisma.payroll.findFirstOrThrow()).paidAmount), 10_000_000);
+  assert.equal(await balanceOf('bank'), 90_000_000);
+  await assertPayslipsAddUp();
 });
 
 test('paying part, then the rest: each payment is an expense row, a payment record and a balance move', async () => {
