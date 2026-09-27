@@ -2,39 +2,32 @@
 
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+import { loginRedirectPath } from '@/lib/login-redirect';
 
-export async function authenticate(
-  prevState: string | undefined,
-  formData: FormData,
-) {
+export type LoginState = { error?: string; redirectTo?: string } | undefined;
+
+/**
+ * Signs in and tells the login page where to go; the page then loads that
+ * address in full. A redirect from here made Next.js render the dashboard
+ * under the /login address, with the session in the browser still signed out
+ * (and every server action on that page posted to /login, which the
+ * middleware bounces), and it ignored the callbackUrl.
+ */
+export async function authenticate(prevState: LoginState, formData: FormData): Promise<LoginState> {
+  const redirectTo = loginRedirectPath(formData.get('callbackUrl'));
   try {
-    console.log('[LOGIN ACTION] Attempting to sign in with email:', formData.get('email'));
-    await signIn('credentials', formData);
-    console.log('[LOGIN ACTION] Sign in successful');
+    await signIn('credentials', {
+      email: String(formData.get('email') ?? ''),
+      password: String(formData.get('password') ?? ''),
+      redirectTo,
+      redirect: false,
+    });
   } catch (error) {
     console.error('[LOGIN ACTION] Error during sign in:', error);
-
-    // In NextAuth v5, successful signIn throws a redirect error
-    // Check if it's a redirect error and re-throw it
-    if (error instanceof Error && error.message === 'NEXT_REDIRECT') {
-      console.log('[LOGIN ACTION] Redirect detected (successful login)');
-      throw error; // Re-throw redirect errors so Next.js can handle them
+    if (error instanceof AuthError && error.type === 'CredentialsSignin') {
+      return { error: 'ایمیل یا رمز عبور اشتباه است.' };
     }
-
-    if (error instanceof AuthError) {
-      console.error('[LOGIN ACTION] AuthError type:', error.type);
-      console.error('[LOGIN ACTION] AuthError message:', error.message);
-      console.error('[LOGIN ACTION] AuthError cause:', error.cause);
-      switch (error.type) {
-        case 'CredentialsSignin':
-          return 'Invalid credentials.';
-        default:
-          console.error('[LOGIN ACTION] Unhandled AuthError type:', error.type);
-          return 'Authentication error: ' + error.message;
-      }
-    }
-
-    console.error('[LOGIN ACTION] Unknown error:', error);
-    return 'An unexpected error occurred.';
+    return { error: 'ورود انجام نشد؛ لطفاً دوباره تلاش کنید.' };
   }
+  return { redirectTo };
 }
