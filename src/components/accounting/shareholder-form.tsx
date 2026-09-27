@@ -19,9 +19,12 @@ const initialState = {
 interface ShareholderFormProps {
   initialData?: any;
   onSuccess?: () => void;
+  /** Inside a dialog: no card of its own. */
+  bare?: boolean;
 }
 
-export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps) {
+export function ShareholderForm({ initialData, onSuccess, bare = false }: ShareholderFormProps) {
+  const plain = !!initialData || bare;
   const updateShareholderWithId = initialData
     ? updateShareholder.bind(null, initialData.id)
     : undefined;
@@ -40,14 +43,14 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
   }, [state, onSuccess]);
 
   return (
-    <Card className={initialData ? 'border-0 shadow-none' : ''}>
-      {!initialData && (
+    <Card className={plain ? 'border-0 shadow-none' : ''}>
+      {!plain && (
         <CardHeader>
           <CardTitle>تعریف صاحب سهام جدید</CardTitle>
         </CardHeader>
       )}
       <form action={dispatch}>
-        <CardContent className="space-y-4">
+        <CardContent className={plain ? 'space-y-4 px-0' : 'space-y-4'}>
           <div className="space-y-2">
             <Label htmlFor="name">نام صاحب سهام *</Label>
             <Input
@@ -58,7 +61,7 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               defaultValue={initialData?.name}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.name && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
             )}
           </div>
 
@@ -76,7 +79,7 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               defaultValue={initialData?.percentage?.toString() || ''}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.percentage && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.percentage?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.percentage?.[0]}</p>
             )}
             <p className="text-xs text-muted-foreground">
               درصد سهام باید بین 0 تا 100 باشد. مجموع درصدهای همه صاحبان سهام نباید بیشتر از 100 باشد.
@@ -94,7 +97,7 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
                 defaultValue={initialData?.phone || ''}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.phone && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.phone?.[0]}</p>
               )}
             </div>
 
@@ -108,7 +111,7 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
                 defaultValue={initialData?.email || ''}
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.email && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.email?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.email?.[0]}</p>
               )}
             </div>
           </div>
@@ -123,7 +126,7 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               defaultValue={initialData?.address || ''}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.address && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.address?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.address?.[0]}</p>
             )}
           </div>
 
@@ -137,23 +140,19 @@ export function ShareholderForm({ initialData, onSuccess }: ShareholderFormProps
               defaultValue={initialData?.notes || ''}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.notes && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.notes?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.notes?.[0]}</p>
             )}
           </div>
 
           {state.message && (
             <div
-              className={`text-sm p-3 rounded ${
-                state.success
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-              }`}
+              className={`rounded-md px-3 py-2 text-[13px] ${state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}
             >
               {state.message}
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex justify-end">
+        <CardFooter className={plain ? 'flex justify-end px-0' : 'flex justify-end'}>
           <SubmitButton />
         </CardFooter>
       </form>

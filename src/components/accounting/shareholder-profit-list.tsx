@@ -74,7 +74,7 @@ export function ShareholderProfitList({ profits: initialProfits, accounts }: Sha
                   <TableHead>برداشت شده</TableHead>
                   <TableHead>قابل برداشت</TableHead>
                   <TableHead>دوره</TableHead>
-                  <TableHead className="text-left">عملیات</TableHead>
+                  <TableHead className="text-end">عملیات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -90,15 +90,9 @@ export function ShareholderProfitList({ profits: initialProfits, accounts }: Sha
                       <TableCell className="font-medium">
                         {profit.shareholder.name} ({Number(profit.shareholder.percentage).toFixed(2)}%)
                       </TableCell>
-                      <TableCell>{formatCurrency(profit.amount)}</TableCell>
-                      <TableCell>
-                        <span className="text-orange-600">{formatCurrency(profit.withdrawn)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-green-600 font-bold">
-                          {formatCurrency(profit.available)}
-                        </span>
-                      </TableCell>
+                      <TableCell className="tabular-nums">{formatCurrency(profit.amount)}</TableCell>
+                      <TableCell className="tabular-nums">{formatCurrency(profit.withdrawn)}</TableCell>
+                      <TableCell className="font-medium tabular-nums">{formatCurrency(profit.available)}</TableCell>
                       <TableCell>
                         {formatJalaliDate(profit.periodStart)} - {formatJalaliDate(profit.periodEnd)}
                       </TableCell>
@@ -109,7 +103,7 @@ export function ShareholderProfitList({ profits: initialProfits, accounts }: Sha
                           onClick={() => handleWithdraw(profit)}
                           disabled={profit.available <= 0}
                         >
-                          <DollarSign className="h-4 w-4 ml-1" />
+                          <DollarSign className="h-4 w-4" />
                           برداشت
                         </Button>
                       </TableCell>

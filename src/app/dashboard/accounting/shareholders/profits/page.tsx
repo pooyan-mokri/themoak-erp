@@ -2,6 +2,7 @@ import { getShareholderProfits } from '@/actions/shareholder-profit';
 import { getAccounts } from '@/actions/accounting';
 import { ShareholderProfitForm } from '@/components/accounting/shareholder-profit-form';
 import { ShareholderProfitList } from '@/components/accounting/shareholder-profit-list';
+import { PageHeader } from '@/components/layout/page-header';
 import { requireRouteAccess } from '@/lib/access';
 
 export default async function ShareholderProfitsPage() {
@@ -10,10 +11,10 @@ export default async function ShareholderProfitsPage() {
   const accounts = await getAccounts();
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">مدیریت سود قابل برداشت</h1>
-      
-      <div className="grid gap-6 md:grid-cols-2">
+    <div className="space-y-4">
+      <PageHeader title="سود قابل برداشت" description="محاسبه سود هر دوره به نسبت سهم، و پرداخت آن به سهامداران" />
+
+      <div className="grid gap-4 md:grid-cols-2">
         <ShareholderProfitForm />
         <ShareholderProfitList profits={profits} accounts={accounts} />
       </div>

@@ -29,6 +29,13 @@ const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
 const BASELINE_CATEGORY = 'مانده پایه';
 
 /**
+ * The cash a loan pays out to an employee (src/actions/loan.ts). It carries the
+ * employee's id, but the money runs the other way from a debt: the employee owes
+ * it back, and the loans page tracks what is left. The debt report skips it.
+ */
+const EMPLOYEE_LOAN_CATEGORY = 'قرض به کارمند';
+
+/**
  * COGS and gift rows are valued at product cost, so their amounts are cost
  * data (cost.view), which an accountant reading the journal may not see.
  * Consignment books COGS as 'COGS'; a gift from the marketing module is
@@ -1146,9 +1153,11 @@ export async function getEmployeeDebts() {
       employees.map(async (employee: any) => {
         // Repayments are identified by category, not by INCOME/EXPENSE:
         // they are EXPENSE rows now, and legacy rows are INCOME.
-        const allTransactions = await prisma.transaction.findMany({
-          where: { employeeId: employee.id },
-        });
+        const allTransactions = (
+          await prisma.transaction.findMany({
+            where: { employeeId: employee.id },
+          })
+        ).filter((tx: any) => tx.category !== EMPLOYEE_LOAN_CATEGORY);
         const isRepayment = (tx: any) =>
           tx.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY ||
           tx.type === TransactionType.INCOME;
@@ -1205,11 +1214,13 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     }
 
     // Repayments are identified by category (EXPENSE rows now, legacy INCOME).
-    const allEmployeeTransactions = await prisma.transaction.findMany({
-      where: { employeeId: employee.id },
-      include: { project: true, account: true },
-      orderBy: { date: 'desc' },
-    });
+    const allEmployeeTransactions = (
+      await prisma.transaction.findMany({
+        where: { employeeId: employee.id },
+        include: { project: true, account: true },
+        orderBy: { date: 'desc' },
+      })
+    ).filter((tx: any) => tx.category !== EMPLOYEE_LOAN_CATEGORY);
     const isRepayment = (tx: any) =>
       tx.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY ||
       tx.type === TransactionType.INCOME;

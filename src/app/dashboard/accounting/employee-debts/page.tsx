@@ -1,20 +1,29 @@
 import { getEmployeeDebts, getAccounts } from '@/actions/accounting';
+import { getLoans } from '@/actions/loan';
 import { EmployeeDebtList } from '@/components/accounting/employee-debt-list';
-import { PayDebtDialog } from '@/components/accounting/pay-debt-dialog';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
+/**
+ * بدهی کارمندان: هزینه‌هایی که کارمند پرداخته و شرکت بدهکار است، در کنار مانده
+ * قرض‌ها برای عدد خالص؛ ردیف‌های هر کارمند در پنل کنار؛ بازپرداخت برای payroll.manage.
+ */
 export default async function EmployeeDebtsPage() {
   await requireRouteAccess('/dashboard/accounting/employee-debts');
   const debts = await getEmployeeDebts();
   const accounts = await getAccounts();
+  const loans = await getLoans();
+  const canManage = await hasPermission('payroll.manage');
+
+  // Only the loans' totals travel to the page: what employees still owe on them.
+  const open = loans.filter((loan: any) => loan.status !== 'PAID' && loan.remaining > 0);
+  const outstanding = open.reduce((sum: number, loan: any) => sum + loan.remaining, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">بدهی کارمندان (Accounts Payable)</h1>
-      </div>
-      <EmployeeDebtList debts={debts} accounts={accounts} />
-    </div>
+    <EmployeeDebtList
+      debts={debts}
+      accounts={accounts}
+      canManage={canManage}
+      loans={{ outstanding, count: open.length }}
+    />
   );
 }
-

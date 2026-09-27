@@ -34,9 +34,13 @@ interface Account {
 interface LoanFormProps {
   employees: Employee[];
   accounts: Account[];
+  /** Inside a dialog: no card of its own. */
+  bare?: boolean;
+  /** Called after the loan is recorded. */
+  onSuccess?: () => void;
 }
 
-export function LoanForm({ employees, accounts }: LoanFormProps) {
+export function LoanForm({ employees, accounts, bare = false, onSuccess }: LoanFormProps) {
   const [state, dispatch] = useFormState(createLoan, initialState);
   const [dueDate, setDueDate] = useState<string>('');
   const [accountId, setAccountId] = useState<string>('');
@@ -46,18 +50,22 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
       toast.success(state.message);
       setDueDate('');
       setAccountId('');
+      onSuccess?.();
     } else if (state.message && !state.success) {
       toast.error(state.message);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>ثبت قرض جدید</CardTitle>
-      </CardHeader>
+    <Card className={bare ? 'border-0 shadow-none' : undefined}>
+      {!bare && (
+        <CardHeader>
+          <CardTitle>ثبت قرض جدید</CardTitle>
+        </CardHeader>
+      )}
       <form action={dispatch}>
-        <CardContent className="space-y-4">
+        <CardContent className={bare ? 'space-y-4 px-0' : 'space-y-4'}>
           <div className="space-y-2">
             <Label htmlFor="borrowerId">کارمند *</Label>
             <Select name="borrowerId" required>
@@ -73,7 +81,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.borrowerId?.[0]}</p>
             )}
           </div>
 
@@ -92,7 +100,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
             )}
           </div>
 
@@ -108,7 +116,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               required
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.amount && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.amount?.[0]}</p>
             )}
           </div>
 
@@ -124,7 +132,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               placeholder="0"
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.interestRate && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.interestRate?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.interestRate?.[0]}</p>
             )}
           </div>
 
@@ -139,7 +147,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
             />
             <input type="hidden" name="dueDate" value={dueDate} />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.dueDate && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.dueDate?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.dueDate?.[0]}</p>
             )}
           </div>
 
@@ -152,23 +160,19 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               rows={3}
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.description?.[0]}</p>
             )}
           </div>
 
           {state.message && (
             <div
-              className={`text-sm p-3 rounded ${
-                state.success
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
-              }`}
+              className={`rounded-md px-3 py-2 text-[13px] ${state.success ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}
             >
               {state.message}
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex justify-end">
+        <CardFooter className={bare ? 'flex justify-end px-0' : 'flex justify-end'}>
           <SubmitButton />
         </CardFooter>
       </form>

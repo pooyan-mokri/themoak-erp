@@ -596,3 +596,60 @@ export async function getShareholdersWithBalance() {
   }
 }
 
+/** How many capital events the shareholders page lists. */
+const CAPITAL_EVENTS_LIMIT = 100;
+
+export type ShareholderCapitalEvent = {
+  id: string;
+  date: Date;
+  kind: 'deposit' | 'withdrawal';
+  shareholderId: string;
+  shareholderName: string;
+  /** In the account's currency. */
+  amount: number;
+  currency: Currency;
+  amountInToman: number;
+  accountName: string | null;
+  description: string | null;
+};
+
+/**
+ * The capital deposits and withdrawals behind the balance tab, newest first:
+ * the same rows getShareholderBalance adds up, one by one. Read only.
+ */
+export async function getShareholderCapitalEvents(): Promise<ShareholderCapitalEvent[]> {
+  await requirePermission('finance.view');
+  try {
+    const rows = await prisma.transaction.findMany({
+      where: {
+        shareholderId: { not: null },
+        OR: [
+          { type: TransactionType.INCOME, category: 'Shareholder Deposit' },
+          { type: TransactionType.EXPENSE, category: 'Shareholder Withdrawal' },
+        ],
+      },
+      include: {
+        shareholder: { select: { id: true, name: true } },
+        account: { select: { name: true } },
+      },
+      orderBy: { date: 'desc' },
+      take: CAPITAL_EVENTS_LIMIT,
+    });
+
+    return rows.map((row: any) => ({
+      id: row.id,
+      date: row.date,
+      kind: row.type === TransactionType.INCOME ? 'deposit' : 'withdrawal',
+      shareholderId: row.shareholder?.id ?? row.shareholderId,
+      shareholderName: row.shareholder?.name ?? '',
+      amount: Number(row.amount),
+      currency: row.currency,
+      amountInToman: Number(row.amountInToman),
+      accountName: row.account?.name ?? null,
+      description: row.description ?? null,
+    }));
+  } catch (error) {
+    console.error('Error fetching shareholder capital events:', error);
+    return [];
+  }
+}
