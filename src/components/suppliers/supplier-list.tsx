@@ -21,6 +21,8 @@ interface Supplier {
   _count?: {
     orders: number;
   };
+  /** What the supplier owes us back («طلب از تأمین‌کننده»), in Toman; only for finance viewers. */
+  creditBalance?: number;
 }
 
 interface SupplierListProps {
@@ -30,6 +32,7 @@ interface SupplierListProps {
 }
 
 export function SupplierList({ suppliers, canCreate }: SupplierListProps) {
+  const showCredit = suppliers.some((supplier) => supplier.creditBalance !== undefined);
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -53,12 +56,13 @@ export function SupplierList({ suppliers, canCreate }: SupplierListProps) {
               <TableHead className="text-right">ایمیل</TableHead>
               <TableHead className="text-right">آدرس</TableHead>
               <TableHead className="text-center">تعداد سفارشات</TableHead>
+              {showCredit && <TableHead className="text-right">طلب از تأمین‌کننده</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {suppliers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={showCredit ? 6 : 5} className="text-center py-8 text-muted-foreground">
                   هیچ تامین‌کننده‌ای یافت نشد.
                 </TableCell>
               </TableRow>
@@ -70,6 +74,11 @@ export function SupplierList({ suppliers, canCreate }: SupplierListProps) {
                   <TableCell>{supplier.email || '-'}</TableCell>
                   <TableCell>{supplier.address || '-'}</TableCell>
                   <TableCell className="text-center">{supplier._count?.orders || 0}</TableCell>
+                  {showCredit && (
+                    <TableCell>
+                      {supplier.creditBalance ? `${Math.round(supplier.creditBalance).toLocaleString('fa-IR')} تومان` : '—'}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}

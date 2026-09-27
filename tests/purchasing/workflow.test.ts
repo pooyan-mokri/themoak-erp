@@ -105,20 +105,40 @@ test('status: every procurement move takes stock.manage or finance.manage; no ro
   assert.deepEqual([await statusOf(draft.id), await statusOf(pending.id), await statusOf(arrived.id)], ['CANCELLED', 'PENDING_PAYMENT', 'ARRIVED']);
 });
 
-test('status: a status move racing a payment does not overwrite the status the payment wrote', async () => {
-  const po = await tenFrames('PENDING_PAYMENT');
-  let started: Promise<any> | null = null;
+test('status: a cancel and a payment at once run one after the other, never over each other', async () => {
+  // The cancel holds the order; the payment that starts meanwhile waits, then finds it cancelled.
+  const first = await tenFrames('PENDING_PAYMENT');
+  let paying: Promise<any> | null = null;
   beforeQuery.fn = async (params) => {
-    // Right before the status move writes, a payment settles the order.
-    if (params.model !== 'PurchaseOrder' || !['update', 'updateMany'].includes(params.action)) return;
+    if (params.model !== 'PurchaseOrder' || params.action !== 'update') return;
     beforeQuery.fn = null;
-    started = recordPurchasePartialPayment({ orderId: po.id, accountId: 'toman', amount: 1_200_000 });
-    await started;
+    paying = recordPurchasePartialPayment({ orderId: first.id, accountId: 'toman', amount: 1_200_000 });
+    await Promise.race([paying, sleep(500)]);
   };
-  const cancelled = await updatePurchaseOrderStatus(po.id, 'CANCELLED');
-  assert.equal((await started!).success, true);
-  assert.deepEqual(cancelled, { success: false, message: 'وضعیت این سفارش هم‌زمان تغییر کرد؛ صفحه را تازه کنید.' });
-  assert.equal(await statusOf(po.id), 'PAID');
+  assert.equal((await updatePurchaseOrderStatus(first.id, 'CANCELLED')).success, true);
+  beforeQuery.fn = null;
+  assert.deepEqual(await paying!, { success: false, message: 'این سفارش در وضعیت قابل پرداخت نیست' });
+  assert.equal(await statusOf(first.id), 'CANCELLED');
+  assert.equal(await prisma.purchaseOrderPayment.count(), 0);
+  assert.equal(await prisma.supplierCredit.count(), 0);
+
+  // A payment holds the order; the cancel confirmed on a page that showed nothing paid waits, then refuses.
+  const second = await tenFrames('PENDING_PAYMENT');
+  let cancelling: Promise<any> | null = null;
+  beforeQuery.fn = async (params) => {
+    if (params.model !== 'PurchaseOrderPayment' || params.action !== 'create') return;
+    beforeQuery.fn = null;
+    cancelling = updatePurchaseOrderStatus(second.id, 'CANCELLED', 0);
+    await Promise.race([cancelling, sleep(500)]);
+  };
+  assert.equal((await recordPurchasePartialPayment({ orderId: second.id, accountId: 'toman', amount: 1_200_000 })).success, true);
+  beforeQuery.fn = null;
+  assert.deepEqual(await cancelling!, {
+    success: false,
+    message: 'پرداخت‌های این سفارش از وقتی صفحه باز شد تغییر کرده است؛ صفحه را تازه کنید و دوباره لغو کنید.',
+  });
+  assert.equal(await statusOf(second.id), 'PAID');
+  assert.equal(await prisma.supplierCredit.count(), 0);
   await assertPurchaseInvariants();
 });
 

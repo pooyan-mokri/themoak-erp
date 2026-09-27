@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { receivePurchaseOrderItems } from '@/actions/supplier';
-import { updatePurchaseOrderStatus, recordPurchasePartialPayment, recordArrival } from '@/actions/supplier-workflow';
+import { updatePurchaseOrderStatus, recordPurchasePartialPayment, recordArrival, payPurchaseOrderFromCredit } from '@/actions/supplier-workflow';
 import { getLatestExchangeRates } from '@/actions/accounting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -73,8 +73,10 @@ interface PurchaseOrderArrivalCost {
 interface PurchaseOrderPayment {
   id: string;
   amount: number;
-  accountId: string;
+  accountId?: string;
   accountName: string;
+  /** Paid from the supplier's credit: no account moved. */
+  fromCredit?: boolean;
   description?: string;
   date: Date | string;
 }
@@ -92,6 +94,8 @@ interface PurchaseOrder {
   arrivalAdditionalCosts?: PurchaseOrderArrivalCost[];
   payments?: PurchaseOrderPayment[];
   paidAmountInToman?: number;
+  /** What the supplier owes us back («طلب از تأمین‌کننده»), for finance viewers. */
+  supplierCreditBalance?: number;
 }
 
 interface ExchangeRate {
@@ -148,6 +152,7 @@ export function OrderDetail({
   // One id per submission of each money dialog, so a double click books once.
   const [paymentRequestId, renewPaymentRequestId] = useRequestId();
   const [arrivalRequestId, renewArrivalRequestId] = useRequestId();
+  const [creditRequestId, renewCreditRequestId] = useRequestId();
 
   useEffect(() => {
     // Load exchange rates
@@ -245,11 +250,11 @@ export function OrderDetail({
     setArrivalCosts(newCosts);
   };
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = async (newStatus: string, expectedCredit?: number) => {
     setStatusLoading(true);
     setError('');
     try {
-      const result = await updatePurchaseOrderStatus(order.id, newStatus);
+      const result = await updatePurchaseOrderStatus(order.id, newStatus, expectedCredit);
       if (result.success) {
         router.refresh();
       } else {
@@ -266,6 +271,40 @@ export function OrderDetail({
   const totalInToman = Number(order.totalAmountInToman) || 0;
   const paidSoFar = order.paidAmountInToman ?? (order.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
   const remaining = Math.max(0, totalInToman - paidSoFar);
+  const creditBalance = order.supplierCreditBalance ?? 0;
+  const creditUsable = Math.min(creditBalance, remaining);
+  const toman = (amount: number) => `${Math.round(amount).toLocaleString('fa-IR')} تومان`;
+
+  // What was paid goes to the supplier's credit: the confirmation names the amount, and the server refuses if
+  // the payments changed since. A viewer without the finance figures is told the rule instead.
+  const handleCancel = () => {
+    const question = !canSeeFinance
+      ? 'این سفارش لغو شود؟ اگر پرداختی برای آن ثبت شده باشد، به «طلب از تأمین‌کننده» منتقل می‌شود.'
+      : paidSoFar > 0
+        ? `با لغو این سفارش، ${toman(paidSoFar)} پرداخت‌شده به «طلب از تأمین‌کننده» ${order.supplier.name} منتقل می‌شود. لغو شود؟`
+        : 'این سفارش لغو شود؟';
+    if (!window.confirm(question)) return;
+    handleStatusChange('CANCELLED', canSeeFinance ? paidSoFar : undefined);
+  };
+
+  const handlePayFromCredit = async () => {
+    if (!window.confirm(`${toman(creditUsable)} از طلب تأمین‌کننده «${order.supplier.name}» بابت این سفارش پرداخت شود؟`)) return;
+    setStatusLoading(true);
+    setError('');
+    try {
+      const result = await payPurchaseOrderFromCredit({ orderId: order.id, requestId: creditRequestId });
+      if (result.success) {
+        renewCreditRequestId();
+        router.refresh();
+      } else {
+        setError(result.message || result.error || 'خطا در پرداخت از طلب تأمین‌کننده');
+      }
+    } catch (err) {
+      setError('خطا در ارتباط با سرور');
+    } finally {
+      setStatusLoading(false);
+    }
+  };
 
   const openPaymentDialog = () => {
     setPaymentAmount(remaining > 0 ? String(Math.round(remaining)) : '');
@@ -496,7 +535,7 @@ export function OrderDetail({
               )}
               {canMovePurchaseOrder(order.status, 'CANCELLED') && canChangeStatus && (
                 <Button 
-                  onClick={() => handleStatusChange('CANCELLED')}
+                  onClick={handleCancel}
                   variant="destructive"
                   disabled={statusLoading}
                 >
@@ -597,6 +636,19 @@ export function OrderDetail({
                 <div className="text-[10px] text-muted-foreground">تومان</div>
               </div>
             </div>
+
+            {creditBalance > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed p-3 text-sm">
+                <span>
+                  طلب از تأمین‌کننده «{order.supplier.name}»: <span className="font-bold">{toman(creditBalance)}</span>
+                </span>
+                {canPay && (order.status === 'PENDING_PAYMENT' || order.status === 'PARTIALLY_PAID') && creditUsable > 0 && (
+                  <Button size="sm" variant="outline" onClick={handlePayFromCredit} disabled={statusLoading}>
+                    پرداخت {toman(creditUsable)} از طلب
+                  </Button>
+                )}
+              </div>
+            )}
 
             {order.payments && order.payments.length > 0 ? (
               <div className="rounded-md border overflow-x-auto">

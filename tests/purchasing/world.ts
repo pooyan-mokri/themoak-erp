@@ -70,13 +70,25 @@ export async function assertPurchaseInvariants() {
     assert.ok(Math.abs(Number(po.totalAmountInToman) - (lines + extras)) < 1e-6, `order #${po.number} total ${po.totalAmountInToman} vs ${lines + extras}`);
     const paid = po.payments.reduce((s: number, p: any) => s + Number(p.amount), 0);
     assert.ok(paid <= Number(po.totalAmountInToman) + 1, `order #${po.number} paid ${paid} over its total`);
-    for (const p of po.payments) {
+    for (const p of po.payments.filter((p: any) => p.accountId)) {
       assert.ok(p.transaction, `payment ${p.id} has its expense row`);
       assert.equal(Number(p.transaction.amountInToman), Number(p.amount));
       assert.equal(p.transaction.accountId, p.accountId);
       assert.equal(p.transaction.type, 'EXPENSE');
     }
+    // A payment from the supplier's credit moves no account, and the credit shows it spent on this order.
+    const fromCredit = po.payments.filter((p: any) => !p.accountId);
+    assert.ok(fromCredit.every((p: any) => p.transactionId === null), `order #${po.number} credit payment with a transaction`);
+    const creditRows = await prisma.supplierCredit.findMany({ where: { purchaseOrderId: po.id } });
+    const used = -creditRows.filter((c: any) => Number(c.amount) < 0).reduce((s: number, c: any) => s + Number(c.amount), 0);
+    assert.ok(Math.abs(used - fromCredit.reduce((s: number, p: any) => s + Number(p.amount), 0)) < 1e-6, `order #${po.number} credit used ${used}`);
+    // A cancelled order's payments went to the credit, exactly once; no other order credits anything.
+    const credited = creditRows.filter((c: any) => Number(c.amount) > 0).reduce((s: number, c: any) => s + Number(c.amount), 0);
+    assert.ok(Math.abs(credited - (po.status === 'CANCELLED' ? paid : 0)) < 1e-6, `order #${po.number} credited ${credited}`);
     for (const item of po.items) assert.ok(item.receivedQuantity >= 0 && item.receivedQuantity <= item.quantity, `line ${item.id} received ${item.receivedQuantity}`);
   }
   for (const id of ['toman', 'usd', 'eur']) assert.equal(await driftOf(id), 0, `${id} ledger drifted`);
+  // No supplier ever owes back less than nothing.
+  const balances = await prisma.supplierCredit.groupBy({ by: ['supplierId'], _sum: { amount: true } });
+  for (const b of balances) assert.ok(Number(b._sum.amount) >= -1e-6, `supplier ${b.supplierId} credit ${b._sum.amount}`);
 }

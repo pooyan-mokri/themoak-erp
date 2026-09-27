@@ -20,7 +20,7 @@ import {
 import { DENIED, exposed } from './stock-helpers';
 
 const UNIT_COST_KEYS = ['unitCost', 'unitCostInToman', 'totalCostInToman', 'additionalCost', 'additionalCostInToman', 'costPrice', 'sellPrice'];
-const FINANCE_KEYS = ['totalAmount', 'totalAmountInToman', 'payments', 'paidAmountInToman', 'paymentTransaction', 'transaction', 'transactionId', 'paymentAccountId', 'arrivalAccountId'];
+const FINANCE_KEYS = ['totalAmount', 'totalAmountInToman', 'payments', 'paidAmountInToman', 'paymentTransaction', 'transaction', 'transactionId', 'paymentAccountId', 'arrivalAccountId', 'supplierCreditBalance', 'creditBalance'];
 const EXTRA_COST_KEYS = ['amount', 'amountInToman'];
 const BALANCE = 10_000_000;
 
@@ -93,6 +93,7 @@ test('WAREHOUSE sees suppliers, items, quantities and status, but no price, cost
 
   const suppliers: any = await getSuppliers();
   assert.equal(suppliers.data[0].email, 'sales@mazz.test');
+  assert.deepEqual(exposed(suppliers.data, FINANCE_KEYS), []);
 });
 
 test('ACCOUNTANT sees totals, payments and additional costs but no unit price or landed cost; AUDITOR sees all', async () => {

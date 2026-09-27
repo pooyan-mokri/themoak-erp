@@ -46,13 +46,23 @@ async function purchaseOrderAccess() {
 }
 
 function withoutHiddenMoney(order: any, see: { cost: boolean; finance: boolean }) {
-  const { totalAmount, totalAmountInToman, paymentTransaction, paymentAccountId, arrivalAccountId, payments, paidAmountInToman, ...rest } =
-    order;
+  const {
+    totalAmount,
+    totalAmountInToman,
+    paymentTransaction,
+    paymentAccountId,
+    arrivalAccountId,
+    payments,
+    paidAmountInToman,
+    supplierCreditBalance,
+    ...rest
+  } = order;
   const seeCosts = see.cost || see.finance;
   return {
     ...rest,
     ...(see.finance && { totalAmount, totalAmountInToman, paymentTransaction, paymentAccountId, arrivalAccountId }),
     ...(see.finance && payments !== undefined && { payments, paidAmountInToman }),
+    ...(see.finance && supplierCreditBalance !== undefined && { supplierCreditBalance }),
     items: order.items.map((item: any) => {
       const { unitCost, unitCostInToman, totalCostInToman, additionalCost, additionalCostInToman, ...itemRest } = item;
       return see.cost ? item : itemRest;
@@ -74,10 +84,21 @@ function withoutHiddenMoney(order: any, see: { cost: boolean; finance: boolean }
 
 // --- Actions ---
 
+/** What each supplier owes us back («طلب از تأمین‌کننده»): the sum of its SupplierCredit rows, in Toman. */
+async function creditBalances(client: any, supplierIds?: string[]): Promise<Map<string, number>> {
+  const rows = await client.supplierCredit.groupBy({
+    by: ['supplierId'],
+    where: supplierIds ? { supplierId: { in: supplierIds } } : {},
+    _sum: { amount: true },
+  });
+  return new Map(rows.map((row: any) => [row.supplierId, Number(row._sum.amount ?? 0)]));
+}
+
 export async function getSuppliers() {
   if (!(await hasPermission(['stock.view', 'finance.view']))) {
     return { success: false, error: ACCESS_DENIED_MESSAGE };
   }
+  const canSeeFinance = await hasPermission('finance.view');
   try {
     const suppliers = await prisma.supplier.findMany({
       orderBy: { createdAt: 'desc' },
@@ -87,11 +108,14 @@ export async function getSuppliers() {
         }
       }
     });
+    // The credit balance is money: only for finance viewers.
+    const credits = canSeeFinance ? await creditBalances(prisma) : null;
     const serializedSuppliers = suppliers.map((supplier: any) => ({
       ...supplier,
       phone: supplier.phone ?? undefined,
       email: supplier.email ?? undefined,
       address: supplier.address ?? undefined,
+      ...(credits && { creditBalance: credits.get(supplier.id) ?? 0 }),
     }));
     return { success: true, data: serializedSuppliers };
   } catch (error) {
@@ -411,12 +435,15 @@ export async function getPurchaseOrder(orderId: string) {
       payments: (order.payments ?? []).map((p: any) => ({
         id: p.id,
         amount: Number(p.amount),
-        accountId: p.accountId,
-        accountName: p.account?.name ?? '',
+        accountId: p.accountId ?? undefined,
+        // A payment with no account was paid from the supplier's credit.
+        accountName: p.accountId ? (p.account?.name ?? '') : 'طلب از تأمین‌کننده',
+        fromCredit: !p.accountId,
         description: p.description ?? undefined,
         date: p.date,
       })),
       paidAmountInToman: (order.payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0),
+      supplierCreditBalance: (await creditBalances(prisma, [order.supplierId])).get(order.supplierId) ?? 0,
     };
 
     return { success: true, data: withoutHiddenMoney(serializedOrder, see) };
