@@ -101,6 +101,29 @@ test('repaying part of a debt, then the rest, takes it off the list and the mone
   await assertBooksAddUp();
 });
 
+test('paying more than is owed is refused and moves nothing: the excess would show nowhere', async () => {
+  const employee = await sara();
+  await outOfPocket(employee.id, 700_000);
+  const before = await prisma.transaction.count();
+
+  const over = await payEmployeeDebt(undefined, form({ employeeId: employee.id, amount: '700001', accountId: 'bank' }));
+  assert.equal(over.success, false);
+  assert.match(over.message!, /بیشتر از بدهی/);
+  assert.equal(await prisma.transaction.count(), before);
+  assert.equal(await balanceOf('bank'), 100_000_000);
+
+  // A loan is not a debt of the company, so it does not raise what may be repaid.
+  await createLoan(undefined, form({ borrowerId: employee.id, amount: '5000000', accountId: 'bank' }));
+  const againstLoan = await payEmployeeDebt(undefined, form({ employeeId: employee.id, amount: '1000000', accountId: 'bank' }));
+  assert.equal(againstLoan.success, false);
+
+  const exact = await payEmployeeDebt(undefined, form({ employeeId: employee.id, amount: '700000', accountId: 'bank' }));
+  assert.equal(exact.success, true, exact.message);
+  const nothingLeft = await payEmployeeDebt(undefined, form({ employeeId: employee.id, amount: '1', accountId: 'bank' }));
+  assert.equal(nothingLeft.success, false);
+  await assertBooksAddUp();
+});
+
 test('a repayment recorded the old way (an INCOME row) still nets the debt', async () => {
   const employee = await sara();
   await outOfPocket(employee.id, 700_000);
@@ -112,6 +135,8 @@ test('a repayment recorded the old way (an INCOME row) still nets the debt', asy
   });
   const [debt] = await getEmployeeDebts();
   assert.equal(debt.totalDebt, 500_000);
+  const over = await payEmployeeDebt(undefined, form({ employeeId: employee.id, amount: '600000', accountId: 'bank' }));
+  assert.equal(over.success, false, 'the legacy repayment counts towards what is owed');
 });
 
 test('a repayment is refused for an unknown employee or account, an empty balance, or a zero amount', async () => {

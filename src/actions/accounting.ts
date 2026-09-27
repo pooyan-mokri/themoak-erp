@@ -1307,6 +1307,8 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
 
   try {
     await prisma.$transaction(async (tx: any) => {
+      // Locked, so two repayments at once cannot both pass the check below.
+      await tx.$queryRaw`SELECT id FROM "Employee" WHERE id = ${employeeId} FOR UPDATE`;
       // Verify employee exists
       const employee = await tx.employee.findUnique({
         where: { id: employeeId },
@@ -1314,6 +1316,23 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
 
       if (!employee) {
         throw new Error('کارمند یافت نشد');
+      }
+
+      // What is still owed, by the rule the debts page adds up. Paying more
+      // would take the debt below zero, and the page lists positive debts only:
+      // the excess would show nowhere.
+      const rows = (await tx.transaction.findMany({ where: { employeeId } })).filter(
+        (row: any) => row.category !== EMPLOYEE_LOAN_CATEGORY,
+      );
+      const owed = rows.reduce((sum: number, row: any) => {
+        const repayment = row.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY || row.type === TransactionType.INCOME;
+        if (repayment) return sum - Number(row.amountInToman);
+        return row.type === TransactionType.EXPENSE ? sum + Number(row.amountInToman) : sum;
+      }, 0);
+      if (amount > owed + 0.5) {
+        throw new Error(
+          `مبلغ بازپرداخت بیشتر از بدهی به ${employee.name} است. (بدهی: ${Math.max(0, Math.round(owed)).toLocaleString('fa-IR')} تومان)`,
+        );
       }
 
       // Verify account exists and has sufficient balance
