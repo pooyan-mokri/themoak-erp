@@ -6,6 +6,7 @@ import { deleteExpense, getExpenseBreakdown, recordExpense, updateExpense } from
 import { createLoan } from '@/actions/loan';
 import { exchangeCurrency } from '@/actions/currency-exchange';
 import { withdrawShareholderFunds } from '@/actions/shareholder';
+import { Currency } from '@/lib/types';
 import { assertBooksAddUp, balanceOf, openAccount } from './ledger';
 
 // The actions log every refusal these tests provoke on purpose.
@@ -112,14 +113,14 @@ test('an edit reverses the old amount and applies the new one, onto another acco
   assert.equal((await expense({})).success, true);
   const { id } = await onlyRow();
 
-  assert.equal((await updateExpense({ id, amount: 3_000_000, currency: 'TOMAN', category: 'اجاره', description: 'مهر' })).success, true);
+  assert.equal((await updateExpense({ id, amount: 3_000_000, currency: Currency.TOMAN, category: 'اجاره', description: 'مهر' })).success, true);
   assert.equal(await balanceOf('bank'), 97_000_000);
 
-  const moved = await updateExpense({ id, amount: 1_000_000, currency: 'TOMAN', category: 'اجاره', accountId: 'saman', date: '2026-09-25T20:30:00.000Z' });
+  const moved = await updateExpense({ id, amount: 1_000_000, currency: Currency.TOMAN, category: 'اجاره', accountId: 'saman', date: '2026-09-25T20:30:00.000Z' });
   assert.equal(moved.success, true, moved.message);
   assert.deepEqual([await balanceOf('bank'), await balanceOf('saman')], [100_000_000, 9_000_000]);
 
-  assert.equal((await updateExpense({ id, amount: 20, currency: 'USD', category: 'اشتراک', accountId: 'usd' })).success, true);
+  assert.equal((await updateExpense({ id, amount: 20, currency: Currency.USD, category: 'اشتراک', accountId: 'usd' })).success, true);
   const row = await onlyRow();
   assert.deepEqual(
     [Number(row.amount), row.currency, Number(row.amountInToman), row.accountId, row.category, row.date.toISOString()],
@@ -132,9 +133,9 @@ test('an edit reverses the old amount and applies the new one, onto another acco
 test('an edit the new account cannot cover, or with a bad amount, changes nothing', async () => {
   assert.equal((await expense({})).success, true);
   const before = await onlyRow();
-  assert.match((await updateExpense({ id: before.id, amount: 50_000_000, currency: 'TOMAN', category: 'اجاره', accountId: 'saman' })).message!, /کافی نیست/);
-  assert.equal((await updateExpense({ id: before.id, amount: 0, currency: 'TOMAN', category: 'اجاره' })).success, false);
-  assert.match((await updateExpense({ id: 'nothing', amount: 1, currency: 'TOMAN', category: 'اجاره' })).message!, /یافت نشد/);
+  assert.match((await updateExpense({ id: before.id, amount: 50_000_000, currency: Currency.TOMAN, category: 'اجاره', accountId: 'saman' })).message!, /کافی نیست/);
+  assert.equal((await updateExpense({ id: before.id, amount: 0, currency: Currency.TOMAN, category: 'اجاره' })).success, false);
+  assert.match((await updateExpense({ id: 'nothing', amount: 1, currency: Currency.TOMAN, category: 'اجاره' })).message!, /یافت نشد/);
   assert.deepEqual(await onlyRow(), before);
   assert.deepEqual([await balanceOf('bank'), await balanceOf('saman')], [98_000_000, 10_000_000]);
 });
@@ -143,7 +144,7 @@ test('an employee-paid expense is edited without touching any account', async ()
   const sara = await prisma.employee.create({ data: { name: 'سارا', salary: 1 } });
   assert.equal((await expense({ accountId: '', employeeId: sara.id })).success, true);
   const { id } = await onlyRow();
-  assert.equal((await updateExpense({ id, amount: 5, currency: 'USD', category: 'اشتراک' })).success, true);
+  assert.equal((await updateExpense({ id, amount: 5, currency: Currency.USD, category: 'اشتراک' })).success, true);
   const row = await onlyRow();
   assert.deepEqual([row.accountId, Number(row.amount), row.currency, Number(row.amountInToman)], [null, 5, 'USD', 500_000]);
   assert.equal(await balanceOf('bank'), 100_000_000);
@@ -185,7 +186,7 @@ test('an expense that another module booked is edited or deleted only there; the
     const deleted = await deleteExpense(row.id);
     assert.equal(deleted.success, false, row.category!);
     assert.match(deleted.message!, /به‌صورت خودکار توسط/);
-    const edited = await updateExpense({ id: row.id, amount: 1, currency: 'TOMAN', category: 'اداری' });
+    const edited = await updateExpense({ id: row.id, amount: 1, currency: Currency.TOMAN, category: 'اداری' });
     assert.match(edited.message!, /به‌صورت خودکار توسط/, row.category!);
   }
   assert.match((await deleteExpense(owned.find((r: any) => r.category === 'قرض به کارمند')!.id)).message!, /«قرض به کارمند»/);
