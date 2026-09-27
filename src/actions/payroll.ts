@@ -88,6 +88,10 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
     }
 
     const netAmount = amount + bonuses - deductions;
+    // As updatePayroll: a payslip that pays nothing or less than nothing is a typo.
+    if (!(netAmount > 0)) {
+      return { message: 'حقوق خالص (حقوق + پاداش − کسورات) باید بیشتر از صفر باشد.', success: false };
+    }
 
     await prisma.payroll.create({
       data: {
@@ -183,11 +187,29 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
       await inAccountCurrency(prisma, account, amountInToman);
 
     const transactionDate = date ? new Date(date) : new Date();
-    const newPaidAmount = currentPaidAmount + amount;
-    const newStatus = newPaidAmount >= netAmount ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
 
     // Create payment and update payroll
     await prisma.$transaction(async (tx: any) => {
+      // The payslip is locked and read again: a second payment, or an edit of
+      // it, at the same moment waits, and paid never goes above the net pay.
+      await tx.$queryRaw`SELECT id FROM "Payroll" WHERE id = ${payrollId} FOR UPDATE`;
+      const current = await tx.payroll.findUnique({ where: { id: payrollId } });
+      const currentNet = Number(current.netAmount);
+      const paidSoFar = Number(current.paidAmount);
+      if (amount > currentNet - paidSoFar) {
+        throw new Error(
+          `مبلغ پرداختی بیشتر از باقیمانده است. (باقیمانده: ${(currentNet - paidSoFar).toLocaleString('fa-IR')} تومان)`,
+        );
+      }
+      const newPaidAmount = paidSoFar + amount;
+      const newStatus = newPaidAmount >= currentNet ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
+
+      // As every other payment: the account must cover it.
+      const payer = await tx.account.findUnique({ where: { id: accountId } });
+      if (Number(payer.balance) < amountInAccountCurrency) {
+        throw new Error(`موجودی حساب "${payer.name}" کافی نیست.`);
+      }
+
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
