@@ -149,14 +149,13 @@ export async function postDepreciation(assetId: string) {
     });
 
     if (!expenseAccount) {
-      expenseAccount = await prisma.account.create({
-        data: {
-          name: 'هزینه‌های عمومی',
-          type: 'EXPENSE',
-          balance: 0,
-          currency: 'TOMAN'
-        }
+      // Under one fixed id: two posts at the same moment both find it missing,
+      // and a plain create made one copy each (the name is not unique).
+      await prisma.account.createMany({
+        data: [{ id: 'general-expenses', name: 'هزینه‌های عمومی', type: 'EXPENSE', balance: 0, currency: 'TOMAN' }],
+        skipDuplicates: true,
       });
+      expenseAccount = await prisma.account.findUniqueOrThrow({ where: { id: 'general-expenses' } });
     }
 
     // Depreciation is non-cash: the row feeds P&L, but the expense account's
