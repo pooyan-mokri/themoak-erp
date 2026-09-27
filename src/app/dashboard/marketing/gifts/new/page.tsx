@@ -4,6 +4,7 @@ import { getMarketingCampaigns } from '@/actions/marketing';
 import { getWarehouses } from '@/actions/warehouse';
 import { GiftForm } from '@/components/marketing/gift-form';
 import { hasPermission, requireRouteAccess } from '@/lib/access';
+import { PageHeader } from '@/components/layout/page-header';
 
 // Filter only active campaigns
 async function getActiveCampaigns() {
@@ -30,13 +31,11 @@ export default async function NewGiftPage() {
   );
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">ثبت هدیه بازاریابی</h1>
-        <p className="text-muted-foreground mt-2">
-          ثبت هدیه محصول به عنوان هزینه بازاریابی
-        </p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="ثبت هدیه بازاریابی"
+        description="کالا از انبار انتخابی کم و بهای تمام‌شده‌اش روی حساب هزینهٔ انتخابی به‌عنوان هزینه بازاریابی ثبت می‌شود"
+      />
 
       <GiftForm
         products={productsWithNumbers}

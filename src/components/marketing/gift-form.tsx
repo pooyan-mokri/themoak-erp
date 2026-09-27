@@ -251,7 +251,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                         >
                           <Minus className="h-4 w-4 md:h-3 md:w-3" />
                         </Button>
-                        <span className="w-10 md:w-8 text-center text-base md:text-sm font-bold">{item.quantity}</span>
+                        <span className="w-10 md:w-8 text-center text-base md:text-sm font-medium tabular-nums">{item.quantity.toLocaleString('fa-IR')}</span>
                         <Button
                           type="button"
                           variant="outline"
@@ -265,7 +265,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-10 w-10 md:h-8 md:w-8 text-red-500 hover:text-red-600 touch-manipulation"
+                          className="h-10 w-10 md:h-8 md:w-8 text-muted-foreground hover:text-danger touch-manipulation"
                           onClick={() => removeFromCart(item.productId, item.warehouseId)}
                         >
                           <Trash2 className="h-5 w-5 md:h-4 md:w-4" />
@@ -279,7 +279,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                 <div className="mt-4 pt-4 border-t">
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-base md:text-sm">هزینه کل:</span>
-                    <span className="font-bold text-xl md:text-lg text-red-600">
+                    <span className="text-lg font-medium tabular-nums md:text-[15px]">
                       {new Intl.NumberFormat('fa-IR').format(totalCost)} تومان
                     </span>
                   </div>
@@ -289,7 +289,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
           )}
 
           {state.errors && 'items' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0] && (
-            <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0]}</p>
+            <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.items?.[0]}</p>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-4">
@@ -304,7 +304,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                 className="h-12 md:h-10 text-base md:text-sm"
               />
               {state.errors && 'recipientName' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.recipientName?.[0]}</p>
               )}
             </div>
 
@@ -331,7 +331,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                 <p className="text-sm text-muted-foreground">هیچ حساب هزینه‌ای تعریف نشده است؛ اول در حسابداری یک حساب از نوع هزینه بسازید.</p>
               )}
               {state.errors && 'accountId' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
               )}
             </div>
 
@@ -393,10 +393,8 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
 
           {state.message && (
             <div
-              className={`text-sm p-3 rounded ${
-                Object.keys(state.errors || {}).length === 0
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
+              className={`rounded-md px-3 py-2 text-[13px] ${
+                Object.keys(state.errors || {}).length === 0 ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'
               }`}
             >
               {state.message}

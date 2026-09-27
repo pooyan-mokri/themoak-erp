@@ -52,7 +52,7 @@ export function CampaignForm() {
       </CardHeader>
       <form action={dispatch}>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {/* Name */}
             <div className="space-y-2">
               <Label htmlFor="name">نام کمپین *</Label>
@@ -63,7 +63,7 @@ export function CampaignForm() {
                 required
               />
               {state.errors && 'name' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.name?.[0]}</p>
               )}
             </div>
 
@@ -83,7 +83,7 @@ export function CampaignForm() {
                 </SelectContent>
               </Select>
               {state.errors && 'type' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.type?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.type?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.type?.[0]}</p>
               )}
             </div>
 
@@ -99,7 +99,7 @@ export function CampaignForm() {
               />
               <input type="hidden" name="startDate" value={startDate} />
               {state.errors && 'startDate' in state.errors && (state.errors as Record<string, string[] | undefined> | undefined)?.startDate?.[0] && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.startDate?.[0]}</p>
+                <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.startDate?.[0]}</p>
               )}
             </div>
 
@@ -160,10 +160,8 @@ export function CampaignForm() {
 
           {state.message && (
             <div
-              className={`text-sm p-3 rounded ${
-                Object.keys(state.errors || {}).length === 0
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
+              className={`rounded-md px-3 py-2 text-[13px] ${
+                Object.keys(state.errors || {}).length === 0 ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'
               }`}
             >
               {state.message}

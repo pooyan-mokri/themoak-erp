@@ -1,17 +1,9 @@
 'use client';
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { useState } from 'react';
 import { formatJalaliDate } from '@/lib/date-utils';
-import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
+import { CAMPAIGN_STATUSES, campaignStatus, channelOf, fa } from './marketing-labels';
 
 interface Campaign {
   id: string;
@@ -31,134 +23,104 @@ interface Campaign {
 
 interface CampaignListProps {
   campaigns: Campaign[];
+  /** Hide the status chips (a short list on the overview). */
+  compact?: boolean;
 }
 
-const campaignTypeLabels: Record<string, string> = {
-  SOCIAL_MEDIA: 'شبکه‌های اجتماعی',
-  EMAIL: 'ایمیل',
-  PRINT: 'چاپی',
-  EVENT: 'رویداد',
-  OTHER: 'سایر',
-};
-
-const statusColors: Record<string, string> = {
-  PLANNED: 'bg-gray-100 text-gray-700 border-gray-200',
-  ACTIVE: 'bg-green-100 text-green-700 border-green-200',
-  COMPLETED: 'bg-blue-100 text-blue-700 border-blue-200',
-  CANCELLED: 'bg-red-100 text-red-700 border-red-200',
-};
-
-const statusLabels: Record<string, string> = {
-  PLANNED: 'برنامه‌ریزی شده',
-  ACTIVE: 'فعال',
-  COMPLETED: 'تکمیل شده',
-  CANCELLED: 'لغو شده',
-};
-
-export function CampaignList({ campaigns }: CampaignListProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fa-IR').format(Math.round(amount)) + ' تومان';
-  };
-
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('fa-IR').format(num);
-  };
+/** Each campaign as a row: its channel, dates, gifts, budget and spend, and its status. */
+export function CampaignList({ campaigns, compact = false }: CampaignListProps) {
+  const [status, setStatus] = useState('all');
+  const chips = [
+    { id: 'all', label: 'همه', count: campaigns.length },
+    ...CAMPAIGN_STATUSES.map((s) => ({ id: s.id, label: s.label, count: campaigns.filter((c) => c.status === s.id).length })),
+  ];
+  const rows = status === 'all' ? campaigns : campaigns.filter((c) => c.status === status);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>لیست کمپین‌ها</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {campaigns.length > 0 ? (
-          <div className="space-y-4">
-            {campaigns.map((campaign) => {
-              const budgetPercent = campaign.budget && campaign.budget > 0
-                ? ((campaign.spentAmount ?? 0) / campaign.budget) * 100
-                : 0;
+    <div className="space-y-3">
+      {!compact && (
+        <div className="flex flex-wrap items-center gap-2">
+          {chips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => setStatus(chip.id)}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] transition-colors duration-150',
+                status === chip.id ? 'border-foreground bg-foreground text-white' : 'bg-card hover:border-foreground/40',
+              )}
+            >
+              {chip.label}
+              <span className="font-mono text-[11px] opacity-70">{fa(chip.count)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
-              return (
-                <div
-                  key={campaign.id}
-                  className="border rounded-lg p-4 space-y-3 animate-fade-in-up"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-lg">{campaign.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {campaign.description || 'بدون توضیحات'}
-                      </p>
+      {rows.length === 0 ? (
+        <div className="rounded-lg border bg-card px-4 py-10 text-center text-[13px] text-muted-foreground">
+          {campaigns.length === 0
+            ? 'هیچ کمپین بازاریابی ثبت نشده است. کمپین را بسازید تا هدایا را به آن وصل کنید و هزینه‌اش را ببینید.'
+            : 'کمپینی با این وضعیت نیست.'}
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((campaign) => {
+            const s = campaignStatus(campaign.status);
+            const channel = channelOf(campaign.type);
+            const budgetPercent =
+              campaign.budget && campaign.budget > 0 ? ((campaign.spentAmount ?? 0) / campaign.budget) * 100 : 0;
+            return (
+              <li key={campaign.id} className="rounded-lg border bg-card p-4">
+                <div className="flex items-start gap-3">
+                  <span
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-brand font-mono text-[10px] text-white"
+                    title={channel.label}
+                  >
+                    {channel.code}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="truncate text-sm font-medium">{campaign.name}</h3>
+                      <span className={cn('whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px]', s.tone)}>{s.label}</span>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className={statusColors[campaign.status] || statusColors.PLANNED}
-                    >
-                      {statusLabels[campaign.status] || campaign.status}
-                    </Badge>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      {channel.label} · از {formatJalaliDate(campaign.startDate)}
+                      {campaign.endDate && ` تا ${formatJalaliDate(campaign.endDate)}`} · {fa(campaign._count.gifts)} هدیه
+                    </p>
+                    {campaign.description && <p className="mt-1 line-clamp-2 text-[12.5px]">{campaign.description}</p>}
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">نوع: </span>
-                      <span>{campaignTypeLabels[campaign.type] || campaign.type}</span>
+                {campaign.budget && (
+                  <div className="mt-3 space-y-1 border-t pt-3">
+                    <div className="flex justify-between text-[12.5px]">
+                      <span className="text-muted-foreground">بودجه</span>
+                      <span className="tabular-nums">
+                        {campaign.spentAmount !== null && <>{fa(campaign.spentAmount)} از </>}
+                        {fa(campaign.budget)} تومان
+                      </span>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">تعداد هدایا: </span>
-                      <span className="font-medium">{formatNumber(campaign._count.gifts)}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">شروع: </span>
-                      <span>{formatJalaliDate(campaign.startDate)}</span>
-                    </div>
-                    {campaign.endDate && (
-                      <div>
-                        <span className="text-muted-foreground">پایان: </span>
-                        <span>{formatJalaliDate(campaign.endDate)}</span>
-                      </div>
+                    {campaign.spentAmount !== null && (
+                      <>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className={cn('h-full', budgetPercent > 100 ? 'bg-warning' : 'bg-brand')}
+                            style={{ width: `${Math.min(budgetPercent, 100)}%` }}
+                          />
+                        </div>
+                        <div className="text-end text-[11.5px] text-muted-foreground">
+                          {new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(budgetPercent)}٪ استفاده شده
+                        </div>
+                      </>
                     )}
                   </div>
-
-                  {campaign.budget && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">بودجه:</span>
-                        <div className="flex gap-4">
-                          {campaign.spentAmount !== null && (
-                            <span>
-                              هزینه شده: <span className="font-medium text-red-600">{formatCurrency(campaign.spentAmount)}</span>
-                            </span>
-                          )}
-                          <span>
-                            از <span className="font-medium">{formatCurrency(campaign.budget)}</span>
-                          </span>
-                        </div>
-                      </div>
-                      {campaign.spentAmount !== null && (
-                        <>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all"
-                              style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-                            />
-                          </div>
-                          <div className="text-xs text-muted-foreground text-left">
-                            {budgetPercent.toFixed(1)}% استفاده شده
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            هیچ کمپین بازاریابی ثبت نشده است.
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
-

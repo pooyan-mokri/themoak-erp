@@ -1,7 +1,5 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { DataTable, DataTableColumn } from '@/components/ui/data-table';
 
@@ -33,7 +31,7 @@ interface GiftListProps {
 
 export function GiftList({ gifts, canSeeCost }: GiftListProps) {
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fa-IR').format(Math.round(amount)) + ' تومان';
+    return new Intl.NumberFormat('fa-IR').format(Math.round(amount));
   };
 
   const formatNumber = (num: number) => {
@@ -45,7 +43,7 @@ export function GiftList({ gifts, canSeeCost }: GiftListProps) {
       key: 'date',
       label: 'تاریخ',
       sortable: true,
-      render: (gift) => formatJalaliDate(gift.date),
+      render: (gift) => <span className="font-mono text-[12px] text-muted-foreground">{formatJalaliDate(gift.date)}</span>,
     },
     {
       key: 'product',
@@ -54,7 +52,7 @@ export function GiftList({ gifts, canSeeCost }: GiftListProps) {
       render: (gift) => gift.product ? (
         <div>
           <div className="font-medium">{gift.product.name}</div>
-          <div className="text-xs text-muted-foreground">SKU: {gift.product.sku}</div>
+          <div className="font-mono text-[11.5px] text-muted-foreground">{gift.product.sku}</div>
         </div>
       ) : (
         <span className="text-muted-foreground">-</span>
@@ -78,19 +76,17 @@ export function GiftList({ gifts, canSeeCost }: GiftListProps) {
       sortable: true,
       render: (gift) =>
         gift.campaign ? (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-            {gift.campaign.name}
-          </Badge>
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-[11.5px]">{gift.campaign.name}</span>
         ) : (
           <span className="text-muted-foreground">-</span>
         ),
     },
     {
       key: 'totalCost',
-      label: 'هزینه کل',
+      label: 'هزینه کل (تومان)',
       sortable: true,
       render: (gift) => (
-        <span className="font-bold text-red-600">{formatCurrency(gift.totalCost ?? 0)}</span>
+        <span className="font-medium tabular-nums">{formatCurrency(gift.totalCost ?? 0)}</span>
       ),
     },
     {
@@ -103,11 +99,7 @@ export function GiftList({ gifts, canSeeCost }: GiftListProps) {
   const columns = canSeeCost ? allColumns : allColumns.filter((column) => column.key !== 'totalCost');
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>تاریخچه هدایای بازاریابی</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="rounded-lg border bg-card p-4">
         <DataTable
           data={gifts}
           columns={columns}
@@ -116,10 +108,9 @@ export function GiftList({ gifts, canSeeCost }: GiftListProps) {
           searchKeys={['product', 'recipientName']}
           defaultSort={{ key: 'date', direction: 'desc' }}
           pageSize={15}
-          emptyMessage="هیچ هدیه بازاریابی ثبت نشده است."
+          emptyMessage="هیچ هدیه بازاریابی ثبت نشده است. هدیه با «ثبت هدیه جدید» از انبار کم و به‌عنوان هزینه بازاریابی ثبت می‌شود."
         />
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
