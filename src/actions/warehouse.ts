@@ -166,6 +166,11 @@ async function removalBlocker(id: string): Promise<string | null> {
   return null;
 }
 
+const HAS_HISTORY = 'این انبار دارای سابقه جابجایی یا فروش است و قابل حذف نیست.';
+
+// Thrown inside the delete transaction so it rolls back.
+class HasHistory extends Error {}
+
 export async function deleteWarehouse(id: string) {
   // Admin only
   if ((await getCurrentRole()) !== 'ADMIN') {
@@ -179,6 +184,13 @@ export async function deleteWarehouse(id: string) {
     }
 
     await prisma.$transaction(async (tx: any) => {
+      // Movements and sale lines point at their warehouse ON DELETE SET NULL, so no foreign key stops the delete:
+      // it would silently blank their history (and leave cancelled sales with no warehouse to restore to).
+      const [movements, saleLines] = await Promise.all([
+        tx.inventoryMovement.count({ where: { OR: [{ fromWarehouseId: id }, { toWarehouseId: id }] } }),
+        tx.orderItem.count({ where: { warehouseId: id } }),
+      ]);
+      if (movements + saleLines > 0) throw new HasHistory();
       // Remove the zero-quantity inventory rows first, then the warehouse. A row
       // that turned non-zero since the check is kept and makes the delete fail.
       await tx.inventory.deleteMany({ where: { warehouseId: id, quantity: 0 } });
@@ -189,9 +201,9 @@ export async function deleteWarehouse(id: string) {
     revalidatePath('/dashboard', 'layout');
     return { message: 'انبار با موفقیت حذف شد.', success: true };
   } catch (error: any) {
-    // Foreign-key violation: warehouse still referenced by movements / orders / audits
-    if (error?.code === 'P2003') {
-      return { message: 'این انبار دارای سابقه جابجایی یا فروش است و قابل حذف نیست.', success: false };
+    // Foreign-key violation: warehouse still referenced by stock rows or audits
+    if (error instanceof HasHistory || error?.code === 'P2003') {
+      return { message: HAS_HISTORY, success: false };
     }
     console.error('Error deleting warehouse:', error);
     return { message: 'خطا در حذف انبار.', success: false };
