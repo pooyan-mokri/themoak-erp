@@ -1,33 +1,30 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Menu, Search } from 'lucide-react';
+import { Menu, Search, Star } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserNav } from '@/components/layout/user-nav';
 import { MobileMenu } from '@/components/layout/mobile-menu';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
 import { Button } from '@/components/ui/button';
-import { canAccessRoute } from '@/lib/permissions';
+import { OPEN_MENU, OPEN_PALETTE, entryFor, useNavMemory } from '@/components/layout/nav-memory';
+import { cn } from '@/lib/utils';
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: session } = useSession();
-  const router = useRouter();
-  const searchRef = useRef<HTMLInputElement>(null);
-  const canSearch = canAccessRoute(session?.user?.role, '/dashboard/search');
+  const pathname = usePathname() ?? '';
+  const { pins, togglePin } = useNavMemory(session?.user?.id);
+  const page = entryFor(pathname);
+  const pinned = !!page && pins.some((pin) => pin.href === page.href);
 
-  // ⌘K / Ctrl+K jumps to search from anywhere.
+  // The phone tab bar's «منو» opens the drawer.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onOpen = () => setMobileMenuOpen(true);
+    window.addEventListener(OPEN_MENU, onOpen);
+    return () => window.removeEventListener(OPEN_MENU, onOpen);
   }, []);
 
   return (
@@ -41,27 +38,31 @@ export function Header() {
           <DashboardBreadcrumb />
         </div>
 
-        {canSearch && (
-          <form
-            className="relative hidden w-72 sm:block"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const q = searchRef.current?.value.trim();
-              router.push(q ? `/dashboard/search?q=${encodeURIComponent(q)}` : '/dashboard/search');
-            }}
+        {page && (
+          <button
+            type="button"
+            onClick={() => togglePin(page)}
+            title={pinned ? 'برداشتن سنجاق' : 'سنجاق به منو'}
+            className={cn(
+              'hidden h-8 w-8 place-items-center rounded-md transition-colors duration-150 hover:bg-secondary sm:grid',
+              pinned ? 'text-warning' : 'text-muted-foreground',
+            )}
           >
-            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              ref={searchRef}
-              type="search"
-              placeholder="جستجو در سفارش‌ها، کالاها، مشتری‌ها…"
-              className="h-9 w-full rounded-md border border-border bg-secondary pe-12 ps-9 text-[13.5px] outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-brand focus:bg-card focus:ring-[3px] focus:ring-brand/[.12]"
-            />
-            <kbd className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 rounded border bg-card px-1.5 font-mono text-[10px] text-muted-foreground">
-              ⌘K
-            </kbd>
-          </form>
+            <Star className="h-4 w-4" fill={pinned ? 'currentColor' : 'none'} strokeWidth={1.75} />
+          </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE))}
+          className="relative hidden h-9 w-72 items-center rounded-md border border-border bg-secondary pe-12 ps-9 text-start text-[13.5px] text-muted-foreground transition-colors duration-150 hover:border-brand/40 sm:flex"
+        >
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+          جستجو یا دستور…
+          <kbd className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 rounded border bg-card px-1.5 font-mono text-[10px]">
+            ⌘K
+          </kbd>
+        </button>
 
         <div className="flex items-center gap-2">
           <ThemeToggle />

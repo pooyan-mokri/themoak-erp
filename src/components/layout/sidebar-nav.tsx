@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { ROLE_LABELS, canAccessRoute, NAV_WHILE_LOADING } from '@/lib/permissions';
 import { useLogo } from '@/components/providers/logo-provider';
+import { useNavMemory, type NavEntry } from '@/components/layout/nav-memory';
 
 /**
  * The navigation, shared by the desktop sidebar and the mobile drawer, in the
@@ -64,6 +65,27 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const active = activeHref(pathname, visibleRoutes.map((route) => route.href));
   const role = session?.user?.role as keyof typeof ROLE_LABELS | undefined;
   const name = session?.user?.name ?? '';
+  const memory = useNavMemory(session?.user?.id);
+  const allowed = (entry: NavEntry) => status !== 'loading' && canAccessRoute(session?.user?.role, entry.href);
+  const pins = memory.pins.filter(allowed);
+  const recent = memory.recent
+    .filter((entry) => allowed(entry) && entry.href !== pathname && !pins.some((pin) => pin.href === entry.href))
+    .slice(0, 3);
+
+  const small = (entry: NavEntry) => (
+    <Link
+      key={entry.href}
+      href={entry.href}
+      onClick={onNavigate}
+      className={cn(
+        'flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-[12.5px] transition-colors duration-150',
+        entry.href === pathname ? 'bg-brand-soft text-brand' : 'text-foreground/70 hover:bg-brand/[.04] hover:text-foreground',
+      )}
+    >
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-50" />
+      <span className="truncate">{entry.label}</span>
+    </Link>
+  );
 
   return (
     <div className="flex h-full flex-col bg-card px-3 py-4">
@@ -77,6 +99,19 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       </Link>
 
       <nav className="flex-1 overflow-y-auto">
+        {pins.length > 0 && (
+          <div className="mb-2">
+            <div className="px-2.5 pb-1 text-[11px] text-muted-foreground">سنجاق‌شده</div>
+            {pins.map(small)}
+          </div>
+        )}
+        {recent.length > 0 && (
+          <div className="mb-2">
+            <div className="px-2.5 pb-1 text-[11px] text-muted-foreground">اخیر</div>
+            {recent.map(small)}
+          </div>
+        )}
+        {(pins.length > 0 || recent.length > 0) && <div className="mb-2 h-px bg-border" />}
         {visibleRoutes.map((route, index) => (
           <div key={route.href}>
             {index > 0 && visibleRoutes[index - 1].group !== route.group && <div className="my-2 h-px bg-border" />}
