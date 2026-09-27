@@ -60,3 +60,26 @@ export async function latestRates(client: any): Promise<RateRow[]> {
     select: { currency: true, rateToToman: true, date: true },
   });
 }
+
+/**
+ * Purchase orders that owe their supplier: every order past its draft that was
+ * not cancelled. A draft has not been placed with the supplier yet.
+ */
+export const PAYABLE_PURCHASE_ORDERS = { status: { notIn: ['DRAFT', 'CANCELLED'] } };
+
+/**
+ * What is still unpaid on one purchase order, in Toman: its Toman total less
+ * its payments (the PurchaseOrderPayment row every payment writes), never
+ * below zero.
+ */
+export function unpaidOnPurchaseOrder(order: {
+  totalAmountInToman: unknown;
+  payments: Array<{ amount: unknown }>;
+}): number {
+  const paid = order.payments.reduce(
+    (sum: Decimal, payment) => sum.plus(new Decimal(payment.amount as Decimal.Value)),
+    new Decimal(0),
+  );
+  const unpaid = new Decimal((order.totalAmountInToman ?? 0) as Decimal.Value).minus(paid);
+  return unpaid.greaterThan(0) ? Number(unpaid) : 0;
+}

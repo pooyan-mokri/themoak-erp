@@ -3,7 +3,7 @@
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
 import { requirePermission } from '@/lib/access';
-import { latestRates, totalsByCurrency } from '@/lib/money-totals';
+import { latestRates, PAYABLE_PURCHASE_ORDERS, totalsByCurrency, unpaidOnPurchaseOrder } from '@/lib/money-totals';
 
 import { prisma } from '@/lib/prisma';
 
@@ -53,15 +53,14 @@ export async function getDashboardFinancials() {
       return sum + (unpaid > 0 ? unpaid : 0);
     }, 0);
 
-    // Total Payables (received purchase orders - simplified)
+    // Total Payables: what is still unpaid on the purchase orders placed with
+    // suppliers, in Toman (totalAmount is in the order's first item's currency).
     const purchaseOrders = await prisma.purchaseOrder.findMany({
-      where: {
-        status: 'RECEIVED'
-      },
-      select: { totalAmount: true },
+      where: PAYABLE_PURCHASE_ORDERS,
+      select: { totalAmountInToman: true, payments: { select: { amount: true } } },
     });
-    
-    const totalPayables = purchaseOrders.reduce((sum: any, po: any) => sum + Number(po.totalAmount), 0);
+
+    const totalPayables = purchaseOrders.reduce((sum: number, po: any) => sum + unpaidOnPurchaseOrder(po), 0);
 
     return {
       totalBalance,

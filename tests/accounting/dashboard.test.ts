@@ -6,9 +6,10 @@ import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { getDashboardFinancials } from '@/actions/dashboard';
 import { getBalanceSheet } from '@/actions/reports';
+import { recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { FinancialCards } from '@/components/dashboard/financial-cards';
 import { BalanceSheetReport } from '@/components/reports/balance-sheet-report';
-import { totalsByCurrency } from '@/lib/money-totals';
+import { totalsByCurrency, unpaidOnPurchaseOrder } from '@/lib/money-totals';
 import { assertBooksAddUp, openAccount } from './ledger';
 
 (globalThis as any).React = React;
@@ -111,6 +112,58 @@ test('totalsByCurrency sums in exact decimals', () => {
   assert.equal(totals.toman, 999_999_999_750);
   assert.equal(totals.foreign[0].total, 0.3);
   assert.equal(totals.foreign[0].approxToman, 30_000);
+});
+
+// ─── «بدهی‌ها»: what is still unpaid to suppliers ────────────────────────────
+
+/** A purchase order as the supplier module leaves it, with its payment records. */
+async function purchaseOrder(status: string, totalAmountInToman: number | null, paid: number[] = [], totalAmount = totalAmountInToman ?? 0) {
+  const supplierId = (await prisma.supplier.findFirst())?.id ?? (await prisma.supplier.create({ data: { name: 'تامین‌کننده' } })).id;
+  if (paid.length && !(await prisma.account.findUnique({ where: { id: 'po-bank' } }))) await openAccount('po-bank', 0);
+  const order = await prisma.purchaseOrder.create({ data: { supplierId, status, totalAmount, totalAmountInToman } });
+  for (const amount of paid) {
+    await prisma.purchaseOrderPayment.create({ data: { purchaseOrderId: order.id, amount, accountId: 'po-bank' } });
+  }
+  return order;
+}
+
+test('«بدهی‌ها» is what is still unpaid on every placed, uncancelled purchase order, in Toman', async () => {
+  await purchaseOrder('DRAFT', 10_000_000); // not placed with the supplier yet
+  await purchaseOrder('CANCELLED', 20_000_000, [5_000_000]);
+  await purchaseOrder('PENDING_PAYMENT', 30_000_000); // 30M
+  await purchaseOrder('PARTIALLY_PAID', 40_000_000, [10_000_000, 5_000_000]); // 25M
+  await purchaseOrder('PAID', 50_000_000, [50_000_000]); // 0
+  await purchaseOrder('IN_PRODUCTION', 5_000_000, [1_000_000]); // 4M
+  await purchaseOrder('ARRIVED', 7_000_000, [7_000_000]); // 0
+  // Received the old way, with nothing paid; its totalAmount is in dollars.
+  await purchaseOrder('RECEIVED', 60_000_000, [], 600); // 60M
+  await purchaseOrder('PARTIALLY_RECEIVED', 3_000_000, [1_000_000]); // 2M
+  await purchaseOrder('PAID', 10_000_000, [10_500_000]); // overpaid: 0, never negative
+
+  assert.equal((await getDashboardFinancials()).totalPayables, 30_000_000 + 25_000_000 + 4_000_000 + 60_000_000 + 2_000_000);
+});
+
+test('recording a supplier payment lowers «بدهی‌ها» by that payment; cancelling the order clears it', async () => {
+  await openAccount('bank', 100_000_000);
+  const order = await purchaseOrder('DRAFT', 30_000_000);
+  assert.equal((await getDashboardFinancials()).totalPayables, 0);
+
+  assert.equal((await updatePurchaseOrderStatus(order.id, 'PENDING_PAYMENT')).success, true);
+  assert.equal((await getDashboardFinancials()).totalPayables, 30_000_000);
+
+  const paid = await recordPurchasePartialPayment({ orderId: order.id, accountId: 'bank', amount: 12_000_000 });
+  assert.equal(paid.success, true, paid.message);
+  assert.equal((await getDashboardFinancials()).totalPayables, 18_000_000);
+
+  assert.equal((await updatePurchaseOrderStatus(order.id, 'CANCELLED')).success, true);
+  assert.equal((await getDashboardFinancials()).totalPayables, 0);
+  await assertBooksAddUp();
+});
+
+test('unpaidOnPurchaseOrder never goes below zero and reads a missing total as 0', () => {
+  assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: '100.5', payments: [{ amount: '0.2' }, { amount: '0.3' }] }), 100);
+  assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: 100, payments: [{ amount: 150 }] }), 0);
+  assert.equal(unpaidOnPurchaseOrder({ totalAmountInToman: null, payments: [] }), 0);
 });
 
 // ─── «مطالبات»: what customers still owe ─────────────────────────────────────
