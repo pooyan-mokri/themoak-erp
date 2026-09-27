@@ -1,28 +1,31 @@
 import { getLeads } from '@/actions/crm';
 import { LeadList } from '@/components/crm/lead-list';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function LeadsPage() {
   await requireRouteAccess('/dashboard/crm');
-  const leads = await getLeads();
+  const [leads, canManage] = await Promise.all([getLeads(), hasPermission('sales.manage')]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">سرنخ‌ها</h2>
-          <p className="text-muted-foreground">مدیریت سرنخ‌های فروش</p>
-        </div>
-        <Link href="/dashboard/crm/leads/new">
-          <Button>
-            <Plus className="h-4 w-4 ml-2" />
-            سرنخ جدید
-          </Button>
-        </Link>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="سرنخ‌ها"
+        description={`${leads.length.toLocaleString('fa-IR')} سرنخ · مدیریت سرنخ‌های فروش`}
+        actions={
+          canManage && (
+            <Button asChild>
+              <Link href="/dashboard/crm/leads/new">
+                <Plus className="h-4 w-4" />
+                سرنخ جدید
+              </Link>
+            </Button>
+          )
+        }
+      />
 
       <LeadList leads={leads} />
     </div>

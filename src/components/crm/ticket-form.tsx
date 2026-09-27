@@ -56,7 +56,7 @@ export function TicketForm({ customers }: TicketFormProps) {
               </SelectContent>
             </Select>
             {(state.errors as Record<string, string[] | undefined> | undefined)?.customerId && (
-              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.customerId}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.customerId}</p>
             )}
           </div>
 
@@ -69,7 +69,7 @@ export function TicketForm({ customers }: TicketFormProps) {
               required
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.subject && (
-              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.subject}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.subject}</p>
             )}
           </div>
 
@@ -83,7 +83,7 @@ export function TicketForm({ customers }: TicketFormProps) {
               required
             />
             {(state.errors as Record<string, string[] | undefined> | undefined)?.description && (
-              <p className="text-sm text-red-500">{(state.errors as Record<string, string[] | undefined> | undefined)?.description}</p>
+              <p className="text-[12.5px] text-danger">{(state.errors as Record<string, string[] | undefined> | undefined)?.description}</p>
             )}
           </div>
 
@@ -104,11 +104,11 @@ export function TicketForm({ customers }: TicketFormProps) {
           </div>
 
           {state.message && !state.success && (
-            <p className="text-sm text-red-500">{state.message}</p>
+            <p className="text-[12.5px] text-danger">{state.message}</p>
           )}
 
           {state.message && state.success && (
-            <p className="text-sm text-green-600">{state.message}</p>
+            <p className="text-[12.5px] text-success">{state.message}</p>
           )}
 
           <SubmitButton />

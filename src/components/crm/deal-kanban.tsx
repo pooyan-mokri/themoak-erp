@@ -18,11 +18,11 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useDroppable } from '@dnd-kit/core';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { updateDealStage } from '@/actions/crm';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
+import { DEAL_STAGES, PILL, dealStage, fa } from './crm-labels';
 
 interface Deal {
   id: string;
@@ -38,17 +38,14 @@ interface Deal {
 
 interface DealKanbanProps {
   deals: Deal[];
+  /** May move a deal between stages (sales.manage); the server checks it again. */
+  canManage?: boolean;
 }
 
-const STAGES = [
-  { id: 'PROSPECT', label: 'سرنخ', color: 'bg-gray-100' },
-  { id: 'PROPOSAL', label: 'پیشنهاد', color: 'bg-blue-100' },
-  { id: 'NEGOTIATION', label: 'مذاکره', color: 'bg-yellow-100' },
-  { id: 'WON', label: 'برنده', color: 'bg-green-100' },
-  { id: 'LOST', label: 'باخته', color: 'bg-red-100' },
-];
+/** The five stages, LOST included; status colour only on each column's pill. */
+const STAGES = DEAL_STAGES.map((stage) => ({ ...stage, tone: dealStage(stage.id).tone }));
 
-export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
+export function DealKanban({ deals: initialDeals, canManage = true }: DealKanbanProps) {
   const [deals, setDeals] = useState(initialDeals);
   const [activeId, setActiveId] = useState<string | undefined>(undefined);
 
@@ -115,7 +112,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto">
+      <div className="grid grid-cols-1 gap-3 overflow-x-auto md:grid-cols-5">
         {STAGES.map(stage => {
           const stageDeals = getDealsByStage(stage.id);
           return (
@@ -123,6 +120,7 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
               key={stage.id}
               stage={stage}
               deals={stageDeals}
+              canManage={canManage}
             />
           );
         })}
@@ -138,44 +136,47 @@ export function DealKanban({ deals: initialDeals }: DealKanbanProps) {
 function DealColumn({
   stage,
   deals,
+  canManage,
 }: {
-  stage: { id: string; label: string; color: string };
+  stage: { id: string; label: string; tone: string };
   deals: Deal[];
+  canManage: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
+    disabled: !canManage,
   });
 
   const totalValue = deals.reduce((sum, deal) => sum + Number(deal.value), 0);
 
   return (
-    <div className="flex flex-col gap-2 min-w-[250px]">
-      <div className={`p-3 rounded-lg ${stage.color}`}>
-        <h3 className="font-medium text-sm">{stage.label}</h3>
-        <div className="text-xs text-muted-foreground mt-1">
-          {deals.length} معامله
-          <span className="mr-2">
-            {new Intl.NumberFormat('fa-IR', {
-              notation: 'compact',
-            }).format(totalValue)} ت
-          </span>
+    <div className="flex min-w-[230px] flex-col gap-2 rounded-lg bg-secondary p-2">
+      <div className="px-1 pt-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className={cn(PILL, stage.tone)}>{stage.label}</span>
+          <span className="font-mono text-[11px] text-muted-foreground">{fa(deals.length)}</span>
         </div>
+        <p className="mt-1.5 text-[13px] font-medium tabular-nums">
+          {fa(totalValue)}
+          <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+        </p>
       </div>
 
       <div
         ref={setNodeRef}
-        className={`flex-1 space-y-2 min-h-[400px] p-2 rounded border-2 border-dashed transition-colors ${
-          isOver ? 'border-primary bg-primary/5' : 'border-gray-200'
-        }`}
+        className={cn(
+          'min-h-[400px] flex-1 space-y-2 rounded-md border border-dashed p-1.5 transition-colors duration-150',
+          isOver ? 'border-brand bg-brand/[.04]' : 'border-transparent',
+        )}
       >
         <SortableContext items={deals.map(d => d.id)} strategy={verticalListSortingStrategy}>
           {deals.map(deal => (
-            <SortableDealCard key={deal.id} deal={deal} />
+            <SortableDealCard key={deal.id} deal={deal} canManage={canManage} />
           ))}
         </SortableContext>
         {deals.length === 0 && (
-          <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-            بدون معامله
+          <div className="flex h-32 items-center justify-center text-center text-[12.5px] text-muted-foreground">
+            {canManage ? 'فرصتی در این مرحله نیست؛ کارتی را اینجا بکشید.' : 'فرصتی در این مرحله نیست.'}
           </div>
         )}
       </div>
@@ -183,7 +184,7 @@ function DealColumn({
   );
 }
 
-function SortableDealCard({ deal }: { deal: Deal }) {
+function SortableDealCard({ deal, canManage }: { deal: Deal; canManage: boolean }) {
   const {
     attributes,
     listeners,
@@ -191,7 +192,7 @@ function SortableDealCard({ deal }: { deal: Deal }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: deal.id });
+  } = useSortable({ id: deal.id, disabled: !canManage });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -207,30 +208,26 @@ function SortableDealCard({ deal }: { deal: Deal }) {
 }
 
 function DealCard({ deal, isOverlay }: { deal: Deal; isOverlay?: boolean }) {
-  const content = (
-    <Card className={isOverlay ? 'rotate-3 opacity-80' : 'cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow'}>
-      <CardContent className="p-3">
-        <div className="font-medium text-sm mb-1">{deal.title}</div>
-        <div className="text-xs text-muted-foreground mb-2">{deal.customer?.name}</div>
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-medium text-green-600">
-            {new Intl.NumberFormat('fa-IR').format(Number(deal.value))} ت
-          </span>
-          <Badge variant="outline" className="text-xs">
-            {deal.probability}%
-          </Badge>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  if (isOverlay) {
-    return content;
-  }
-
   return (
-    <Link href={`/dashboard/crm/deals/${deal.id}`} className="block" onClick={(e) => e.preventDefault()}>
-      {content}
-    </Link>
+    <div
+      className={cn(
+        'rounded-md border bg-card p-3 transition-colors duration-150',
+        isOverlay ? 'border-brand' : 'cursor-grab hover:border-input active:cursor-grabbing',
+      )}
+    >
+      {/* The title opens the deal; a drag starts only after the pointer moves 8px. */}
+      {isOverlay ? (
+        <p className="text-[13px] font-medium">{deal.title}</p>
+      ) : (
+        <Link href={`/dashboard/crm/deals/${deal.id}`} className="block text-[13px] font-medium hover:text-brand">
+          {deal.title}
+        </Link>
+      )}
+      <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{deal.customer?.name}</p>
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-[13px] font-medium tabular-nums">{fa(Number(deal.value))}</span>
+        <span className="font-mono text-[11px] text-muted-foreground">{fa(deal.probability)}٪</span>
+      </div>
+    </div>
   );
 }

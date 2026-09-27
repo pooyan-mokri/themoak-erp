@@ -1,28 +1,32 @@
 import { getTickets } from '@/actions/crm';
 import { TicketList } from '@/components/crm/ticket-list';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 export default async function SupportPage() {
   await requireRouteAccess('/dashboard/crm');
-  const tickets = await getTickets();
+  const [tickets, canManage] = await Promise.all([getTickets(), hasPermission('sales.manage')]);
+  const open = tickets.filter((t: any) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">پشتیبانی مشتریان</h2>
-          <p className="text-muted-foreground">مدیریت تیکت‌های پشتیبانی</p>
-        </div>
-        <Link href="/dashboard/crm/support/new">
-          <Button>
-            <Plus className="h-4 w-4 ml-2" />
-            تیکت جدید
-          </Button>
-        </Link>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="پشتیبانی مشتریان"
+        description={`${open.toLocaleString('fa-IR')} تیکت باز یا در حال بررسی از ${tickets.length.toLocaleString('fa-IR')}`}
+        actions={
+          canManage && (
+            <Button asChild>
+              <Link href="/dashboard/crm/support/new">
+                <Plus className="h-4 w-4" />
+                تیکت جدید
+              </Link>
+            </Button>
+          )
+        }
+      />
 
       <TicketList tickets={tickets} />
     </div>

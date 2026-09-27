@@ -1,125 +1,89 @@
-import { getLeadById, convertLeadToCustomer } from '@/actions/crm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { getLeadById } from '@/actions/crm';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, UserPlus } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-
+import { PageHeader } from '@/components/layout/page-header';
+import { BackButton } from '@/components/ui/back-button';
+import { PILL, fa, leadStatus } from '@/components/crm/crm-labels';
 import { formatJalaliDate } from '@/lib/date-utils';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
+import { cn } from '@/lib/utils';
+
+function Row({ label, children, ltr }: { label: string; children: React.ReactNode; ltr?: boolean }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn('text-end', ltr && 'font-mono text-[12.5px]')} dir={ltr ? 'ltr' : undefined}>
+        {children}
+      </dd>
+    </div>
+  );
+}
+
 export default async function LeadDetailsPage({ params }: { params: { id: string } }) {
   await requireRouteAccess('/dashboard/crm');
-  const lead = await getLeadById(params.id);
+  const [lead, canManage] = await Promise.all([getLeadById(params.id), hasPermission('sales.manage')]);
 
   if (!lead) {
     notFound();
   }
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'NEW': return 'جدید';
-      case 'CONTACTED': return 'تماس گرفته شده';
-      case 'QUALIFIED': return 'واجد شرایط';
-      case 'LOST': return 'از دست رفته';
-      default: return status;
-    }
-  };
+  const status = leadStatus(lead.status);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard/crm/leads">
-            <Button variant="ghost" size="icon">
-              <ArrowRight className="h-4 w-4" />
+    <div className="space-y-4">
+      <BackButton href="/dashboard/crm/leads" label="بازگشت به سرنخ‌ها" />
+      <PageHeader
+        title={lead.name}
+        description={<span className={cn(PILL, status.tone)}>{status.label}</span>}
+        actions={
+          canManage &&
+          !lead.customerId &&
+          lead.status === 'QUALIFIED' && (
+            <Button asChild>
+              <Link href={`/dashboard/crm/customers/new?leadId=${lead.id}`}>
+                <UserPlus className="h-4 w-4" />
+                تبدیل به مشتری
+              </Link>
             </Button>
-          </Link>
-          <h1 className="text-3xl font-bold tracking-tight">{lead.name}</h1>
-          <Badge>{getStatusLabel(lead.status)}</Badge>
+          )
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">اطلاعات سرنخ</h3>
+          <dl className="space-y-2 text-[13px]">
+            <Row label="نام">{lead.name}</Row>
+            {lead.company && <Row label="شرکت">{lead.company}</Row>}
+            {lead.phone && <Row label="تلفن" ltr>{lead.phone}</Row>}
+            {lead.email && <Row label="ایمیل" ltr>{lead.email}</Row>}
+            {lead.source && <Row label="منبع">{lead.source}</Row>}
+          </dl>
         </div>
-        {!lead.customerId && lead.status === 'QUALIFIED' && (
-          <Link href={`/dashboard/crm/customers/new?leadId=${lead.id}`}>
-            <Button>
-              <UserPlus className="h-4 w-4 m l-2" />
-              تبدیل به مشتری
-            </Button>
-          </Link>
-        )}
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>اطلاعات سرنخ</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">نام:</span>
-              <span className="font-medium">{lead.name}</span>
-            </div>
-            {lead.company && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">شرکت:</span>
-                <span className="font-medium">{lead.company}</span>
-              </div>
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">اطلاعات ارزیابی</h3>
+          <dl className="space-y-2 text-[13px]">
+            <Row label="امتیاز">{fa(lead.score)}/۱۰۰</Row>
+            {lead.expectedValue && <Row label="ارزش مورد انتظار">{fa(Number(lead.expectedValue))} تومان</Row>}
+            <Row label="تاریخ ایجاد">{formatJalaliDate(lead.createdAt)}</Row>
+            {lead.customer && (
+              <Row label="مشتری">
+                <Link href={`/dashboard/crm/customers/${lead.customer.id}`} className="text-brand hover:underline">
+                  {lead.customer.name}
+                </Link>
+              </Row>
             )}
-            {lead.phone && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">تلفن:</span>
-                <span className="font-medium" dir="ltr">{lead.phone}</span>
-              </div>
-            )}
-            {lead.email && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ایمیل:</span>
-                <span className="font-medium">{lead.email}</span>
-              </div>
-            )}
-            {lead.source && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">منبع:</span>
-                <span className="font-medium">{lead.source}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>اطلاعات ارزیابی</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">امتیاز:</span>
-              <span className="font-medium">{lead.score}/100</span>
-            </div>
-            {lead.expectedValue && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ارزش مورد انتظار:</span>
-                <span className="font-medium">
-                  {new Intl.NumberFormat('fa-IR').format(Number(lead.expectedValue))} تومان
-                </span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">تاریخ ایجاد:</span>
-              <span className="font-medium">
-                {formatJalaliDate(lead.createdAt)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+          </dl>
+        </div>
 
         {lead.notes && (
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>یادداشت‌ها</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm whitespace-pre-wrap">{lead.notes}</p>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg border bg-card p-4 md:col-span-2">
+            <h3 className="mb-2 text-sm font-medium">یادداشت‌ها</h3>
+            <p className="whitespace-pre-wrap text-[13.5px]">{lead.notes}</p>
+          </div>
         )}
       </div>
     </div>
