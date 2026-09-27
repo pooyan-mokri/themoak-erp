@@ -33,20 +33,24 @@ const tenFrames = (status = 'DRAFT') =>
 // --- status ---
 
 test('status: every allowed move goes through; every other one is refused in Persian and changes nothing', async () => {
+  // Paid and received statuses come only from payments and receipts (Pooyan's decision), never by hand.
   const allowed: Record<string, string[]> = {
     DRAFT: ['PENDING_PAYMENT', 'CANCELLED'],
-    PENDING_PAYMENT: ['PARTIALLY_PAID', 'PAID', 'CANCELLED'],
-    PARTIALLY_PAID: ['PAID', 'CANCELLED'],
+    PENDING_PAYMENT: ['CANCELLED'],
+    PARTIALLY_PAID: ['CANCELLED'],
     PAID: ['IN_PRODUCTION', 'CANCELLED'],
     IN_PRODUCTION: ['ARRIVED', 'CANCELLED'],
-    ARRIVED: ['RECEIVED', 'CANCELLED'],
+    ARRIVED: ['CANCELLED'],
     PARTIALLY_RECEIVED: [],
     RECEIVED: [],
     CANCELLED: [],
   };
+  const setBy: Record<string, string> = { PARTIALLY_PAID: 'ثبت پرداخت', PAID: 'ثبت پرداخت', PARTIALLY_RECEIVED: 'دریافت کالا', RECEIVED: 'دریافت کالا' };
   const all = Object.keys(allowed);
+  let pairs = 0;
   for (const from of all) {
     for (const to of all) {
+      pairs++;
       // The order page offers a move (the cancel button among them) exactly when the server accepts it.
       assert.equal(canMovePurchaseOrder(from, to), allowed[from].includes(to), `page: ${from} → ${to}`);
       const po = await tenFrames(from);
@@ -56,40 +60,49 @@ test('status: every allowed move goes through; every other one is refused in Per
         assert.equal(await statusOf(po.id), to);
       } else {
         assert.equal(result.success, false, `${from} → ${to}`);
-        assert.match(result.message!, /^تغییر وضعیت از «.+» به «.+» مجاز نیست$/, `${from} → ${to}`);
+        if (setBy[to]) {
+          assert.match(result.message!, new RegExp(`^وضعیت «.+» فقط با ${setBy[to]} ثبت می‌شود و دستی تغییر نمی‌کند\\.$`), `${from} → ${to}`);
+        } else {
+          assert.match(result.message!, /^تغییر وضعیت از «.+» به «.+» مجاز نیست$/, `${from} → ${to}`);
+        }
         assert.doesNotMatch(result.message!, /[A-Z_]{4,}/, 'no raw status code');
         assert.equal(await statusOf(po.id), from);
       }
     }
   }
+  assert.equal(pairs, 81);
+  assert.equal(await prisma.purchaseOrderPayment.count(), 0, 'no status move pays anything');
   assert.deepEqual(await updatePurchaseOrderStatus('missing', 'CANCELLED'), { success: false, message: 'سفارش یافت نشد' });
   // A partly received order cannot be cancelled, so the page shows no cancel button for it.
   assert.equal(canMovePurchaseOrder('PARTIALLY_RECEIVED', 'CANCELLED'), false);
   assert.equal(canMovePurchaseOrder('UNKNOWN', 'CANCELLED'), false);
 });
 
-test('status and arrival refusals carry their Persian reason in message, which the order page shows', async () => {
-  const po = await tenFrames('PARTIALLY_RECEIVED');
-  const cancel = await updatePurchaseOrderStatus(po.id, 'CANCELLED');
-  assert.deepEqual(cancel, { success: false, message: 'تغییر وضعیت از «نیمه دریافت شده» به «لغو شده» مجاز نیست' });
-  const arrival = await recordArrival(po.id, [], 'toman');
-  assert.deepEqual(arrival, { success: false, message: 'این سفارش در وضعیت در حال تولید نیست' });
-});
-
-test('status: procurement moves take stock.manage or finance.manage; paid moves take finance.manage', async () => {
+test('status: every procurement move takes stock.manage or finance.manage; no role marks an order paid or received by hand', async () => {
   const draft = await tenFrames();
   const pending = await tenFrames('PENDING_PAYMENT');
+  const arrived = await tenFrames('ARRIVED');
   for (const role of ['AUDITOR', 'SALES', 'PROJECT_MANAGER', 'USER', null]) {
     setTestRole(role);
     assert.equal((await updatePurchaseOrderStatus(draft.id, 'PENDING_PAYMENT')).message, DENIED, String(role));
   }
+  for (const role of ['WAREHOUSE', 'ACCOUNTANT', 'ADMIN']) {
+    setTestRole(role);
+    assert.deepEqual(await updatePurchaseOrderStatus(pending.id, 'PAID'), {
+      success: false,
+      message: 'وضعیت «پرداخت شده» فقط با ثبت پرداخت ثبت می‌شود و دستی تغییر نمی‌کند.',
+    }, role);
+    assert.equal((await updatePurchaseOrderStatus(pending.id, 'PARTIALLY_PAID')).success, false, role);
+    assert.deepEqual(await updatePurchaseOrderStatus(arrived.id, 'RECEIVED'), {
+      success: false,
+      message: 'وضعیت «دریافت شده» فقط با دریافت کالا ثبت می‌شود و دستی تغییر نمی‌کند.',
+    }, role);
+  }
   setTestRole('WAREHOUSE');
-  assert.equal((await updatePurchaseOrderStatus(pending.id, 'PAID')).message, DENIED);
-  assert.equal((await updatePurchaseOrderStatus(pending.id, 'PARTIALLY_PAID')).message, DENIED);
   assert.equal((await updatePurchaseOrderStatus(draft.id, 'PENDING_PAYMENT')).success, true);
   setTestRole('ACCOUNTANT');
   assert.equal((await updatePurchaseOrderStatus(draft.id, 'CANCELLED')).success, true);
-  assert.deepEqual([await statusOf(draft.id), await statusOf(pending.id)], ['CANCELLED', 'PENDING_PAYMENT']);
+  assert.deepEqual([await statusOf(draft.id), await statusOf(pending.id), await statusOf(arrived.id)], ['CANCELLED', 'PENDING_PAYMENT', 'ARRIVED']);
 });
 
 test('status: a status move racing a payment does not overwrite the status the payment wrote', async () => {
@@ -102,7 +115,7 @@ test('status: a status move racing a payment does not overwrite the status the p
     started = recordPurchasePartialPayment({ orderId: po.id, accountId: 'toman', amount: 1_200_000 });
     await started;
   };
-  const cancelled = await updatePurchaseOrderStatus(po.id, 'PARTIALLY_PAID');
+  const cancelled = await updatePurchaseOrderStatus(po.id, 'CANCELLED');
   assert.equal((await started!).success, true);
   assert.deepEqual(cancelled, { success: false, message: 'وضعیت این سفارش هم‌زمان تغییر کرد؛ صفحه را تازه کنید.' });
   assert.equal(await statusOf(po.id), 'PAID');

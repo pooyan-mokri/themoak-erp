@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { checkPermission } from '@/lib/access';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
-import { PURCHASE_ORDER_STATUS_LABELS, canMovePurchaseOrder } from '@/lib/purchase-order-status';
+import { PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_SET_BY, canMovePurchaseOrder } from '@/lib/purchase-order-status';
 
 /** A figure in the account's own unit, for balance messages. */
 const inUnit = (amount: number, currency: string) =>
@@ -30,10 +30,8 @@ async function lockOrderAndAccount(tx: any, orderId: string, accountId: string) 
 
 // Workflow Actions
 export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
-  // Moving an order along is procurement work; marking it paid is a payment.
-  const denied = await checkPermission(
-    newStatus === 'PAID' || newStatus === 'PARTIALLY_PAID' ? 'finance.manage' : ['stock.manage', 'finance.manage'],
-  );
+  // Moving an order along is procurement work. Paid and received statuses are not set here at all.
+  const denied = await checkPermission(['stock.manage', 'finance.manage']);
   if (denied) return denied;
   try {
     const order = await prisma.purchaseOrder.findUnique({
@@ -47,7 +45,13 @@ export async function updatePurchaseOrderStatus(orderId: string, newStatus: stri
     // Validate status transition
     if (!canMovePurchaseOrder(order.status, newStatus)) {
       const label = (status: string) => PURCHASE_ORDER_STATUS_LABELS[status] ?? status;
-      return { success: false, message: `تغییر وضعیت از «${label(order.status)}» به «${label(newStatus)}» مجاز نیست` };
+      const setBy = PURCHASE_ORDER_STATUS_SET_BY[newStatus];
+      return {
+        success: false,
+        message: setBy
+          ? `وضعیت «${label(newStatus)}» فقط با ${setBy} ثبت می‌شود و دستی تغییر نمی‌کند.`
+          : `تغییر وضعیت از «${label(order.status)}» به «${label(newStatus)}» مجاز نیست`,
+      };
     }
 
     // Only over the status checked above: a payment or receipt that moved the order meanwhile is not overwritten.
