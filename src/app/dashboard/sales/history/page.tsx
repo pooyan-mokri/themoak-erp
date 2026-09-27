@@ -1,19 +1,13 @@
 import { getOrders } from '@/actions/sales';
 import { OrderList } from '@/components/sales/order-list';
-import { requireRouteAccess } from '@/lib/access';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 /**
- * صفحه تاریخچه سفارشات فروش
- * شامل امکانات: جستجو، فیلتر، ثبت پرداخت، لغو سفارش، دانلود Excel
+ * سفارش‌ها و فروش: نماهای سریع، جستجو و فیلتر، انتخاب چندتایی، پنل جزئیات کنار
+ * جدول، ثبت پرداخت، لغو سفارش و خروجی اکسل.
  */
 export default async function SalesHistoryPage() {
   await requireRouteAccess('/dashboard/sales');
-  const orders = await getOrders();
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">تاریخچه سفارشات</h1>
-      <OrderList orders={orders} />
-    </div>
-  );
+  const [orders, canManage] = await Promise.all([getOrders(), hasPermission('sales.manage')]);
+  return <OrderList orders={orders} canManage={canManage} />;
 }
