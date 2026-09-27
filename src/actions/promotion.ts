@@ -12,16 +12,28 @@ import { checkPermission, requirePermission } from '@/lib/access';
 
 const PromotionSchema = z.object({
   name: z.string().min(1, 'نام کمپین ال زامی است'),
-  type: z.string().min(1, 'نوع تبلیغ الزامی است'), // GIFT, DISCOUNT, VOUCHER
+  type: z.enum(['DISCOUNT', 'GIFT', 'VOUCHER']),
   description: z.string().optional(),
   startDate: z.string(),
   endDate: z.string(),
   productId: z.string().optional(), // For GIFT type
-  discountPercent: z.number().optional(), // For DISCOUNT type
-  discountAmount: z.number().optional(), // For fixed discount
-  minPurchase: z.number().optional(),
-  maxUses: z.number().optional(),
+  discountPercent: z.number().min(0).max(100).optional(), // For DISCOUNT type
+  discountAmount: z.number().min(0).optional(), // For fixed discount
+  minPurchase: z.number().min(0).optional(),
+  maxUses: z.number().int().min(1).optional(),
 });
+
+/**
+ * A day from the form's date field (YYYY-MM-DD) as the moment it starts, or
+ * ends, in Tehran (+03:30, no daylight saving): a promotion runs through its
+ * whole last day. Anything else is read as a date as it is.
+ */
+function tehranDayBound(value: string, end: boolean): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T${end ? '23:59:59.999' : '00:00:00.000'}+03:30`);
+  }
+  return new Date(value);
+}
 
 export async function createPromotion(prevState: any, formData: FormData) {
   const denied = await checkPermission('sales.manage');
@@ -47,6 +59,14 @@ export async function createPromotion(prevState: any, formData: FormData) {
   }
 
   const { name, type, description, startDate, endDate, productId, discountPercent, discountAmount, minPurchase, maxUses } = validatedFields.data;
+  const start = tehranDayBound(startDate, false);
+  const end = tehranDayBound(endDate, true);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { message: 'تاریخ کمپین نامعتبر است.' };
+  }
+  if (end < start) {
+    return { message: 'تاریخ پایان کمپین نباید پیش از تاریخ شروع باشد.' };
+  }
 
   try {
     await prisma.promotion.create({
@@ -54,8 +74,8 @@ export async function createPromotion(prevState: any, formData: FormData) {
         name,
         type,
         description,
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
+        startDate: start,
+        endDate: end,
         productId,
         discountPercent,
         discountAmount,
@@ -158,6 +178,7 @@ export async function getPromotionById(id: string) {
 export async function applyPromotion(promotionId: string, orderTotal: number) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  if (!(orderTotal >= 0)) return { success: false, message: 'مبلغ سفارش نامعتبر است.' };
   try {
     const promotion = await prisma.promotion.findUnique({
       where: { id: promotionId },
@@ -195,6 +216,8 @@ export async function applyPromotion(promotionId: string, orderTotal: number) {
         discountAmount = Number(promotion.discountAmount);
       }
     }
+    // A discount never takes more than the order is worth.
+    discountAmount = Math.min(discountAmount, orderTotal);
 
     return {
       success: true,
@@ -212,14 +235,23 @@ export async function incrementPromotionUsage(promotionId: string) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
   try {
-    await prisma.promotion.update({
-      where: { id: promotionId },
+    // Counted only while uses are left, in the same update: two sales at the
+    // same moment cannot take the last use twice.
+    const bumped = await prisma.promotion.updateMany({
+      where: {
+        id: promotionId,
+        OR: [{ maxUses: null }, { maxUses: { gt: prisma.promotion.fields.usedCount } }],
+      },
       data: {
         usedCount: {
           increment: 1
         }
       }
     });
+    if (bumped.count === 0) {
+      const exists = await prisma.promotion.count({ where: { id: promotionId } });
+      return { success: false, message: exists ? 'این کمپین به حداکثر استفاده رسیده است.' : 'کمپین یافت نشد.' };
+    }
 
     return { success: true };
   } catch (error) {
@@ -265,60 +297,64 @@ export async function deletePromotion(id: string) {
 export async function giftProductToCustomer(customerId: string, productId: string, quantity: number, warehouseId: string) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    return { success: false, message: 'تعداد هدیه باید عددی صحیح و بیشتر از صفر باشد.' };
+  }
   try {
-    // Check inventory
-    const inventory = await prisma.inventory.findFirst({
-      where: {
-        productId,
-        warehouseId,
+    const order = await prisma.$transaction(async (tx: any) => {
+      const product = await tx.product.findUnique({
+        where: { id: productId }
+      });
+
+      if (!product) {
+        throw new Error('محصول یافت نشد.');
       }
-    });
 
-    if (!inventory || inventory.quantity < quantity) {
-      return { success: false, message: 'موجودی کافی نیست.' };
-    }
-
-    // Create order with 0 amount (gift)
-    const product = await prisma.product.findUnique({
-      where: { id: productId }
-    });
-
-    if (!product) {
-      return { success: false, message: 'محصول یافت نشد.' };
-    }
-
-    const order = await prisma.order.create({
-      data: {
-        customerId,
-        totalAmount: 0,
-        discount: 0,
-        paidAmount: 0,
-        paymentStatus: 'PAID',
-        status: 'COMPLETED',
-        items: {
-          create: [{
-            productId,
-            quantity,
-            price: 0, // Gift price
-            warehouseId,
-          }]
+      // Deduct from inventory, only while enough is left
+      const taken = await tx.inventory.updateMany({
+        where: { productId, warehouseId, quantity: { gte: quantity } },
+        data: {
+          quantity: {
+            decrement: quantity
+          }
         }
+      });
+      if (taken.count === 0) {
+        throw new Error('موجودی کافی نیست.');
       }
-    });
 
-    // Deduct from inventory
-    await prisma.inventory.update({
-      where: { 
-        productId_warehouseId: {
+      // Create order with 0 amount (gift)
+      const order = await tx.order.create({
+        data: {
+          customerId,
+          totalAmount: 0,
+          discount: 0,
+          paidAmount: 0,
+          paymentStatus: 'PAID',
+          status: 'COMPLETED',
+          items: {
+            create: [{
+              productId,
+              quantity,
+              price: 0, // Gift price
+              warehouseId,
+            }]
+          }
+        }
+      });
+
+      // The warehouse's movement history shows the gift, as a sale at 0.
+      await tx.inventoryMovement.create({
+        data: {
           productId,
-          warehouseId
-        }
-      },
-      data: {
-        quantity: {
-          decrement: quantity
-        }
-      }
+          fromWarehouseId: warehouseId,
+          quantity,
+          type: 'SALE',
+          referenceId: order.id,
+          note: `هدیه - سفارش #${order.number}`,
+        },
+      });
+      return order;
     });
     kickSiteHook();
 
@@ -327,6 +363,7 @@ export async function giftProductToCustomer(customerId: string, productId: strin
     return { success: true, message: 'هدیه با موفقیت ثبت شد.', orderId: order.id };
   } catch (error) {
     console.error('Error gifting product:', error);
-    return { success: false, message: 'خطا در ثبت هدیه.' };
+    const known = error instanceof Error && ['محصول یافت نشد.', 'موجودی کافی نیست.'].includes(error.message);
+    return { success: false, message: known ? (error as Error).message : 'خطا در ثبت هدیه.' };
   }
 }
