@@ -37,7 +37,9 @@ export async function buildDatabaseDump(now = new Date()): Promise<string> {
         '--',
         '-- To restore: create an EMPTY database, make its tables from the same code',
         '-- (`npx prisma db push` at the commit above), then as a superuser run:',
-        '--   psql "<database url>" -f <this file>',
+        '--   psql "<database url>" -v ON_ERROR_STOP=1 -f <this file>',
+        '-- and last `npx prisma db execute --file prisma/sql/pre-push-unique-columns.sql`,',
+        '-- which adds the website stock-push triggers (a deploy runs it too).',
         '-- Foreign-key checks are paused while the rows go in, as pg_dump --disable-triggers does.',
         '',
         "SET client_encoding = 'UTF8';",
@@ -112,7 +114,9 @@ export async function runBackup(keep: number, now = new Date()): Promise<BackupI
 
   // Names carry the time, so the newest sort first.
   const stored = (await listFromFTP(BACKUP_FOLDER)).filter((file) => isBackupName(file.name));
-  for (const old of stored.slice(Math.max(1, keep))) {
+  // Never fewer than the one just taken; a stored count that is not a number keeps 30.
+  const kept = Number.isFinite(Number(keep)) ? Math.max(1, Math.floor(Number(keep))) : 30;
+  for (const old of stored.slice(kept)) {
     await deleteFromFTP(`${BACKUP_FOLDER}/${old.name}`).catch((error) =>
       console.error('[Backup] could not delete an old backup:', old.name, error),
     );
