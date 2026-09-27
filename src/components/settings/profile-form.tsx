@@ -3,11 +3,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { updateProfile } from '@/actions/user';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
+import { FieldRow, PanelActions, SettingsPanel } from './settings-panel';
 
 export function ProfileForm() {
   const { data: session, update } = useSession();
@@ -35,51 +34,42 @@ export function ProfileForm() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>اطلاعات شخصی</CardTitle>
-        <CardDescription>
-          اطلاعات حساب کاربری خود را ویرایش کنید.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form action={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">نام و نام خانوادگی</Label>
-              <Input 
-                id="name" 
-                name="name" 
-                defaultValue={session?.user?.name || ''} 
-                required 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">ایمیل</Label>
-              <Input 
-                id="email" 
-                name="email" 
-                type="email" 
-                defaultValue={session?.user?.email || ''} 
-                required 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">شماره موبایل</Label>
-              <Input 
-                id="phone" 
-                name="phone" 
-                // @ts-ignore - phone might not be in session type yet until next-auth types are updated
-                defaultValue={session?.user?.phone || ''} 
-                placeholder="0912..."
-              />
-            </div>
-          </div>
+    <SettingsPanel title="اطلاعات شخصی" description="اطلاعات حساب کاربری خود را ویرایش کنید.">
+      <form action={handleSubmit}>
+        <FieldRow label="نام و نام خانوادگی" htmlFor="name">
+          <Input
+            id="name"
+            name="name"
+            defaultValue={session?.user?.name || ''}
+            required
+          />
+        </FieldRow>
+        <FieldRow label="ایمیل" htmlFor="email">
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            dir="ltr"
+            defaultValue={session?.user?.email || ''}
+            required
+          />
+        </FieldRow>
+        <FieldRow label="شماره موبایل" htmlFor="phone">
+          <Input
+            id="phone"
+            name="phone"
+            dir="ltr"
+            // @ts-ignore - phone might not be in session type yet until next-auth types are updated
+            defaultValue={session?.user?.phone || ''}
+            placeholder="0912..."
+          />
+        </FieldRow>
+        <PanelActions>
           <Button type="submit" disabled={loading}>
             {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
           </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </PanelActions>
+      </form>
+    </SettingsPanel>
   );
 }

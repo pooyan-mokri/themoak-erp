@@ -1,84 +1,100 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { BarChart3, TrendingUp, Package } from 'lucide-react';
 import Link from 'next/link';
-import { requireRouteAccess } from '@/lib/access';
+import { ArrowLeft, BarChart3, LineChart, Package, TrendingUp, type LucideIcon } from 'lucide-react';
+import { getSalesTimeline } from '@/actions/sales-timeline';
+import { PageHeader } from '@/components/layout/page-header';
+import { PrintButton } from '@/components/reports/print-button';
+import { RangeSwitch } from '@/components/reports/range-switch';
+import { SalesOverview } from '@/components/reports/sales-overview';
+import { jalaliFull, parseRange, reportWindow, summarizeSales } from '@/components/reports/report-window';
+import { hasPermission, requireRouteAccess } from '@/lib/access';
 
-export default async function ReportsPage() {
+type ReportLink = { href: string; label: string; description: string; icon: LucideIcon };
+
+/**
+ * The reports hub: the detailed reports this role may open, and — for a role that
+ * sees sales — an overview of the chosen range against the period before it.
+ */
+export default async function ReportsPage({ searchParams }: { searchParams: { range?: string } }) {
   await requireRouteAccess('/dashboard/reports');
+  const [canSeeSales, canSeeFinance, canSeeCost, canSeeProfit] = await Promise.all([
+    hasPermission('sales.view'),
+    hasPermission('finance.view'),
+    hasPermission('cost.view'),
+    hasPermission('profit.view'),
+  ]);
+
+  const range = parseRange(searchParams.range) ?? '12w';
+  const period = reportWindow(range);
+  const [current, previous] = canSeeSales
+    ? await Promise.all([
+        getSalesTimeline(new Date(period.start), new Date(period.end)),
+        getSalesTimeline(new Date(period.prevStart), new Date(period.prevEnd)),
+      ])
+    : [[], []];
+
+  const links: ReportLink[] = [
+    ...(canSeeSales
+      ? [{ href: '/dashboard/reports/sales', label: 'گزارش فروش', description: 'فروش بر اساس محصول، مشتری و زمان', icon: BarChart3 }]
+      : []),
+    ...(canSeeFinance
+      ? [{ href: '/dashboard/sales/analytics', label: 'تحلیل و پیش‌بینی فروش', description: '۹۰ روز گذشته و پیش‌بینی ۷ روز آینده', icon: LineChart }]
+      : []),
+    ...(canSeeCost
+      ? [{ href: '/dashboard/reports/inventory', label: 'گزارش موجودی', description: 'گردش موجودی و قدمت کالا', icon: Package }]
+      : []),
+    ...(canSeeProfit
+      ? [{ href: '/dashboard/reports/financial', label: 'گزارش‌های مالی', description: 'سود و زیان و ترازنامه', icon: TrendingUp }]
+      : []),
+  ];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">گزارشات</h1>
-        <p className="text-muted-foreground">
-          تحلیل جامع عملکرد کسب‌وکار
+    <div className="space-y-4">
+      <PageHeader
+        title="گزارشات"
+        description={
+          canSeeSales ? (
+            <>
+              {period.label} · <span className="font-mono text-[12px]">{jalaliFull(period.start)}</span> تا{' '}
+              <span className="font-mono text-[12px]">{jalaliFull(period.end)}</span>
+            </>
+          ) : (
+            'گزارش‌هایی که نقش شما می‌تواند ببیند'
+          )
+        }
+        actions={
+          <>
+            {canSeeSales && <RangeSwitch basePath="/dashboard/reports" active={range} />}
+            <PrintButton />
+          </>
+        }
+      />
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 print:hidden">
+        {links.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="group flex items-center gap-3 rounded-lg border bg-card px-3.5 py-3 transition-colors duration-150 hover:border-brand"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand-soft text-brand">
+              <link.icon className="h-4 w-4" strokeWidth={1.75} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{link.label}</span>
+              <span className="block truncate text-xs text-muted-foreground">{link.description}</span>
+            </span>
+            <ArrowLeft className="h-4 w-4 shrink-0 text-muted-foreground transition-colors duration-150 group-hover:text-brand" />
+          </Link>
+        ))}
+      </div>
+
+      {canSeeSales ? (
+        <SalesOverview period={period} summary={summarizeSales(period, current, previous)} />
+      ) : (
+        <p className="rounded-lg border bg-card p-4 text-[13px] text-muted-foreground">
+          خلاصهٔ فروش برای نقش‌هایی نمایش داده می‌شود که فروش را می‌بینند. گزارش‌های بالا را باز کنید.
         </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Link href="/dashboard/reports/financial">
-          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-green-100 p-2">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
-                </div>
-                <CardTitle>گزارشات مالی</CardTitle>
-              </div>
-              <CardDescription>
-                سود و زیان، ترازنامه، و جریان نقدینگی
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" className="w-full">
-                مشاهده گزارشات
-              </Button>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/dashboard/reports/sales">
-          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-blue-100 p-2">
-                  <BarChart3 className="h-5 w-5 text-blue-600" />
-                </div>
-                <CardTitle>گزارشات فروش</CardTitle>
-              </div>
-              <CardDescription>
-                تحلیل فروش بر اساس محصول، مشتری و زمان
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" className="w-full">
-                مشاهده گزارشات
-              </Button>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/dashboard/reports/inventory">
-          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-orange-100 p-2">
-                  <Package className="h-5 w-5 text-orange-600" />
-                </div>
-                <CardTitle>گزارشات موجودی</CardTitle>
-              </div>
-              <CardDescription>
-                گردش موجودی و تحلیل قدمت کالا
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" className="w-full">
-                مشاهده گزارشات
-              </Button>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+      )}
     </div>
   );
 }

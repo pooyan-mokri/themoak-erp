@@ -19,15 +19,5 @@ export default async function UsersPage() {
 
   const users = await getUsers();
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-2xl font-bold tracking-tight">مدیریت کاربران</h3>
-        <p className="text-muted-foreground">
-          ایجاد، ویرایش و حذف کاربران سیستم
-        </p>
-      </div>
-      <UserList users={users} />
-    </div>
-  );
+  return <UserList users={users} />;
 }

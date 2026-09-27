@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { changePassword } from '@/actions/user';
 import { toast } from 'sonner';
+import { FieldRow, PanelActions, SettingsPanel } from './settings-panel';
 
 export function PasswordForm() {
   const [loading, setLoading] = useState(false);
@@ -35,51 +34,46 @@ export function PasswordForm() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>تغییر رمز عبور</CardTitle>
-        <CardDescription>
-          برای امنیت بیشتر، رمز عبور خود را دوره‌ای تغییر دهید.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form id="password-form" action={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="currentPassword">رمز عبور فعلی</Label>
-              <Input 
-                id="currentPassword" 
-                name="currentPassword" 
-                type="password" 
-                required 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">رمز عبور جدید</Label>
-              <Input 
-                id="newPassword" 
-                name="newPassword" 
-                type="password" 
-                required 
-                minLength={6}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">تکرار رمز عبور جدید</Label>
-              <Input 
-                id="confirmPassword" 
-                name="confirmPassword" 
-                type="password" 
-                required 
-                minLength={6}
-              />
-            </div>
-          </div>
-          <Button type="submit" variant="secondary" disabled={loading}>
+    <SettingsPanel title="تغییر رمز عبور" description="برای امنیت بیشتر، رمز عبور خود را دوره‌ای تغییر دهید.">
+      <form id="password-form" action={handleSubmit}>
+        <FieldRow label="رمز عبور فعلی" htmlFor="currentPassword">
+          <Input
+            id="currentPassword"
+            name="currentPassword"
+            type="password"
+            dir="ltr"
+            autoComplete="current-password"
+            required
+          />
+        </FieldRow>
+        <FieldRow label="رمز عبور جدید" htmlFor="newPassword" hint="دست‌کم ۶ نویسه.">
+          <Input
+            id="newPassword"
+            name="newPassword"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            required
+            minLength={6}
+          />
+        </FieldRow>
+        <FieldRow label="تکرار رمز عبور جدید" htmlFor="confirmPassword">
+          <Input
+            id="confirmPassword"
+            name="confirmPassword"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            required
+            minLength={6}
+          />
+        </FieldRow>
+        <PanelActions>
+          <Button type="submit" disabled={loading}>
             {loading ? 'در حال تغییر...' : 'تغییر رمز عبور'}
           </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </PanelActions>
+      </form>
+    </SettingsPanel>
   );
 }
