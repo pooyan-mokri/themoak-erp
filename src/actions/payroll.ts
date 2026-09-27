@@ -9,6 +9,12 @@ import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
 import { logActivity } from '@/lib/activity-log';
 import { toLatinDigits } from '@/lib/digits';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await client.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 import { auth } from '@/auth';
 
 // --- Schemas ---
@@ -142,8 +148,12 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
   }
 
   const { payrollId, amount, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(prisma, requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const payroll = await prisma.payroll.findUnique({
       where: { id: payrollId },
       include: {
@@ -191,10 +201,12 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
     const transactionDate = date ? new Date(date) : new Date();
 
     // Create payment and update payroll
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
       // The payslip is locked and read again: a second payment, or an edit of
       // it, at the same moment waits, and paid never goes above the net pay.
       await tx.$queryRaw`SELECT id FROM "Payroll" WHERE id = ${payrollId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (await alreadyBooked(tx, requestId)) return 'duplicate';
       const current = await tx.payroll.findUnique({ where: { id: payrollId } });
       const currentNet = Number(current.netAmount);
       const paidSoFar = Number(current.paidAmount);
@@ -223,6 +235,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
           description: description || `پرداخت حقوق - ${payroll.employee.name} - ${payroll.periodYear}/${payroll.periodMonth}`,
           category: 'Salary',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -253,7 +266,9 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
           },
         },
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/payroll');
     revalidatePath('/dashboard/accounting/transactions');
@@ -263,6 +278,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error recording payroll payment:', error);
     return {
       message: error instanceof Error ? error.message : 'خطا در ثبت پرداخت.',

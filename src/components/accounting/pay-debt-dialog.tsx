@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
   message: '',
@@ -51,6 +52,12 @@ function SubmitButton() {
 export function PayDebtDialog({ employee, accounts, isOpen, onClose }: PayDebtDialogProps) {
   const router = useRouter();
   const [state, dispatch] = useFormState(payEmployeeDebt, initialState);
+  // One id per submission, so a retry or a double click books once (src/lib/request-id.ts);
+  // a new one once this is booked, so the next entry is a new submission.
+  const [requestId, renewRequestId] = useRequestId();
+  useEffect(() => {
+    if (state.success) renewRequestId();
+  }, [state, renewRequestId]);
   const [amount, setAmount] = useState('');
   const [accountId, setAccountId] = useState('');
   const lastMessageRef = useRef('');
@@ -82,6 +89,7 @@ export function PayDebtDialog({ employee, accounts, isOpen, onClose }: PayDebtDi
           <DialogTitle>بازپرداخت بدهی - {employee.name}</DialogTitle>
         </DialogHeader>
         <form action={dispatch}>
+          <RequestIdField value={requestId} />
           <input type="hidden" name="employeeId" value={employee.id} />
           
           <div className="space-y-4 py-4">

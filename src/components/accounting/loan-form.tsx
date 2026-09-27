@@ -12,6 +12,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
   message: '',
@@ -38,6 +39,12 @@ interface LoanFormProps {
 
 export function LoanForm({ employees, accounts }: LoanFormProps) {
   const [state, dispatch] = useFormState(createLoan, initialState);
+  // One id per submission, so a retry or a double click books once (src/lib/request-id.ts);
+  // a new one once this is booked, so the next entry is a new submission.
+  const [requestId, renewRequestId] = useRequestId();
+  useEffect(() => {
+    if (state.success) renewRequestId();
+  }, [state, renewRequestId]);
   const [dueDate, setDueDate] = useState<string>('');
   const [accountId, setAccountId] = useState<string>('');
 
@@ -57,6 +64,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
         <CardTitle>ثبت قرض جدید</CardTitle>
       </CardHeader>
       <form action={dispatch}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="borrowerId">کارمند *</Label>

@@ -8,6 +8,12 @@ import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { toLatinDigits } from '@/lib/digits';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await client.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 
 // --- Schemas ---
 
@@ -55,8 +61,12 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
   }
 
   const { borrowerId, amount, accountId, interestRate, description, dueDate } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(prisma, requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const employee = await prisma.employee.findUnique({ where: { id: borrowerId } });
     if (!employee) return { message: 'کارمند یافت نشد.', success: false };
 
@@ -101,6 +111,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
           category: 'قرض به کارمند',
           description: description ? `قرض - ${employee.name}: ${description}` : `قرض به ${employee.name}`,
           date: new Date(),
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -114,6 +125,7 @@ export async function createLoan(prevState: ActionState, formData: FormData): Pr
     revalidatePath('/dashboard/accounting/accounts');
     return { message: 'قرض با موفقیت ثبت شد.', success: true };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error creating loan:', error);
     return {
       message: error instanceof Error ? error.message : 'خطا در ثبت قرض.',
@@ -145,8 +157,12 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
   }
 
   const { loanId, amount, principal, interest, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(prisma, requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const loan = await prisma.loan.findUnique({
       where: { id: loanId },
       include: {
@@ -200,10 +216,12 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     const transactionDate = date ? new Date(date) : new Date();
 
     // Create payment and update loan
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
       // The loan is locked and read again: two repayments at the same moment
       // cannot both pass the check above and take it below zero.
       await tx.$queryRaw`SELECT id FROM "Loan" WHERE id = ${loanId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (await alreadyBooked(tx, requestId)) return 'duplicate';
       const current = Number((await tx.loan.findUnique({ where: { id: loanId } })).remaining);
       if (amount > current) {
         throw new Error(`مبلغ پرداختی بیشتر از باقیمانده قرض است. (باقیمانده: ${current.toLocaleString('fa-IR')} تومان)`);
@@ -221,6 +239,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
           description: description || `بازپرداخت قرض - ${loan.employee.name}`,
           category: 'Loan Payment',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -253,7 +272,9 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
           },
         },
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/loans');
     revalidatePath('/dashboard/accounting/transactions');
@@ -263,6 +284,7 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error recording loan payment:', error);
     return {
       message: error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت.',

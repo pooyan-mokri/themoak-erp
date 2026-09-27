@@ -7,6 +7,12 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await prisma.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 
 // --- Schemas ---
 
@@ -289,8 +295,12 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
   }
 
   const { shareholderId, accountId, amount, currency, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     // Get shareholder and account
     const shareholder = await prisma.shareholder.findUnique({
       where: { id: shareholderId },
@@ -357,6 +367,7 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
           description: description || `واریز سرمایه توسط ${shareholder.name} (بدهی به سهامدار)`,
           category: 'Shareholder Deposit',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -381,6 +392,7 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error depositing funds:', error);
     const message = error instanceof Error ? error.message : 'خطا در واریز مبلغ.';
     return {
@@ -425,8 +437,12 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
   }
 
   const { shareholderId, accountId, amount, currency, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     // Get shareholder and account
     const shareholder = await prisma.shareholder.findUnique({
       where: { id: shareholderId },
@@ -501,6 +517,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
           description: description || `برداشت سرمایه توسط ${shareholder.name} (طلب از سهامدار)`,
           category: 'Shareholder Withdrawal',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -525,6 +542,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error withdrawing funds:', error);
     const message = error instanceof Error ? error.message : 'خطا در پرداخت مبلغ.';
     return {

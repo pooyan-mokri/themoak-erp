@@ -1341,11 +1341,17 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   }
 
   const { employeeId, amount, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+    const outcome = await prisma.$transaction(async (tx: any) => {
       // Locked, so two repayments at once cannot both pass the check below.
       await tx.$queryRaw`SELECT id FROM "Employee" WHERE id = ${employeeId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
       // Verify employee exists
       const employee = await tx.employee.findUnique({
         where: { id: employeeId },
@@ -1406,6 +1412,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
           category: EMPLOYEE_DEBT_REPAYMENT_CATEGORY,
           description: description || `تسویه بدهی به ${employee.name}`,
           date: date ? new Date(date) : new Date(),
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -1418,7 +1425,9 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
           },
         },
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/employee-debts');
     return {
@@ -1426,6 +1435,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error paying employee debt:', error);
     const message = error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت بدهی.';
     return {

@@ -9,6 +9,12 @@ import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { isNonOperating } from '@/lib/profit-rows';
 import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await client.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 
 // --- Schemas ---
 
@@ -188,8 +194,12 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
   }
 
   const { profitId, amount, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(prisma, requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const profit = await prisma.shareholderProfit.findUnique({
       where: { id: profitId },
       include: {
@@ -237,11 +247,13 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
     const transactionDate = date ? new Date(date) : new Date();
 
     // Create withdrawal and update profit
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
       // The profit row is locked and read again, so two payouts of the same
       // profit at once cannot both pass the check above.
       const [current] = await tx.$queryRaw`
         SELECT amount, withdrawn FROM "ShareholderProfit" WHERE id = ${profitId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (await alreadyBooked(tx, requestId)) return 'duplicate';
       if (!current || amount > Number(current.amount) - Number(current.withdrawn)) {
         throw new Error('این سود هم‌زمان برداشت شد و مبلغ درخواستی دیگر قابل برداشت نیست.');
       }
@@ -257,6 +269,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
           description: description || `برداشت سود توسط ${profit.shareholder.name}`,
           category: 'Shareholder Profit Withdrawal',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -291,6 +304,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
 
       return withdrawal;
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/shareholders/profits');
     revalidatePath('/dashboard/accounting/shareholders');
@@ -301,6 +315,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error withdrawing profit:', error);
     return {
       message: error instanceof Error ? error.message : 'خطا در برداشت سود.',
