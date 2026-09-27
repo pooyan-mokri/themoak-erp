@@ -62,6 +62,21 @@ export async function createOrder(data: OrderData) {
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };
   }
+  // A line of 0, a negative or a fractional quantity would sell nothing, or put stock back.
+  if (items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1)) {
+    return { success: false, message: 'تعداد هر قلم باید عددی صحیح و بیشتر از صفر باشد.' };
+  }
+  if (items.some((item) => !(Number(item.price) >= 0))) {
+    return { success: false, message: 'قیمت هر قلم باید صفر یا بیشتر باشد.' };
+  }
+  // The order's total is what its lines add up to (the POS sends exactly that).
+  const linesTotal = items.reduce((sum, item) => sum + item.quantity * Number(item.price), 0);
+  if (!(Math.abs(Number(totalAmount) - linesTotal) < 0.5)) {
+    return { success: false, message: 'مبلغ کل سفارش با جمع اقلام آن نمی‌خواند.' };
+  }
+  if (!(discount >= 0 && discount <= totalAmount)) {
+    return { success: false, message: 'تخفیف باید بین صفر و مبلغ کل سفارش باشد.' };
+  }
 
   // Calculate final amounts
   const finalPaidAmount = paidAmount !== undefined ? paidAmount : (totalAmount - discount);
@@ -78,9 +93,20 @@ export async function createOrder(data: OrderData) {
     return { success: false, message: 'مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت (پس از تخفیف) باشد.' };
   }
 
+  // The order's id comes from the submission's requestId, so the same checkout
+  // reaching the server twice is one sale even when nothing was paid and no
+  // money row carries the id (src/lib/request-id.ts).
+  const orderId = requestId ? `pos-${requestId}` : undefined;
+
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
       let transactionId = undefined;
+
+      if (orderId) {
+        // A second copy of this checkout waits here until the first is written, then finds it.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orderId}))`;
+        if (await tx.order.findUnique({ where: { id: orderId }, select: { id: true } })) return 'duplicate';
+      }
 
       // 1. Fetch customer first to get name for transaction description
       let customer = undefined;
@@ -94,6 +120,7 @@ export async function createOrder(data: OrderData) {
             channels: { orderBy: { sortOrder: 'asc' } },
           },
         });
+        if (!customer) throw new Error('مشتری یافت نشد.');
       }
 
       // 2. Create Transaction (Income) ONLY if there is a payment
@@ -157,8 +184,13 @@ export async function createOrder(data: OrderData) {
         if (warehouseId) {
           itemWarehouses.push(warehouseId);
         } else {
+          // Only a live warehouse of our own: a partner's consignment stock is not ours to sell here.
           const inv = await tx.inventory.findFirst({
-            where: { productId: item.productId, quantity: { gte: item.quantity } },
+            where: {
+              productId: item.productId,
+              quantity: { gte: item.quantity },
+              warehouse: { isVirtual: false, isArchived: false },
+            },
           });
           if (!inv) {
             const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
@@ -171,7 +203,8 @@ export async function createOrder(data: OrderData) {
       // 5. Create Order
       const order = await tx.order.create({
         data: {
-          customerId,
+          id: orderId,
+          customerId: customerId || undefined,
           totalAmount,
           discount,
           paidAmount: finalPaidAmount,
@@ -236,31 +269,39 @@ export async function createOrder(data: OrderData) {
         }
       }
 
-      // 7. Deduct inventory from the resolved warehouse for each item.
+      // 7. Deduct inventory from the resolved warehouse for each item. The
+      // stock check is part of the update, so two sales of the last unit at
+      // the same time cannot both take it: the second waits, then finds none.
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const whId = itemWarehouses[i];
-        const inventory = await tx.inventory.findUnique({
-          where: {
-            productId_warehouseId: { productId: item.productId, warehouseId: whId },
-          },
-        });
-
-        if (!inventory || inventory.quantity < item.quantity) {
-          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
-          throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
-        }
-
-        await tx.inventory.update({
-          where: {
-            productId_warehouseId: { productId: item.productId, warehouseId: whId },
-          },
+        const taken = await tx.inventory.updateMany({
+          where: { productId: item.productId, warehouseId: whId, quantity: { gte: item.quantity } },
           data: {
             quantity: { decrement: item.quantity },
           },
         });
+
+        if (taken.count === 0) {
+          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+          throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
+        }
+
+        // The warehouse's movement history shows the sale, as consignment and website sales do.
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            fromWarehouseId: whId,
+            quantity: item.quantity,
+            type: 'SALE',
+            referenceId: order.id,
+            note: `فروش سفارش #${order.number}`,
+          },
+        });
       }
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
     kickSiteHook();
 
     try {
