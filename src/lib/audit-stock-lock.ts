@@ -1,0 +1,38 @@
+/**
+ * No stock moves in a warehouse while it is being counted.
+ *
+ * An audit's system quantities are frozen when it starts (freezeInventory) and its adjustments are the counted
+ * number minus that frozen number, applied when it is issued. Any stock change in the warehouse in between
+ * would be corrected twice, so every writer of Inventory calls assertNoOpenAudit for the warehouses it touches,
+ * inside its own transaction and before the write.
+ *
+ * "Open" is IN_PROGRESS: frozen and not yet issued. A PLANNED audit has frozen nothing yet (and there is no way
+ * to close one except starting it), so it blocks nothing; its row is still held FOR SHARE, so a freeze that
+ * starts meanwhile waits for this write to commit and then snapshots it.
+ *
+ * Deliberately NOT a 'use server' file: it runs inside the caller's transaction.
+ */
+
+/** Thrown inside the caller's transaction so it rolls back; the message is safe to show as it is. */
+export class WarehouseUnderAudit extends Error {}
+
+/**
+ * Throws WarehouseUnderAudit when any of these warehouses has an open audit. `tx` is the caller's interactive
+ * transaction (a plain client works too, without the freeze coordination). Missing ids are ignored.
+ */
+export async function assertNoOpenAudit(tx: any, warehouseIds: Array<string | null | undefined>): Promise<void> {
+  const ids = [...new Set(warehouseIds.filter((id): id is string => !!id))];
+  if (ids.length === 0) return;
+  const audits: Array<{ auditNumber: string; status: string; name: string }> = await tx.$queryRaw`
+    SELECT a."auditNumber", a."status", w."name"
+      FROM "InventoryAudit" a JOIN "Warehouse" w ON w."id" = a."warehouseId"
+     WHERE a."warehouseId" = ANY(${ids}) AND a."status" IN ('PLANNED', 'IN_PROGRESS')
+     ORDER BY a."auditNumber"
+       FOR SHARE OF a`;
+  const open = audits.find((audit) => audit.status === 'IN_PROGRESS');
+  if (open) {
+    throw new WarehouseUnderAudit(
+      `انبار «${open.name}» در حال انبارگردانی است (${open.auditNumber})؛ تا صدور اسناد اصلاحی، موجودی این انبار تغییر نمی‌کند.`,
+    );
+  }
+}

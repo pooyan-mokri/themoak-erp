@@ -177,63 +177,74 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
       return { success: false, message: 'موجودی قبلاً فریز شده است.' };
     }
 
-    // Get all inventory items for this warehouse
-    const inventoryItems = await prisma.inventory.findMany({
-      where: { warehouseId: audit.warehouseId },
-      include: { product: true },
-    });
+    // Start the audit first, then read the stock, in one transaction. Starting it takes the audit row, so it
+    // waits for any stock write still holding that row (src/lib/audit-stock-lock.ts) and then reads what it
+    // wrote; a stock write that comes after finds the audit open and is refused. A second freeze finds it taken.
+    const snapshotCount = await prisma.$transaction(
+      async (tx: any) => {
+        const started = await tx.inventoryAudit.updateMany({
+          where: { id: auditId, isFrozen: false },
+          data: {
+            isFrozen: true,
+            frozenAt: new Date(),
+            status: 'IN_PROGRESS',
+            startDate: new Date(),
+          },
+        });
+        if (started.count !== 1) return null;
 
-    // Get ALL products in the system so they can be counted even if not yet in this warehouse
-    const allProducts = await prisma.product.findMany({
-      orderBy: { name: 'asc' },
-    });
+        // Get all inventory items for this warehouse
+        const inventoryItems = await tx.inventory.findMany({
+          where: { warehouseId: audit.warehouseId },
+          include: { product: true },
+        });
 
-    const inventoryMap = new Map<string, { quantity: number }>(inventoryItems.map((i: any) => [i.productId, i]));
+        // Get ALL products in the system so they can be counted even if not yet in this warehouse
+        const allProducts = await tx.product.findMany({
+          orderBy: { name: 'asc' },
+        });
 
-    // Snapshots only for products that actually have inventory in this warehouse
-    const snapshots = inventoryItems.map((item: any) => ({
-      auditId,
-      productId: item.productId,
-      warehouseId: item.warehouseId,
-      quantity: item.quantity,
-      costPrice: item.product.costPrice,
-    }));
+        const inventoryMap = new Map<string, { quantity: number }>(inventoryItems.map((i: any) => [i.productId, i]));
 
-    await prisma.$transaction(async (tx: any) => {
-      // Create snapshots
-      await tx.inventoryAuditSnapshot.createMany({
-        data: snapshots,
-      });
+        // Snapshots only for products that actually have inventory in this warehouse
+        const snapshots = inventoryItems.map((item: any) => ({
+          auditId,
+          productId: item.productId,
+          warehouseId: item.warehouseId,
+          quantity: item.quantity,
+          costPrice: item.product.costPrice,
+        }));
 
-      // Create audit items for ALL products (quantity 0 for those not in this warehouse)
-      const auditItems = allProducts.map((product: any) => ({
-        auditId,
-        productId: product.id,
-        systemQuantity: inventoryMap.get(product.id)?.quantity ?? 0,
-      }));
+        // Create snapshots
+        await tx.inventoryAuditSnapshot.createMany({
+          data: snapshots,
+        });
 
-      await tx.inventoryAuditItem.createMany({
-        data: auditItems,
-        skipDuplicates: true,
-      });
+        // Create audit items for ALL products (quantity 0 for those not in this warehouse)
+        const auditItems = allProducts.map((product: any) => ({
+          auditId,
+          productId: product.id,
+          systemQuantity: inventoryMap.get(product.id)?.quantity ?? 0,
+        }));
 
-      // Update audit status
-      await tx.inventoryAudit.update({
-        where: { id: auditId },
-        data: {
-          isFrozen: true,
-          frozenAt: new Date(),
-          status: 'IN_PROGRESS',
-          startDate: new Date(),
-        },
-      });
-    });
+        await tx.inventoryAuditItem.createMany({
+          data: auditItems,
+          skipDuplicates: true,
+        });
+        return snapshots.length;
+      },
+      { maxWait: 10_000, timeout: 60_000 },
+    );
+
+    if (snapshotCount === null) {
+      return { success: false, message: 'موجودی قبلاً فریز شده است.' };
+    }
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
       success: true,
       message: 'موجودی با موفقیت فریز شد.',
-      data: { snapshotCount: snapshots.length },
+      data: { snapshotCount },
     };
   } catch (error: unknown) {
     console.error('Error freezing inventory:', error);

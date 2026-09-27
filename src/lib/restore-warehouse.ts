@@ -17,6 +17,8 @@
  * inside the caller's existing prisma transaction.
  */
 
+import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
+
 /** Only physical, live warehouses are valid fallbacks for an ordinary sale. */
 const PHYSICAL = { isVirtual: false, isArchived: false } as const;
 
@@ -186,6 +188,8 @@ export async function restoreOrderItemStock(
 
   const decision = await resolveRestoreWarehouse(tx, order, item, productName);
   if (!decision.restore) return decision.reason;
+  // Not into a warehouse that is being counted: throws, so the caller's whole transaction rolls back.
+  await assertNoOpenAudit(tx, [decision.warehouseId]);
 
   await tx.inventory.upsert({
     where: {

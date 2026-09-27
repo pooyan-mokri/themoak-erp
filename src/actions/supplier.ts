@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
 import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
+import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 import { kickSiteHook } from '@/lib/site-hook';
 import { ACCESS_DENIED_MESSAGE, checkPermission, hasPermission } from '@/lib/access';
 
@@ -476,6 +477,7 @@ export async function receivePurchaseOrderItems(
       if (!warehouse || warehouse.isArchived || warehouse.isVirtual) {
         throw new ReceiveRefusal('انبار دریافت باید یک انبار فیزیکی و فعال باشد.');
       }
+      await assertNoOpenAudit(tx, [warehouseId]);
 
       // Get exchange rates
       const exchangeRates = await tx.exchangeRate.findMany({
@@ -666,7 +668,7 @@ export async function receivePurchaseOrderItems(
     }
     return { success: true, message: 'کالاها با موفقیت دریافت و به موجودی اضافه شدند' };
   } catch (error: unknown) {
-    if (error instanceof ReceiveRefusal) return { success: false, error: error.message };
+    if (error instanceof ReceiveRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error receiving purchase order items:', error);
     return { success: false, error: 'خطا در دریافت کالاها' };
   }

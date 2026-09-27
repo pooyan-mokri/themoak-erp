@@ -13,6 +13,7 @@ import { ActionState, ActionResult } from '@/lib/types';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
 import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
+import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -152,10 +153,18 @@ export async function giftProduct(productId: string, quantity: number, recipient
 
       // 2. Take the stock from the live, physical warehouse holding the most of it: never a consignment
       //    partner's goods. The decrement is conditional, so two gifts at once cannot take the same units.
+      // A warehouse being counted is skipped; if it is the only one holding enough, the audit is the reason.
+      const live = { isVirtual: false, isArchived: false };
       const inventory = await tx.inventory.findFirst({
-        where: { productId, quantity: { gte: quantity }, warehouse: { isVirtual: false, isArchived: false } },
+        where: { productId, quantity: { gte: quantity }, warehouse: { ...live, audits: { none: { status: 'IN_PROGRESS' } } } },
         orderBy: { quantity: 'desc' },
       });
+      if (!inventory) {
+        const counted = await tx.inventory.findFirst({ where: { productId, quantity: { gte: quantity }, warehouse: live } });
+        if (counted) await assertNoOpenAudit(tx, [counted.warehouseId]);
+      } else {
+        await assertNoOpenAudit(tx, [inventory.warehouseId]);
+      }
       const { count } = inventory
         ? await tx.inventory.updateMany({
             where: { productId, warehouseId: inventory.warehouseId, quantity: { gte: quantity } },
@@ -217,7 +226,7 @@ export async function giftProduct(productId: string, quantity: number, recipient
     }
     return result;
   } catch (error: unknown) {
-    if (error instanceof GiftRefusal) return { success: false, error: error.message };
+    if (error instanceof GiftRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error gifting product:', error);
     return { success: false, error: 'خطا در ثبت هدیه.' };
   }

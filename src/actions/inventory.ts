@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 
 // const prisma = new PrismaClient();
 
@@ -92,6 +93,7 @@ export async function updateStock(productId: string, warehouseId: string, quanti
   try {
     await prisma.$transaction(async (tx: any) => {
       await assertLiveWarehouses(tx, [warehouseId]);
+      await assertNoOpenAudit(tx, [warehouseId]);
       // Lock the row (or its absence) so the difference booked is the difference applied.
       const [row] = await tx.$queryRaw`
         SELECT "quantity" FROM "Inventory" WHERE "productId" = ${productId} AND "warehouseId" = ${warehouseId} FOR UPDATE`;
@@ -118,7 +120,7 @@ export async function updateStock(productId: string, warehouseId: string, quanti
     revalidatePath('/dashboard/inventory');
     return { success: true };
   } catch (error) {
-    if (error instanceof StockRefusal) return { success: false, error: error.message };
+    if (error instanceof StockRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     return { success: false, error: 'خطا در ثبت موجودی.' };
   }
 }
@@ -139,6 +141,7 @@ export async function adjustStock(
   try {
     await prisma.$transaction(async (tx: any) => {
       await assertLiveWarehouses(tx, [warehouseId]);
+      await assertNoOpenAudit(tx, [warehouseId]);
       if (adjustment > 0) {
         await tx.inventory.upsert({
           where: { productId_warehouseId: { productId, warehouseId } },
@@ -167,7 +170,7 @@ export async function adjustStock(
     revalidatePath('/dashboard/inventory');
     return { success: true, message: 'موجودی با موفقیت تنظیم شد.' };
   } catch (error) {
-    if (error instanceof StockRefusal) return { success: false, error: error.message };
+    if (error instanceof StockRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error adjusting stock:', error);
     return { success: false, error: 'خطا در تنظیم موجودی.' };
   }
@@ -191,6 +194,7 @@ export async function transferStock(
   try {
     await prisma.$transaction(async (tx: any) => {
       await assertLiveWarehouses(tx, [fromWarehouseId, toWarehouseId]);
+      await assertNoOpenAudit(tx, [fromWarehouseId, toWarehouseId]);
 
       // 1. Decrement source, only if it holds enough
       if (!(await takeStock(tx, productId, fromWarehouseId, quantity))) {
@@ -223,7 +227,7 @@ export async function transferStock(
     revalidatePath('/dashboard/inventory');
     return { success: true, message: 'جابجایی موجودی با موفقیت انجام شد' };
   } catch (error: any) {
-    if (error instanceof StockRefusal) return { success: false, error: error.message };
+    if (error instanceof StockRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error transferring stock:', error);
     return { success: false, error: 'خطا در جابجایی موجودی' };
   }
@@ -259,6 +263,7 @@ export async function transferStockBatch(input: {
   try {
     await prisma.$transaction(async (tx: any) => {
       await assertLiveWarehouses(tx, [fromWarehouseId, toWarehouseId]);
+      await assertNoOpenAudit(tx, [fromWarehouseId, toWarehouseId]);
       for (const item of validItems) {
         if (!(await takeStock(tx, item.productId, fromWarehouseId, item.quantity))) {
           const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
@@ -289,7 +294,7 @@ export async function transferStockBatch(input: {
     revalidatePath('/dashboard/inventory');
     return { success: true, message: `جابجایی ${validItems.length} کالا با موفقیت انجام شد` };
   } catch (error: any) {
-    if (error instanceof StockRefusal) return { success: false, error: error.message };
+    if (error instanceof StockRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error in batch transfer:', error);
     return { success: false, error: 'خطا در جابجایی موجودی' };
   }

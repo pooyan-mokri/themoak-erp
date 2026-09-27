@@ -293,16 +293,19 @@ test('issuing: stock moves by each discrepancy with an ADJUSTMENT movement, and 
   await assertStockInvariants();
 });
 
-test('issuing applies the difference from the frozen number: stock moved during the audit is not re-counted (pinned, see the report)', async () => {
+test('stock cannot move during the audit, so issuing corrects exactly what was counted', async () => {
   const id = await started();
-  // After the freeze, 2 PANJ leave for the shop; the count then finds the 3 that are left.
-  assert.equal((await transferStock('panj', main.id, shop.id, 2)).success, true);
-  await setFinalQuantity(id, 'panj', 3);
+  // After the freeze, 2 PANJ cannot leave for the shop: the audit is open (tests/audit/audit-stock-lock.test.ts).
+  const refused = await transferStock('panj', main.id, shop.id, 2);
+  assert.equal(refused.success, false);
+  assert.match((refused as any).error, /در حال انبارگردانی است/);
+  await setFinalQuantity(id, 'panj', 5);
   await setFinalQuantity(id, 'yek', 3);
   await setFinalQuantity(id, 'du', 0);
   assert.equal((await issueAdjustmentDocuments(id)).success, true);
-  // 5 frozen − 3 counted = −2 more, on top of the 2 that left: 1 on record while 3 are on the shelf.
-  assert.equal(await qty('panj', main.id), 1);
+  assert.equal(await qty('panj', main.id), 5);
+  // Issued: the warehouse moves again.
+  assert.equal((await transferStock('panj', main.id, shop.id, 2)).success, true);
   await assertStockInvariants();
 });
 
