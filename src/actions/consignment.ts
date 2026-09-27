@@ -534,6 +534,7 @@ export async function recordConsignmentSales(input: {
         order: any | null;
       }>;
       for (const [key, group] of groups) {
+        const rate = group.channel ? group.channel.commissionRate : legacyRate;
         // Keyed off paymentStatus so it works for legacy PENDING_PAYMENT orders
         // and new COMPLETED+UNPAID ones alike.
         const order = await tx.order.findFirst({
@@ -549,6 +550,9 @@ export async function recordConsignmentSales(input: {
             items: { some: { warehouseId: partnerWarehouseId } },
             // An online line must never land on the in-store order.
             consignmentChannelId: group.channel ? group.channel.id : null,
+            // Nor on an order booked at another rate: appending recomputes the
+            // whole order's commission, which would rewrite what was booked.
+            commissions: rate > 0 ? { some: { commissionRate: new Prisma.Decimal(rate) } } : { none: {} },
           },
           include: { items: true },
         });
@@ -651,7 +655,8 @@ export async function recordConsignmentSales(input: {
               totalAmount: new Prisma.Decimal(grossTotal - commissionAmount),
               // Standard status (sale happened); settlement tracked via paymentStatus
               status: 'COMPLETED',
-              paymentStatus: 'UNPAID',
+              // Lines at a price of 0 owe nothing: settled from the start.
+              paymentStatus: grossTotal - commissionAmount > 0 ? 'UNPAID' : 'PAID',
               paidAmount: new Prisma.Decimal(0),
               createdAt: day,
               consignmentChannelId: group.channel?.id,
