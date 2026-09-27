@@ -1,15 +1,9 @@
 'use client';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -17,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   getCompanyInfo,
   saveCompanyInfo,
@@ -32,17 +26,28 @@ import {
 } from '@/actions/ftp';
 import { toast } from 'sonner';
 import { useLogo } from '@/components/providers/logo-provider';
-import { CheckCircle2, XCircle, Link2, TestTube } from 'lucide-react';
+import { CheckCircle2, ImageIcon, TestTube, Upload, XCircle } from 'lucide-react';
+import { FieldRow, PanelActions, SettingsPanel, StatusNote } from './settings-panel';
+
+/**
+ * The company card is one free-form setting (SystemSetting «company_info»), saved whole:
+ * name, phone, address and logo print on the invoice; the other fields are kept with them.
+ */
+const EMPTY_COMPANY = {
+  name: '',
+  legalName: '',
+  taxId: '',
+  phone: '',
+  address: '',
+  website: '',
+  instagram: '',
+  logo: '',
+};
 
 export function CompanySettingsForm() {
   const { refreshLogo } = useLogo();
   const [loading, setLoading] = useState(false);
-  const [companyInfo, setCompanyInfo] = useState({
-    name: '',
-    phone: '',
-    address: '',
-    logo: '',
-  });
+  const [companyInfo, setCompanyInfo] = useState(EMPTY_COMPANY);
   const [wooSettings, setWooSettings] = useState({
     warehouseId: '',
   });
@@ -63,11 +68,13 @@ export function CompanySettingsForm() {
     error?: string;
   } | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const logoInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
       const info = await getCompanyInfo();
-      if (info) setCompanyInfo(info);
+      // Fields saved before this form had them read as empty, and any other stored field is kept.
+      if (info) setCompanyInfo({ ...EMPTY_COMPANY, ...info });
 
       const woo = await getWooSettings();
       setWooSettings({ warehouseId: woo.warehouseId || '' });
@@ -127,331 +134,312 @@ export function CompanySettingsForm() {
     }
   };
 
+  const setCompany = (field: keyof typeof EMPTY_COMPANY) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setCompanyInfo((prev) => ({ ...prev, [field]: e.target.value }));
+
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>مشخصات شرکت</CardTitle>
-            <CardDescription>
-              اطلاعات عمومی شرکت که در فاکتورها نمایش داده می‌شود.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="company-name">نام شرکت</Label>
-                <Input
-                  id="company-name"
-                  value={companyInfo.name}
-                  onChange={(e) =>
-                    setCompanyInfo({ ...companyInfo, name: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="company-phone">تلفن تماس</Label>
-                <Input
-                  id="company-phone"
-                  value={companyInfo.phone}
-                  onChange={(e) =>
-                    setCompanyInfo({ ...companyInfo, phone: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="company-address">آدرس</Label>
-                <Input
-                  id="company-address"
-                  value={companyInfo.address}
-                  onChange={(e) =>
-                    setCompanyInfo({ ...companyInfo, address: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="company-logo">لوگو</Label>
-                <Input
-                  id="company-logo"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoUpload}
-                />
-                {companyInfo.logo && (
-                  <div className="mt-2">
-                    <img
-                      src={companyInfo.logo}
-                      alt="Logo Preview"
-                      className="h-20 object-contain"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-            <Button
-              onClick={handleSaveCompany}
-              disabled={loading}
-            >
-              {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
-            </Button>
-          </CardContent>
-        </Card>
+    <>
+      <SettingsPanel
+        title="مشخصات شرکت"
+        description="نام، تلفن، آدرس و لوگو روی فاکتورِ چاپی می‌آیند."
+      >
+        <FieldRow label="نام شرکت" htmlFor="company-name">
+          <Input id="company-name" value={companyInfo.name} onChange={setCompany('name')} />
+        </FieldRow>
+        <FieldRow label="نام حقوقی" htmlFor="company-legal-name">
+          <Input id="company-legal-name" value={companyInfo.legalName} onChange={setCompany('legalName')} />
+        </FieldRow>
+        <FieldRow label="شناسهٔ ملی یا مالیاتی" htmlFor="company-tax-id">
+          <Input
+            id="company-tax-id"
+            dir="ltr"
+            className="font-mono"
+            value={companyInfo.taxId}
+            onChange={setCompany('taxId')}
+          />
+        </FieldRow>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>انبار پیش‌فرض برگشت موجودی</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="woo-warehouse">
-                  انبار برگشت موجودی
-                </Label>
-                <Select
-                  value={wooSettings.warehouseId || ''}
-                  onValueChange={(value) =>
-                    setWooSettings({ ...wooSettings, warehouseId: value })
-                  }
+        <div className="my-2 border-t" />
+
+        <FieldRow label="تلفن تماس" htmlFor="company-phone">
+          <Input id="company-phone" dir="ltr" value={companyInfo.phone} onChange={setCompany('phone')} />
+        </FieldRow>
+        <FieldRow label="آدرس" htmlFor="company-address">
+          <Input id="company-address" value={companyInfo.address} onChange={setCompany('address')} />
+        </FieldRow>
+        <FieldRow label="وب‌سایت" htmlFor="company-website">
+          <Input
+            id="company-website"
+            dir="ltr"
+            className="font-mono"
+            placeholder="themoak.com"
+            value={companyInfo.website}
+            onChange={setCompany('website')}
+          />
+        </FieldRow>
+        <FieldRow
+          label="اینستاگرام"
+          htmlFor="company-instagram"
+          hint="نام حقوقی، شناسه، وب‌سایت و اینستاگرام همین‌جا نگه داشته می‌شوند و هنوز روی فاکتور چاپ نمی‌شوند."
+        >
+          <Input
+            id="company-instagram"
+            dir="ltr"
+            className="font-mono"
+            placeholder="@themoak"
+            value={companyInfo.instagram}
+            onChange={setCompany('instagram')}
+          />
+        </FieldRow>
+
+        <div className="my-2 border-t" />
+
+        <FieldRow label="لوگو" htmlFor="company-logo" hint="تصویری با زمینهٔ شفاف؛ در منوی کناری و روی فاکتور نمایش داده می‌شود.">
+          <div className="flex items-center gap-4">
+            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg border bg-secondary">
+              {companyInfo.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={companyInfo.logo} alt="پیش‌نمایش لوگو" className="max-h-16 max-w-16 object-contain" />
+              ) : (
+                <ImageIcon className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
+              )}
+            </div>
+            <Button type="button" variant="outline" onClick={() => logoInput.current?.click()}>
+              <Upload className="h-4 w-4" />
+              {companyInfo.logo ? 'تعویض لوگو' : 'انتخاب لوگو'}
+            </Button>
+            <input
+              ref={logoInput}
+              id="company-logo"
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              className="hidden"
+            />
+          </div>
+        </FieldRow>
+
+        <PanelActions>
+          <Button onClick={handleSaveCompany} disabled={loading}>
+            {loading ? 'در حال ذخیره...' : 'ذخیره تغییرات'}
+          </Button>
+        </PanelActions>
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="انبار پیش‌فرض برگشت موجودی"
+        description="وقتی فروشی لغو می‌شود و انبار اقلامش ثبت نشده، موجودی به این انبار برمی‌گردد."
+      >
+        <FieldRow label="انبار برگشت موجودی" htmlFor="woo-warehouse">
+          <Select
+            value={wooSettings.warehouseId || ''}
+            onValueChange={(value) =>
+              setWooSettings({ ...wooSettings, warehouseId: value })
+            }
+          >
+            <SelectTrigger id="woo-warehouse" className="sm:max-w-sm">
+              <SelectValue placeholder="انتخاب انبار" />
+            </SelectTrigger>
+            <SelectContent>
+              {warehouses.map((warehouse) => (
+                <SelectItem
+                  key={warehouse.id}
+                  value={warehouse.id}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="انتخاب انبار" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {warehouses.map((warehouse) => (
-                      <SelectItem
-                        key={warehouse.id}
-                        value={warehouse.id}
-                      >
-                        {warehouse.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-sm text-gray-500">
-                  وقتی فروشی لغو می‌شود و انبار اقلامش ثبت نشده، موجودی به این انبار برمی‌گردد.
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="secondary"
-              onClick={handleSaveWoo}
-              disabled={loading}
-            >
-              {loading ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
-            </Button>
-          </CardContent>
-        </Card>
+                  {warehouse.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldRow>
+        <PanelActions>
+          <Button onClick={handleSaveWoo} disabled={loading}>
+            {loading ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
+          </Button>
+        </PanelActions>
+      </SettingsPanel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>ذخیره‌سازی FTP</CardTitle>
-            <CardDescription>
-              تنظیمات FTP برای ذخیره فایل‌های رسید و فاکتورها. تمام فایل‌ها در
-              مسیر مشخص شده در سرور FTP ذخیره می‌شوند.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ftp-host">آدرس سرور FTP</Label>
-                <Input
-                  id="ftp-host"
-                  type="text"
-                  placeholder="ftp.example.com"
-                  value={ftpCredentials.host}
-                  onChange={(e) =>
-                    setFTPCredentials({
-                      ...ftpCredentials,
-                      host: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ftp-port">پورت</Label>
-                <Input
-                  id="ftp-port"
-                  type="number"
-                  placeholder="21"
-                  value={ftpCredentials.port}
-                  onChange={(e) =>
-                    setFTPCredentials({
-                      ...ftpCredentials,
-                      port: parseInt(e.target.value) || 21,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ftp-user">نام کاربری</Label>
-                <Input
-                  id="ftp-user"
-                  type="text"
-                  placeholder="username"
-                  value={ftpCredentials.user}
-                  onChange={(e) =>
-                    setFTPCredentials({
-                      ...ftpCredentials,
-                      user: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ftp-password">رمز عبور</Label>
-                <Input
-                  id="ftp-password"
-                  type="password"
-                  placeholder="password"
-                  value={ftpCredentials.password}
-                  onChange={(e) =>
-                    setFTPCredentials({
-                      ...ftpCredentials,
-                      password: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ftp-base-path">مسیر پایه</Label>
-                <Input
-                  id="ftp-base-path"
-                  type="text"
-                  placeholder="/uploads/receipts"
-                  value={ftpCredentials.basePath}
-                  onChange={(e) =>
-                    setFTPCredentials({
-                      ...ftpCredentials,
-                      basePath: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  <input
-                    type="checkbox"
-                    id="ftp-secure"
-                    checked={ftpCredentials.secure}
-                    onChange={(e) =>
-                      setFTPCredentials({
-                        ...ftpCredentials,
-                        secure: e.target.checked,
-                      })
-                    }
-                    className="rounded"
-                  />
-                  <Label htmlFor="ftp-secure" className="cursor-pointer">
-                    استفاده از FTPS (امن)
-                  </Label>
-                </div>
-                {ftpCredentials.secure && (
-                  <div className="flex items-center space-x-2 space-x-reverse mt-2">
-                    <input
-                      type="checkbox"
-                      id="ftp-ignore-cert"
-                      checked={ftpCredentials.ignoreCertificateErrors}
-                      onChange={(e) =>
-                        setFTPCredentials({
-                          ...ftpCredentials,
-                          ignoreCertificateErrors: e.target.checked,
-                        })
-                      }
-                      className="rounded"
-                    />
-                    <Label htmlFor="ftp-ignore-cert" className="cursor-pointer text-sm">
-                      نادیده گرفتن خطاهای گواهینامه SSL (برای سرورهایی که گواهینامه مطابقت ندارد)
-                    </Label>
-                  </div>
-                )}
-              </div>
+      <SettingsPanel
+        title="ذخیره‌سازی FTP"
+        description="فایل‌های رسید و فاکتورها در مسیر مشخص‌شده روی سرور FTP ذخیره می‌شوند."
+      >
+        <FieldRow label="آدرس سرور FTP" htmlFor="ftp-host">
+          <Input
+            id="ftp-host"
+            type="text"
+            dir="ltr"
+            className="font-mono"
+            placeholder="ftp.example.com"
+            value={ftpCredentials.host}
+            onChange={(e) =>
+              setFTPCredentials({
+                ...ftpCredentials,
+                host: e.target.value,
+              })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="پورت" htmlFor="ftp-port">
+          <Input
+            id="ftp-port"
+            type="number"
+            dir="ltr"
+            className="font-mono sm:max-w-[120px]"
+            placeholder="21"
+            value={ftpCredentials.port}
+            onChange={(e) =>
+              setFTPCredentials({
+                ...ftpCredentials,
+                port: parseInt(e.target.value) || 21,
+              })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="نام کاربری" htmlFor="ftp-user">
+          <Input
+            id="ftp-user"
+            type="text"
+            dir="ltr"
+            className="font-mono"
+            placeholder="username"
+            value={ftpCredentials.user}
+            onChange={(e) =>
+              setFTPCredentials({
+                ...ftpCredentials,
+                user: e.target.value,
+              })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="رمز عبور" htmlFor="ftp-password">
+          <Input
+            id="ftp-password"
+            type="password"
+            dir="ltr"
+            placeholder="password"
+            value={ftpCredentials.password}
+            onChange={(e) =>
+              setFTPCredentials({
+                ...ftpCredentials,
+                password: e.target.value,
+              })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="مسیر پایه" htmlFor="ftp-base-path">
+          <Input
+            id="ftp-base-path"
+            type="text"
+            dir="ltr"
+            className="font-mono"
+            placeholder="/uploads/receipts"
+            value={ftpCredentials.basePath}
+            onChange={(e) =>
+              setFTPCredentials({
+                ...ftpCredentials,
+                basePath: e.target.value,
+              })
+            }
+          />
+        </FieldRow>
+        <FieldRow label="اتصال امن" htmlFor="ftp-secure">
+          <div className="flex min-h-9 items-center gap-2.5">
+            {/* The shared Switch slides its thumb out of the track in RTL, so it is laid out LTR. */}
+            <Switch
+              id="ftp-secure"
+              dir="ltr"
+              checked={ftpCredentials.secure}
+              onCheckedChange={(checked) =>
+                setFTPCredentials({
+                  ...ftpCredentials,
+                  secure: checked,
+                })
+              }
+            />
+            <Label htmlFor="ftp-secure" className="cursor-pointer text-[13px] font-normal">
+              استفاده از FTPS (امن)
+            </Label>
+          </div>
+          {ftpCredentials.secure && (
+            <div className="mt-2 flex items-start gap-2.5">
+              <Switch
+                id="ftp-ignore-cert"
+                dir="ltr"
+                checked={ftpCredentials.ignoreCertificateErrors}
+                onCheckedChange={(checked) =>
+                  setFTPCredentials({
+                    ...ftpCredentials,
+                    ignoreCertificateErrors: checked,
+                  })
+                }
+              />
+              <Label htmlFor="ftp-ignore-cert" className="cursor-pointer text-[13px] font-normal leading-relaxed">
+                نادیده گرفتن خطاهای گواهینامه SSL (برای سرورهایی که گواهینامه مطابقت ندارد)
+              </Label>
             </div>
+          )}
+        </FieldRow>
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  setLoading(true);
-                  const result = await saveFTPCredentials(ftpCredentials);
-                  setLoading(false);
-                  if (result.success) {
-                    toast.success('تنظیمات FTP ذخیره شد');
-                    setFTPTestResult(null);
-                  } else {
-                    toast.error(result.error || 'خطا در ذخیره تنظیمات');
-                  }
-                }}
-                disabled={loading || !ftpCredentials.host || !ftpCredentials.user}
-                className="flex-1"
-              >
-                {loading ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  setIsTestingConnection(true);
-                  setFTPTestResult(null);
-                  const result = await testFTPConnectionAction();
-                  setIsTestingConnection(false);
-                  setFTPTestResult(result);
-                  if (result.success) {
-                    toast.success('اتصال به FTP موفق بود');
-                  } else {
-                    toast.error(result.error || 'خطا در اتصال به FTP');
-                  }
-                }}
-                disabled={isTestingConnection || !ftpCredentials.host || !ftpCredentials.user}
-                className="flex-1"
-              >
-                <TestTube className="ml-2 h-4 w-4" />
-                {isTestingConnection ? 'در حال تست...' : 'تست اتصال'}
-              </Button>
-            </div>
-
-            {ftpTestResult && (
-              <div
-                className={`p-3 rounded-md border ${
-                  ftpTestResult.success
-                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {ftpTestResult.success ? (
-                    <>
-                      <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      <p className="text-sm text-green-800 dark:text-green-200">
-                        اتصال موفق: سرور FTP در دسترس است
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="h-5 w-5 text-red-500" />
-                      <p className="text-sm text-red-800 dark:text-red-200">
-                        خطا: {ftpTestResult.error || 'اتصال به FTP ناموفق بود'}
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
+        {ftpTestResult && (
+          <StatusNote tone={ftpTestResult.success ? 'success' : 'danger'} className="mt-2 flex items-center gap-2">
+            {ftpTestResult.success ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                اتصال موفق: سرور FTP در دسترس است
+              </>
+            ) : (
+              <>
+                <XCircle className="h-4 w-4 shrink-0" />
+                خطا: {ftpTestResult.error || 'اتصال به FTP ناموفق بود'}
+              </>
             )}
+          </StatusNote>
+        )}
 
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p>
-                • فایل‌های آپلود شده در مسیر مشخص شده در سرور FTP ذخیره
-                می‌شوند.
-              </p>
-              <p>
-                • برای استفاده از FTPS، گزینه "استفاده از FTPS" را فعال کنید.
-              </p>
-              <p>
-                • پس از وارد کردن اطلاعات، دکمه "تست اتصال" را برای بررسی
-                اتصال استفاده کنید.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        <PanelActions>
+          <Button
+            onClick={async () => {
+              setLoading(true);
+              const result = await saveFTPCredentials(ftpCredentials);
+              setLoading(false);
+              if (result.success) {
+                toast.success('تنظیمات FTP ذخیره شد');
+                setFTPTestResult(null);
+              } else {
+                toast.error(result.error || 'خطا در ذخیره تنظیمات');
+              }
+            }}
+            disabled={loading || !ftpCredentials.host || !ftpCredentials.user}
+          >
+            {loading ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setIsTestingConnection(true);
+              setFTPTestResult(null);
+              const result = await testFTPConnectionAction();
+              setIsTestingConnection(false);
+              setFTPTestResult(result);
+              if (result.success) {
+                toast.success('اتصال به FTP موفق بود');
+              } else {
+                toast.error(result.error || 'خطا در اتصال به FTP');
+              }
+            }}
+            disabled={isTestingConnection || !ftpCredentials.host || !ftpCredentials.user}
+          >
+            <TestTube className="h-4 w-4" />
+            {isTestingConnection ? 'در حال تست...' : 'تست اتصال'}
+          </Button>
+        </PanelActions>
+
+        <ul className="mt-3 list-disc space-y-1 ps-5 text-xs leading-relaxed text-muted-foreground">
+          <li>فایل‌های آپلود شده در مسیر مشخص شده در سرور FTP ذخیره می‌شوند.</li>
+          <li>برای استفاده از FTPS، گزینهٔ «استفاده از FTPS» را روشن کنید.</li>
+          <li>تست اتصال با تنظیمات ذخیره‌شده انجام می‌شود؛ پس از وارد کردن اطلاعات، اول ذخیره کنید.</li>
+        </ul>
+      </SettingsPanel>
+    </>
   );
 }

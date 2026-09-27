@@ -3,11 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   disableStockPush,
@@ -25,6 +22,7 @@ import {
 import type { SiteConnectionForm } from '@/lib/site-connection';
 import type { StockPushPreview } from '@/lib/site-hook';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { FieldRow, PanelActions, SettingsPanel, StatusNote } from './settings-panel';
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const PREVIEW = 10;
@@ -148,316 +146,322 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
   const warehouseName = (id: string) => initial.warehouses.find((w) => w.id === id)?.name ?? id;
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>اتصال به سایت</CardTitle>
-          <CardDescription>
-            آدرس و رمزی که ERP با آن سایت را صدا می‌زند، و انتخاب‌هایی که فروش‌های سایت با آن ثبت می‌شوند.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="siteUrl">آدرس سایت</Label>
-            <Input
-              id="siteUrl"
-              dir="ltr"
-              placeholder="https://api.themoak.com"
-              value={siteUrl}
-              onChange={(e) => setSiteUrl(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">همان آدرسی که کاتالوگ و وبهوک سایت روی آن هستند.</p>
-          </div>
+    <>
+      <SettingsPanel
+        title="اتصال به سایت"
+        description="آدرس و رمزی که ERP با آن سایت را صدا می‌زند، و انتخاب‌هایی که فروش‌های سایت با آن ثبت می‌شوند."
+      >
+        <FieldRow label="آدرس سایت" htmlFor="siteUrl" hint="همان آدرسی که کاتالوگ و وبهوک سایت روی آن هستند.">
+          <Input
+            id="siteUrl"
+            dir="ltr"
+            className="font-mono"
+            placeholder="https://api.themoak.com"
+            value={siteUrl}
+            onChange={(e) => setSiteUrl(e.target.value)}
+          />
+        </FieldRow>
 
-          <div className="space-y-2">
-            <Label htmlFor="webhookSecret">رمز وبهوک</Label>
-            <Input
-              id="webhookSecret"
-              type="password"
-              dir="ltr"
-              autoComplete="new-password"
-              placeholder={initial.hasSecret ? '•••••••• ثبت شده؛ برای تغییر، رمز تازه را بنویسید' : 'از پنل سایت'}
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              جدا از توکنی است که سایت با آن ERP را صدا می‌زند. بعد از ذخیره دیگر نمایش داده نمی‌شود.
-            </p>
-          </div>
+        <FieldRow
+          label="رمز وبهوک"
+          htmlFor="webhookSecret"
+          hint="جدا از توکنی است که سایت با آن ERP را صدا می‌زند. بعد از ذخیره دیگر نمایش داده نمی‌شود."
+        >
+          <Input
+            id="webhookSecret"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            placeholder={initial.hasSecret ? '•••••••• ثبت شده؛ برای تغییر، رمز تازه را بنویسید' : 'از پنل سایت'}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+          />
+        </FieldRow>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>حساب دریافت پول فروش سایت</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="انتخاب حساب" />
-                </SelectTrigger>
-                <SelectContent>
-                  {initial.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({a.currency})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>انبار سایت</Label>
-              <Select value={warehouseId} onValueChange={setWarehouseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="انتخاب انبار" />
-                </SelectTrigger>
-                <SelectContent>
-                  {initial.warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+        <FieldRow label="حساب دریافت پول فروش سایت" htmlFor="siteAccount">
+          <Select value={accountId} onValueChange={setAccountId}>
+            <SelectTrigger id="siteAccount">
+              <SelectValue placeholder="انتخاب حساب" />
+            </SelectTrigger>
+            <SelectContent>
+              {initial.accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name} ({a.currency})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldRow>
+        <FieldRow label="انبار سایت" htmlFor="siteWarehouse">
+          <Select value={warehouseId} onValueChange={setWarehouseId}>
+            <SelectTrigger id="siteWarehouse">
+              <SelectValue placeholder="انتخاب انبار" />
+            </SelectTrigger>
+            <SelectContent>
+              {initial.warehouses.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldRow>
 
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={save} disabled={busy !== null || !siteUrl.trim() || !accountId || !warehouseId}>
-              {busy === 'save' ? 'در حال ذخیره...' : 'ذخیره'}
-            </Button>
-            <Button variant="outline" onClick={test} disabled={busy !== null || !usable}>
-              {busy === 'test' ? 'در حال آزمایش...' : 'آزمایش اتصال'}
-            </Button>
-          </div>
+        <PanelActions>
+          <Button onClick={save} disabled={busy !== null || !siteUrl.trim() || !accountId || !warehouseId}>
+            {busy === 'save' ? 'در حال ذخیره...' : 'ذخیره'}
+          </Button>
+          <Button variant="outline" onClick={test} disabled={busy !== null || !usable}>
+            {busy === 'test' ? 'در حال آزمایش...' : 'آزمایش اتصال'}
+          </Button>
           {unsaved && (
             <p className="text-xs text-muted-foreground">آزمایش با مقادیر ذخیره‌شده انجام می‌شود؛ اول ذخیره کنید.</p>
           )}
-        </CardContent>
-      </Card>
+        </PanelActions>
+      </SettingsPanel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>عکس محصولات از سایت</CardTitle>
-          <CardDescription>
-            عکس روبه‌روی هر فریم و لینک صفحه‌اش در سایت، با «شناسهٔ سایت» خوانده می‌شود. هر روز یک بار هم خودکار
-            اجرا می‌شود. کالایی که شناسهٔ سایت ندارد دست نمی‌خورد.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {last ? (
-            <div className={`rounded-lg border p-3 text-sm ${last.ok ? '' : 'border-red-200 bg-red-50 dark:bg-red-950/30'}`}>
-              <div className="font-medium">{last.message}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                آخرین اجرا: {formatJalaliDate(last.at)}{' '}
-                {new Date(last.at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-              {last.ok && (
-                <ul className="text-xs text-muted-foreground mt-2 space-y-1">
-                  <li>بدون تغییر: {fa(last.unchanged ?? 0)}</li>
-                  {!!last.notInErp?.length && (
-                    <li>
-                      در سایت هست ولی هیچ کالایی در ERP این شناسه را ندارد ({fa(last.notInErp.length)}):{' '}
-                      <span dir="ltr">{listPreview(last.notInErp)}</span>
-                    </li>
-                  )}
-                  {!!last.notOnSite?.length && (
-                    <li>
-                      در ERP شناسه دارد ولی سایت برنگرداند ({fa(last.notOnSite.length)}):{' '}
-                      <span dir="ltr">{listPreview(last.notOnSite)}</span>
-                    </li>
-                  )}
-                  {!!last.skipped?.length && (
-                    <li>
-                      نادیده گرفته شد ({fa(last.skipped.length)}):{' '}
-                      {listPreview(last.skipped.map((s) => `${s.key} (${s.why})`))}
-                    </li>
-                  )}
-                </ul>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">هنوز اجرا نشده است.</p>
-          )}
+      <SettingsPanel
+        title="عکس محصولات از سایت"
+        description={
+          <>
+            عکس روبه‌روی هر فریم و لینک صفحه‌اش در سایت، با «شناسهٔ سایت» خوانده می‌شود. هر روز یک بار هم خودکار اجرا
+            می‌شود. کالایی که شناسهٔ سایت ندارد دست نمی‌خورد.
+          </>
+        }
+        action={
           <Button onClick={sync} disabled={busy !== null || !usable}>
             {busy === 'sync' ? 'در حال هم‌گام‌سازی...' : 'هم‌گام‌سازی الان'}
           </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>ارسال موجودی به سایت</CardTitle>
-          <CardDescription>
-            موجودی انبار سایت با «شناسهٔ سایت» به سایت فرستاده می‌شود؛ فقط تعداد، نه قیمت. هر تغییر موجودی چند
-            دقیقه‌ای به سایت می‌رسد.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!panel ? (
-            <p className="text-sm text-muted-foreground">در حال خواندن وضعیت...</p>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 text-sm">
-                وضعیت:
-                <Badge variant={panel.enabled ? 'default' : 'secondary'}>{panel.enabled ? 'روشن' : 'خاموش'}</Badge>
-              </div>
-
-              <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                فقط وقتی روشن کنید که سایت تأیید کرده باشد: کالاها را فقط با شناسهٔ سایت (webId) تطبیق می‌دهد، در
-                createSale برای هر قلم webId می‌فرستد، و ثبت فروش‌هایش در ERP روشن است. وگرنه موجودی فریمی که فروشش
-                هنوز در ERP ثبت نشده به سایت برمی‌گردد و فریم دو بار فروخته می‌شود.
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {panel.enabled ? (
-                  <Button variant="outline" onClick={() => run('disable', disableStockPush)} disabled={busy !== null}>
-                    {busy === 'disable' ? 'در حال خاموش کردن...' : 'خاموش کردن'}
-                  </Button>
-                ) : (
-                  <Button onClick={() => check('enable')} disabled={busy !== null || !pushUsable}>
-                    {busy === 'check' ? 'در حال بررسی...' : 'بررسی سایت'}
-                  </Button>
+        }
+      >
+        {last ? (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-[13px]">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11.5px] ${last.ok ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}
+              >
+                {last.ok ? 'انجام شد' : 'ناموفق'}
+              </span>
+              <span className="font-medium">{last.message}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              آخرین اجرا: <span className="font-mono">{formatJalaliDate(last.at)}</span>{' '}
+              <span className="font-mono">
+                {new Date(last.at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </p>
+            {last.ok && (
+              <ul className="space-y-1 border-t pt-2 text-xs leading-relaxed text-muted-foreground">
+                <li>بدون تغییر: {fa(last.unchanged ?? 0)}</li>
+                {!!last.notInErp?.length && (
+                  <li>
+                    در سایت هست ولی هیچ کالایی در ERP این شناسه را ندارد ({fa(last.notInErp.length)}):{' '}
+                    <span dir="ltr" className="font-mono">{listPreview(last.notInErp)}</span>
+                  </li>
                 )}
-                <Button
-                  variant="outline"
-                  onClick={() => check('resync')}
-                  disabled={busy !== null || !panel.enabled || !pushUsable}
-                >
-                  {busy === 'check' && panel.enabled ? 'در حال بررسی...' : 'ارسال دوبارهٔ همهٔ موجودی'}
+                {!!last.notOnSite?.length && (
+                  <li>
+                    در ERP شناسه دارد ولی سایت برنگرداند ({fa(last.notOnSite.length)}):{' '}
+                    <span dir="ltr" className="font-mono">{listPreview(last.notOnSite)}</span>
+                  </li>
+                )}
+                {!!last.skipped?.length && (
+                  <li>
+                    نادیده گرفته شد ({fa(last.skipped.length)}):{' '}
+                    {listPreview(last.skipped.map((s) => `${s.key} (${s.why})`))}
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <p className="text-[13px] text-muted-foreground">هنوز اجرا نشده است. پس از ذخیرهٔ اتصال، «هم‌گام‌سازی الان» را بزنید.</p>
+        )}
+      </SettingsPanel>
+
+      <SettingsPanel
+        title="ارسال موجودی به سایت"
+        description="موجودی انبار سایت با «شناسهٔ سایت» به سایت فرستاده می‌شود؛ فقط تعداد، نه قیمت. هر تغییر موجودی چند دقیقه‌ای به سایت می‌رسد."
+        action={
+          panel && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11.5px] ${panel.enabled ? 'bg-success-soft text-success' : 'bg-secondary text-muted-foreground'}`}
+            >
+              {panel.enabled ? 'روشن' : 'خاموش'}
+            </span>
+          )
+        }
+      >
+        {!panel ? (
+          <p className="text-[13px] text-muted-foreground">در حال خواندن وضعیت...</p>
+        ) : (
+          <div className="space-y-3">
+            <StatusNote tone="warning">
+              فقط وقتی روشن کنید که سایت تأیید کرده باشد: کالاها را فقط با شناسهٔ سایت (webId) تطبیق می‌دهد، در
+              createSale برای هر قلم webId می‌فرستد، و ثبت فروش‌هایش در ERP روشن است. وگرنه موجودی فریمی که فروشش
+              هنوز در ERP ثبت نشده به سایت برمی‌گردد و فریم دو بار فروخته می‌شود.
+            </StatusNote>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {panel.enabled ? (
+                <Button variant="outline" onClick={() => run('disable', disableStockPush)} disabled={busy !== null}>
+                  {busy === 'disable' ? 'در حال خاموش کردن...' : 'خاموش کردن'}
                 </Button>
-              </div>
-              {!pushUsable && (
-                <p className="text-xs text-muted-foreground">
-                  بررسی سایت با آدرس، رمز و انبار ذخیره‌شده انجام می‌شود؛ اول آن‌ها را ذخیره کنید.
-                </p>
+              ) : (
+                <Button onClick={() => check('enable')} disabled={busy !== null || !pushUsable}>
+                  {busy === 'check' ? 'در حال بررسی...' : 'بررسی سایت'}
+                </Button>
               )}
+              <Button
+                variant="outline"
+                onClick={() => check('resync')}
+                disabled={busy !== null || !panel.enabled || !pushUsable}
+              >
+                {busy === 'check' && panel.enabled ? 'در حال بررسی...' : 'ارسال دوبارهٔ همهٔ موجودی'}
+              </Button>
+            </div>
+            {!pushUsable && (
+              <p className="text-xs text-muted-foreground">
+                بررسی سایت با آدرس، رمز و انبار ذخیره‌شده انجام می‌شود؛ اول آن‌ها را ذخیره کنید.
+              </p>
+            )}
 
-              {preview && (
-                <div className="rounded-lg border p-3 text-sm space-y-2">
-                  <div className="font-medium">
-                    سایت تأیید کرد که موجودی انبار «{warehouseName(preview.result.warehouseId)}» (
-                    <span dir="ltr">{preview.result.warehouseId}</span>) را می‌گیرد.
-                  </div>
-                  <ul className="text-xs space-y-1">
-                    <li className={preview.result.goingOut.length ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
-                      در سایت موجود است ولی در ERP نه، پس در سایت ناموجود می‌شود: {fa(preview.result.goingOut.length)}
-                      {!!preview.result.goingOut.length && (
-                        <div dir="ltr" className="mt-1 text-right">
-                          {preview.result.goingOut.join('، ')}
-                        </div>
-                      )}
-                    </li>
-                    <li className="text-muted-foreground">
-                      در سایت ناموجود است و در ERP موجود، پس دوباره موجود می‌شود: {fa(preview.result.comingIn.length)}
-                      {!!preview.result.comingIn.length && (
-                        <>
-                          {' '}
-                          <span dir="ltr">{listPreview(preview.result.comingIn)}</span>
-                        </>
-                      )}
-                    </li>
-                    <li className="text-muted-foreground">بدون تغییر: {fa(preview.result.unchanged)}</li>
-                    <li className="text-muted-foreground">
-                      در ERP شناسه دارد ولی در سایت نیست: {fa(preview.result.notOnSite.length)}
-                      {!!preview.result.notOnSite.length && (
-                        <>
-                          {' '}
-                          <span dir="ltr">{listPreview(preview.result.notOnSite)}</span>
-                        </>
-                      )}
-                    </li>
-                  </ul>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      onClick={() =>
-                        preview.purpose === 'enable'
-                          ? run('enable', () => enableStockPush(preview.result.goingOut))
-                          : run('resync', () => resyncStockPush(preview.result.goingOut))
-                      }
-                      disabled={busy !== null}
+            {preview && (
+              <div className="space-y-2 rounded-lg border p-3 text-[13px]">
+                <div className="font-medium">
+                  سایت تأیید کرد که موجودی انبار «{warehouseName(preview.result.warehouseId)}» (
+                  <span dir="ltr" className="font-mono text-[12px]">{preview.result.warehouseId}</span>) را می‌گیرد.
+                </div>
+                <ul className="space-y-1.5 text-xs leading-relaxed">
+                  <li>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11.5px] ${preview.result.goingOut.length ? 'bg-danger-soft text-danger' : 'bg-secondary text-muted-foreground'}`}
                     >
-                      {busy === 'enable' || busy === 'resync'
-                        ? 'در حال انجام...'
-                        : preview.purpose === 'enable'
-                          ? 'تأیید و روشن کردن'
-                          : 'تأیید و ارسال دوباره'}
-                    </Button>
-                    <Button variant="ghost" onClick={() => setPreview(null)} disabled={busy !== null}>
-                      انصراف
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {panel.enabled && (
-                <div
-                  className={`rounded-lg border p-3 text-sm space-y-1 ${
-                    panel.status.paused || panel.status.failingSince ? 'border-red-200 bg-red-50 dark:bg-red-950/30' : ''
-                  }`}
-                >
-                  <div>آخرین ارسال موفق: {panel.status.lastOkAt ? when(panel.status.lastOkAt) : 'هنوز نه'}</div>
-                  {panel.status.failingSince && <div>ناموفق از: {when(panel.status.failingSince)}</div>}
-                  {panel.status.paused ? (
-                    <div className="space-y-2 pt-1">
-                      <div className="font-medium">ارسال خودکار متوقف شد: {panel.status.paused.why}</div>
-                      <div className="text-xs text-muted-foreground">
-                        از {when(panel.status.paused.at)}؛ تا آن وقت هر ۱۰ دقیقه یک بار امتحان می‌شود. بعد از درست
-                        کردن تنظیمات سایت یا ERP، «تلاش دوباره» را بزنید.
+                      ناموجود می‌شود: {fa(preview.result.goingOut.length)}
+                    </span>{' '}
+                    <span className="text-muted-foreground">در سایت موجود است ولی در ERP نه، پس در سایت ناموجود می‌شود.</span>
+                    {!!preview.result.goingOut.length && (
+                      <div dir="ltr" className="mt-1 font-mono text-danger" style={{ textAlign: 'right' }}>
+                        {preview.result.goingOut.join('، ')}
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => run('retry', retryStockPush)} disabled={busy !== null}>
-                        {busy === 'retry' ? 'در حال انجام...' : 'تلاش دوباره'}
-                      </Button>
-                    </div>
-                  ) : (
-                    panel.status.lastMessage && (
-                      <div className="text-xs text-muted-foreground">{panel.status.lastMessage}</div>
-                    )
-                  )}
-                  <div>
-                    تغییرهای ارسال‌نشده: {fa(panel.pending)}
-                    {panel.oldestPendingAt && ` (قدیمی‌ترین: ${age(panel.oldestPendingAt)} پیش)`}
-                  </div>
-                </div>
-              )}
-
-              {panel.hold?.state === 'held' && (
-                <div className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 space-y-2">
-                  <div className="font-medium">
-                    {fa(panel.hold.webIds.length)} فریم منتظر تأیید شما برای ناموجود شدن در سایت
-                  </div>
-                  <p className="text-xs">
-                    موجودی این فریم‌ها در ERP به صفر رسیده، ولی چون فریم‌های زیادی با هم ناموجود می‌شدند ارسالشان از{' '}
-                    {when(panel.hold.since)} نگه داشته شده است. تا آزاد نکنید در سایت موجود می‌مانند و فروخته
-                    می‌شوند. اگر صفر شدنشان درست است آزاد کنید؛ اگر نه، اول موجودی ERP را درست کنید. فریمی که
-                    موجودی‌اش در ERP بیشتر از صفر شود، خودش از این فهرست بیرون می‌رود و با ارسال بعدی فرستاده می‌شود.
-                  </p>
-                  <div dir="ltr" className="text-xs text-right">
-                    {panel.hold.webIds.join('، ')}
-                  </div>
+                    )}
+                  </li>
+                  <li className="text-muted-foreground">
+                    در سایت ناموجود است و در ERP موجود، پس دوباره موجود می‌شود: {fa(preview.result.comingIn.length)}
+                    {!!preview.result.comingIn.length && (
+                      <>
+                        {' '}
+                        <span dir="ltr" className="font-mono">{listPreview(preview.result.comingIn)}</span>
+                      </>
+                    )}
+                  </li>
+                  <li className="text-muted-foreground">بدون تغییر: {fa(preview.result.unchanged)}</li>
+                  <li className="text-muted-foreground">
+                    در ERP شناسه دارد ولی در سایت نیست: {fa(preview.result.notOnSite.length)}
+                    {!!preview.result.notOnSite.length && (
+                      <>
+                        {' '}
+                        <span dir="ltr" className="font-mono">{listPreview(preview.result.notOnSite)}</span>
+                      </>
+                    )}
+                  </li>
+                </ul>
+                <div className="flex flex-wrap gap-2 border-t pt-2">
                   <Button
-                    size="sm"
-                    onClick={() => run('release', () => releaseStockHold(panel.hold?.webIds ?? []))}
+                    onClick={() =>
+                      preview.purpose === 'enable'
+                        ? run('enable', () => enableStockPush(preview.result.goingOut))
+                        : run('resync', () => resyncStockPush(preview.result.goingOut))
+                    }
                     disabled={busy !== null}
                   >
-                    {busy === 'release' ? 'در حال آزاد کردن...' : 'آزاد کردن'}
+                    {busy === 'enable' || busy === 'resync'
+                      ? 'در حال انجام...'
+                      : preview.purpose === 'enable'
+                        ? 'تأیید و روشن کردن'
+                        : 'تأیید و ارسال دوباره'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setPreview(null)} disabled={busy !== null}>
+                    انصراف
                   </Button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {panel.skipped.length > 0 && (
-                <div className="text-sm space-y-1">
-                  <div className="font-medium">شناسه‌هایی که سایت نپذیرفت ({fa(panel.skipped.length)})</div>
-                  <ul className="text-xs text-muted-foreground space-y-1">
-                    {panel.skipped.map((s) => (
-                      <li key={s.webId}>
-                        <span dir="ltr">{s.webId}</span>: {s.why}
-                        {s.at && ` (${when(s.at)})`}
-                      </li>
-                    ))}
-                  </ul>
+            {panel.enabled && (
+              <StatusNote tone={panel.status.paused || panel.status.failingSince ? 'danger' : 'neutral'} className="space-y-1">
+                <div>
+                  آخرین ارسال موفق:{' '}
+                  <span className="font-mono">{panel.status.lastOkAt ? when(panel.status.lastOkAt) : 'هنوز نه'}</span>
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                {panel.status.failingSince && (
+                  <div>
+                    ناموفق از: <span className="font-mono">{when(panel.status.failingSince)}</span>
+                  </div>
+                )}
+                {panel.status.paused ? (
+                  <div className="space-y-2 pt-1">
+                    <div className="font-medium">ارسال خودکار متوقف شد: {panel.status.paused.why}</div>
+                    <div className="text-xs">
+                      از {when(panel.status.paused.at)}؛ تا آن وقت هر ۱۰ دقیقه یک بار امتحان می‌شود. بعد از درست
+                      کردن تنظیمات سایت یا ERP، «تلاش دوباره» را بزنید.
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => run('retry', retryStockPush)} disabled={busy !== null}>
+                      {busy === 'retry' ? 'در حال انجام...' : 'تلاش دوباره'}
+                    </Button>
+                  </div>
+                ) : (
+                  panel.status.lastMessage && (
+                    <div className="text-xs text-muted-foreground">{panel.status.lastMessage}</div>
+                  )
+                )}
+                <div>
+                  تغییرهای ارسال‌نشده: {fa(panel.pending)}
+                  {panel.oldestPendingAt && ` (قدیمی‌ترین: ${age(panel.oldestPendingAt)} پیش)`}
+                </div>
+              </StatusNote>
+            )}
+
+            {panel.hold?.state === 'held' && (
+              <StatusNote tone="warning" className="space-y-2">
+                <div className="font-medium">
+                  {fa(panel.hold.webIds.length)} فریم منتظر تأیید شما برای ناموجود شدن در سایت
+                </div>
+                <p className="text-xs">
+                  موجودی این فریم‌ها در ERP به صفر رسیده، ولی چون فریم‌های زیادی با هم ناموجود می‌شدند ارسالشان از{' '}
+                  {when(panel.hold.since)} نگه داشته شده است. تا آزاد نکنید در سایت موجود می‌مانند و فروخته
+                  می‌شوند. اگر صفر شدنشان درست است آزاد کنید؛ اگر نه، اول موجودی ERP را درست کنید. فریمی که
+                  موجودی‌اش در ERP بیشتر از صفر شود، خودش از این فهرست بیرون می‌رود و با ارسال بعدی فرستاده می‌شود.
+                </p>
+                <div dir="ltr" className="font-mono text-xs" style={{ textAlign: 'right' }}>
+                  {panel.hold.webIds.join('، ')}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => run('release', () => releaseStockHold(panel.hold?.webIds ?? []))}
+                  disabled={busy !== null}
+                >
+                  {busy === 'release' ? 'در حال آزاد کردن...' : 'آزاد کردن'}
+                </Button>
+              </StatusNote>
+            )}
+
+            {panel.skipped.length > 0 && (
+              <div className="space-y-1 border-t pt-3 text-[13px]">
+                <div className="font-medium">شناسه‌هایی که سایت نپذیرفت ({fa(panel.skipped.length)})</div>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {panel.skipped.map((s) => (
+                    <li key={s.webId}>
+                      <span dir="ltr" className="font-mono">{s.webId}</span>: {s.why}
+                      {s.at && ` (${when(s.at)})`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </SettingsPanel>
+    </>
   );
 }

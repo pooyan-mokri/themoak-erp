@@ -1,5 +1,7 @@
 import { getSalesAnalytics } from '@/actions/sales-analytics';
 import { SalesAnalyticsDashboard } from '@/components/sales/sales-analytics-dashboard';
+import { PageHeader } from '@/components/layout/page-header';
+import { PrintButton } from '@/components/reports/print-button';
 import { BackButton } from '@/components/ui/back-button';
 import { requireRouteAccess } from '@/lib/access';
 
@@ -8,19 +10,21 @@ export default async function SalesAnalyticsPage() {
   const analytics = await getSalesAnalytics();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">گزارشات و تحلیل فروش</h1>
-          <p className="text-muted-foreground mt-1">
-            آمار، نمودار و پیش‌بینی فروش
-          </p>
-        </div>
-        <BackButton href="/dashboard/sales" label="بازگشت به مدیریت فروش" />
-      </div>
-      
+    <div className="space-y-4">
+      <PageHeader
+        title="تحلیل و پیش‌بینی فروش"
+        description="۹۰ روز گذشته، مقایسه با ۹۰ روز پیش از آن، و پیش‌بینی ۷ روز آینده"
+        actions={
+          <>
+            <PrintButton />
+            <span className="print:hidden">
+              <BackButton href="/dashboard/sales" label="بازگشت به مدیریت فروش" />
+            </span>
+          </>
+        }
+      />
+
       <SalesAnalyticsDashboard data={analytics} />
     </div>
   );
 }
-

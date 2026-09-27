@@ -87,88 +87,86 @@ export function UserForm({ open, onOpenChange, user }: UserFormProps) {
         <DialogHeader>
           <DialogTitle>{isEditing ? 'ویرایش کاربر' : 'افزودن کاربر جدید'}</DialogTitle>
         </DialogHeader>
-        <form action={handleSubmit} className="grid gap-4 py-4" onSubmit={(e) => {
+        <form action={handleSubmit} className="grid gap-3 py-2" onSubmit={(e) => {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
           handleSubmit(formData);
         }}>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="name" className="text-right">
+          <div className="space-y-1.5">
+            <Label htmlFor="name" className="text-[12.5px] font-normal text-muted-foreground">
               نام
             </Label>
             <Input
               id="name"
               name="name"
               defaultValue={user?.name}
-              className="col-span-3"
               required
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="email" className="text-right">
+          <div className="space-y-1.5">
+            <Label htmlFor="email" className="text-[12.5px] font-normal text-muted-foreground">
               ایمیل
             </Label>
             <Input
               id="email"
               name="email"
               type="email"
+              dir="ltr"
               defaultValue={user?.email}
-              className="col-span-3"
               required
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="phone" className="text-right">
+          <div className="space-y-1.5">
+            <Label htmlFor="phone" className="text-[12.5px] font-normal text-muted-foreground">
               موبایل
             </Label>
             <Input
               id="phone"
               name="phone"
+              dir="ltr"
               defaultValue={user?.phone}
-              className="col-span-3"
               placeholder="0912..."
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="role" className="text-right">
+          <div className="space-y-1.5">
+            <Label htmlFor="role" className="text-[12.5px] font-normal text-muted-foreground">
               نقش
             </Label>
-            <div className="col-span-3">
-              <Select 
-                name="role" 
-                value={role} 
-                onValueChange={(value) => {
-                  setRole(value as Role);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="انتخاب نقش" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.map((value) => (
-                    <SelectItem key={value} value={value}>{ROLE_LABELS[value]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <input type="hidden" name="role" value={role} />
-              <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                {describeRole(role).map((line) => (
-                  <p key={line}>{line}</p>
+            <Select 
+              name="role" 
+              value={role} 
+              onValueChange={(value) => {
+                setRole(value as Role);
+              }}
+            >
+              <SelectTrigger id="role">
+                <SelectValue placeholder="انتخاب نقش" />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES.map((value) => (
+                  <SelectItem key={value} value={value}>{ROLE_LABELS[value]}</SelectItem>
                 ))}
-              </div>
+              </SelectContent>
+            </Select>
+            <input type="hidden" name="role" value={role} />
+            <div className="space-y-0.5 rounded-md bg-secondary px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              {describeRole(role).map((line) => (
+                <p key={line}>{line}</p>
+              ))}
             </div>
           </div>
           
           {!isEditing && (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="password" className="text-right">
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-[12.5px] font-normal text-muted-foreground">
                 رمز عبور
               </Label>
               <Input
                 id="password"
                 name="password"
                 type="password"
-                className="col-span-3"
+                dir="ltr"
+                autoComplete="new-password"
                 required
                 minLength={6}
               />
