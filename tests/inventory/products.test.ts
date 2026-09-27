@@ -45,7 +45,8 @@ test('createProduct: every product type, with a unique standard barcode; a taken
 });
 
 test('createProduct: missing name or SKU, an unknown type and negative prices are refused', async () => {
-  for (const extra of [{ name: '' }, { sku: '' }, { productType: 'GIFT' }, { costPrice: '-1' }, { sellPrice: '-5' }]) {
+  const bad: Array<Record<string, string>> = [{ name: '' }, { sku: '' }, { productType: 'GIFT' }, { costPrice: '-1' }, { sellPrice: '-5' }];
+  for (const extra of bad) {
     const result = await createProduct({}, fields(extra));
     assert.equal(result.message, 'لطفا فیلدهای الزامی را پر کنید.', JSON.stringify(extra));
   }

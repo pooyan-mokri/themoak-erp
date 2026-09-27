@@ -105,7 +105,7 @@ test('product page: stock totals, what is on hand outside consignment, and value
     ['فروشگاه', 4, false, 'LOW'],
     ['مرکزی', 30, false, 'OK'],
   ]);
-  assert.deepEqual((await getProductStockByWarehouse(w.panj.id)).map((b: any) => b.quantity).sort((a, b) => a - b), [4, 6, 30]);
+  assert.deepEqual((await getProductStockByWarehouse(w.panj.id)).map((b: any) => b.quantity).sort((a: number, b: number) => a - b), [4, 6, 30]);
   assert.equal(await getProductDetail('missing'), undefined);
 });
 
