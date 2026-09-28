@@ -23,7 +23,8 @@ export default function DashboardLayout({
           <div className="print:hidden">
             <Header />
           </div>
-          <div className="p-4 md:p-8 print:p-0">
+          {/* A grid item may shrink below its content, so a wide table scrolls in its own box instead of widening the page on a phone. */}
+          <div className="p-4 md:p-8 print:p-0 [&_.grid>*]:min-w-0">
             {/* Stock push alerts for admins - Hidden when printing */}
             <SiteHookAlerts />
             {/* Breadcrumb - Hidden when printing */}

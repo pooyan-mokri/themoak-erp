@@ -38,8 +38,8 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
   return (
     <div className="space-y-6 h-full flex flex-col">
       <DashboardBreadcrumb customLabel={project.name} />
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4 min-w-0">
           <Link href="/dashboard/projects">
             <Button variant="ghost" size="icon">
               <ArrowRight className="h-4 w-4" />
@@ -55,7 +55,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ProjectForm project={project} showBudget={await hasPermission('finance.view')} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
           <TaskForm projectId={project.id} users={users} />
         </div>

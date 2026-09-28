@@ -22,9 +22,9 @@ export default async function ProductsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold tracking-tight">تعریف کالا</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <ProductActions products={products} canSeeCost={canSeeCost} canSeeSellPrice={canSeeSellPrice} canManage={canManage} />
           <Link href="/dashboard/inventory/products/labels">
             <Button variant="outline">
