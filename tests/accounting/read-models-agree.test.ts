@@ -18,6 +18,9 @@ import { getSalesAnalytics } from '@/actions/sales-analytics';
 import { getDashboardFinancials, getDashboardSales } from '@/actions/dashboard';
 import { agentTools } from '@/lib/ai-agent';
 import { GET } from '@/app/api/erp/route';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import AccountingReportsPage from '@/app/dashboard/accounting/reports/page';
 import { openAccount, stockIn } from '../sales/world';
 
 // Pooyan: the same figure must be the same on every screen that shows it. Money in toman at the latest rate
@@ -131,4 +134,29 @@ test('profit, cash, stock, what is owed and revenue agree on the reports, report
     },
     { reports: [1, 900_000], reporting: [1, 900_000], accounting: [1, 900_000], analytics: [1, 900_000], dashboard: [1, 1] },
   );
+});
+
+test('the accounting reports page shows every asset and liability line, and they add up to its totals', async () => {
+  (globalThis as any).React = React;
+  await openAccount('بانک', { opening: 10_000_000 });
+  const own = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  const partner = await prisma.customer.create({ data: { name: 'همکار' } });
+  const atPartner = await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  const frame = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ', costPrice: 400_000, sellPrice: 1_000_000 } });
+  await stockIn(frame.id, own.id, 3);
+  await stockIn(frame.id, atPartner.id, 2);
+  await prisma.order.create({ data: { customerId: partner.id, totalAmount: 1_000_000, paidAmount: 0, paymentStatus: 'UNPAID' } });
+
+  const sheet = await getReportingBalanceSheet();
+  const lines = [sheet.assets.cashAndBank, sheet.assets.inventory, sheet.assets.consignmentInventory, sheet.assets.accountsReceivable, sheet.assets.prepaidPurchases];
+  assert.deepEqual(lines, [10_000_000, 1_200_000, 800_000, 1_000_000, 0]);
+  assert.equal(lines.reduce((sum, v) => sum + v, 0), sheet.assets.total);
+  const html = renderToStaticMarkup(await AccountingReportsPage());
+  for (const [label, value] of [
+    ['نقد و بانک', sheet.assets.cashAndBank], ['ارزش موجودی کالا', sheet.assets.inventory], ['کالای امانی نزد همکاران', sheet.assets.consignmentInventory],
+    ['حساب‌های دریافتنی', sheet.assets.accountsReceivable], ['پیش‌پرداخت خرید', sheet.assets.prepaidPurchases], ['جمع دارایی‌ها', sheet.assets.total],
+    ['بدهی به تأمین‌کنندگان', sheet.liabilities.accountsPayable], ['جمع بدهی‌ها', sheet.liabilities.total],
+  ] as Array<[string, number]>) {
+    assert.match(html, new RegExp(`${label}:</span><span[^>]*>${value.toLocaleString('fa-IR')}</span>`), label);
+  }
 });

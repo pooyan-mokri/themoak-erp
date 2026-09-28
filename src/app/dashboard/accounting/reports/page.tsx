@@ -77,8 +77,16 @@ export default async function ReportsPage() {
                 <span className="font-medium">{bs.assets.inventory.toLocaleString('fa-IR')}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted-foreground">کالای امانی نزد همکاران:</span>
+                <span className="font-medium">{bs.assets.consignmentInventory.toLocaleString('fa-IR')}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">حساب‌های دریافتنی:</span>
                 <span className="font-medium">{bs.assets.accountsReceivable.toLocaleString('fa-IR')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">پیش‌پرداخت خرید:</span>
+                <span className="font-medium">{bs.assets.prepaidPurchases.toLocaleString('fa-IR')}</span>
               </div>
               <Separator className="my-2" />
               <div className="flex justify-between font-bold text-lg">
@@ -93,6 +101,10 @@ export default async function ReportsPage() {
               <CardTitle>بدهی‌ها و حقوق صاحبان سهام</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">بدهی به تأمین‌کنندگان:</span>
+                <span className="font-medium">{bs.liabilities.accountsPayable.toLocaleString('fa-IR')}</span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">جمع بدهی‌ها:</span>
                 <span className="font-medium">{bs.liabilities.total.toLocaleString('fa-IR')}</span>
