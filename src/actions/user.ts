@@ -308,13 +308,15 @@ export async function changePassword(prevState: any, formData: FormData) {
 
     const hashedPassword = await hashPassword(newPassword);
 
+    // Every session from before, this one included, ends: signed in anywhere
+    // else with the old password, it no longer is.
     await prisma.user.update({
       where: { id: currentUser.id },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, passwordChangedAt: new Date() },
     });
 
     await logActivity(currentUser.id, 'CHANGE_PASSWORD', 'رمز عبور تغییر یافت.');
-    return { message: 'رمز عبور با موفقیت تغییر یافت.', success: true };
+    return { message: 'رمز عبور با موفقیت تغییر یافت. با رمز تازه دوباره وارد شوید.', success: true };
   } catch (error) {
     return { message: 'خطا در تغییر رمز عبور.' };
   }

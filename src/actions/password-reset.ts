@@ -201,9 +201,10 @@ export async function resetPassword(token: string, prevState: any, formData: For
       });
       if (count === 0) return null;
       const resetToken = await tx.passwordResetToken.findUniqueOrThrow({ where: { token }, select: { userId: true } });
+      // Sessions signed in with the old password end.
       await tx.user.update({
         where: { id: resetToken.userId },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, passwordChangedAt: new Date() },
       });
       return resetToken.userId as string;
     });

@@ -17,6 +17,8 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   phone               String?
+  /// When the password last changed (own change, reset link, admin): sessions from before it end.
+  passwordChangedAt   DateTime?
   aiConversations     AIConversation[]
   activityLogs        ActivityLog[]
   employee            Employee?

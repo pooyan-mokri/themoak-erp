@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { changePassword } from '@/actions/user';
 import { toast } from 'sonner';
+import { signOut } from 'next-auth/react';
 
 export function PasswordForm() {
   const [loading, setLoading] = useState(false);
@@ -26,9 +27,8 @@ export function PasswordForm() {
 
     if (result.success) {
       toast.success(result.message);
-      // Reset form
-      const form = document.getElementById('password-form') as HTMLFormElement;
-      form.reset();
+      // Every session from before the change has ended, this one too.
+      await signOut({ callbackUrl: '/login' });
     } else {
       toast.error(result.message);
     }
