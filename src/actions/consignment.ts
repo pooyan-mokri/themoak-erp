@@ -15,6 +15,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { effectiveQuantity } from '@/lib/return-math';
 import { logActivity } from '@/lib/activity-log';
+import { COGS_ACCOUNT_NAME, COMMISSION_ACCOUNT_NAME, ensureExpenseAccount } from '@/lib/expense-accounts';
 import {
   CONSIGNMENT_ORDER,
   NOT_CONSIGNMENT_MESSAGE,
@@ -32,17 +33,6 @@ import {
 } from '@/lib/consignment-channels';
 
 // const prisma = new PrismaClient();
-
-// Ensure a non-cash EXPENSE account exists (balance kept at 0 so it never
-// pollutes the balance-sheet cash total; only feeds P&L which sums by type).
-async function ensureExpenseAccount(tx: any, name: string): Promise<string> {
-  const existing = await tx.account.findFirst({ where: { name } });
-  if (existing) return existing.id;
-  const created = await tx.account.create({
-    data: { name, type: 'EXPENSE', currency: 'TOMAN', balance: 0 },
-  });
-  return created.id;
-}
 
 /**
  * Write the partner's channels as the form sent them. A channel the form
@@ -734,7 +724,7 @@ export async function recordConsignmentSales(input: {
           return id;
         };
         if (cogsTotal > 0) {
-          const cogsAccountId = await ensureExpenseAccount(tx, 'بهای تمام‌شده کالای فروش‌رفته');
+          const cogsAccountId = await ensureExpenseAccount(tx, COGS_ACCOUNT_NAME);
           await tx.transaction.create({
             data: {
               type: TransactionType.EXPENSE,
@@ -753,7 +743,7 @@ export async function recordConsignmentSales(input: {
           });
         }
         if (commissionExpenseAmount > 0) {
-          const commAccountId = await ensureExpenseAccount(tx, 'کمیسیون همکاران امانی');
+          const commAccountId = await ensureExpenseAccount(tx, COMMISSION_ACCOUNT_NAME);
           await tx.transaction.create({
             data: {
               type: TransactionType.EXPENSE,

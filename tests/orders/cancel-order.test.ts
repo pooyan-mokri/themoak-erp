@@ -90,6 +90,8 @@ test('4M at checkout and 6M paid later, then cancelled: both accounts go back, a
     [
       { label: 'اقتصاد نوین (TOMAN) •••• 8888', currency: 'TOMAN', change: -6_000_000, rows: 1, moves: true },
       { label: 'بانک سامان (TOMAN)', currency: 'TOMAN', change: -4_000_000, rows: 1, moves: true },
+      // The sale's cost of goods goes too, without moving any balance.
+      { label: 'بهای تمام‌شده کالای فروش‌رفته (TOMAN)', currency: 'TOMAN', change: 0, rows: 1, moves: false },
     ],
   );
 
@@ -106,10 +108,10 @@ test('a payment booked while the confirm dialog was open is not deleted: the can
   const before = await balances();
   const order = await sell(shop, 4_000_000, shop.saman.id);
 
-  // The dialog shows only the 4M checkout...
+  // The dialog shows only the 4M checkout (and the sale's cost of goods)...
   const preview = await getCancelOrderPreview(order.id);
   assert.equal(preview.success, true);
-  assert.equal(preview.success && preview.accounts.length, 1);
+  assert.equal(preview.success && preview.accounts.length, 2);
   // ...then someone else takes 6M on the same order.
   await pay(order.id, shop.novin.id, 6_000_000);
   const changed = await snapshot();
@@ -120,7 +122,7 @@ test('a payment booked while the confirm dialog was open is not deleted: the can
 
   // A fresh preview shows both payments, and that cancel goes through.
   const fresh = await getCancelOrderPreview(order.id);
-  assert.equal(fresh.success && fresh.accounts.length, 2);
+  assert.equal(fresh.success && fresh.accounts.length, 3);
   const result = await cancelOrder(order.id, fresh.success ? fresh.moneyRowIds : []);
   assert.equal(result.success, true, result.message);
   assert.deepEqual(await balances(), before);

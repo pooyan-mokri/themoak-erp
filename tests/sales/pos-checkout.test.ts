@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { prisma, resetDatabase } from '../helpers/db';
 import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
-import { createOrder } from '@/actions/sales';
+import { cancelOrder, createOrder, getCancelOrderPreview } from '@/actions/sales';
+import { getProfitAndLoss } from '@/actions/reporting';
 import { DUPLICATE_REQUEST_MESSAGE } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE } from '@/lib/receipt-ref';
 import { CHANNELS_FIELD } from '@/lib/consignment-channels';
@@ -101,7 +102,7 @@ test('a checkout paid in full books the order, one income row on it, the bank, t
     [[s.frame.id, 2, PRICE, s.store.id], [s.caseItem.id, 1, 500_000, s.store.id]].sort(),
   );
 
-  const [income] = await prisma.transaction.findMany({ where: { orderId: order.id } });
+  const [income] = await prisma.transaction.findMany({ where: { orderId: order.id, type: 'INCOME' } });
   assert.equal(order.transactionId, income.id);
   assert.deepEqual(
     [income.type, Number(income.amount), Number(income.amountInToman), Number(income.rateSnapshot), income.currency, income.accountId, income.customerId, income.category, income.clientRequestId, income.receiptUrl],
@@ -117,8 +118,13 @@ test('a checkout paid in full books the order, one income row on it, the bank, t
     sales.map((m: any) => [m.productId, m.fromWarehouseId, m.toWarehouseId, m.quantity, m.referenceId]).sort(),
     [[s.frame.id, s.store.id, null, 2, order.id], [s.caseItem.id, s.store.id, null, 1, order.id]].sort(),
   );
-  // A POS sale books no COGS row and no commission (neither is recorded for an ordinary sale).
-  assert.equal(await prisma.transaction.count({ where: { category: 'COGS' } }), 0);
+  // Its cost of goods, at each product's cost: one non-cash row on the COGS account. No commission.
+  const cogs = await prisma.transaction.findMany({ where: { category: 'COGS' }, include: { account: true } });
+  assert.deepEqual(
+    cogs.map((row: any) => [row.type, Number(row.amount), Number(row.amountInToman), row.orderId, row.customerId, row.account.name, row.account.type, row.date.toISOString()]),
+    [['EXPENSE', 2 * COST + 100_000, 2 * COST + 100_000, order.id, s.customer.id, 'بهای تمام‌شده کالای فروش‌رفته', 'EXPENSE', '2026-09-20T08:30:00.000Z']],
+  );
+  assert.equal(await balanceOf(cogs[0].accountId!), 0, 'the COGS account never moves');
   assert.equal(order.commissions.length, 0);
   await assertInvariants();
 });
@@ -146,7 +152,7 @@ test('a credit sale books no money row and leaves every account alone', async ()
   assert.equal(result.success, true, result.message);
   const order = await theOrder();
   assert.deepEqual([Number(order.paidAmount), order.paymentStatus, order.transactionId], [0, 'UNPAID', null]);
-  assert.equal(await prisma.transaction.count({ where: { orderId: order.id } }), 0);
+  assert.equal(await prisma.transaction.count({ where: { orderId: order.id, type: 'INCOME' } }), 0);
   assert.deepEqual([await balanceOf(s.bank.id), await balanceOf(s.till.id)], [OPENING, OPENING]);
   assert.equal(await quantityOf(s.frame.id, s.store.id), 9);
   await assertInvariants();
@@ -286,7 +292,7 @@ test('a total that is not the sum of the lines, or a discount below 0 or above t
   assert.equal(free.success, true, free.message);
   const order = await theOrder();
   assert.deepEqual([Number(order.paidAmount), order.paymentStatus], [0, 'PAID']);
-  assert.equal(await prisma.transaction.count({ where: { orderId: order.id } }), 0);
+  assert.equal(await prisma.transaction.count({ where: { orderId: order.id, type: 'INCOME' } }), 0);
   await assertInvariants();
 });
 
@@ -434,4 +440,41 @@ test('a POS sale to a partner is an ordinary sale: no commission, no channel, th
   assert.equal(await prisma.consignmentCommission.count(), 0);
   assert.equal(await prisma.transaction.count({ where: { category: 'CONSIGNMENT_COMMISSION' } }), 0);
   await assertInvariants();
+});
+
+// --- cost of goods sold ---
+
+test('the cost of goods is the product cost when sold, once per order, and a cancel takes it away with the sale', async () => {
+  const s = await shop();
+  assert.equal((await sell(s, 2, { paidAmount: 0, accountId: '', requestId: 'pos-cogs-000001' })).success, true);
+  // A later cost change does not touch the sale already booked.
+  await prisma.product.update({ where: { id: s.frame.id }, data: { costPrice: 9_000_000 } });
+  // The same checkout again books nothing more.
+  assert.equal((await sell(s, 2, { paidAmount: 0, accountId: '', requestId: 'pos-cogs-000001' })).message, DUPLICATE_REQUEST_MESSAGE);
+  const first = await theOrder();
+  const rows = await prisma.transaction.findMany({ where: { category: 'COGS' } });
+  assert.deepEqual(rows.map((row: any) => [row.orderId, Number(row.amount)]), [[first.id, 2 * COST]]);
+
+  // A frame at no cost books no row; the next sale books the new cost.
+  const free = await prisma.product.create({ data: { name: 'نمونه', sku: 'SAMPLE', costPrice: 0, sellPrice: 1 } });
+  await stockIn(free.id, s.store.id, 1);
+  assert.equal((await sell(s, 1, { items: [{ productId: free.id, quantity: 1, price: 1 }], totalAmount: 1, paidAmount: 0, accountId: '' })).success, true);
+  assert.equal((await sell(s, 1, { paidAmount: 0, accountId: '' })).success, true);
+  assert.deepEqual((await prisma.transaction.findMany({ where: { category: 'COGS' }, orderBy: { createdAt: 'asc' } })).map((row: any) => Number(row.amount)), [2 * COST, 9_000_000]);
+
+  // Cancelling the first sale deletes its cost row, and no balance moves.
+  const preview = await getCancelOrderPreview(first.id);
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.success && preview.accounts, [{ label: 'بهای تمام‌شده کالای فروش‌رفته (TOMAN)', currency: 'TOMAN', change: 0, rows: 1, moves: false }]);
+  assert.equal((await cancelOrder(first.id)).success, true);
+  assert.equal(await prisma.transaction.count({ where: { orderId: first.id } }), 0);
+  assert.deepEqual((await prisma.transaction.findMany({ where: { category: 'COGS' } })).map((row: any) => Number(row.amount)), [9_000_000]);
+  await assertInvariants();
+});
+
+test('the P&L counts the cost of goods of a POS sale as an expense, like a consignment sale', async () => {
+  const s = await shop();
+  assert.equal((await sell(s, 1)).success, true); // 10,000,000 in, 4,000,000 cost
+  const pl = await getProfitAndLoss();
+  assert.equal(pl.totalExpense, COST);
 });

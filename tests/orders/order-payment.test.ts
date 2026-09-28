@@ -51,6 +51,9 @@ function slowMoneyRows() {
   };
 }
 
+// The money rows asserted below are those that moved money (INCOME); every
+// sale also books its cost of goods as a non-cash COGS row.
+
 // --- recordOrderPayment ---
 
 test('two concurrent payments with the same requestId book one row and move the balance once', async () => {
@@ -66,7 +69,7 @@ test('two concurrent payments with the same requestId book one row and move the 
 
   for (const result of results) assert.equal(result.success, true, result.message);
   assert.deepEqual(results.map((r) => r.message).sort(), ['پرداخت با موفقیت ثبت شد.', DUPLICATE_REQUEST_MESSAGE].sort());
-  const rows = await prisma.transaction.findMany({ where: { orderId: order.id } });
+  const rows = await prisma.transaction.findMany({ where: { orderId: order.id, type: 'INCOME' } });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].clientRequestId, REQUEST);
   assert.equal((await balances())['بانک سامان'], OPENING + 4_000_000);
@@ -87,7 +90,7 @@ test('two concurrent payments of the whole debt: the second sees the first under
   beforeQuery.fn = null;
 
   assert.deepEqual(results.map((r) => r.success).sort(), [false, true]);
-  assert.equal(await prisma.transaction.count({ where: { orderId: order.id } }), 1);
+  assert.equal(await prisma.transaction.count({ where: { orderId: order.id, type: 'INCOME' } }), 1);
   const paid = await theOrder(order.id);
   assert.equal(Number(paid.paidAmount), PRICE);
   assert.equal(paid.paymentStatus, 'PAID');
@@ -103,7 +106,7 @@ test('a payment into the USD account moves it by amount ÷ rate, linked to the o
   assert.equal(result.success, true, result.message);
 
   assert.equal((await balances())['حساب ذخیره دلاری'], USD_OPENING + 5_000_000 / USD_RATE);
-  const [row] = await prisma.transaction.findMany({ where: { orderId: order.id } });
+  const [row] = await prisma.transaction.findMany({ where: { orderId: order.id, type: 'INCOME' } });
   assert.deepEqual(
     {
       type: row.type,
@@ -127,7 +130,7 @@ test('a payment on a cancelled order is refused and nothing changes', async () =
 
   const result = await recordOrderPayment(order.id, shop.saman.id, 1_000_000);
   assert.deepEqual(result, { success: false, message: 'این سفارش لغو شده است و نمی‌توان برای آن پرداخت ثبت کرد.' });
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 0);
   assert.deepEqual(await balances(), before);
   assert.equal(Number((await theOrder(order.id)).paidAmount), 0);
 });
@@ -139,7 +142,7 @@ test('a payment on a website order is refused and nothing changes', async () => 
   const before = await balances();
 
   assert.deepEqual(await recordOrderPayment(order.id, shop.saman.id, 1_000_000), { success: false, message: WEBSITE_ORDER_LOCKED });
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 0);
   assert.deepEqual(await balances(), before);
 });
 
@@ -152,7 +155,7 @@ test('a checkout that pays more than the total after discount is rejected and wr
   const result = await checkout(shop, { paid: 9_500_000, discount: 1_000_000, accountId: shop.saman.id });
   assert.deepEqual(result, { success: false, message: 'مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت (پس از تخفیف) باشد.' });
   assert.equal(await prisma.order.count(), 0);
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 0);
   assert.deepEqual(await balances(), before);
   assert.equal(await stockOf(shop), STOCK);
 
@@ -169,7 +172,7 @@ test('a checkout with a negative paid amount is rejected: it would let «ثبت 
   const result = await checkout(shop, { paid: -1_000_000, accountId: shop.saman.id });
   assert.deepEqual(result, { success: false, message: 'مبلغ پرداختی نمی‌تواند منفی باشد.' });
   assert.equal(await prisma.order.count(), 0);
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 0);
   assert.deepEqual(await balances(), before);
   assert.equal(await stockOf(shop), STOCK);
 });
@@ -185,7 +188,7 @@ test('order money goes to a bank or cash account only: an EXPENSE account is ref
 
   const order = await creditSale(shop);
   assert.deepEqual(await recordOrderPayment(order.id, expense.id, 1_000_000), { success: false, message });
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 0);
   assert.equal(Number((await prisma.account.findUniqueOrThrow({ where: { id: expense.id } })).balance), 0);
   assert.equal(Number((await theOrder(order.id)).paidAmount), 0);
 });
@@ -202,7 +205,7 @@ test('a checkout sent twice with the same requestId is one sale: one order, one 
   assert.ok(results.some((r) => r.message === DUPLICATE_REQUEST_MESSAGE));
   const order = await theOrder();
   assert.equal(await prisma.order.count(), 1);
-  const rows = await prisma.transaction.findMany();
+  const rows = await prisma.transaction.findMany({ where: { type: 'INCOME' } });
   assert.deepEqual(
     rows.map((row: any) => [row.orderId, row.clientRequestId, Number(row.amount)]),
     [[order.id, REQUEST, PRICE]],
@@ -228,7 +231,7 @@ test('an invoice payment is the order payment: one row linked to the order, and 
   const result = await recordInvoicePayment(invoiceId, 4_000_000, shop.saman.id);
   assert.equal(result.success, true, result.message);
 
-  const rows = await prisma.transaction.findMany();
+  const rows = await prisma.transaction.findMany({ where: { type: 'INCOME' } });
   assert.deepEqual(rows.map((row: any) => [row.orderId, row.accountId, Number(row.amount)]), [[order.id, shop.saman.id, 4_000_000]]);
   assert.equal((await balances())['بانک سامان'], OPENING + 4_000_000);
   const paid = await theOrder(order.id);
@@ -248,7 +251,7 @@ test('a payment already taken on the order is not taken again on its invoice', a
 
   const result = await recordInvoicePayment(invoiceId, PRICE, shop.novin.id);
   assert.equal(result.success, false);
-  assert.equal(await prisma.transaction.count(), 1);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 1);
   assert.equal((await balances())['اقتصاد نوین'], OPENING);
   assert.equal(Number((await theOrder(order.id)).paidAmount), PRICE);
 });
@@ -264,7 +267,7 @@ test('an invoice payment that fails half way writes nothing at all', async () =>
   beforeQuery.fn = null;
 
   assert.equal(result.success, false);
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { type: 'INCOME' } }), 0);
   assert.equal((await balances())['بانک سامان'], OPENING);
   assert.equal(Number((await theOrder(order.id)).paidAmount), 0);
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });

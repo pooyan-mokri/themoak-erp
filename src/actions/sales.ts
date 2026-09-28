@@ -23,6 +23,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { accountLabel } from '@/lib/account-label';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { isConsignmentOrder } from '@/lib/consignment-amounts';
+import { COGS_ACCOUNT_NAME, ensureExpenseAccount } from '@/lib/expense-accounts';
 
 // const prisma = new PrismaClient();
 
@@ -257,6 +258,33 @@ export async function createOrder(data: OrderData) {
             type: 'SALE',
             referenceId: order.id,
             note: `فروش سفارش #${order.number}`,
+          },
+        });
+      }
+      // 8. Cost of goods sold, as a consignment sale books it: one non-cash
+      // EXPENSE row per order at each product's cost at the time of sale, on
+      // the COGS account whose balance it never moves. The P&L reads it; a
+      // cancel deletes it with the order's other rows.
+      const costs = await tx.product.findMany({
+        where: { id: { in: items.map((item) => item.productId) } },
+        select: { id: true, costPrice: true },
+      });
+      const costOf = new Map<string, number>(costs.map((product: any) => [product.id, Number(product.costPrice || 0)]));
+      const cogsTotal = items.reduce((sum, item) => sum + item.quantity * (costOf.get(item.productId) ?? 0), 0);
+      if (cogsTotal > 0) {
+        await tx.transaction.create({
+          data: {
+            type: TransactionType.EXPENSE,
+            currency: 'TOMAN',
+            amount: new Prisma.Decimal(cogsTotal),
+            amountInToman: new Prisma.Decimal(cogsTotal),
+            rateSnapshot: 1,
+            accountId: await ensureExpenseAccount(tx, COGS_ACCOUNT_NAME),
+            category: 'COGS',
+            description: `بهای تمام‌شده کالای فروش‌رفته - سفارش #${order.number}`,
+            customerId: customerId || undefined,
+            orderId: order.id,
+            date: orderDate,
           },
         });
       }

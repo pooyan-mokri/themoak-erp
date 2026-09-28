@@ -75,7 +75,7 @@ test('payments into two accounts after the checkout: PARTIAL until the discounte
   assert.deepEqual([Number(order.paidAmount), order.paymentStatus], [18_000_000, 'PAID']);
   assert.deepEqual([await balanceOf(shopData.bank.id), await balanceOf(shopData.till.id)], [OPENING + 13_000_000, OPENING + 5_000_000]);
 
-  const rows = await prisma.transaction.findMany({ where: { orderId: s.id }, orderBy: { createdAt: 'asc' } });
+  const rows = await prisma.transaction.findMany({ where: { orderId: s.id, type: 'INCOME' }, orderBy: { createdAt: 'asc' } });
   assert.deepEqual(
     rows.map((row: any) => [row.type, Number(row.amountInToman), row.accountId, row.customerId, row.category]),
     [
@@ -127,7 +127,7 @@ test('a payment into the dollar account without any rate is refused and writes n
   await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 90_000, date: new Date('2026-09-25') } });
   assert.equal((await recordOrderPayment(order.id, s.usd.id, 4_500_000)).success, true);
   assert.equal(await balanceOf(s.usd.id), 150);
-  const row = await prisma.transaction.findFirstOrThrow({ where: { orderId: order.id } });
+  const row = await prisma.transaction.findFirstOrThrow({ where: { orderId: order.id, type: 'INCOME' } });
   assert.deepEqual([Number(row.amount), Number(row.amountInToman), Number(row.rateSnapshot), row.currency], [50, 4_500_000, 90_000, 'USD']);
   await assertInvariants();
 });

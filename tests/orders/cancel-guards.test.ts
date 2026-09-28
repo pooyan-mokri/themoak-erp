@@ -52,7 +52,8 @@ test('a payment the order-link backfill missed blocks the cancel, so it is not l
   assert.match(result.message, /نمی‌خواند/);
   assert.deepEqual(await balances(), before);
   assert.notEqual((await theOrder(order.id)).status, 'CANCELLED');
-  assert.equal(await prisma.transaction.count(), 2);
+  // The checkout, its cost of goods and the older row.
+  assert.equal(await prisma.transaction.count(), 3);
 });
 
 test('SALES may cancel a sale paid at checkout, but only an admin reverses a payment recorded later', async () => {
