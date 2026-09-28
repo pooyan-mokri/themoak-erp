@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
+import { stockLevel } from '@/lib/stock-levels';
 
 // Older purchase receipts wrote the landed cost into the movement note.
 const LANDED_COST_NOTE = / - قیمت تمام‌شده هر واحد: .*$/;
@@ -51,7 +52,7 @@ export async function getWarehouseDetail(warehouseId: string) {
       : null;
     const uniqueProducts = inventory.length;
     const itemsWithStock = inventory.filter((item: any) => item.quantity > 0).length;
-    const itemsOutOfStock = inventory.filter((item: any) => item.quantity === 0).length;
+    const itemsOutOfStock = inventory.filter((item: any) => stockLevel(item.quantity) === 'OUT').length;
 
     // Get recent order items (sales)
     type OrderItemWithRelations = Prisma.OrderItemGetPayload<{
@@ -265,10 +266,7 @@ export async function getWarehouseDetail(warehouseId: string) {
     });
 
     // Get low stock items
-    const lowStockItems = formattedInventory.filter((item: any) => {
-      // Items with quantity less than 10 or items that have been in stock for a while
-      return item.quantity < 10 && item.quantity > 0;
-    });
+    const lowStockItems = formattedInventory.filter((item: any) => stockLevel(item.quantity) === 'LOW');
 
     // Get top products by value (a ranking by cost, so none without cost.view)
     const topProductsByValue = canSeeCost

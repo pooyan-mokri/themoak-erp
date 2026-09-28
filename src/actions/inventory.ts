@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { LOW_STOCK_MAX } from '@/lib/stock-levels';
 
 // const prisma = new PrismaClient();
 
@@ -313,8 +314,9 @@ export async function getWarehouseDashboardStats() {
       // Archived warehouses are hidden from every list, so the count leaves them out too.
       prisma.warehouse.count({ where: { isArchived: false } }),
       prisma.product.count(),
+      // Rows at a low level (src/lib/stock-levels.ts): 1 to LOW_STOCK_MAX.
       prisma.inventory.count({
-        where: { quantity: { lte: 10 } } // Assuming 10 is low stock threshold
+        where: { quantity: { gte: 1, lte: LOW_STOCK_MAX } }
       }),
       // Stock value is quantity × cost: only loaded for roles that may see cost.
       canSeeCost

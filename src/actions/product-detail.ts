@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { hasPermission, requirePermission } from '@/lib/access';
+import { stockLevel } from '@/lib/stock-levels';
 
 // const prisma = new PrismaClient();
 
@@ -88,7 +89,7 @@ export async function getProductStockBreakdown(productId: string) {
       warehouseName: inv.warehouse.name,
       isVirtual: inv.warehouse.isVirtual,
       quantity: inv.quantity,
-      status: inv.quantity < 10 ? 'LOW' : 'OK'
+      status: stockLevel(inv.quantity)
     }));
   } catch (error) {
     console.error('Error fetching stock breakdown:', error);

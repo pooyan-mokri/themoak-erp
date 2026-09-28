@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
+import { stockLevel } from '@/lib/stock-levels';
 
 // Stock values at cost throughout; only the cost.view inventory reports page reads it.
 export async function getInventoryReport() {
@@ -47,8 +48,8 @@ export async function getInventoryReport() {
         warehouseDistribution[warehouseName].quantity += quantity;
         warehouseDistribution[warehouseName].value += value;
 
-        // Check for low stock (less than 10 units)
-        if (quantity > 0 && quantity <= 10) {
+        // Low and out of stock by the one rule (src/lib/stock-levels.ts)
+        if (stockLevel(quantity) === 'LOW') {
           lowStockItems.push({
             productId: product.id,
             productName: product.name,
@@ -61,8 +62,8 @@ export async function getInventoryReport() {
           });
         }
 
-        // Check for out of stock
-        if (quantity === 0) {
+        // Out of stock: 0 or less, a negative row included
+        if (stockLevel(quantity) === 'OUT') {
           outOfStockItems.push({
             productId: product.id,
             productName: product.name,

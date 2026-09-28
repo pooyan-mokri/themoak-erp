@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
+import { stockLevel } from '@/lib/stock-levels';
 
 // const prisma = new PrismaClient();
 
@@ -128,7 +129,7 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
       warehouseId: inv.warehouseId,
       warehouseName: inv.warehouse.name,
       quantity: inv.quantity,
-      isLowStock: inv.quantity < 10, // Threshold: 10 units
+      isLowStock: stockLevel(inv.quantity) === 'LOW',
     }));
 
     // Format sales history

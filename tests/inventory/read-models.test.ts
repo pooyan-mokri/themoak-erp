@@ -45,29 +45,32 @@ async function world() {
   return { partnerCustomer, main, shop, partner, panj, yek, du, spare };
 }
 
-test('inventory report: saleable stock at cost, per-row low and out-of-stock lists, top products and the split by warehouse', async () => {
+test('inventory report: stock at cost, low (1 to 3) and out-of-stock (0 or less) rows, top products and the split by warehouse', async () => {
   const w = await world();
+  await stockUp(w.du.id, w.shop.id, 3);
+  // The website sold a YEK the shop did not have: a negative row, out of stock.
+  await prisma.inventory.update({ where: { productId_warehouseId: { productId: w.yek.id, warehouseId: w.shop.id } }, data: { quantity: -1 } });
   const report = await getInventoryReport();
   assert.deepEqual(report.summary, {
-    totalValue: 40 * 700_000 + 8 * 400_000,
-    totalQuantity: 48,
+    totalValue: 40 * 700_000 + 7 * 400_000 + 3 * 100_000,
+    totalQuantity: 50,
     totalUniqueProducts: 3,
     totalWarehouses: 2,
-    lowStockCount: 3,
-    outOfStockCount: 2,
+    lowStockCount: 1,
+    outOfStockCount: 1,
   });
-  assert.deepEqual(report.lowStockItems.map((i: any) => [i.productName, i.warehouseName, i.quantity]).sort(), [
-    ['PANJ', 'امانی', 6],
-    ['PANJ', 'فروشگاه', 4],
-    ['YEK', 'مرکزی', 8],
-  ]);
-  assert.deepEqual(report.outOfStockItems.map((i: any) => [i.productName, i.warehouseName]).sort(), [['DU', 'بدون موجودی'], ['YEK', 'فروشگاه']]);
-  assert.deepEqual(report.topProductsByQuantity.map((p: any) => [p.productName, p.quantity]), [['PANJ', 40], ['YEK', 8]]);
-  assert.deepEqual(report.topProductsByValue.map((p: any) => [p.productName, p.value]), [['PANJ', 28_000_000], ['YEK', 3_200_000]]);
+  assert.deepEqual(report.lowStockItems.map((i: any) => [i.productName, i.warehouseName, i.quantity]), [['DU', 'فروشگاه', 3]]);
+  assert.deepEqual(report.outOfStockItems.map((i: any) => [i.productName, i.warehouseName]), [['YEK', 'فروشگاه']]);
+  assert.deepEqual(report.topProductsByQuantity.map((p: any) => [p.productName, p.quantity]), [['PANJ', 40], ['YEK', 7], ['DU', 3]]);
+  assert.deepEqual(report.topProductsByValue.map((p: any) => [p.productName, p.value]), [['PANJ', 28_000_000], ['YEK', 2_800_000], ['DU', 300_000]]);
   assert.deepEqual(
     report.warehouseDistribution.map((d: any) => [d.warehouseName, d.quantity, d.value]).sort(),
-    [['امانی', 6, 4_200_000], ['فروشگاه', 4, 2_800_000], ['مرکزی', 38, 21_000_000 + 3_200_000]],
+    [['امانی', 6, 4_200_000], ['فروشگاه', 6, 2_700_000], ['مرکزی', 38, 21_000_000 + 3_200_000]],
   );
+  // A product with no row anywhere is out of stock too.
+  await prisma.inventory.deleteMany({ where: { productId: w.du.id } });
+  const again = await getInventoryReport();
+  assert.deepEqual(again.outOfStockItems.map((i: any) => [i.productName, i.warehouseName]).sort(), [['DU', 'بدون موجودی'], ['YEK', 'فروشگاه']]);
   assert.ok(w.spare);
 });
 
@@ -95,15 +98,16 @@ test('the same stock value everywhere: console, warehouse pages, product pages a
   assert.deepEqual([byWarehouse, byProduct, report], [console, console, console]);
 });
 
-test('product page: stock totals, what is on hand outside consignment, and value; the breakdown flags rows under 10', async () => {
+test('product page: stock totals, what is on hand outside consignment, and value; the breakdown marks low and out-of-stock rows', async () => {
   const w = await world();
   const detail = (await getProductDetail(w.panj.id))!;
   assert.deepEqual([detail.totalStock, detail.availableStock, detail.stockValue, detail.costPrice, detail.sellPrice], [40, 34, 28_000_000, 700_000, 2_000_000]);
-  const breakdown = await getProductStockBreakdown(w.panj.id);
+  await stockUp(w.yek.id, w.partner.id, 2);
+  const breakdown = await getProductStockBreakdown(w.yek.id);
   assert.deepEqual(breakdown.map((b: any) => [b.warehouseName, b.quantity, b.isVirtual, b.status]).sort(), [
-    ['امانی', 6, true, 'LOW'],
-    ['فروشگاه', 4, false, 'LOW'],
-    ['مرکزی', 30, false, 'OK'],
+    ['امانی', 2, true, 'LOW'],
+    ['فروشگاه', 0, false, 'OUT'],
+    ['مرکزی', 8, false, 'OK'],
   ]);
   assert.deepEqual((await getProductStockByWarehouse(w.panj.id)).map((b: any) => b.quantity).sort((a: number, b: number) => a - b), [4, 6, 30]);
   assert.equal(await getProductDetail('missing'), undefined);

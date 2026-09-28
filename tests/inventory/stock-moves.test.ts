@@ -366,14 +366,14 @@ test('getInventoryByWarehouse: sorted by name; cost only with cost.view, sell pr
   await assert.rejects(getInventoryByWarehouse(w.main), AccessDenied);
 });
 
-test('getWarehouseDashboardStats: live warehouses, products, rows at or under 10, and stock value at cost for cost viewers', async () => {
+test('getWarehouseDashboardStats: live warehouses, products, rows at a low level (1 to 3), and stock value at cost for cost viewers', async () => {
   await stockUp(p.yek, w.partner, 20);
   const stats = await getWarehouseDashboardStats();
   // Archived warehouses are hidden everywhere, so the count leaves them out.
   assert.deepEqual(stats, {
     totalWarehouses: 3,
     totalProducts: 2,
-    lowStockItems: 2,
+    lowStockItems: 1,
     totalValue: 5 * COST + 23 * 400_000,
   });
   for (const role of ['WAREHOUSE', 'SALES', 'ACCOUNTANT']) {

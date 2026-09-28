@@ -207,6 +207,11 @@ test('warehouse page: counts, value at cost, stock and low-stock figures, and th
     lowStockCount: 1,
   });
   assert.deepEqual(detail.lowStockItems.map((i: any) => i.productName), ['YEK']);
+  // A row below zero (a website sale ahead of the shelf) is out of stock too, not in stock.
+  await prisma.inventory.update({ where: { productId_warehouseId: { productId: s.du.id, warehouseId: s.main.id } }, data: { quantity: -1 } });
+  const negative = (await getWarehouseDetail(s.main.id))!.statistics;
+  assert.deepEqual([negative.itemsOutOfStock, negative.itemsWithStock, negative.lowStockCount], [1, 2, 1]);
+  await prisma.inventory.update({ where: { productId_warehouseId: { productId: s.du.id, warehouseId: s.main.id } }, data: { quantity: 0 } });
   assert.deepEqual(detail.topProductsByValue.map((i: any) => [i.productName, i.totalValue]), [['PANJ', 7_000_000], ['YEK', 1_200_000], ['DU', 0]]);
   const transfer = detail.movements.find((m: any) => m.type === 'TRANSFER')!;
   assert.deepEqual([transfer.quantity, transfer.counterpart, transfer.reference], [-2, 'فروشگاه', 'انتقال']);
