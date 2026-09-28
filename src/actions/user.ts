@@ -35,12 +35,38 @@ async function isAdmin() {
 const ADMIN_ONLY = 'فقط مدیر سیستم می‌تواند کاربران را مدیریت کند.';
 const LAST_ADMIN = 'دست‌کم یک مدیر سیستم باید بماند؛ اول کاربر دیگری را مدیر سیستم کنید.';
 
-/** Taking ADMIN from the only admin would leave nobody able to manage users. */
+/** Taking ADMIN from the only active admin would leave nobody able to manage users. */
 async function removesLastAdmin(userId: string, newRole: string) {
   if (newRole === 'ADMIN') return false;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-  if (user?.role !== 'ADMIN') return false;
-  return (await prisma.user.count({ where: { role: 'ADMIN', NOT: { id: userId } } })) === 0;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, isActive: true } });
+  if (user?.role !== 'ADMIN' || !user.isActive) return false;
+  return (await prisma.user.count({ where: { role: 'ADMIN', isActive: true, NOT: { id: userId } } })) === 0;
+}
+
+/** What names this user in the ERP's records; such a user is deactivated, never deleted. */
+async function hasHistory(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      employee: { select: { id: true } },
+      _count: {
+        select: {
+          activityLogs: true,
+          aiConversations: true,
+          assignedTasks: true,
+          createdAudits: true,
+          countedItems1: true,
+          countedItems2: true,
+          countedItems3: true,
+          printedTags: true,
+          teamAssignedBy: true,
+          auditTeams: true,
+        },
+      },
+    },
+  });
+  if (!user) return false;
+  return !!user.employee || Object.values(user._count as Record<string, number>).some((count) => count > 0);
 }
 
 /** The users page: staff emails and phones, for an admin only. */
@@ -55,6 +81,7 @@ export async function getUsers() {
         email: true,
         role: true,
         phone: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
         // Exclude password
@@ -76,7 +103,8 @@ export async function getUsers() {
  */
 export async function getUserOptions(): Promise<Array<{ id: string; name: string }>> {
   if (!(await getCurrentUser())) return [];
-  return prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+  // A deactivated user is not offered; records that name them still do.
+  return prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
 }
 
 export async function createUser(prevState: any, formData: FormData) {
@@ -206,6 +234,14 @@ export async function deleteUser(userId: string) {
         return { success: false, message: 'شما نمی‌توانید حساب خود را حذف کنید.' };
     }
 
+    // Deleting would take the name off everything this user did.
+    if (await hasHistory(userId)) {
+      return {
+        success: false,
+        message: 'این کاربر در سیستم سابقه دارد (فعالیت، وظیفه، شمارش انبار و…) و حذف نمی‌شود؛ به‌جای حذف از «غیرفعال کردن» استفاده کنید.',
+      };
+    }
+
     const deleted = await prisma.user.delete({
       where: { id: userId },
     });
@@ -216,6 +252,32 @@ export async function deleteUser(userId: string) {
     return { success: true, message: 'کاربر حذف شد.' };
   } catch (error) {
     return { success: false, message: 'خطا در حذف کاربر.' };
+  }
+}
+
+/**
+ * Deactivate (or reactivate) a user: a deactivated user cannot sign in, their
+ * sessions end, and pickers stop offering them, while everything they did
+ * still names them. What an admin does instead of deleting someone with history.
+ */
+export async function setUserActive(userId: string, active: boolean) {
+  if (!(await isAdmin())) return { success: false, message: ADMIN_ONLY };
+  const currentUser = await getCurrentUser();
+  if (!active && currentUser?.id === userId) {
+    return { success: false, message: 'شما نمی‌توانید حساب خود را غیرفعال کنید.' };
+  }
+  try {
+    if (!active && (await removesLastAdmin(userId, 'NONE'))) return { success: false, message: LAST_ADMIN };
+    const user = await prisma.user.update({ where: { id: userId }, data: { isActive: active }, select: { name: true } });
+    await logActivity(
+      currentUser?.id,
+      active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER',
+      active ? `کاربر ${user.name} دوباره فعال شد.` : `کاربر ${user.name} غیرفعال شد.`,
+    );
+    revalidatePath('/dashboard/settings/users');
+    return { success: true, message: active ? 'کاربر فعال شد.' : 'کاربر غیرفعال شد؛ دیگر نمی‌تواند وارد شود.' };
+  } catch (error) {
+    return { success: false, message: 'خطا در تغییر وضعیت کاربر.' };
   }
 }
 

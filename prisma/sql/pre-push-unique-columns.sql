@@ -13,8 +13,9 @@
 -- its locks in.
 -- SiteRefund: a new table, created here too so that its foreign keys, which
 -- lock Order and Transaction, get the same lock_timeout.
--- User.passwordChangedAt: a plain nullable column, here for the short
--- lock_timeout: User is read on every session.
+-- User.passwordChangedAt and isActive: a nullable column and one with a
+-- constant default (no table rewrite), here for the short lock_timeout: User
+-- is read on every session.
 -- SiteHook*: the website stock push (src/lib/site-hook.ts). The triggers write
 -- every stock and webId change into SiteHookLog inside the writer's own
 -- transaction. Prisma does not manage triggers, so db push neither creates nor
@@ -61,6 +62,12 @@ BEGIN
       WHERE attrelid = '"User"'::regclass AND attname = 'passwordChangedAt' AND NOT attisdropped
     ) THEN
       ALTER TABLE "User" ADD COLUMN "passwordChangedAt" TIMESTAMP(3);
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_attribute
+      WHERE attrelid = '"User"'::regclass AND attname = 'isActive' AND NOT attisdropped
+    ) THEN
+      ALTER TABLE "User" ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true;
     END IF;
   END IF;
   IF to_regclass('"Customer"') IS NOT NULL THEN

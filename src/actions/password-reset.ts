@@ -61,8 +61,9 @@ export async function requestPasswordReset(prevState: any, formData: FormData) {
     // Find user by email
     const user = await findUserByEmail(email);
 
-    // Always return success message for security (don't reveal if email exists)
-    if (!user) {
+    // Always return success message for security (don't reveal if email exists).
+    // A deactivated user gets no link: they could not sign in with it.
+    if (!user || !user.isActive) {
       return {
         success: true,
         message: SENT_IF_REGISTERED,

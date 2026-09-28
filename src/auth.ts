@@ -23,16 +23,19 @@ async function getUser(email: string) {
 
 /**
  * The role is copied into the JWT at login. Re-read it whenever the session is
- * read, so a role change applies on the next request, and a deleted user's
- * session, or one from before a password change, ends without waiting for a
- * logout. Returning null makes Auth.js treat
+ * read, so a role change applies on the next request, and the session of a
+ * deleted or deactivated user, or one from before a password change, ends
+ * without waiting for a logout. Returning null makes Auth.js treat
  * the request as signed out (and clear the cookie where it can set one).
  * Middleware runs auth.config.ts on Edge, without Prisma, and never calls this.
  */
 export async function withCurrentRole(token: JWT): Promise<JWT | null> {
   if (!token.id) return null;
-  const user = await prisma.user.findUnique({ where: { id: token.id }, select: { role: true, passwordChangedAt: true } });
-  if (!user) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: token.id },
+    select: { role: true, passwordChangedAt: true, isActive: true },
+  });
+  if (!user || !user.isActive) return null;
   // A session from before the password last changed (by its owner, a reset
   // link or an admin) ends. Auth.js re-issues the cookie on every read, so iat
   // is its last use. Whole seconds, as iat: a sign-in in the second of the
@@ -67,7 +70,8 @@ try {
           const { email, password } = parsedCredentials.data;
           const user = await getUser(email);
 
-          if (!user) {
+          // A deactivated user cannot sign in.
+          if (!user || !user.isActive) {
             return null;
           }
 

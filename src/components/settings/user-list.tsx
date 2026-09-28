@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Edit, KeyRound, Trash2, UserPlus } from 'lucide-react';
+import { Edit, KeyRound, Trash2, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { UserForm } from './user-form';
 import { SetPasswordDialog } from './set-password-dialog';
-import { deleteUser } from '@/actions/user';
+import { deleteUser, setUserActive } from '@/actions/user';
 import { toast } from 'sonner';
 import { Role } from '@/lib/types';
 import { ROLES, ROLE_LABELS } from '@/lib/permissions';
@@ -41,6 +41,17 @@ export function UserList({ users }: UserListProps) {
       } else {
         toast.error(result.message);
       }
+    }
+  };
+
+  const handleActive = async (user: { id: string; name: string; isActive: boolean }) => {
+    if (user.isActive && !confirm(`${user.name} غیرفعال شود؟ دیگر نمی‌تواند وارد شود، ولی سوابقش می‌ماند.`)) return;
+    const result = await setUserActive(user.id, !user.isActive);
+    if (result.success) {
+      toast.success(result.message);
+      window.location.reload(); // Refresh to update the list
+    } else {
+      toast.error(result.message);
     }
   };
 
@@ -100,6 +111,17 @@ export function UserList({ users }: UserListProps) {
             render: (user) => getRoleBadge(user.role as Role),
           },
           {
+            key: 'isActive',
+            label: 'وضعیت',
+            sortable: true,
+            render: (user) =>
+              user.isActive ? (
+                <Badge variant="outline" className="bg-green-50 text-green-700">فعال</Badge>
+              ) : (
+                <Badge variant="outline" className="bg-gray-100 text-gray-600">غیرفعال</Badge>
+              ),
+          },
+          {
             key: 'createdAt',
             label: 'تاریخ عضویت',
             sortable: true,
@@ -117,6 +139,14 @@ export function UserList({ users }: UserListProps) {
                 </Button>
                 <Button variant="ghost" size="icon" title="تغییر رمز عبور" onClick={() => setPasswordUser(user)}>
                   <KeyRound className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={user.isActive ? 'غیرفعال کردن' : 'فعال کردن'}
+                  onClick={() => handleActive(user)}
+                >
+                  {user.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                 </Button>
                 <Button
                   variant="ghost"

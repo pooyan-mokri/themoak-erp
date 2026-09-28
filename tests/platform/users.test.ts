@@ -137,18 +137,32 @@ test('the last admin cannot lose the ADMIN role, by the role menu or the edit fo
   assert.equal(await prisma.user.count({ where: { role: 'ADMIN' } }), 1);
 });
 
-test('an admin deletes another user by name in the log; their tasks and log rows stay, unassigned', async () => {
-  const user = await staff();
-  const project = await prisma.project.create({ data: { name: 'P' } });
-  const task = await prisma.task.create({ data: { title: 'T', projectId: project.id, assignedTo: user.id } });
-  await prisma.activityLog.create({ data: { userId: user.id, action: 'X', details: 'y' } });
+const HAS_HISTORY = 'این کاربر در سیستم سابقه دارد (فعالیت، وظیفه، شمارش انبار و…) و حذف نمی‌شود؛ به‌جای حذف از «غیرفعال کردن» استفاده کنید.';
 
-  assert.deepEqual(await deleteUser(user.id), { success: true, message: 'کاربر حذف شد.' });
-  assert.equal(await prisma.user.count({ where: { id: user.id } }), 0);
-  assert.equal((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedTo, null);
-  assert.equal(await prisma.activityLog.count({ where: { action: 'X', userId: null } }), 1);
+test('a user with no history is deleted, named in the log; one with history is refused and kept', async () => {
+  const fresh = await staff();
+  assert.deepEqual(await deleteUser(fresh.id), { success: true, message: 'کاربر حذف شد.' });
+  assert.equal(await prisma.user.count({ where: { id: fresh.id } }), 0);
   const log = await prisma.activityLog.findFirstOrThrow({ where: { action: 'DELETE_USER' } });
   assert.equal(log.details, 'کاربر Staff (staff@example.com) حذف شد.');
+
+  const project = await prisma.project.create({ data: { name: 'P' } });
+  const histories: Array<[string, (id: string) => Promise<unknown>]> = [
+    ['activity', (id) => prisma.activityLog.create({ data: { userId: id, action: 'X', details: 'y' } })],
+    ['task', (id) => prisma.task.create({ data: { title: 'T', projectId: project.id, assignedTo: id } })],
+    ['AI conversation', (id) => prisma.aIConversation.create({ data: { userId: id, title: 't' } })],
+    ['employee record', (id) => prisma.employee.create({ data: { name: 'E', salary: 1, userId: id } })],
+    ['audit', async (id) => {
+      const warehouse = await prisma.warehouse.create({ data: { name: `W-${id}` } });
+      await prisma.inventoryAudit.create({ data: { warehouseId: warehouse.id, createdBy: id, auditNumber: `A-${id}` } });
+    }],
+  ];
+  for (const [kind, write] of histories) {
+    const user = await staff('SALES', `${kind.replace(/ /g, '-')}@example.com`);
+    await write(user.id);
+    assert.deepEqual(await deleteUser(user.id), { success: false, message: HAS_HISTORY }, kind);
+    assert.equal(await prisma.user.count({ where: { id: user.id } }), 1, kind);
+  }
 
   assert.deepEqual(await deleteUser('test-user'), { success: false, message: 'شما نمی‌توانید حساب خود را حذف کنید.' });
   assert.equal((await deleteUser('no-such-user')).success, false);
