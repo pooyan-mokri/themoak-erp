@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { localDateString } from '@/lib/date-utils';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
 import { useRequestId } from '@/components/ui/request-id';
@@ -80,7 +81,7 @@ export function PaymentModal({
       fd.set('orderId', orderId);
       fd.set('accountId', accountId);
       fd.set('amount', String(amt));
-      fd.set('paymentDate', paymentDate.toISOString().slice(0, 10));
+      fd.set('paymentDate', localDateString(paymentDate));
       fd.set('requestId', requestId);
       fd.set('receiptUrl', receiptUrl);
       const result = await paySettlement(undefined as any, fd);

@@ -25,9 +25,13 @@ export async function seedShop() {
 
 export type Shop = Awaited<ReturnType<typeof seedShop>>;
 
-/** Every account's balance, by name. */
+/**
+ * Every real-money account's balance, by name. EXPENSE accounts are left out:
+ * they are P&L buckets (the cost of goods a sale books, first used by it) whose
+ * balance the sales never move.
+ */
 export async function balances() {
-  const accounts = await prisma.account.findMany({ orderBy: { name: 'asc' } });
+  const accounts = await prisma.account.findMany({ where: { type: { not: 'EXPENSE' } }, orderBy: { name: 'asc' } });
   return Object.fromEntries(accounts.map((a: any) => [a.name, Number(a.balance)]));
 }
 

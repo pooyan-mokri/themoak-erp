@@ -15,13 +15,16 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
+import { localDateString } from '@/lib/date-utils';
 import { useState, useEffect } from 'react';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState: {
   message: string;
   errors: Record<string, string[]>;
+  success?: boolean;
 } = {
   message: '',
   errors: {},
@@ -68,6 +71,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('1');
   const [date, setDate] = useState<string>('');
+  const [requestId, renewRequestId] = useRequestId();
 
   const addToCart = () => {
     if (!selectedProductId || !selectedWarehouseId || !quantity || Number(quantity) <= 0) {
@@ -134,15 +138,16 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
     dispatch(formData);
   };
 
-  // Clear cart on success
+  // Clear cart on success (a refusal also comes back with no field errors)
   useEffect(() => {
-    if (state.message && Object.keys(state.errors || {}).length === 0) {
+    if (state.success) {
       setCart([]);
       setSelectedProductId('');
       setSelectedWarehouseId('');
       setQuantity('1');
+      renewRequestId();
     }
-  }, [state.message, state.errors]);
+  }, [state, renewRequestId]);
 
   return (
     <Card>
@@ -150,6 +155,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
         <CardTitle>ثبت هدیه بازاریابی</CardTitle>
       </CardHeader>
       <form action={handleSubmit}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-5 md:space-y-4">
           {/* Add Product Section */}
           <div className="border rounded-lg p-4 md:p-4 bg-gray-50">
@@ -361,7 +367,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
                 name="date"
                 defaultValue={date ? new Date(date) : undefined}
                 onChange={(selectedDate) => {
-                  setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setDate(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="date" value={date} />
@@ -394,7 +400,7 @@ export function GiftForm({ products, accounts, campaigns = [], warehouses, canSe
           {state.message && (
             <div
               className={`text-sm p-3 rounded ${
-                Object.keys(state.errors || {}).length === 0
+                state.success
                   ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
                   : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
               }`}

@@ -8,12 +8,13 @@ import { Prisma } from '@prisma/client';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
 // --- Schemas ---
 
 const MarketingGiftItemSchema = z.object({
   productId: z.string().min(1, 'محصول الزامی است'),
-  quantity: z.coerce.number().min(1, 'تعداد باید بیشتر از صفر باشد'),
+  quantity: z.coerce.number().int().min(1, 'تعداد باید بیشتر از صفر باشد'),
   warehouseId: z.string().min(1, 'انبار الزامی است'),
 });
 
@@ -51,8 +52,8 @@ const MarketingCampaignSchema = z.object({
   type: z.string().min(1, 'نوع کمپین الزامی است'),
   startDate: z.string().min(1, 'تاریخ شروع الزامی است'),
   endDate: z.string().optional(),
-  budget: z.coerce.number().optional(),
-  status: z.string().optional(),
+  budget: z.coerce.number().min(0).optional(),
+  status: z.enum(['PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
 });
 
 // --- Actions ---
@@ -88,9 +89,15 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
     date,
     campaignId,
   } = validatedFields.data;
+  // One submission of the form books one gift, even when it reaches the server twice.
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
+
       // 1. Validate all products and calculate total cost
       let totalCost = 0;
       const validatedItems = [];
@@ -153,6 +160,9 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
       if (account.type !== 'EXPENSE') {
         throw new Error(`هدیه فقط روی حساب هزینه ثبت می‌شود؛ «${account.name}» حساب هزینه نیست.`);
       }
+      if (campaignId && !(await tx.marketingCampaign.findUnique({ where: { id: campaignId }, select: { id: true } }))) {
+        throw new Error('کمپین یافت نشد.');
+      }
 
       // 3. Create transaction for marketing expense
       const transactionDate = date ? new Date(date) : new Date();
@@ -170,6 +180,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
           description: `هزینه بازاریابی - هدیه: ${productNames}${recipientName ? ` - گیرنده: ${recipientName}` : ''}${reason ? ` - دلیل: ${reason}` : ''}`,
           date: transactionDate,
           category: 'Marketing - Gift',
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -188,7 +199,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
       for (let i = 0; i < validatedItems.length; i++) {
         const item = validatedItems[i];
         // Create marketing gift record
-        await tx.marketingGift.create({
+        const giftRow = await tx.marketingGift.create({
           data: {
             productId: item.product.id,
             quantity: item.quantity,
@@ -204,16 +215,28 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
           },
         });
 
-        // Deduct inventory from selected warehouse
-        await tx.inventory.update({
-          where: {
-            productId_warehouseId: {
-              productId: item.product.id,
-              warehouseId: item.warehouseId,
-            },
-          },
+        // Deduct inventory from selected warehouse, only while enough is left:
+        // two lines of one product, or a sale at the same moment, cannot take
+        // more than the checks above saw.
+        const taken = await tx.inventory.updateMany({
+          where: { productId: item.product.id, warehouseId: item.warehouseId, quantity: { gte: item.quantity } },
           data: {
             quantity: { decrement: item.quantity },
+          },
+        });
+        if (taken.count === 0) {
+          throw new Error(`موجودی کافی برای محصول "${item.product.name}" در انبار انتخاب شده وجود ندارد.`);
+        }
+
+        // The warehouse's movement history shows the stock that left as a gift.
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.product.id,
+            fromWarehouseId: item.warehouseId,
+            quantity: item.quantity,
+            type: 'ADJUSTMENT',
+            referenceId: giftRow.id,
+            note: `هدیه بازاریابی - ${recipientName}`,
           },
         });
       }
@@ -229,8 +252,12 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
           },
         });
       }
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
   } catch (error: unknown) {
+    // The same submission reached the server twice at once: the first one is the gift.
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error creating marketing gift:', error);
     return {
       message: error instanceof Error ? error.message : 'خطا در ثبت هدیه بازاریابی.',
@@ -314,6 +341,14 @@ export async function createMarketingCampaign(prevState: ActionState, formData: 
 
   const { name, description, type, startDate, endDate, budget, status } =
     validatedFields.data;
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : undefined;
+  if (Number.isNaN(start.getTime()) || (end && Number.isNaN(end.getTime()))) {
+    return { message: 'تاریخ کمپین نامعتبر است.', errors: {} };
+  }
+  if (end && end < start) {
+    return { message: 'تاریخ پایان کمپین نباید پیش از تاریخ شروع باشد.', errors: {} };
+  }
 
   try {
     await prisma.marketingCampaign.create({
@@ -321,8 +356,8 @@ export async function createMarketingCampaign(prevState: ActionState, formData: 
         name,
         description: description || undefined,
         type,
-        startDate: new Date(startDate),
-        endDate: endDate ? new Date(endDate) : undefined,
+        startDate: start,
+        endDate: end,
         budget: budget ? new Prisma.Decimal(budget) : undefined,
         status: status || 'PLANNED',
       },

@@ -17,7 +17,7 @@ import * as XLSX from 'xlsx';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { orderTotals } from '@/lib/order-balance';
+import { filterOrders, orderExportRow, orderRemaining } from '@/lib/order-list';
 
 type Customer = {
   id: string;
@@ -122,22 +122,14 @@ export function OrderList({ orders }: OrderListProps) {
   const hasActiveFilters = filterFromDate || filterToDate || filterCustomer || filterPaymentStatus !== 'all' || filterMinAmount || filterMaxAmount || filterWarehouse !== 'all';
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      if (filterFromDate) {
-        const from = new Date(filterFromDate); from.setHours(0, 0, 0, 0);
-        if (new Date(order.createdAt) < from) return false;
-      }
-      if (filterToDate) {
-        const to = new Date(filterToDate); to.setHours(23, 59, 59, 999);
-        if (new Date(order.createdAt) > to) return false;
-      }
-      if (filterCustomer && !order.customer?.name?.toLowerCase().includes(filterCustomer.toLowerCase())) return false;
-      if (filterPaymentStatus !== 'all' && order.paymentStatus !== filterPaymentStatus) return false;
-      const finalAmount = Number(order.totalAmount) - Number(order.discount || 0);
-      if (filterMinAmount && finalAmount < Number(filterMinAmount)) return false;
-      if (filterMaxAmount && finalAmount > Number(filterMaxAmount)) return false;
-      if (filterWarehouse !== 'all' && !order.items.some((item) => item.warehouse?.id === filterWarehouse)) return false;
-      return true;
+    return filterOrders(orders, {
+      from: filterFromDate,
+      to: filterToDate,
+      customer: filterCustomer,
+      paymentStatus: filterPaymentStatus,
+      minAmount: filterMinAmount,
+      maxAmount: filterMaxAmount,
+      warehouse: filterWarehouse,
     });
   }, [orders, filterFromDate, filterToDate, filterCustomer, filterPaymentStatus, filterMinAmount, filterMaxAmount, filterWarehouse]);
 
@@ -194,21 +186,7 @@ export function OrderList({ orders }: OrderListProps) {
 
   const handleExportToExcel = () => {
     // Prepare data for Excel
-    const excelData = orders.map((order) => ({
-      'شماره سفارش': order.number,
-      'مشتری': order.customer?.name || 'مشتری عمومی',
-      'مبلغ کل (تومان)': Number(order.totalAmount),
-      'تخفیف (تومان)': Number(order.discount || 0),
-      'مبلغ پرداختی (تومان)': Number(order.paidAmount || 0),
-      'باقیمانده (تومان)': orderTotals(order).remaining,
-      'وضعیت پرداخت': order.paymentStatus === 'PAID' ? 'پرداخت شده' :
-                      order.paymentStatus === 'PARTIAL' ? 'پرداخت جزئی' : 'پرداخت نشده',
-      'تعداد اقلام': order.items.reduce((acc, item) => acc + item.quantity, 0),
-      'وضعیت سفارش': order.status === 'COMPLETED' ? 'تکمیل شده' :
-                     order.status === 'CANCELLED' ? 'لغو شده' : 'در انتظار',
-      'تاریخ': formatJalaliDateTime(order.createdAt),
-      'منبع': order.siteReference ? 'سایت' : order.wooId ? 'WooCommerce' : 'سیستم',
-    }));
+    const excelData = orders.map(orderExportRow);
 
     // Create worksheet
     const ws = XLSX.utils.json_to_sheet(excelData);
@@ -285,8 +263,7 @@ export function OrderList({ orders }: OrderListProps) {
       label: 'باقیمانده',
       sortable: true,
       render: (order) => {
-        const finalAmount = Number(order.totalAmount) - Number(order.discount || 0);
-        const remaining = finalAmount - Number(order.paidAmount || 0);
+        const remaining = orderRemaining(order);
         return (
           <span className={remaining > 0 ? 'text-red-600 font-semibold' : 'text-green-600'}>
             {remaining.toLocaleString('fa-IR')} تومان

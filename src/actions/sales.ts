@@ -31,8 +31,9 @@ import {
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { accountLabel } from '@/lib/account-label';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
-import { defaultChannelOf } from '@/lib/consignment-channels';
 import { auth } from '@/auth';
+import { isConsignmentOrder } from '@/lib/consignment-amounts';
+import { COGS_ACCOUNT_NAME, ensureExpenseAccount } from '@/lib/expense-accounts';
 
 // const prisma = new PrismaClient();
 
@@ -69,9 +70,25 @@ export async function createOrder(data: OrderData) {
   const requestId = readRequestId(data.requestId);
   const receiptUrl = readReceiptRef(data.receiptUrl);
   if (receiptUrl === null) return { success: false, message: INVALID_RECEIPT_MESSAGE };
+  if (Number.isNaN(orderDate.getTime())) return { success: false, message: 'تاریخ فروش نامعتبر است.' };
 
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };
+  }
+  // A line of 0, a negative or a fractional quantity would sell nothing, or put stock back.
+  if (items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1)) {
+    return { success: false, message: 'تعداد هر قلم باید عددی صحیح و بیشتر از صفر باشد.' };
+  }
+  if (items.some((item) => !(Number(item.price) >= 0))) {
+    return { success: false, message: 'قیمت هر قلم باید صفر یا بیشتر باشد.' };
+  }
+  // The order's total is what its lines add up to (the POS sends exactly that).
+  const linesTotal = items.reduce((sum, item) => sum + item.quantity * Number(item.price), 0);
+  if (!(Math.abs(Number(totalAmount) - linesTotal) < 0.5)) {
+    return { success: false, message: 'مبلغ کل سفارش با جمع اقلام آن نمی‌خواند.' };
+  }
+  if (!(discount >= 0 && discount <= totalAmount)) {
+    return { success: false, message: 'تخفیف باید بین صفر و مبلغ کل سفارش باشد.' };
   }
 
   // Calculate final amounts. Credit spent is paid without cash: no money row for it.
@@ -97,9 +114,20 @@ export async function createOrder(data: OrderData) {
   }
   const userId = creditUsed > 0 ? ((await auth())?.user?.id ?? null) : null;
 
+  // The order's id comes from the submission's requestId, so the same checkout
+  // reaching the server twice is one sale even when nothing was paid and no
+  // money row carries the id (src/lib/request-id.ts).
+  const orderId = requestId ? `pos-${requestId}` : undefined;
+
   try {
     const outcome = await prisma.$transaction(async (tx: any) => {
       let transactionId = undefined;
+
+      if (orderId) {
+        // A second copy of this checkout waits here until the first is written, then finds it.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${orderId}))`;
+        if (await tx.order.findUnique({ where: { id: orderId }, select: { id: true } })) return 'duplicate';
+      }
 
       // 0. Credit spent: the customer's credit is locked, so two sales spending
       //    it run one after the other. A repeat of a sale that spent it finds
@@ -118,15 +146,11 @@ export async function createOrder(data: OrderData) {
       // 1. Fetch customer first to get name for transaction description
       let customer = undefined;
       if (customerId) {
-        customer = await tx.customer.findUnique({
-          where: { id: customerId },
-          include: {
-            warehouses: {
-              where: { isVirtual: true },
-            },
-            channels: { orderBy: { sortOrder: 'asc' } },
-          },
-        });
+        customer = await tx.customer.findUnique({ where: { id: customerId } });
+        if (!customer) throw new Error('مشتری یافت نشد.');
+      }
+      if (invoiceAccountId && !(await tx.account.findUnique({ where: { id: invoiceAccountId }, select: { id: true } }))) {
+        throw new Error('حساب نمایش‌داده‌شده روی فاکتور یافت نشد.');
       }
 
       // 1a. Credit spent: at most the customer's balance.
@@ -195,8 +219,13 @@ export async function createOrder(data: OrderData) {
         if (warehouseId) {
           itemWarehouses.push(warehouseId);
         } else {
+          // Only a live warehouse of our own: a partner's consignment stock is not ours to sell here.
           const inv = await tx.inventory.findFirst({
-            where: { productId: item.productId, quantity: { gte: item.quantity } },
+            where: {
+              productId: item.productId,
+              quantity: { gte: item.quantity },
+              warehouse: { isVirtual: false, isArchived: false },
+            },
           });
           if (!inv) {
             const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
@@ -209,7 +238,8 @@ export async function createOrder(data: OrderData) {
       // 5. Create Order
       const order = await tx.order.create({
         data: {
-          customerId,
+          id: orderId,
+          customerId: customerId || undefined,
           totalAmount,
           discount,
           paidAmount: finalPaidAmount + creditUsed,
@@ -249,70 +279,68 @@ export async function createOrder(data: OrderData) {
         });
       }
 
-      // 5. Calculate and record commission if customer is a consignment partner.
-      //    A sale rung up here goes through the partner's default channel; its
-      //    rate and name are snapshotted on the commission (src/lib/consignment-channels.ts).
-      if (customer && customer.warehouses.length > 0) {
-        const channel = defaultChannelOf(
-          (customer.channels ?? []).map((one: any) => ({
-            id: one.id,
-            name: one.name,
-            commissionRate: Number(one.commissionRate),
-            isDefault: one.isDefault,
-            isActive: one.isActive,
-          })),
-        );
-        const commissionRate = channel
-          ? channel.commissionRate
-          : customer.commissionRate
-            ? Number(customer.commissionRate)
-            : 0;
-        const orderAmount = Number(totalAmount) - Number(discount);
-        const commissionAmount = (orderAmount * commissionRate) / 100;
+      // A sale at the POS is an ordinary sale, to a consignment partner too:
+      // no commission. Commission is taken only on what a partner sells out of
+      // its consignment stock and reports (recordConsignmentSales).
 
-        if (commissionAmount > 0) {
-          if (channel) {
-            await tx.order.update({ where: { id: order.id }, data: { consignmentChannelId: channel.id } });
-          }
-          await tx.consignmentCommission.create({
-            data: {
-              customerId: customer.id,
-              orderId: order.id,
-              commissionRate: new Prisma.Decimal(commissionRate),
-              channelName: channel?.name,
-              orderAmount: new Prisma.Decimal(orderAmount),
-              commissionAmount: new Prisma.Decimal(commissionAmount),
-              isPaid: false,
-            },
-          });
-        }
-      }
-
-      // 7. Deduct inventory from the resolved warehouse for each item.
+      // 7. Deduct inventory from the resolved warehouse for each item. The
+      // stock check is part of the update, so two sales of the last unit at
+      // the same time cannot both take it: the second waits, then finds none.
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const whId = itemWarehouses[i];
-        const inventory = await tx.inventory.findUnique({
-          where: {
-            productId_warehouseId: { productId: item.productId, warehouseId: whId },
-          },
-        });
-
-        if (!inventory || inventory.quantity < item.quantity) {
-          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
-          throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
-        }
-
-        await tx.inventory.update({
-          where: {
-            productId_warehouseId: { productId: item.productId, warehouseId: whId },
-          },
+        const taken = await tx.inventory.updateMany({
+          where: { productId: item.productId, warehouseId: whId, quantity: { gte: item.quantity } },
           data: {
             quantity: { decrement: item.quantity },
           },
         });
+
+        if (taken.count === 0) {
+          const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
+          throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" در انبار انتخابی وجود ندارد.`);
+        }
+
+        // The warehouse's movement history shows the sale, as consignment and website sales do.
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            fromWarehouseId: whId,
+            quantity: item.quantity,
+            type: 'SALE',
+            referenceId: order.id,
+            note: `فروش سفارش #${order.number}`,
+          },
+        });
       }
-      return 'done';
+      // 8. Cost of goods sold, as a consignment sale books it: one non-cash
+      // EXPENSE row per order at each product's cost at the time of sale, on
+      // the COGS account whose balance it never moves. The P&L reads it; a
+      // cancel deletes it with the order's other rows.
+      const costs = await tx.product.findMany({
+        where: { id: { in: items.map((item) => item.productId) } },
+        select: { id: true, costPrice: true },
+      });
+      const costOf = new Map<string, number>(costs.map((product: any) => [product.id, Number(product.costPrice || 0)]));
+      const cogsTotal = items.reduce((sum, item) => sum + item.quantity * (costOf.get(item.productId) ?? 0), 0);
+      if (cogsTotal > 0) {
+        await tx.transaction.create({
+          data: {
+            type: TransactionType.EXPENSE,
+            currency: 'TOMAN',
+            amount: new Prisma.Decimal(cogsTotal),
+            amountInToman: new Prisma.Decimal(cogsTotal),
+            rateSnapshot: 1,
+            accountId: await ensureExpenseAccount(tx, COGS_ACCOUNT_NAME),
+            category: 'COGS',
+            description: `بهای تمام‌شده کالای فروش‌رفته - سفارش #${order.number}`,
+            customerId: customerId || undefined,
+            orderId: order.id,
+            date: orderDate,
+          },
+        });
+      }
+      return 'booked';
     });
     if (outcome === 'duplicate') return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
     kickSiteHook();
@@ -498,8 +526,8 @@ export async function getOrder(id: string) {
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
         type: order.customer.customerType,
       } : undefined,
-      isConsignmentSale: !!(order.commissions && order.commissions.length > 0)
-        || !!(order.customer && (order.customer as any).warehouses && (order.customer as any).warehouses.length > 0),
+      // Sold out of a partner's consignment stock, not a POS sale to a partner.
+      isConsignmentSale: !!order.customer?.warehouses?.length && isConsignmentOrder(order),
       commissions: order.commissions
         ? order.commissions.map((c: any) => ({
             ...c,
