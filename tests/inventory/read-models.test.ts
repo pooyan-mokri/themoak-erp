@@ -84,18 +84,24 @@ test('inventory report needs cost.view', async () => {
   }
 });
 
-test('the same stock value everywhere: console, warehouse pages, product pages and the report agree on saleable stock', async () => {
+test('the same stock value everywhere: console, warehouse pages, product pages and the report count SALEABLE and OTHER stock', async () => {
   const w = await world();
+  // 10 straps (OTHER) are stock; a consumable's leftover row (its type changed after it was stocked) is not.
+  const strap = await prisma.product.create({ data: { name: 'بند', sku: 'STRAP', costPrice: 50_000, sellPrice: 0, productType: 'OTHER' } });
+  await stockUp(strap.id, w.main.id, 10);
+  await stockUp(w.spare.id, w.main.id, 100);
   const console = (await getWarehouseDashboardStats()).totalValue;
   const pages = await Promise.all([w.main, w.shop, w.partner].map((x) => getWarehouseDetail(x.id)));
   const byWarehouse = pages.reduce((sum, d) => sum + (d!.statistics.totalValue ?? 0), 0);
-  const byProduct = (await Promise.all([w.panj, w.yek, w.du].map((p) => getProductDetail(p.id)))).reduce(
+  const byProduct = (await Promise.all([w.panj, w.yek, w.du, strap, w.spare].map((p) => getProductDetail(p.id)))).reduce(
     (sum, d) => sum + (d!.stockValue ?? 0),
     0,
   );
   const report = (await getInventoryReport()).summary.totalValue;
-  assert.equal(console, 31_200_000);
+  assert.equal(console, 31_200_000 + 500_000);
   assert.deepEqual([byWarehouse, byProduct, report], [console, console, console]);
+  assert.equal((await getProductDetail(w.spare.id))!.stockValue, 0);
+  assert.ok(!pages[0]!.topProductsByValue.some((p: any) => p.productName === 'پیچ'));
 });
 
 test('product page: stock totals, what is on hand outside consignment, and value; the breakdown marks low and out-of-stock rows', async () => {

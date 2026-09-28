@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
-import { stockLevel } from '@/lib/stock-levels';
+import { holdsStock, stockLevel } from '@/lib/stock-levels';
 
 // Older purchase receipts wrote the landed cost into the movement note.
 const LANDED_COST_NOTE = / - قیمت تمام‌شده هر واحد: .*$/;
@@ -44,11 +44,11 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Calculate statistics
     const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
+    // Stock value counts the stock product types only (src/lib/stock-levels.ts).
     const totalValue = canSeeCost
-      ? inventory.reduce(
-          (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
-          0
-        )
+      ? inventory
+          .filter((item: any) => holdsStock(item.product.productType))
+          .reduce((sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice), 0)
       : null;
     const uniqueProducts = inventory.length;
     const itemsWithStock = inventory.filter((item: any) => item.quantity > 0).length;
@@ -270,7 +270,8 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Get top products by value (a ranking by cost, so none without cost.view)
     const topProductsByValue = canSeeCost
-      ? [...formattedInventory]
+      ? formattedInventory
+          .filter((item: any) => holdsStock(item.productType))
           .sort((a: any, b: any) => b.totalValue - a.totalValue)
           .slice(0, 10)
       : [];

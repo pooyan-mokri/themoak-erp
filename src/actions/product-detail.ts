@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { hasPermission, requirePermission } from '@/lib/access';
-import { stockLevel } from '@/lib/stock-levels';
+import { holdsStock, stockLevel } from '@/lib/stock-levels';
 
 // const prisma = new PrismaClient();
 
@@ -61,7 +61,8 @@ export async function getProductDetail(productId: string) {
       ...(canSeeSellPrice ? { sellPrice: Number(product.sellPrice) } : {}),
       totalStock,
       availableStock,
-      ...(canSeeCost ? { stockValue: totalStock * Number(product.costPrice) } : {}),
+      // Only a stock product type has stock value (src/lib/stock-levels.ts).
+      ...(canSeeCost ? { stockValue: holdsStock(product.productType) ? totalStock * Number(product.costPrice) : 0 } : {}),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     };

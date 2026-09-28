@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
-import { LOW_STOCK_MAX } from '@/lib/stock-levels';
+import { LOW_STOCK_MAX, STOCK_TYPES } from '@/lib/stock-levels';
 
 // const prisma = new PrismaClient();
 
@@ -318,9 +318,10 @@ export async function getWarehouseDashboardStats() {
       prisma.inventory.count({
         where: { quantity: { gte: 1, lte: LOW_STOCK_MAX } }
       }),
-      // Stock value is quantity × cost: only loaded for roles that may see cost.
+      // Stock value is quantity × cost of the stock product types: only loaded for roles that may see cost.
       canSeeCost
         ? prisma.inventory.findMany({
+            where: { product: { productType: { in: [...STOCK_TYPES] } } },
             include: { product: true }
           })
         : [],

@@ -12,3 +12,13 @@ export function stockLevel(quantity: number): StockLevel {
   if (quantity <= 0) return 'OUT';
   return quantity <= LOW_STOCK_MAX ? 'LOW' : 'OK';
 }
+
+/**
+ * The product types held as stock and counted in its value (Pooyan's decision): SALEABLE and OTHER. Receiving
+ * puts CONSUMABLE and FIXED_ASSET goods into fixed assets instead, so a row of theirs is not stock value.
+ */
+export const STOCK_TYPES = ['SALEABLE', 'OTHER'] as const;
+
+export function holdsStock(productType: string): boolean {
+  return (STOCK_TYPES as readonly string[]).includes(productType);
+}
