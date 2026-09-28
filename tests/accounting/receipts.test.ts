@@ -102,7 +102,8 @@ test('a deposit, a POS sale, an order payment and a settlement each keep the rec
   assert.deepEqual(received.map((row: { amountInToman: number; receiptUrl?: string }) => [row.amountInToman, !!row.receiptUrl]), [[PRICE / 2, true], [PRICE / 2, true]]);
 
   const partner = await prisma.customer.create({ data: { name: 'همکار', commissionRate: 10 } });
-  await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  const atPartner = await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  // Sold out of the partner's consignment stock, as a consignment report books it.
   const consigned = await prisma.order.create({
     data: {
       customerId: partner.id,
@@ -110,7 +111,7 @@ test('a deposit, a POS sale, an order payment and a settlement each keep the rec
       paymentStatus: 'UNPAID',
       totalAmount: 900_000,
       paidAmount: 0,
-      items: { create: [{ productId: shop.product.id, warehouseId: shop.warehouse.id, quantity: 1, price: 1_000_000 }] },
+      items: { create: [{ productId: shop.product.id, warehouseId: atPartner.id, quantity: 1, price: 1_000_000 }] },
       commissions: { create: [{ customerId: partner.id, commissionRate: 10, orderAmount: 1_000_000, commissionAmount: 100_000, isPaid: true }] },
     },
   });
