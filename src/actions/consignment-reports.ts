@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
 import { channelSummary, DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
 import { CONSIGNMENT_ORDER, settlementAmounts } from '@/lib/consignment-amounts';
+import { holdsStock } from '@/lib/stock-levels';
 
 /** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
@@ -160,9 +161,9 @@ export async function getConsignmentReport() {
           a.channel.localeCompare(b.channel, 'fa'),
       );
 
-      // Calculate inventory value (at cost)
+      // Calculate inventory value (at cost), of the stock product types (src/lib/stock-levels.ts)
       const inventoryValue = canSeeCost
-        ? partner.inventory.reduce((sum: any, inv: any) => {
+        ? partner.inventory.filter((inv: any) => holdsStock(inv.product.productType)).reduce((sum: any, inv: any) => {
             const costPrice = Number(inv.product.costPrice || 0);
             return sum + inv.quantity * costPrice;
           }, 0)

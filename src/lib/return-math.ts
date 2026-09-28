@@ -223,22 +223,3 @@ export function effectiveQuantity(line: {
   const back = [...(line.returns ?? []), ...(line.exchanges ?? [])].reduce((sum, row) => sum + row.quantity, 0);
   return Math.max(0, line.quantity - back);
 }
-
-/**
- * A consignment settlement counted from the units still sold, so returned and
- * exchanged units are neither owed by the partner nor charged commission.
- * Needs the order's items with their `returns` and `exchanges`.
- */
-export function consignmentAmounts(order: {
-  items: Array<{ quantity: number; price: unknown; returns?: Array<{ quantity: number }>; exchanges?: Array<{ quantity: number }> }>;
-  commissions?: Array<{ commissionRate: unknown }>;
-  discount?: unknown;
-  paidAmount?: unknown;
-}) {
-  const grossAmount = order.items.reduce((sum, item) => sum + effectiveQuantity(item) * Number(item.price), 0);
-  const commissionRate = order.commissions?.[0] ? Number(order.commissions[0].commissionRate) : 0;
-  const commissionAmount = (grossAmount * commissionRate) / 100;
-  const netAmount = grossAmount - commissionAmount - Number(order.discount ?? 0);
-  const paidAmount = Number(order.paidAmount ?? 0);
-  return { grossAmount, commissionRate, commissionAmount, netAmount, paidAmount, remainingAmount: netAmount - paidAmount };
-}

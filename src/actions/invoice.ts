@@ -6,7 +6,8 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { accountForViewer, bookOrderPayment, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
-import { orderNet } from '@/lib/order-balance';
+import { orderNet, orderTotals } from '@/lib/order-balance';
+import { RECEIVABLE_ORDERS } from '@/lib/money-totals';
 
 // const prisma = new PrismaClient();
 
@@ -291,12 +292,11 @@ export async function getARAgingReport() {
   try {
     // Get all orders with unpaid/partial payment status (excluding CANCELLED)
     // این همان منبع اطلاعات تاریخچه فروش است - باید یکسان باشند
+    // Every uncancelled order of a customer, whatever its payment status: what
+    // it still owes is read from its money (src/lib/money-totals.ts), as the
+    // dashboard's «مطالبات» and the customers' debts read it.
     const orders = await prisma.order.findMany({
-      where: {
-        customerId: { not: null },
-        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-        status: { not: 'CANCELLED' } // سفارشات لغو شده طلبکار نیستند
-      },
+      where: RECEIVABLE_ORDERS,
       include: {
         customer: true
       }
@@ -315,7 +315,7 @@ export async function getARAgingReport() {
 
       // بدهی واقعی: مبلغ قابل پرداخت (پس از تخفیف) منهای پرداخت‌شده.
       // در سفارش‌های WooCommerce مبلغ کل از قبل پس از تخفیف است (src/lib/order-balance.ts).
-      const balance = orderNet(order) - Number(order.paidAmount || 0);
+      const balance = orderTotals(order).remaining;
 
       if (balance <= 0) continue; // Skip if no balance due
 

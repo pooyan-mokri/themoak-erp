@@ -316,9 +316,10 @@ export async function getCustomerById(id: string) {
     // Debt and credit over every order that is not cancelled, and the credit account (src/lib/order-balance.ts).
     const { debt: totalDebt, credit: totalCredit } = customerBalance(customer.orders, await creditBalance(prisma, id));
 
-    // Calculate stats
-    const totalOrders = customer.orders.length;
-    const totalSpent = customer.orders.reduce((sum: any, order: any) =>
+    // Calculate stats, over the orders that stand: a cancelled order was never bought.
+    const standing = customer.orders.filter((order: any) => order.status !== 'CANCELLED');
+    const totalOrders = standing.length;
+    const totalSpent = standing.reduce((sum: any, order: any) =>
       sum + Number(order.paidAmount), 0
     );
     const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
@@ -431,13 +432,15 @@ export async function calculateCustomerDebt(customerId: string): Promise<number>
 export async function getCustomerStats(customerId: string) {
   await requirePermission('sales.view');
   try {
+    // The orders that stand, newest first: a cancelled order was never bought.
     const orders = await prisma.order.findMany({
-      where: { customerId },
+      where: { customerId, status: { not: 'CANCELLED' } },
       select: {
         ...BALANCE_FIELDS,
         paymentStatus: true,
         createdAt: true,
-      }
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
     const totalOrders = orders.length;

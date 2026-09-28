@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { ActionState, ActionResult } from '@/lib/types';
 import { auth } from '@/auth';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
+import { orderNet } from '@/lib/order-balance';
 
 // const prisma = new PrismaClient();
 
@@ -581,7 +582,7 @@ export async function getCRMDashboardStats() {
       // 2026-05-07); the discount is not.
       prisma.order.findMany({
         where: { status: { not: 'CANCELLED' }, customerId: { not: null } },
-        select: { customerId: true, totalAmount: true, discount: true },
+        select: { customerId: true, totalAmount: true, discount: true, wooId: true, siteReference: true },
       }),
       // Recent 10 activity logs
       !isAdmin ? Promise.resolve([]) : prisma.activityLog.findMany({
@@ -598,12 +599,13 @@ export async function getCRMDashboardStats() {
       })
     ]);
 
-    // The top 5 of all customers by what they bought: each order worth its
-    // total less its discount, never below 0 (a discounted order returned in
-    // full is worth nothing, not less).
+    // The top 5 of all customers by what they bought: each order worth what
+    // its customer has to pay for it, after the discount and never below 0
+    // (src/lib/order-balance.ts; a discounted order returned in full is worth
+    // nothing, not less).
     const value = new Map<string, number>();
     for (const order of topCustomers as any[]) {
-      const worth = Math.max(0, Number(order.totalAmount) - Number(order.discount ?? 0));
+      const worth = orderNet(order);
       value.set(order.customerId, (value.get(order.customerId) ?? 0) + worth);
     }
     const top = [...value.entries()]

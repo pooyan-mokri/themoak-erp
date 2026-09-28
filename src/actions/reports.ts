@@ -3,10 +3,12 @@
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
-import { effectiveQuantity } from '@/lib/return-math';
-import { cashPosition, latestRates, supplierPositions } from '@/lib/money-totals';
+import { orderNet } from '@/lib/order-balance';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
+import { cashPosition, customerReceivables, latestRates, supplierPositions } from '@/lib/money-totals';
 import { profitEntry } from '@/lib/profit-rows';
 import { tehranDay } from '@/lib/tehran-day';
+import { STOCK_TYPES } from '@/lib/stock-levels';
 
 // Financial Reports
 
@@ -129,8 +131,10 @@ export async function getBalanceSheet(date: Date) {
     // is a commitment and is on neither side.
     const suppliers = await supplierPositions(prisma, rates);
 
-    // Inventory Value (cost price * quantity) — split own vs. consignment
+    // Inventory Value (cost price * quantity) of the stock product types
+    // (src/lib/stock-levels.ts, as on every stock screen) — split own vs. consignment
     const inventory = await prisma.inventory.findMany({
+      where: { product: { productType: { in: [...STOCK_TYPES] } } },
       include: {
         product: { select: { costPrice: true } },
         warehouse: { select: { isVirtual: true } },
@@ -145,21 +149,9 @@ export async function getBalanceSheet(date: Date) {
       else inventoryValue += v;
     });
 
-    // Accounts Receivable (unpaid invoices, overdue ones included)
-    const unpaidInvoices = await prisma.invoice.findMany({
-      where: {
-        status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] },
-      },
-      select: {
-        total: true,
-        paidAmount: true,
-      },
-    });
-
-    const accountsReceivable = unpaidInvoices.reduce(
-  (sum: any, inv: any) => sum + (Number(inv.total) - Number(inv.paidAmount)),
-      0
-    );
+    // Accounts Receivable: what customers still owe on their orders, invoiced
+    // or not, the dashboard's «مطالبات» (src/lib/money-totals.ts).
+    const accountsReceivable = await customerReceivables(prisma);
 
     const totalAssets =
       totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable + suppliers.prepaid;
@@ -205,32 +197,25 @@ export async function getBalanceSheet(date: Date) {
 export async function getSalesByProduct(startDate: Date, endDate: Date) {
   await requirePermission('sales.view');
   try {
-    const orderItems = await prisma.orderItem.findMany({
+    // Units net of returns and exchanges, revenue net of the order's discount
+    // too (src/lib/product-sales.ts), as on the product pages.
+    const orders = await prisma.order.findMany({
       where: {
-        order: {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-          status: { not: 'CANCELLED' },
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
         },
+        status: { not: 'CANCELLED' },
       },
-      include: {
-        product: {
-          select: {
-            name: true,
-            sku: true,
-          },
-        },
-        // Units returned or exchanged away are not sold.
-        returns: { select: { quantity: true } },
-        exchanges: { select: { quantity: true } },
+      select: {
+        discount: true,
+        items: { include: { product: { select: { name: true, sku: true } }, ...SALE_LINE_INCLUDE } },
       },
     });
 
     const productSales: Record<string, { name: string; quantity: number; revenue: number }> = {};
 
-    orderItems.forEach((item: any) => {
+    orders.forEach((order: any) => order.items.forEach((item: any) => {
       const key = item.productId;
       if (!productSales[key]) {
         productSales[key] = {
@@ -239,9 +224,10 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
           revenue: 0,
         };
       }
-      productSales[key].quantity += effectiveQuantity(item);
-      productSales[key].revenue += effectiveQuantity(item) * Number(item.price);
-    });
+      const sold = netLineSale(item, order);
+      productSales[key].quantity += sold.units;
+      productSales[key].revenue += sold.revenue;
+    }));
 
     return Object.values(productSales).sort((a: any, b: any) => b.revenue - a.revenue);
   } catch (error) {
@@ -284,7 +270,8 @@ export async function getSalesByCustomer(startDate: Date, endDate: Date) {
         };
       }
       customerSales[key].orderCount += 1;
-      customerSales[key].revenue += Number(order.totalAmount);
+      // What the customer pays for it, after the discount (src/lib/order-balance.ts).
+      customerSales[key].revenue += orderNet(order);
     });
 
     return Object.values(customerSales).sort((a: any, b: any) => b.revenue - a.revenue);
@@ -312,6 +299,9 @@ export async function getSalesOverTime(
       select: {
         createdAt: true,
         totalAmount: true,
+        discount: true,
+        wooId: true,
+        siteReference: true,
       },
     });
 
@@ -335,7 +325,7 @@ export async function getSalesOverTime(
       if (!salesByPeriod[periodKey]) {
         salesByPeriod[periodKey] = {revenue: 0, orders: 0 };
       }
-      salesByPeriod[periodKey].revenue += Number(order.totalAmount);
+      salesByPeriod[periodKey].revenue += orderNet(order);
       salesByPeriod[periodKey].orders += 1;
     });
 

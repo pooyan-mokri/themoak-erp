@@ -9,10 +9,8 @@ import { returnOrderItem } from '@/actions/order-return';
 import { openAccount, stockIn } from '../sales/world';
 
 /**
- * What a customer owes and has bought, as src/actions/customer.ts computes it.
- * customer.ts is being rewritten in another branch, so the cases it still gets
- * wrong are recorded as TODO here (they run, and report, without failing the
- * suite) instead of being fixed in this branch.
+ * What a customer owes and has bought, as src/actions/customer.ts computes it:
+ * over the orders that stand, after the discount (src/lib/order-balance.ts).
  */
 
 // The actions log every refusal these tests provoke on purpose.
@@ -91,7 +89,7 @@ test('an order returned in full after a discount is worth nothing to the ranking
   assert.deepEqual([top.name, top.totalRevenue], ['مینا', PRICE]);
 });
 
-test('a customer\'s debt leaves a cancelled order out, on every screen that shows it', { todo: 'customer.ts (hands off): a cancelled order keeps its total and is UNPAID, so it is counted as owed' }, async () => {
+test('a customer\'s debt leaves a cancelled order out, on every screen that shows it', async () => {
   const customer = await sara();
   assert.equal(await calculateCustomerDebt(customer.id), 9_000_000);
   assert.equal((await getCustomerStats(customer.id))!.totalDebt, 9_000_000);
@@ -99,8 +97,11 @@ test('a customer\'s debt leaves a cancelled order out, on every screen that show
   assert.equal((await getCustomersWithDebt()).find((c: any) => c.id === customer.id)!.totalDebt, 9_000_000);
 });
 
-test('a customer\'s order count and average leave a cancelled order out', { todo: 'customer.ts (hands off): totalOrders and averageOrderValue count cancelled orders' }, async () => {
+test('a customer\'s order count and average leave a cancelled order out', async () => {
   const customer = await sara();
   const stats = (await getCustomerStats(customer.id))!;
-  assert.deepEqual([stats.totalOrders, (await getCustomerById(customer.id))!.stats.totalOrders], [1, 1]);
+  const profile = (await getCustomerById(customer.id))!.stats;
+  assert.deepEqual([stats.totalOrders, profile.totalOrders], [1, 1]);
+  // Nothing was paid on the one that stands.
+  assert.deepEqual([stats.averageOrderValue, profile.averageOrderValue], [0, 0]);
 });

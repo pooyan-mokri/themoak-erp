@@ -16,6 +16,7 @@ import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { effectiveQuantity } from '@/lib/return-math';
 import { logActivity } from '@/lib/activity-log';
 import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { holdsStock } from '@/lib/stock-levels';
 import { COGS_ACCOUNT_NAME, COMMISSION_ACCOUNT_NAME, ensureExpenseAccount } from '@/lib/expense-accounts';
 import {
   CONSIGNMENT_ORDER,
@@ -1443,9 +1444,9 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
     // still in stock, sold, or returned. Robust even when historical TRANSFER
     // movements were never recorded.
     const sentQty = currentStockQty + soldQty + returnedQty;
-    // Stock at cost: null without cost.view.
+    // Stock at cost, of the stock product types (src/lib/stock-levels.ts): null without cost.view.
     const currentStockValue = canSeeCost
-      ? warehouse.inventory.reduce(
+      ? warehouse.inventory.filter((inv: any) => holdsStock(inv.product.productType)).reduce(
           (s: number, inv: any) => s + inv.quantity * Number(inv.product.costPrice || 0),
           0,
         )

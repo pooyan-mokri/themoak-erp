@@ -272,18 +272,23 @@ test('the sales card counts today\'s and yesterday\'s uncancelled orders, and th
   assert.equal(sales.dailySales.reduce((sum: number, d: any) => sum + d.total, 0), 21_000_000);
 });
 
-test('low stock lists the ten products with the least stock below the threshold, across warehouses', async () => {
+test('low stock lists the stock products with 3 or fewer units in all, the least first, at most ten', async () => {
+  // Pooyan's rule: low stock is 3 units or fewer, everywhere (src/lib/stock-levels.ts).
   const [a, b] = [await prisma.warehouse.create({ data: { name: 'الف' } }), await prisma.warehouse.create({ data: { name: 'ب' } })];
   for (let i = 0; i < 13; i++) {
     const product = await prisma.product.create({ data: { name: `P${i}`, sku: `S${i}`, costPrice: 1, sellPrice: 1 } });
     await prisma.inventory.create({ data: { productId: product.id, warehouseId: a.id, quantity: i } });
-    if (i === 12) await prisma.inventory.create({ data: { productId: product.id, warehouseId: b.id, quantity: 3 } });
+    // 2 + 2 in two warehouses is 4: not low.
+    if (i === 2) await prisma.inventory.create({ data: { productId: product.id, warehouseId: b.id, quantity: 2 } });
   }
-  const low = await getLowStockItems(5);
-  assert.deepEqual(low.map((p: any) => [p.sku, p.totalStock]), [['S0', 0], ['S1', 1], ['S2', 2], ['S3', 3], ['S4', 4]]);
-  const ten = await getLowStockItems();
-  assert.equal(ten.length, 10);
-  assert.ok(!ten.some((p: any) => p.sku === 'S12'), '12 + 3 in two warehouses is not low');
+  // A consumable is not stock (src/lib/stock-levels.ts STOCK_TYPES).
+  const cups = await prisma.product.create({ data: { name: 'لیوان', sku: 'CUP', costPrice: 1, sellPrice: 1, productType: 'CONSUMABLE' } });
+  await prisma.inventory.create({ data: { productId: cups.id, warehouseId: a.id, quantity: 0 } });
+  const low = await getLowStockItems();
+  assert.deepEqual(low.map((p: any) => [p.sku, p.totalStock]), [['S0', 0], ['S1', 1], ['S3', 3]]);
+
+  for (let i = 0; i < 12; i++) await prisma.product.create({ data: { name: `Z${i}`, sku: `Z${i}`, costPrice: 1, sellPrice: 1 } });
+  assert.equal((await getLowStockItems()).length, 10);
 });
 
 test('recent activity is for the admin only, newest first, as many as asked for', async () => {

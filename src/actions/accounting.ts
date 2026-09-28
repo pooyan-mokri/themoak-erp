@@ -15,6 +15,7 @@ import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
 import { profitAmount, profitLine } from '@/lib/profit-rows';
 import { COGS_LABEL, cogsSourceLabel } from '@/lib/cogs';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
 import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { randomUUID } from 'node:crypto';
 
@@ -810,17 +811,17 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
 export async function getSalesByProduct() {
   await requirePermission('sales.view');
   try {
-    const orderItems = await prisma.orderItem.findMany({
-      // A cancelled order sold nothing (as reports.ts and the dashboard count it).
-      where: { order: { status: { not: 'CANCELLED' } } },
-      include: {
-        product: true,
-      },
+    // A cancelled order sold nothing (as reports.ts and the dashboard count it).
+    // Units net of returns and exchanges, revenue net of the order's discount
+    // too (src/lib/product-sales.ts), as on the product pages.
+    const orders = await prisma.order.findMany({
+      where: { status: { not: 'CANCELLED' } },
+      select: { discount: true, items: { include: { product: true, ...SALE_LINE_INCLUDE } } },
     });
 
     const salesByProduct: Record<string, { name: string; quantity: number; total: number }> = {};
 
-    for (const item of orderItems) {
+    for (const order of orders) for (const item of order.items) {
       if (!salesByProduct[item.productId]) {
         salesByProduct[item.productId] = {
           name: item.product.name,
@@ -828,8 +829,9 @@ export async function getSalesByProduct() {
           total: 0,
         };
       }
-      salesByProduct[item.productId].quantity += item.quantity;
-      salesByProduct[item.productId].total += Number(item.price) * item.quantity;
+      const sold = netLineSale(item, order);
+      salesByProduct[item.productId].quantity += sold.units;
+      salesByProduct[item.productId].total += sold.revenue;
     }
 
     return Object.values(salesByProduct).sort((a: any, b: any) => b.total - a.total);

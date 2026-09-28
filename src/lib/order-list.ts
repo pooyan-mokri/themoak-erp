@@ -1,4 +1,5 @@
 import { formatJalaliDateTime } from '@/lib/date-utils';
+import { orderTotals } from '@/lib/order-balance';
 
 /**
  * The sales history list: its filters and its Excel rows, computed here so
@@ -20,15 +21,17 @@ type ListedOrder = {
   items: Array<{ quantity: number; warehouse?: { id: string } | null }>;
 };
 
-/** The price after the discount. */
-export function orderFinalAmount(order: Pick<ListedOrder, 'totalAmount' | 'discount'>): number {
-  return Number(order.totalAmount) - Number(order.discount || 0);
+type Money = Pick<ListedOrder, 'totalAmount' | 'discount' | 'paidAmount' | 'wooId' | 'siteReference'>;
+
+/** The price after the discount (src/lib/order-balance.ts, as on the order page and the invoice). */
+export function orderFinalAmount(order: Money): number {
+  return orderTotals(order).net;
 }
 
-/** What is still owed on an order: the price after the discount less what was paid; nothing on a cancelled order. */
-export function orderRemaining(order: Pick<ListedOrder, 'status' | 'totalAmount' | 'discount' | 'paidAmount'>): number {
+/** What is still owed on an order (src/lib/order-balance.ts); nothing on a cancelled order. */
+export function orderRemaining(order: Money & Pick<ListedOrder, 'status'>): number {
   if (order.status === 'CANCELLED') return 0;
-  return orderFinalAmount(order) - Number(order.paidAmount || 0);
+  return orderTotals(order).remaining;
 }
 
 export type OrderFilters = {

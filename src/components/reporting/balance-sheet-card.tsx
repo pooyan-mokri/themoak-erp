@@ -8,9 +8,11 @@ interface BalanceSheetCardProps {
       inventory: number;
       consignmentInventory?: number;
       accountsReceivable: number;
+      prepaidPurchases?: number;
       total: number;
     };
     liabilities: {
+      accountsPayable?: number;
       total: number;
     };
     equity: {
@@ -43,8 +45,12 @@ export function BalanceSheetCard({ data }: BalanceSheetCardProps) {
                 <span>{(data.assets.consignmentInventory ?? 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span>حساب‌های دریافتنی (امانی):</span>
+                <span>حساب‌های دریافتنی:</span>
                 <span>{data.assets.accountsReceivable.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
+                <span>پیش‌پرداخت خرید:</span>
+                <span>{(data.assets.prepaidPurchases ?? 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between font-bold pt-1">
                 <span>جمع دارایی‌ها:</span>
@@ -56,6 +62,10 @@ export function BalanceSheetCard({ data }: BalanceSheetCardProps) {
           <div>
             <h4 className="text-sm font-semibold mb-2">بدهی‌ها و حقوق صاحبان سهام</h4>
             <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="flex justify-between border-b pb-1">
+                <span>بدهی به تأمین‌کنندگان:</span>
+                <span>{(data.liabilities.accountsPayable ?? 0).toLocaleString()}</span>
+              </div>
               <div className="flex justify-between border-b pb-1">
                 <span>جمع بدهی‌ها:</span>
                 <span>{data.liabilities.total.toLocaleString()}</span>

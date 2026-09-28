@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { landedCostPerUnit } from '@/lib/landed-cost';
+import { orderTotals } from '@/lib/order-balance';
 
 /**
  * Totals of account balances across currencies, for the dashboard's «موجودی کل»
@@ -71,6 +72,22 @@ export function cashPosition(
     foreign,
     unpriced,
   };
+}
+
+/** What orderTotals reads of an order (a Prisma select). */
+export const ORDER_BALANCE_FIELDS = { totalAmount: true, discount: true, paidAmount: true, wooId: true, siteReference: true } as const;
+
+/** The orders customers owe on: every uncancelled order of a customer (a guest sale is paid at the till). */
+export const RECEIVABLE_ORDERS = { customerId: { not: null }, status: { not: 'CANCELLED' } };
+
+/**
+ * What customers still owe on their orders, in Toman: each receivable order's
+ * remaining (src/lib/order-balance.ts). The dashboard's «مطالبات», the aging
+ * report, the balance sheet and the customers' debts all add up to it.
+ */
+export async function customerReceivables(client: any): Promise<number> {
+  const orders = await client.order.findMany({ where: RECEIVABLE_ORDERS, select: ORDER_BALANCE_FIELDS });
+  return orders.reduce((sum: number, order: any) => sum + orderTotals(order).remaining, 0);
 }
 
 /** The latest recorded rate of each currency (`client` is a Prisma client or transaction). */
