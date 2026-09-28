@@ -5,7 +5,7 @@ import { prisma, resetDatabase, form } from '../helpers/db';
 import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
 import { createOrder } from '@/actions/sales';
-import { returnOrderItem } from '@/actions/order-return';
+import { getAllOrderReturns, getOrderReturns, returnOrderItem } from '@/actions/order-return';
 import { exchangeOrderItem } from '@/actions/order-exchange';
 import { createConsignmentPartner, recordConsignmentSales } from '@/actions/consignment';
 import { getProfitLossReport } from '@/actions/reports';
@@ -266,4 +266,21 @@ test('the expense list names a COGS row by its source, and refuses to delete it'
   assert.equal((await deleteExpense(sale.id)).message, refusal(COGS_SOURCES.pos));
   assert.equal((await deleteExpense(back.id)).message, refusal(COGS_SOURCES.return));
   assert.equal(await prisma.transaction.count({ where: { orderId: order.id, category: 'COGS' } }), 2);
+});
+
+test('the returns list shows the goods\' value and the cash paid back, as the order page does', async () => {
+  const s = await shop();
+  // 2 frames at 1,000,000 with 200,000 off, paid in full; one back: 900,000 of cash for 1,000,000 of goods.
+  const r0 = await createOrder({
+    customerId: s.customer.id, items: [{ productId: s.a.id, quantity: 2, price: A_PRICE }], paymentMethod: 'CASH',
+    accountId: s.till.id, totalAmount: 2 * A_PRICE, discount: 200_000, paidAmount: 1_800_000, warehouseId: s.warehouse.id,
+  });
+  assert.equal(r0.success, true, r0.message);
+  const order = await prisma.order.findFirstOrThrow({ include: { items: true } });
+  const r = await returnOrderItem({}, form({ orderId: order.id, orderItemId: order.items[0].id, quantity: '1', accountId: s.till.id, warehouseId: s.warehouse.id }));
+  assert.equal(r.success, true, r.message);
+  const [listed] = await getAllOrderReturns();
+  assert.deepEqual([listed.refundAmount, listed.cashRefund], [A_PRICE, 900_000]);
+  const [onOrder] = (await getOrderReturns(order.id)) as any[];
+  assert.equal(onOrder.transaction.amountInToman, listed.cashRefund);
 });

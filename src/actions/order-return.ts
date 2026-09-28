@@ -364,6 +364,7 @@ export async function getAllOrderReturns(limit = 200) {
         order: { include: { customer: true } },
         orderItem: { include: { product: true } },
         account: true,
+        transaction: { select: { amountInToman: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -377,6 +378,8 @@ export async function getAllOrderReturns(limit = 200) {
       productName: ret.orderItem?.product?.name ?? '—',
       quantity: ret.quantity,
       refundAmount: Number(ret.refundAmount),
+      // The cash paid back; the rest of the goods' value (less their discount share) came off the debt.
+      cashRefund: Number(ret.transaction?.amountInToman ?? 0),
       reason: ret.reason ?? undefined,
       accountName: ret.account?.name ?? '—',
       createdAt: ret.createdAt,
