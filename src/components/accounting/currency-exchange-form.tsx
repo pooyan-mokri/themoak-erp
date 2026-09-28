@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { getAccounts } from '@/actions/accounting';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 import { accountLabel } from '@/lib/account-label';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -282,7 +283,7 @@ export function CurrencyExchangeForm({ accounts }: CurrencyExchangeFormProps) {
                 name="date"
                 defaultValue={date ? new Date(date) : undefined}
                 onChange={(selectedDate) => {
-                  setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setDate(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="date" value={date} />

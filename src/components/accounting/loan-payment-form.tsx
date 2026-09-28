@@ -12,6 +12,7 @@ import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -139,7 +140,7 @@ export function LoanPaymentForm({
           name="date"
           defaultValue={date ? new Date(date) : undefined}
           onChange={(selectedDate) => {
-            setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+            setDate(selectedDate ? localDateString(selectedDate) : '');
           }}
         />
         <input type="hidden" name="date" value={date} />

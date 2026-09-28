@@ -13,6 +13,7 @@ import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -142,7 +143,7 @@ export function LoanForm({ employees, accounts }: LoanFormProps) {
               name="dueDate"
               defaultValue={dueDate ? new Date(dueDate) : undefined}
               onChange={(selectedDate) => {
-                setDueDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                setDueDate(selectedDate ? localDateString(selectedDate) : '');
               }}
             />
             <input type="hidden" name="dueDate" value={dueDate} />
