@@ -250,8 +250,8 @@ export function DataTable<T extends Record<string, any>>({
 
       {/* Results count */}
       <div className="text-sm text-muted-foreground">
-        نمایش {paginatedData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} تا{' '}
-        {Math.min(currentPage * pageSize, sortedData.length)} از {sortedData.length} آیتم
+        نمایش {(paginatedData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0).toLocaleString('fa-IR')} تا{' '}
+        {Math.min(currentPage * pageSize, sortedData.length).toLocaleString('fa-IR')} از {sortedData.length.toLocaleString('fa-IR')} آیتم
       </div>
 
       {/* Table */}
@@ -307,7 +307,7 @@ export function DataTable<T extends Record<string, any>>({
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            صفحه {currentPage} از {totalPages}
+            صفحه {currentPage.toLocaleString('fa-IR')} از {totalPages.toLocaleString('fa-IR')}
           </div>
           <div className="flex gap-2">
             <Button

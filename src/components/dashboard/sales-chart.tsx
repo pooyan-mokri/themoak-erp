@@ -83,36 +83,39 @@ export function SalesChart({ sales }: SalesChartProps) {
           <CardDescription>نمودار فروش روزانه</CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={sales.dailySales}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="date" 
-                tickFormatter={(value) => {
-                  const date = new Date(value);
-                  return formatJalaliDate(date, 'jMM/jDD');
-                }}
-                style={{ fontSize: '12px' }}
-              />
-              <YAxis 
-                tickFormatter={tomanTick}
-                width={90}
-                style={{ fontSize: '12px' }}
-              />
-              <Tooltip
-                formatter={(value: number) => [formatCurrency(value) + ' تومان', 'فروش']}
-                labelFormatter={(label) => formatJalaliDate(new Date(label))}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="total" 
-                stroke="#8884d8" 
-                strokeWidth={2}
-                dot={{ r: 3 }}
-                activeDot={{ r: 5 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {/* Laid out left to right: in the page's RTL, SVG axis labels are anchored on the wrong side. */}
+          <div dir="ltr">
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={sales.dailySales}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return formatJalaliDate(date, 'jMM/jDD');
+                  }}
+                  style={{ fontSize: '12px' }}
+                />
+                <YAxis 
+                  tickFormatter={tomanTick}
+                  width={90}
+                  style={{ fontSize: '12px' }}
+                />
+                <Tooltip
+                  formatter={(value: number) => [formatCurrency(value) + ' تومان', 'فروش']}
+                  labelFormatter={(label) => formatJalaliDate(new Date(label))}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="total" 
+                  stroke="#8884d8" 
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
 

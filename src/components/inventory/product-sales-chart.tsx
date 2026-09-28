@@ -42,49 +42,52 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={350}>
-          <BarChart data={salesHistory}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="month" 
-              tickFormatter={getMonthLabel}
-              style={{ fontSize: '12px' }}
-            />
-            <YAxis 
-              yAxisId="left"
-              orientation="left"
-              stroke="#8884d8"
-              tickFormatter={(value) => value.toString()}
-              style={{ fontSize: '12px' }}
-            />
-            {showRevenue && (
-              <YAxis 
-                yAxisId="right"
-                orientation="right"
-                stroke="#82ca9d"
-                tickFormatter={(value) => formatCurrency(value)}
+        {/* Laid out left to right: in the page's RTL, SVG axis labels are anchored on the wrong side. */}
+        <div dir="ltr">
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={salesHistory}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="month" 
+                tickFormatter={getMonthLabel}
                 style={{ fontSize: '12px' }}
               />
-            )}
-            <Tooltip
-              formatter={(value: number, name: string) => {
-                if (name === 'units') return [value + ' عدد', 'تعداد'];
-                if (name === 'revenue') return [formatCurrency(value) + ' تومان', 'درآمد'];
-                return [value, name];
-              }}
-              labelFormatter={(label) => getMonthLabel(label)}
-            />
-            <Legend 
-              formatter={(value) => {
-                if (value === 'units') return 'تعداد فروش';
-                if (value === 'revenue') return 'درآمد';
-                return value;
-              }}
-            />
-            <Bar yAxisId="left" dataKey="units" fill="#8884d8" name="units" />
-            {showRevenue && <Bar yAxisId="right" dataKey="revenue" fill="#82ca9d" name="revenue" />}
-          </BarChart>
-        </ResponsiveContainer>
+              <YAxis 
+                yAxisId="left"
+                orientation="left"
+                stroke="#8884d8"
+                tickFormatter={(value) => value.toString()}
+                style={{ fontSize: '12px' }}
+              />
+              {showRevenue && (
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#82ca9d"
+                  tickFormatter={(value) => formatCurrency(value)}
+                  style={{ fontSize: '12px' }}
+                />
+              )}
+              <Tooltip
+                formatter={(value: number, name: string) => {
+                  if (name === 'units') return [value + ' عدد', 'تعداد'];
+                  if (name === 'revenue') return [formatCurrency(value) + ' تومان', 'درآمد'];
+                  return [value, name];
+                }}
+                labelFormatter={(label) => getMonthLabel(label)}
+              />
+              <Legend 
+                formatter={(value) => {
+                  if (value === 'units') return 'تعداد فروش';
+                  if (value === 'revenue') return 'درآمد';
+                  return value;
+                }}
+              />
+              <Bar yAxisId="left" dataKey="units" fill="#8884d8" name="units" />
+              {showRevenue && <Bar yAxisId="right" dataKey="revenue" fill="#82ca9d" name="revenue" />}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );

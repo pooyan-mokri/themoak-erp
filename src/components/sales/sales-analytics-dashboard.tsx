@@ -175,51 +175,54 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={400}>
-            <AreaChart data={combinedSalesData}>
-              <defs>
-                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorForecast" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#82ca9d" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="dateFormatted"
-                style={{ fontSize: '11px' }}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                tickFormatter={tomanTick}
-                width={90}
-                style={{ fontSize: '11px' }}
-              />
-              <Tooltip 
-                formatter={(value: number) => [formatCurrency(value) + ' تومان', 'فروش']}
-                labelStyle={{ textAlign: 'right' }}
-              />
-              <Legend 
-                formatter={(value) => {
-                  if (value === 'revenue') return 'فروش واقعی';
-                  if (value === 'forecast') return 'پیش‌بینی';
-                  return value;
-                }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="revenue" 
-                stroke="#8884d8" 
-                fillOpacity={1} 
-                fill="url(#colorRevenue)"
-                name="revenue"
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {/* Laid out left to right: in the page's RTL, SVG axis labels are anchored on the wrong side. */}
+          <div dir="ltr">
+            <ResponsiveContainer width="100%" height={400}>
+              <AreaChart data={combinedSalesData}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorForecast" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#82ca9d" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="dateFormatted"
+                  style={{ fontSize: '11px' }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis 
+                  tickFormatter={tomanTick}
+                  width={90}
+                  style={{ fontSize: '11px' }}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [formatCurrency(value) + ' تومان', 'فروش']}
+                  labelStyle={{ textAlign: 'right' }}
+                />
+                <Legend 
+                  formatter={(value) => {
+                    if (value === 'revenue') return 'فروش واقعی';
+                    if (value === 'forecast') return 'پیش‌بینی';
+                    return value;
+                  }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="revenue" 
+                  stroke="#8884d8" 
+                  fillOpacity={1} 
+                  fill="url(#colorRevenue)"
+                  name="revenue"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
           <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-blue-600" />
@@ -240,22 +243,24 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
             <CardDescription>10 محصول برتر بر اساس درآمد</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={topProducts} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tickFormatter={tomanTick} />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={120}
-                  style={{ fontSize: '11px' }}
-                />
-                <Tooltip 
-                  formatter={(value: number) => [formatCurrency(value) + ' تومان', 'درآمد']}
-                />
-                <Bar dataKey="revenue" fill="#3b82f6" name="درآمد" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div dir="ltr">
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={topProducts} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={tomanTick} />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    width={120}
+                    style={{ fontSize: '11px' }}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => [formatCurrency(value) + ' تومان', 'درآمد']}
+                  />
+                  <Bar dataKey="revenue" fill="#3b82f6" name="درآمد" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
@@ -266,30 +271,32 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
             <CardDescription>سهم هر دسته از کل فروش</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={350}>
-              <PieChart>
-                <Pie
-                  data={categoryDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry: any) => {
-                    const dataEntry = entry as { type: string; percent: number };
-                    return `${getCategoryLabel(dataEntry.type)} (${(dataEntry.percent * 100).toFixed(0)}%)`;
-                  }}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="revenue"
-                >
-                  {categoryDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: number) => [formatCurrency(value) + ' تومان', 'درآمد']}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <div dir="ltr">
+              <ResponsiveContainer width="100%" height={350}>
+                <PieChart>
+                  <Pie
+                    data={categoryDistribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry: any) => {
+                      const dataEntry = entry as { type: string; percent: number };
+                      return `${getCategoryLabel(dataEntry.type)} (${(dataEntry.percent * 100).toFixed(0)}%)`;
+                    }}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="revenue"
+                  >
+                    {categoryDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: number) => [formatCurrency(value) + ' تومان', 'درآمد']}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>

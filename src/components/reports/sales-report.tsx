@@ -80,16 +80,19 @@ const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
           <CardDescription>فروش در طول زمان</CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={salesOverTime}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" />
-              <YAxis tickFormatter={tomanTick} width={90} style={{ fontSize: '11px' }} />
-              <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-              <Legend />
-              <Line type="monotone" dataKey="revenue" stroke="#10b981" name="فروش" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
+          {/* Laid out left to right: in the page's RTL, SVG axis labels are anchored on the wrong side. */}
+          <div dir="ltr">
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={salesOverTime}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="period" />
+                <YAxis tickFormatter={tomanTick} width={90} style={{ fontSize: '11px' }} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <Legend />
+                <Line type="monotone" dataKey="revenue" stroke="#10b981" name="فروش" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
 
@@ -100,15 +103,17 @@ const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
           <CardDescription>10 محصول برتر</CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={topProducts} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" tickFormatter={tomanTick} style={{ fontSize: '11px' }} />
-              <YAxis dataKey="name" type="category" width={150} />
-              <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-              <Bar dataKey="revenue" fill="#3b82f6" name="فروش" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div dir="ltr">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={topProducts} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tickFormatter={tomanTick} style={{ fontSize: '11px' }} />
+                <YAxis dataKey="name" type="category" width={150} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <Bar dataKey="revenue" fill="#3b82f6" name="فروش" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
 

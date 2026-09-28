@@ -95,21 +95,24 @@ export function ProfitLossReport({ data }: ProfitLossReportProps) {
           <CardDescription>درآمد و هزینه به تفکیک ماه</CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={monthlyTrend}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis tickFormatter={tomanTick} width={90} style={{ fontSize: '11px' }} />
-              <Tooltip 
-                formatter={(value) => formatCurrency(Number(value))}
-                labelStyle={{ direction: 'rtl' }}
-              />
-              <Legend />
-              <Bar dataKey="income" fill="#10b981" name="درآمد" />
-              <Bar dataKey="expenses" fill="#ef4444" name="هزینه" />
-              <Bar dataKey="profit" fill="#3b82f6" name="سود" />
-            </BarChart>
-          </ResponsiveContainer>
+          {/* Laid out left to right: in the page's RTL, SVG axis labels are anchored on the wrong side. */}
+          <div dir="ltr">
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={monthlyTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis tickFormatter={tomanTick} width={90} style={{ fontSize: '11px' }} />
+                <Tooltip 
+                  formatter={(value) => formatCurrency(Number(value))}
+                  labelStyle={{ direction: 'rtl' }}
+                />
+                <Legend />
+                <Bar dataKey="income" fill="#10b981" name="درآمد" />
+                <Bar dataKey="expenses" fill="#ef4444" name="هزینه" />
+                <Bar dataKey="profit" fill="#3b82f6" name="سود" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
     </div>
