@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { hasPermission, requirePermission } from '@/lib/access';
 import { holdsStock, stockLevel } from '@/lib/stock-levels';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
 
 // const prisma = new PrismaClient();
 
@@ -116,18 +117,22 @@ export async function getProductSalesAnalytics(productId: string) {
         }
       },
       include: {
+        ...SALE_LINE_INCLUDE,
         order: {
           select: {
             createdAt: true,
-            status: true
+            status: true,
+            discount: true,
+            items: { include: SALE_LINE_INCLUDE },
           }
         }
       }
     });
 
-    // Calculate metrics
-    const totalUnitsSold = orderItems.reduce((sum: any, item: any) => sum + item.quantity, 0);
-    const totalRevenue = orderItems.reduce((sum: any, item: any) => sum + (item.quantity * Number(item.price)), 0);
+    // Calculate metrics: units net of returns and exchanges, revenue net of the order's discount too.
+    const sold: Array<{ units: number; revenue: number }> = orderItems.map((item: any) => netLineSale(item, item.order));
+    const totalUnitsSold = sold.reduce((sum, line) => sum + line.units, 0);
+    const totalRevenue = sold.reduce((sum, line) => sum + line.revenue, 0);
     const avgSellingPrice = totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : 0;
 
     // Calculate velocity (items per time period)
@@ -276,9 +281,12 @@ export async function getProductSalesHistory(productId: string, months: number =
         }
       },
       include: {
+        ...SALE_LINE_INCLUDE,
         order: {
           select: {
-            createdAt: true
+            createdAt: true,
+            discount: true,
+            items: { include: SALE_LINE_INCLUDE },
           }
         }
       }
@@ -291,9 +299,11 @@ export async function getProductSalesHistory(productId: string, months: number =
       const parts = JALALI_MONTH.formatToParts(new Date(item.order.createdAt));
       const monthKey = `${parts.find((p) => p.type === 'year')!.value}-${parts.find((p) => p.type === 'month')!.value}`;
       
+      // Net of returns, exchanges and the order's discount, as on the sales cards above the chart.
+      const sold = netLineSale(item, item.order);
       const existing = monthlyData.get(monthKey) || { units: 0, revenue: 0 };
-      existing.units += item.quantity;
-      existing.revenue += item.quantity * Number(item.price);
+      existing.units += sold.units;
+      existing.revenue += sold.revenue;
       monthlyData.set(monthKey, existing);
     });
 

@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
 import { stockLevel } from '@/lib/stock-levels';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
 
 // const prisma = new PrismaClient();
 
@@ -67,8 +68,10 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
           // A cancelled sale sold nothing.
           where: { order: { status: { not: 'CANCELLED' } } },
           include: {
+            ...SALE_LINE_INCLUDE,
             order: {
               include: {
+                items: { include: SALE_LINE_INCLUDE },
                 customer: {
                   include: {
                     warehouses: true // Customer has multiple warehouses (consignment)
@@ -97,8 +100,8 @@ export async function getProductAnalytics(productId: string): Promise<ProductAna
     const salesHistoryMap: Record<string, { units: number; revenue: number }> = {};
 
     product.orderItems.forEach((item: any) => {
-      const units = item.quantity;
-      const revenue = Number(item.price) * units;
+      // Net of returns and exchanges, and of the order's discount (src/lib/product-sales.ts).
+      const { units, revenue } = netLineSale(item, item.order);
       const cost = Number(product.costPrice) * units;
 
       totalUnitsSold += units;
@@ -184,7 +187,8 @@ export async function getProductSalesByWarehouse(productId: string) {
         orderItems: {
           where: { order: { status: { not: 'CANCELLED' } } },
           include: {
-            order: true
+            ...SALE_LINE_INCLUDE,
+            order: { include: { items: { include: SALE_LINE_INCLUDE } } }
           }
         }
       }
@@ -196,8 +200,7 @@ export async function getProductSalesByWarehouse(productId: string) {
 
     product.orderItems.forEach((item: any) => {
       const warehouseId = 'default'; // Would need to track warehouse per order
-      const units = item.quantity;
-      const revenue = Number(item.price) * units;
+      const { units, revenue } = netLineSale(item, item.order);
 
       if (!warehouseSales[warehouseId]) {
         warehouseSales[warehouseId] = { units: 0, revenue: 0 };

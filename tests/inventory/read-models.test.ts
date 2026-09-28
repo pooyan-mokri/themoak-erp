@@ -164,6 +164,45 @@ test('product sales: cancelled orders sold nothing, on the product page and in p
   assert.equal(analytics.stockByWarehouse.length, 3);
 });
 
+test('units sold are net of returns and exchanges, and revenue net of the order\'s discount, on the page, the chart and in analytics', async () => {
+  const w = await world();
+  const account = await prisma.account.create({ data: { name: 'صندوق', type: 'CASH', currency: 'TOMAN' } });
+  // One order: 3 PANJ at 2,000,000 and 1 YEK at 1,000,000, 700,000 off. One PANJ comes back, one is exchanged
+  // for a DU at 500,000. Still sold: PANJ 1 (2,000,000), YEK 1 (1,000,000), DU 1 (500,000) = 3,500,000,
+  // so PANJ carries 2,000,000 / 3,500,000 of the discount: 400,000.
+  const order = await prisma.order.create({
+    data: {
+      status: 'COMPLETED',
+      totalAmount: 6_500_000,
+      discount: 700_000,
+      createdAt: new Date('2026-09-10T08:00:00Z'),
+      items: {
+        create: [
+          { productId: w.panj.id, warehouseId: w.main.id, quantity: 3, price: 2_000_000 },
+          { productId: w.yek.id, warehouseId: w.main.id, quantity: 1, price: 1_000_000 },
+          { productId: w.du.id, warehouseId: w.main.id, quantity: 1, price: 500_000 },
+        ],
+      },
+    },
+    include: { items: true },
+  });
+  const [panjLine, , duLine] = order.items;
+  await prisma.orderReturn.create({ data: { orderId: order.id, orderItemId: panjLine.id, quantity: 1, refundAmount: 2_000_000, accountId: account.id } });
+  await prisma.orderExchange.create({
+    data: { orderId: order.id, originalItemId: panjLine.id, exchangeItemId: duLine.id, quantity: 1, priceDifference: -1_500_000, accountId: account.id },
+  });
+
+  const page = await getProductSalesAnalytics(w.panj.id);
+  assert.deepEqual([page.totalUnitsSold, page.totalRevenue, page.avgSellingPrice], [1, 1_600_000, 1_600_000]);
+  assert.deepEqual(await getProductSalesHistory(w.panj.id, 1200), [{ month: '1405-06', units: 1, revenue: 1_600_000 }]);
+  const analytics = (await getProductAnalytics(w.panj.id))!;
+  assert.deepEqual([analytics.totalUnitsSold, analytics.totalRevenue, analytics.totalProfit], [1, 1_600_000, 1_600_000 - 700_000]);
+  assert.deepEqual(await getProductSalesByWarehouse(w.panj.id), [{ warehouseId: 'default', units: 1, revenue: 1_600_000 }]);
+  // The replacement is a sale of DU: 1 unit, 500,000 less its 100,000 share of the discount.
+  const du = await getProductSalesAnalytics(w.du.id);
+  assert.deepEqual([du.totalUnitsSold, du.totalRevenue], [1, 400_000]);
+});
+
 test('product sales chart: months are Jalali months in Tehran time, so a sale after midnight on 1 Mehr is in Mehr', async () => {
   const w = await world();
   await sales(w);
