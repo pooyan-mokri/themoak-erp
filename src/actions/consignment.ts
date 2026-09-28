@@ -808,6 +808,8 @@ export async function getConsignmentPartners() {
                 ...partner.customer,
                 channels: plainChannels(partner.customer.channels),
                 commissionRate: partner.customer.commissionRate ? Number(partner.customer.commissionRate) : undefined,
+                // A Decimal is not a plain value: the partner screens are client components.
+                creditLimit: Number(partner.customer.creditLimit),
                 phone: partner.customer.phone ?? undefined,
                 email: partner.customer.email ?? undefined,
                 address: partner.customer.address ?? undefined,
@@ -836,6 +838,7 @@ export async function getConsignmentPartnerById(warehouseId: string) {
                 ...warehouse.customer,
                 channels: plainChannels(warehouse.customer.channels),
                 commissionRate: warehouse.customer.commissionRate ? Number(warehouse.customer.commissionRate) : undefined,
+                creditLimit: Number(warehouse.customer.creditLimit),
                 phone: warehouse.customer.phone ?? undefined,
                 email: warehouse.customer.email ?? undefined,
                 address: warehouse.customer.address ?? undefined,
