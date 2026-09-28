@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { jalaliYearMonth } from '@/lib/tehran-day';
+import { toLatinDigits } from '@/lib/digits';
 
 const initialState = {
   message: '',
@@ -70,21 +72,14 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
   }, [selectedEmployeeId, employees, amount]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  const amountNum = Number(amount) || 0;
-  const bonusesNum = Number(bonuses) || 0;
-  const deductionsNum = Number(deductions) || 0;
+  const amountNum = Number(toLatinDigits(amount)) || 0;
+  const bonusesNum = Number(toLatinDigits(bonuses)) || 0;
+  const deductionsNum = Number(toLatinDigits(deductions)) || 0;
   const netAmount = amountNum + bonusesNum - deductionsNum;
 
-  // Get current Jalali month and year
-  const now = new Date();
-  const jalaliDate = new Intl.DateTimeFormat('fa-IR', {
-    year: 'numeric',
-    month: 'numeric',
-  }).formatToParts(now);
-  const yearValue = jalaliDate.find((p) => p.type === 'year')?.value || '1403';
-  const monthValue = jalaliDate.find((p) => p.type === 'month')?.value || '1';
-  const currentYear = parseInt(yearValue, 10) || 1403;
-  const currentMonth = parseInt(monthValue, 10) || 1;
+  // Get current Jalali month and year, in Latin digits: fa-IR's ۱۴۰۵ read as
+  // NaN, so the form always opened on month 1 of 1403.
+  const { year: currentYear, month: currentMonth } = jalaliYearMonth(new Date());
 
   return (
     <Card>

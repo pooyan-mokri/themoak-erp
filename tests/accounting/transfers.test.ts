@@ -8,6 +8,7 @@ import { AccessDenied } from '@/lib/access';
 import {
   deleteInternalTransfer,
   getInternalTransfers,
+  getTransactions,
   recordInternalTransfer,
   updateInternalTransfer,
 } from '@/actions/accounting';
@@ -326,4 +327,83 @@ test('a legacy leg is paired with the leg written beside it, and a lone leg is r
   assert.equal(left[0].description, 'کامل');
   assert.equal(left[0].complete, true);
   await assertLedgersAddUp();
+});
+
+/** Every account's balance valued in Toman: Toman as it is, a foreign balance at its latest rate. */
+async function tomanValue() {
+  const rates = new Map<string, number>();
+  for (const rate of await prisma.exchangeRate.findMany({ orderBy: { date: 'asc' } })) rates.set(rate.currency, Number(rate.rateToToman));
+  let total = 0;
+  for (const account of await prisma.account.findMany()) {
+    total += Number(account.balance) * (account.currency === 'TOMAN' ? 1 : rates.get(account.currency)!);
+  }
+  return total;
+}
+
+test('a dollar transfer keeps its Toman equivalent at the latest rate, and an edit values it again', async () => {
+  await openAccount('usd-2', 0, 'USD');
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 90_000, date: new Date('2026-09-01T08:00:00Z') } });
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20T08:00:00Z') } });
+  const before = await tomanValue();
+
+  await transfer(250.5, 'usd', 'usd-2', 'ذخیره دلاری');
+  const legs = await prisma.transaction.findMany({ where: { type: 'TRANSFER' } });
+  assert.equal(legs.length, 2);
+  for (const leg of legs) {
+    assert.deepEqual(
+      [Number(leg.amount), leg.currency, Number(leg.rateSnapshot), Number(leg.amountInToman)],
+      [250.5, 'USD', 100_000, 25_050_000],
+    );
+  }
+  assert.deepEqual([await balanceOf('usd'), await balanceOf('usd-2')], [749.5, 250.5]);
+  assert.equal(await tomanValue(), before, 'a transfer moves no Toman value');
+  const journal = await getTransactions();
+  assert.ok(journal.filter((t: any) => t.type === 'TRANSFER').every((t: any) => t.amountInToman === 25_050_000));
+
+  // A newer rate: an edit takes it.
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 110_000, date: new Date('2026-09-25T08:00:00Z') } });
+  const id = (await getInternalTransfers())[0].id;
+  const edited = await updateInternalTransfer({ id, fromAccountId: 'usd', toAccountId: 'usd-2', amount: 100 });
+  assert.equal(edited.success, true, edited.message);
+  for (const leg of await prisma.transaction.findMany({ where: { type: 'TRANSFER' } })) {
+    assert.deepEqual([Number(leg.amount), Number(leg.rateSnapshot), Number(leg.amountInToman)], [100, 110_000, 11_000_000]);
+  }
+  assert.deepEqual([await balanceOf('usd'), await balanceOf('usd-2')], [900, 100]);
+  await assertLedgersAddUp();
+  assert.equal(await driftOf('usd-2'), 0);
+});
+
+test('a Toman transfer keeps rate 1; a dollar transfer with no rate recorded is refused and moves nothing', async () => {
+  await transfer(1_000_000);
+  for (const leg of await prisma.transaction.findMany({ where: { type: 'TRANSFER' } })) {
+    assert.deepEqual([Number(leg.rateSnapshot), Number(leg.amountInToman)], [1, 1_000_000]);
+  }
+
+  await openAccount('usd-2', 0, 'USD');
+  const before = await prisma.transaction.count();
+  const refused = await recordInternalTransfer(undefined, form({ amount: '10', fromAccountId: 'usd', toAccountId: 'usd-2' }));
+  assert.equal(refused.success, false);
+  assert.match(refused.message!, /نرخ تبدیل برای ارز USD یافت نشد/);
+  assert.equal(await prisma.transaction.count(), before);
+  assert.deepEqual([await balanceOf('usd'), await balanceOf('usd-2')], [1_000, 0]);
+});
+
+test('a transfer is refused, moving nothing, for a bad amount, one account, an unknown account or too little money', async () => {
+  const before = await balances();
+  const cases: [Record<string, string>, RegExp][] = [
+    [{ amount: '0' }, /فیلدهای الزامی/],
+    [{ amount: '-1' }, /فیلدهای الزامی/],
+    [{ amount: '۱۰۰' }, /فیلدهای الزامی/],
+    [{ toAccountId: 'novin' }, /نمی‌توانند یکسان باشند/],
+    [{ toAccountId: 'nowhere' }, /حساب یافت نشد/],
+    [{ toAccountId: 'usd' }, /ارز دو حساب باید یکسان باشد/],
+    [{ amount: '100000001' }, /کافی نیست/],
+  ];
+  for (const [fields, message] of cases) {
+    const result = await recordInternalTransfer(undefined, form({ amount: '1000', fromAccountId: 'novin', toAccountId: 'dehghani', ...fields }));
+    assert.equal(result.success, false, JSON.stringify(fields));
+    assert.match(result.message!, message, JSON.stringify(fields));
+  }
+  assert.deepEqual(await balances(), before);
+  assert.equal(await prisma.transaction.count({ where: { type: 'TRANSFER' } }), 0);
 });

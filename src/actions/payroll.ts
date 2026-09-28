@@ -7,7 +7,15 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { logActivity } from '@/lib/activity-log';
+import { toLatinDigits } from '@/lib/digits';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await client.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 import { auth } from '@/auth';
 
 // --- Schemas ---
@@ -38,11 +46,12 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
 
   const validatedFields = PayrollSchema.safeParse({
     employeeId: formData.get('employeeId'),
-    amount: formData.get('amount'),
-    bonuses: formData.get('bonuses') || undefined,
-    deductions: formData.get('deductions') || undefined,
-    periodMonth: formData.get('periodMonth'),
-    periodYear: formData.get('periodYear'),
+    // A Persian keyboard types ۰–۹, which Number cannot read (src/lib/digits.ts).
+    amount: toLatinDigits(formData.get('amount')),
+    bonuses: toLatinDigits(formData.get('bonuses')) || undefined,
+    deductions: toLatinDigits(formData.get('deductions')) || undefined,
+    periodMonth: toLatinDigits(formData.get('periodMonth')),
+    periodYear: toLatinDigits(formData.get('periodYear')),
     description: formData.get('description') || undefined,
   });
 
@@ -88,6 +97,10 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
     }
 
     const netAmount = amount + bonuses - deductions;
+    // As updatePayroll: a payslip that pays nothing or less than nothing is a typo.
+    if (!(netAmount > 0)) {
+      return { message: 'حقوق خالص (حقوق + پاداش − کسورات) باید بیشتر از صفر باشد.', success: false };
+    }
 
     await prisma.payroll.create({
       data: {
@@ -109,7 +122,7 @@ export async function createPayroll(prevState: ActionState, formData: FormData):
   } catch (error: unknown) {
     console.error('Error creating payroll:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت فیش حقوقی.',
+      message: userMessage(error, 'خطا در ثبت فیش حقوقی.'),
       success: false,
     };
   }
@@ -121,7 +134,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
 
   const validatedFields = PayrollPaymentSchema.safeParse({
     payrollId: formData.get('payrollId'),
-    amount: formData.get('amount'),
+    amount: toLatinDigits(formData.get('amount')),
     accountId: formData.get('accountId'),
     description: formData.get('description') || undefined,
     date: formData.get('date') || undefined,
@@ -136,8 +149,12 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
   }
 
   const { payrollId, amount, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(prisma, requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const payroll = await prisma.payroll.findUnique({
       where: { id: payrollId },
       include: {
@@ -183,11 +200,31 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
       await inAccountCurrency(prisma, account, amountInToman);
 
     const transactionDate = date ? new Date(date) : new Date();
-    const newPaidAmount = currentPaidAmount + amount;
-    const newStatus = newPaidAmount >= netAmount ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
 
     // Create payment and update payroll
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // The payslip is locked and read again: a second payment, or an edit of
+      // it, at the same moment waits, and paid never goes above the net pay.
+      await tx.$queryRaw`SELECT id FROM "Payroll" WHERE id = ${payrollId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (await alreadyBooked(tx, requestId)) return 'duplicate';
+      const current = await tx.payroll.findUnique({ where: { id: payrollId } });
+      const currentNet = Number(current.netAmount);
+      const paidSoFar = Number(current.paidAmount);
+      if (amount > currentNet - paidSoFar) {
+        throw new Error(
+          `مبلغ پرداختی بیشتر از باقیمانده است. (باقیمانده: ${(currentNet - paidSoFar).toLocaleString('fa-IR')} تومان)`,
+        );
+      }
+      const newPaidAmount = paidSoFar + amount;
+      const newStatus = newPaidAmount >= currentNet ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'PENDING';
+
+      // As every other payment: the account must cover it.
+      const payer = await tx.account.findUnique({ where: { id: accountId } });
+      if (Number(payer.balance) < amountInAccountCurrency) {
+        throw new Error(`موجودی حساب "${payer.name}" کافی نیست.`);
+      }
+
       const transaction = await tx.transaction.create({
         data: {
           type: TransactionType.EXPENSE,
@@ -199,6 +236,7 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
           description: description || `پرداخت حقوق - ${payroll.employee.name} - ${payroll.periodYear}/${payroll.periodMonth}`,
           category: 'Salary',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -229,7 +267,9 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
           },
         },
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/payroll');
     revalidatePath('/dashboard/accounting/transactions');
@@ -239,9 +279,10 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error recording payroll payment:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت پرداخت.',
+      message: userMessage(error, 'خطا در ثبت پرداخت.'),
       success: false,
     };
   }
@@ -314,7 +355,7 @@ export async function updatePayroll(
         `(حقوق ${amount}، پاداش ${bonuses}، کسورات ${deductions}).`,
     );
   } catch (error: unknown) {
-    return { success: false, message: error instanceof Error ? error.message : 'خطا در ویرایش فیش حقوقی.' };
+    return { success: false, message: userMessage(error, 'خطا در ویرایش فیش حقوقی.') };
   }
 
   revalidatePath('/dashboard/accounting/payroll');

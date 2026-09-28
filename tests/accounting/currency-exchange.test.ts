@@ -278,3 +278,79 @@ test('a lone legacy leg next to a whole exchange is removed alone, as the list s
   assert.equal(left[0].sourceAmount, 10_000_000);
   assert.equal(left[0].targetAmount, 100);
 });
+
+// ─── The Toman value an exchange moves ───────────────────────────────────────
+
+/** Every account valued in Toman: Toman as it is, a foreign balance at its latest recorded rate. */
+async function tomanValue() {
+  const rates = new Map<string, number>();
+  for (const rate of await prisma.exchangeRate.findMany({ orderBy: { date: 'asc' } })) rates.set(rate.currency, Number(rate.rateToToman));
+  let total = 0;
+  for (const account of await prisma.account.findMany()) {
+    total += Number(account.balance) * (account.currency === 'TOMAN' ? 1 : rates.get(account.currency)!);
+  }
+  return total;
+}
+
+const exchange = (fields: Record<string, string>) =>
+  exchangeCurrency(undefined, form({ date: '2026-09-21', description: '', ...fields }));
+
+test('an exchange at the recorded rate moves no Toman value; at another rate, exactly its difference', async () => {
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20T08:00:00Z') } });
+  await prisma.exchangeRate.create({ data: { currency: 'EUR', rateToToman: 110_000, date: new Date('2026-09-20T08:00:00Z') } });
+  let before = await tomanValue();
+
+  // Buying 50 dollars at the recorded rate.
+  await buyUsd(5_000_000, 50);
+  assert.equal(await tomanValue(), before);
+  const legs = await prisma.transaction.findMany({ orderBy: { type: 'asc' } });
+  assert.deepEqual(legs.map((l: any) => [l.type, Number(l.amountInToman)]), [['INCOME', 5_000_000], ['EXPENSE', 5_000_000]]);
+
+  // Selling 30 dollars at 104,000, 4,000 above the recorded rate: 120,000 Toman gained.
+  before = await tomanValue();
+  const sold = await exchange({
+    sourceAccountId: 'usd', targetAccountId: 'toman', sourceAmount: '30', targetAmount: '3120000',
+    sourceCurrency: 'USD', targetCurrency: 'TOMAN', exchangeRate: '104000',
+  });
+  assert.equal(sold.success, true, sold.message);
+  assert.equal(await tomanValue(), before + 30 * 4_000);
+  const sale = await prisma.transaction.findMany({ where: { exchangeGroupId: { not: null }, currency: 'USD', type: 'EXPENSE' } });
+  assert.deepEqual(sale.map((l: any) => [Number(l.amount), Number(l.amountInToman), Number(l.rateSnapshot)]), [[30, 3_120_000, 104_000]]);
+
+  // Dollars to euros: each leg at its own recorded rate; the value moves by what the rates make of it.
+  before = await tomanValue();
+  const swapped = await exchange({
+    sourceAccountId: 'usd', targetAccountId: 'eur', sourceAmount: '11', targetAmount: '10',
+    sourceCurrency: 'USD', targetCurrency: 'EUR', exchangeRate: '0.909',
+  });
+  assert.equal(swapped.success, true, swapped.message);
+  const cross = await prisma.transaction.findMany({ where: { OR: [{ currency: 'EUR' }, { currency: 'USD', amount: 11 }] }, orderBy: { type: 'asc' } });
+  assert.deepEqual(cross.map((l: any) => [l.type, l.currency, Number(l.amount), Number(l.amountInToman)]), [
+    ['INCOME', 'EUR', 10, 1_100_000],
+    ['EXPENSE', 'USD', 11, 1_100_000],
+  ]);
+  assert.equal(await tomanValue(), before);
+  assert.deepEqual(await balances(), { eur: 10, toman: 1_000_000_000 - 5_000_000 + 3_120_000, usd: 100 + 50 - 30 - 11 });
+});
+
+test('an exchange is refused, moving nothing, between one account, in one currency, against an account of another currency, or beyond the balance', async () => {
+  const before = await balances();
+  const cases: [Record<string, string>, RegExp][] = [
+    [{ targetAccountId: 'toman', targetCurrency: 'TOMAN' }, /نمی‌توانند یکسان باشند/],
+    [{ targetAccountId: 'eur', targetCurrency: 'TOMAN' }, /باید متفاوت باشند/],
+    [{ targetAccountId: 'eur' }, /حساب مقصد باید از نوع USD باشد/],
+    [{ sourceAmount: '2000000000', targetAmount: '20000', exchangeRate: '100000' }, /موجودی حساب مبدا کافی نیست/],
+    [{ sourceAmount: '0' }, /فیلدهای الزامی/],
+    [{ targetAccountId: 'nowhere' }, /حساب یافت نشد/],
+  ];
+  for (const [fields, message] of cases) {
+    const result = await exchange({
+      sourceAccountId: 'toman', targetAccountId: 'usd', sourceAmount: '1000000', targetAmount: '10',
+      sourceCurrency: 'TOMAN', targetCurrency: 'USD', exchangeRate: '100000', ...fields,
+    });
+    assert.equal(result.success, false, JSON.stringify(fields));
+    assert.match(result.message!, message, JSON.stringify(fields));
+  }
+  assert.deepEqual(await balances(), before);
+  assert.equal(await prisma.transaction.count(), 0);
+});

@@ -34,6 +34,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { AccountForm } from './account-form';
+import { ACCOUNT_TYPE_LABELS } from '@/lib/account-label';
 
 interface Account {
   id: string;
@@ -76,7 +77,7 @@ export function AccountList({ accounts }: AccountListProps) {
                 <TableRow key={account.id}>
                   <TableCell className="font-medium">{account.name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{account.type}</Badge>
+                    <Badge variant="outline">{ACCOUNT_TYPE_LABELS[account.type] ?? account.type}</Badge>
                   </TableCell>
                   <TableCell>{account.currency}</TableCell>
                   <TableCell dir="ltr" className="text-right">{Number(account.balance).toLocaleString()}</TableCell>

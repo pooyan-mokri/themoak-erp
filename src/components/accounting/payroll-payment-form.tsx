@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
   message: '',
@@ -48,6 +49,12 @@ export function PayrollPaymentForm({
   onSuccess,
 }: PayrollPaymentFormProps) {
   const [state, dispatch] = useFormState(recordPayrollPayment, initialState);
+  // One id per submission, so a retry or a double click books once (src/lib/request-id.ts);
+  // a new one once this is booked, so the next entry is a new submission.
+  const [requestId, renewRequestId] = useRequestId();
+  useEffect(() => {
+    if (state.success) renewRequestId();
+  }, [state, renewRequestId]);
   const [accountId, setAccountId] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
   const [date, setDate] = useState<string>('');
@@ -75,6 +82,7 @@ export function PayrollPaymentForm({
 
   return (
     <form action={dispatch} className="space-y-4">
+      <RequestIdField value={requestId} />
       <input type="hidden" name="payrollId" value={payroll.id} />
 
       <div className="p-3 bg-muted rounded-md">

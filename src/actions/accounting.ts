@@ -7,11 +7,14 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { checkPermission, getCurrentRole, hasPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
 import { auth } from '@/auth';
 import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
+import { profitAmount, profitLine } from '@/lib/profit-rows';
+import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { randomUUID } from 'node:crypto';
 
 // const prisma = new PrismaClient(); // Removed local instance
@@ -27,6 +30,13 @@ const EMPLOYEE_DEBT_REPAYMENT_CATEGORY = 'تسویه بدهی کارمند';
 
 /** The one ADJUSTMENT row that documents an account's historical difference and moves no money. */
 const BASELINE_CATEGORY = 'مانده پایه';
+
+/**
+ * The cash a loan pays out to an employee (src/actions/loan.ts). It carries the
+ * employee's id, but the money runs the other way from a debt: the employee owes
+ * it back, and the loans page tracks what is left. The debt report skips it.
+ */
+const EMPLOYEE_LOAN_CATEGORY = 'قرض به کارمند';
 
 /**
  * COGS and gift rows are valued at product cost, so their amounts are cost
@@ -107,6 +117,16 @@ export async function createAccount(prevState: ActionState, formData: FormData):
 
   const { name, type, currency, initialBalance, cardNumber, sheba } = validatedFields.data;
 
+  // A foreign opening balance keeps its Toman equivalent at the latest rate, as a deposit does.
+  let rate = 1;
+  if (initialBalance) {
+    try {
+      rate = await tomanRateOf(prisma, currency);
+    } catch (error) {
+      return { message: userMessage(error, 'خطا در ایجاد حساب.') };
+    }
+  }
+
   try {
     await prisma.$transaction(async (tx: any) => {
       const account = await tx.account.create({
@@ -127,8 +147,8 @@ export async function createAccount(prevState: ActionState, formData: FormData):
             type: TransactionType.ADJUSTMENT,
             amount: new Prisma.Decimal(initialBalance),
             currency,
-            rateSnapshot: new Prisma.Decimal(1),
-            amountInToman: new Prisma.Decimal(initialBalance),
+            rateSnapshot: new Prisma.Decimal(rate),
+            amountInToman: new Decimal(initialBalance).times(rate),
             accountId: account.id,
             category: 'موجودی اولیه',
             description: 'موجودی اولیه',
@@ -155,13 +175,12 @@ async function ensureMarketingExpensesAccount() {
     });
 
     if (!existingAccount) {
-      await prisma.account.create({
-        data: {
-          name: 'Marketing Expenses',
-          type: 'EXPENSE',
-          currency: 'TOMAN',
-          balance: 0,
-        },
+      // Created under one fixed id: pages opened at the same moment all find
+      // it missing, and a plain create made one copy each (the name is not
+      // unique). ON CONFLICT DO NOTHING on the id leaves the first one alone.
+      await prisma.account.createMany({
+        data: [{ id: 'marketing-expenses', name: 'Marketing Expenses', type: 'EXPENSE', currency: 'TOMAN', balance: 0 }],
+        skipDuplicates: true,
       });
     }
   } catch (error) {
@@ -186,7 +205,7 @@ export async function getAccounts() {
     }));
   } catch (error) {
     console.error('Error fetching accounts:', error);
-    throw new Error(`Failed to fetch accounts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Failed to fetch accounts: ${userMessage(error, 'Unknown error')}`);
   }
 }
 
@@ -401,8 +420,11 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
     };
   }
 
-  const { amount, currency, category, accountId, employeeId, description, date, projectId, receiptUrl } = validatedFields.data;
+  const { amount, currency, category, accountId, employeeId, description, date, projectId } = validatedFields.data;
   const requestId = readRequestId(formData.get('requestId'));
+  // An uploaded receipt or none, as recordDeposit takes it (src/lib/receipt-ref.ts).
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
@@ -466,9 +488,10 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
           throw new Error('حساب پرداخت یافت نشد');
         }
 
-        // The money leaves the account in the account's own currency.
+        // The money leaves the account in the account's own currency; an
+        // amount already in it is taken as typed, not × rate ÷ rate in floats.
         const { amount: amountInAccountCurrency, rate: accountRate } =
-          await inAccountCurrency(tx, account, amountInToman);
+          currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, amountInToman);
 
         // Check if account has sufficient balance
         const accountBalance = Number(account.balance);
@@ -520,8 +543,8 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
       stack: errorObj.stack
     });
 
-    // Return more specific error message if available
-    if (errorObj.message) {
+    // Return more specific error message if available (a Persian refusal, never a database error)
+    if (userMessage(error, '')) {
       return { message: `خطا در ثبت هزینه: ${errorObj.message}`, success: false };
     }
 
@@ -559,7 +582,17 @@ const SYSTEM_OWNED_RELATIONS = {
   PayrollPayment: { select: { id: true } },
   ShareholderWithdrawal: { select: { id: true } },
   siteRefund: { select: { id: true } },
+  account: { select: { type: true } },
 };
+
+/**
+ * Whether booking this expense moved its account's balance. Depreciation sits
+ * on an EXPENSE account kept at 0 (src/actions/fixed-assets.ts), so deleting or
+ * correcting it must not move that account either.
+ */
+function movedBalance(expense: { accountId: string | null; category?: string | null; account?: { type: string } | null }): boolean {
+  return !!expense.accountId && !(expense.category === 'Depreciation' && expense.account?.type === 'EXPENSE');
+}
 
 /**
  * Some EXPENSE rows are not standalone expenses — they are the accounting leg
@@ -582,6 +615,8 @@ function systemOwnerOf(expense: any): string | null {
   if (expense.category === 'COGS') return 'بهای تمام‌شده کالای فروش امانی';
   if (expense.category === 'CONSIGNMENT_COMMISSION') return 'کمیسیون همکار امانی';
   if (expense.category === 'Currency Exchange') return 'مبادله ارز';
+  // The loan's own record (amount, remaining) would stay as it was.
+  if (expense.category === EMPLOYEE_LOAN_CATEGORY) return 'قرض به کارمند';
   // Money of an order (a refund recorded on the website review page, a settlement cost):
   // changed only from the order's own screens, which keep the order in step.
   if (expense.orderId) return 'پول یک سفارش';
@@ -622,7 +657,7 @@ export async function deleteExpense(id: string): Promise<ActionResult> {
       // Undo exactly what this row did to the balance, in the account's own
       // currency — balanceEffect replays the same rule the reconciliation
       // report uses, so the two can never disagree.
-      if (expense.accountId) {
+      if (movedBalance(expense)) {
         await tx.account.update({
           where: { id: expense.accountId },
           data: { balance: { increment: new Prisma.Decimal(-balanceEffect(expense as any)) } },
@@ -698,6 +733,10 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
         rate = Number(latestRate.rateToToman);
       }
       const newAmountInToman = amount * rate;
+      // Depreciation never moved its EXPENSE account; an edit here would.
+      if (existing.accountId && !movedBalance(existing)) {
+        throw new Error('سند استهلاک قابل ویرایش نیست؛ آن را حذف کنید و استهلاک را دوباره ثبت کنید.');
+      }
       const wasAccountPaid = !!existing.accountId;
 
       if (wasAccountPaid) {
@@ -713,7 +752,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
         if (!account) throw new Error('حساب پرداخت یافت نشد');
 
         const { amount: amountInAccountCurrency, rate: accountRate } =
-          await inAccountCurrency(tx, account, newAmountInToman);
+          currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, newAmountInToman);
 
         if (Number(account.balance) < amountInAccountCurrency) {
           throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی فعلی: ${Number(account.balance).toLocaleString('fa-IR')} ${account.currency}`);
@@ -761,7 +800,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
     return { success: true, message: 'هزینه با موفقیت ویرایش شد.' };
   } catch (error: unknown) {
     console.error('Error updating expense:', error);
-    const message = error instanceof Error ? error.message : 'خطا در ویرایش هزینه.';
+    const message = userMessage(error, 'خطا در ویرایش هزینه.');
     return { success: false, message };
   }
 }
@@ -770,6 +809,8 @@ export async function getSalesByProduct() {
   await requirePermission('sales.view');
   try {
     const orderItems = await prisma.orderItem.findMany({
+      // A cancelled order sold nothing (as reports.ts and the dashboard count it).
+      where: { order: { status: { not: 'CANCELLED' } } },
       include: {
         product: true,
       },
@@ -812,16 +853,20 @@ export async function getExpenseBreakdown() {
     for (const expense of expenses) {
       // COGS and gift totals are cost data.
       if (!canSeeCost && isCostRow(expense)) continue;
+      // Only what the P&L counts as a cost: not a loan, capital paid out or a
+      // currency bought, nor stock bought (its cost comes as COGS when sold) —
+      // src/lib/profit-rows.ts.
+      if (!profitLine(expense)) continue;
 
       // Extract category from description "Category - Description"
-      const description = expense.description || 'Uncategorized';
+      const description = expense.description || 'سایر';
       const parts = description.split(' - ');
-      const category = parts.length > 0 ? parts[0] : 'Uncategorized';
+      const category = parts.length > 0 ? parts[0] : 'سایر';
 
       if (!expenseByCategory[category]) {
         expenseByCategory[category] = 0;
       }
-      expenseByCategory[category] += Number(expense.amountInToman);
+      expenseByCategory[category] += profitAmount(expense);
     }
 
     return Object.entries(expenseByCategory)
@@ -974,6 +1019,7 @@ export async function adjustAccountBalance(input: {
       // A Toman figure typed as the rounded balance the page shows is already
       // right; on a foreign-currency account a cent is money.
       if (delta.abs().lessThan(account.currency === 'TOMAN' ? 0.5 : 0.005)) return { delta: 0, name: account.name };
+      const rate = await tomanRateOf(tx, account.currency);
 
       await tx.transaction.create({
         data: {
@@ -982,8 +1028,8 @@ export async function adjustAccountBalance(input: {
           // reconciliation can only re-derive its effect if the sign is stored.
           amount: delta,
           currency: account.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: delta,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: delta.times(rate),
           accountId,
           category: 'اصلاح موجودی',
           description:
@@ -1014,7 +1060,7 @@ export async function adjustAccountBalance(input: {
     console.error('Error adjusting account balance:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'خطا در اصلاح موجودی.',
+      message: userMessage(error, 'خطا در اصلاح موجودی.'),
     };
   }
 }
@@ -1050,14 +1096,15 @@ export async function recordBalanceBaseline(accountId: string): Promise<ActionRe
       });
       const difference = new Decimal(account.balance).minus(sumBalanceEffects(transactions));
       if (difference.isZero()) return null;
+      const rate = await tomanRateOf(tx, account.currency);
 
       await tx.transaction.create({
         data: {
           type: TransactionType.ADJUSTMENT,
           amount: difference,
           currency: account.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: difference,
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman: difference.times(rate),
           accountId,
           category: BASELINE_CATEGORY,
           description: 'مانده پایه — اختلاف قدیمی موجودی ثبت‌شده با جمع تراکنش‌ها؛ موجودی حساب تغییر نکرد',
@@ -1080,7 +1127,7 @@ export async function recordBalanceBaseline(accountId: string): Promise<ActionRe
     console.error('Error recording balance baseline:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'خطا در ثبت مانده پایه.',
+      message: userMessage(error, 'خطا در ثبت مانده پایه.'),
     };
   }
 }
@@ -1146,9 +1193,11 @@ export async function getEmployeeDebts() {
       employees.map(async (employee: any) => {
         // Repayments are identified by category, not by INCOME/EXPENSE:
         // they are EXPENSE rows now, and legacy rows are INCOME.
-        const allTransactions = await prisma.transaction.findMany({
-          where: { employeeId: employee.id },
-        });
+        const allTransactions = (
+          await prisma.transaction.findMany({
+            where: { employeeId: employee.id },
+          })
+        ).filter((tx: any) => tx.category !== EMPLOYEE_LOAN_CATEGORY);
         const isRepayment = (tx: any) =>
           tx.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY ||
           tx.type === TransactionType.INCOME;
@@ -1205,11 +1254,13 @@ export async function getEmployeeDebtDetails(employeeId: string) {
     }
 
     // Repayments are identified by category (EXPENSE rows now, legacy INCOME).
-    const allEmployeeTransactions = await prisma.transaction.findMany({
-      where: { employeeId: employee.id },
-      include: { project: true, account: true },
-      orderBy: { date: 'desc' },
-    });
+    const allEmployeeTransactions = (
+      await prisma.transaction.findMany({
+        where: { employeeId: employee.id },
+        include: { project: true, account: true },
+        orderBy: { date: 'desc' },
+      })
+    ).filter((tx: any) => tx.category !== EMPLOYEE_LOAN_CATEGORY);
     const isRepayment = (tx: any) =>
       tx.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY ||
       tx.type === TransactionType.INCOME;
@@ -1293,9 +1344,17 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   }
 
   const { employeeId, amount, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
-    await prisma.$transaction(async (tx: any) => {
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // Locked, so two repayments at once cannot both pass the check below.
+      await tx.$queryRaw`SELECT id FROM "Employee" WHERE id = ${employeeId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+        return 'duplicate';
+      }
       // Verify employee exists
       const employee = await tx.employee.findUnique({
         where: { id: employeeId },
@@ -1303,6 +1362,23 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
 
       if (!employee) {
         throw new Error('کارمند یافت نشد');
+      }
+
+      // What is still owed, by the rule the debts page adds up. Paying more
+      // would take the debt below zero, and the page lists positive debts only:
+      // the excess would show nowhere.
+      const rows = (await tx.transaction.findMany({ where: { employeeId } })).filter(
+        (row: any) => row.category !== EMPLOYEE_LOAN_CATEGORY,
+      );
+      const owed = rows.reduce((sum: number, row: any) => {
+        const repayment = row.category === EMPLOYEE_DEBT_REPAYMENT_CATEGORY || row.type === TransactionType.INCOME;
+        if (repayment) return sum - Number(row.amountInToman);
+        return row.type === TransactionType.EXPENSE ? sum + Number(row.amountInToman) : sum;
+      }, 0);
+      if (amount > owed + 0.5) {
+        throw new Error(
+          `مبلغ بازپرداخت بیشتر از بدهی به ${employee.name} است. (بدهی: ${Math.max(0, Math.round(owed)).toLocaleString('fa-IR')} تومان)`,
+        );
       }
 
       // Verify account exists and has sufficient balance
@@ -1339,6 +1415,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
           category: EMPLOYEE_DEBT_REPAYMENT_CATEGORY,
           description: description || `تسویه بدهی به ${employee.name}`,
           date: date ? new Date(date) : new Date(),
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -1351,7 +1428,9 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
           },
         },
       });
+      return 'booked';
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/employee-debts');
     return {
@@ -1359,8 +1438,9 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error paying employee debt:', error);
-    const message = error instanceof Error ? error.message : 'خطا در ثبت بازپرداخت بدهی.';
+    const message = userMessage(error, 'خطا در ثبت بازپرداخت بدهی.');
     return {
       message,
       success: false,
@@ -1402,8 +1482,10 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     return { errors: validatedFields.error.flatten().fieldErrors, message: 'لطفا فیلدهای الزامی را پر کنید.', success: false };
   }
 
-  const { amount, currency, accountId, payee, description, category, tags, date, receiptUrl } = validatedFields.data;
+  const { amount, currency, accountId, payee, description, category, tags, date } = validatedFields.data;
   const requestId = readRequestId(formData.get('requestId'));
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
@@ -1420,9 +1502,9 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     await prisma.$transaction(async (tx: any) => {
       const account = await tx.account.findUnique({ where: { id: accountId } });
       if (!account) throw new Error('حساب یافت نشد');
-      // The money leaves the account in the account's own currency.
+      // The money leaves the account in the account's own currency (as typed when it is in it).
       const { amount: amountInAccountCurrency, rate: accountRate } =
-        await inAccountCurrency(tx, account, amountInToman);
+        currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, amountInToman);
       if (Number(account.balance) < amountInAccountCurrency) {
         throw new Error(`موجودی حساب "${account.name}" کافی نیست.`);
       }
@@ -1450,7 +1532,7 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
     });
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
-    return { message: error instanceof Error ? error.message : 'خطا در ثبت برداشت.', success: false };
+    return { message: userMessage(error, 'خطا در ثبت برداشت.'), success: false };
   }
 
   revalidatePath('/dashboard/accounting/transactions');
@@ -1464,6 +1546,15 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
 const TRANSFER_CATEGORY = 'انتقال وجه';
 const OUT_PREFIX = '[خروج]';
 const IN_PREFIX = '[ورود]';
+
+/**
+ * Toman per 1 unit of `currency`: 1 for Toman, else the latest recorded rate,
+ * which a transfer's legs keep as their Toman equivalent (the journal shows it).
+ * Refused, as a deposit is, when no rate is recorded.
+ */
+async function tomanRateOf(client: any, currency: string): Promise<number> {
+  return (await inAccountCurrency(client, { currency }, 0)).rate;
+}
 
 const TransferSchema = z.object({
   amount: z.coerce.number().min(0.01, 'مبلغ باید بیشتر از صفر باشد'),
@@ -1493,12 +1584,14 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     return { errors: validatedFields.error.flatten().fieldErrors, message: 'لطفا فیلدهای الزامی را پر کنید.', success: false };
   }
 
-  const { amount, fromAccountId, toAccountId, description, tags, date, receiptUrl } = validatedFields.data;
+  const { amount, fromAccountId, toAccountId, description, tags, date } = validatedFields.data;
 
   if (fromAccountId === toAccountId) {
     return { message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.', success: false };
   }
   const requestId = readRequestId(formData.get('requestId'));
+  const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
+  if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
 
   try {
     if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
@@ -1521,6 +1614,9 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     const desc = description || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
     // The two legs share one id, so they are listed, corrected and removed as one transfer.
     const transferGroupId = randomUUID();
+    // A dollar transfer's Toman equivalent is its dollars at the latest rate, not the dollars.
+    const rate = await tomanRateOf(prisma, fromAccount.currency);
+    const amountInToman = new Decimal(amount).times(rate);
 
     await prisma.$transaction(async (tx: any) => {
       // Debit source
@@ -1528,8 +1624,8 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
         data: {
           amount: new Prisma.Decimal(amount),
           currency: fromAccount.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: new Prisma.Decimal(amount),
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman,
           type: TransactionType.TRANSFER,
           accountId: fromAccountId,
           category: TRANSFER_CATEGORY,
@@ -1546,8 +1642,8 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
         data: {
           amount: new Prisma.Decimal(amount),
           currency: toAccount.currency,
-          rateSnapshot: new Prisma.Decimal(1),
-          amountInToman: new Prisma.Decimal(amount),
+          rateSnapshot: new Prisma.Decimal(rate),
+          amountInToman,
           type: TransactionType.TRANSFER,
           accountId: toAccountId,
           category: TRANSFER_CATEGORY,
@@ -1563,7 +1659,7 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     });
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
-    return { message: error instanceof Error ? error.message : 'خطا در انتقال وجه.', success: false };
+    return { message: userMessage(error, 'خطا در انتقال وجه.'), success: false };
   }
 
   revalidatePath('/dashboard/accounting/transactions');
@@ -1769,11 +1865,17 @@ export async function updateInternalTransfer(input: {
       const desc = description?.trim() || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
       const transferGroupId = existing.groupId ?? randomUUID();
       const txDate = date ? new Date(date) : (existing.from ?? existing.to)!.date;
+      let rate: number;
+      try {
+        rate = await tomanRateOf(tx, fromAccount.currency);
+      } catch (error) {
+        throw new TransferRefusal(error instanceof Error ? error.message : String(error));
+      }
       const leg = (accountId: string, prefix: string) => ({
         amount: new Prisma.Decimal(amount),
         currency: fromAccount.currency,
-        rateSnapshot: new Prisma.Decimal(1),
-        amountInToman: new Prisma.Decimal(amount),
+        rateSnapshot: new Prisma.Decimal(rate),
+        amountInToman: new Decimal(amount).times(rate),
         accountId,
         description: `${prefix} ${desc}`,
         date: txDate,
@@ -1937,9 +2039,9 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
       const account = await tx.account.findUnique({ where: { id: accountId } });
       if (!account) throw new Error('حساب یافت نشد');
 
-      // The money lands in the account in the account's own currency.
+      // The money lands in the account in the account's own currency (as typed when it is in it).
       const { amount: amountInAccountCurrency, rate: accountRate } =
-        await inAccountCurrency(tx, account, amountInToman);
+        currency === account.currency ? { amount, rate } : await inAccountCurrency(tx, account, amountInToman);
 
       await tx.transaction.create({
         data: {
@@ -1965,7 +2067,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
     });
   } catch (error: unknown) {
     if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
-    const message = error instanceof Error ? error.message : 'خطا در ثبت واریز.';
+    const message = userMessage(error, 'خطا در ثبت واریز.');
     return { message, success: false };
   }
 
@@ -1983,9 +2085,10 @@ export async function getTransactions(range?: { from?: string; to?: string }) {
   await requirePermission('finance.view');
   try {
     const canSeeCost = await hasPermission('cost.view');
-    const from = range?.from ? new Date(range.from) : undefined;
-    const to = range?.to ? new Date(range.to) : undefined;
-    if (to) to.setHours(23, 59, 59, 999);
+    // A period of calendar days is Tehran's days (src/lib/tehran-day.ts), «to» included whole.
+    const from = range?.from ? (isDay(range.from) ? tehranDayStart(range.from) : new Date(range.from)) : undefined;
+    const to = range?.to ? (isDay(range.to) ? tehranDayEnd(range.to) : new Date(range.to)) : undefined;
+    if (to && !isDay(range!.to!)) to.setHours(23, 59, 59, 999);
     const transactions = await prisma.transaction.findMany({
       where: from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {},
       orderBy: { date: 'desc' },

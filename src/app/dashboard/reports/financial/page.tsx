@@ -4,6 +4,7 @@ import { BalanceSheetReport } from '@/components/reports/balance-sheet-report';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireRouteAccess } from '@/lib/access';
+import { addDays, isDay, tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 
 export default async function FinancialReportsPage({
   searchParams,
@@ -11,13 +12,15 @@ export default async function FinancialReportsPage({
   searchParams: { from?: string; to?: string };
 }) {
   await requireRouteAccess('/dashboard/reports/financial');
-  // Default to current month if no dates provided
-  const now = new Date();
-  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-  const defaultTo = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  // Default to current month if no dates provided. Days are Tehran's, and the
+  // last one is included whole (src/lib/tehran-day.ts); the server runs in UTC.
+  const today = tehranDay(new Date());
+  const firstOfMonth = `${today.slice(0, 8)}01`;
+  const lastOfMonth = addDays(`${addDays(firstOfMonth, 31).slice(0, 8)}01`, -1);
+  const day = (value: string | undefined) => (value && isDay(value) ? value : undefined);
 
-  const startDate = searchParams.from ? new Date(searchParams.from) : defaultFrom;
-  const endDate = searchParams.to ? new Date(searchParams.to) : defaultTo;
+  const startDate = tehranDayStart(day(searchParams.from) ?? firstOfMonth);
+  const endDate = tehranDayEnd(day(searchParams.to) ?? lastOfMonth);
 
   const [profitLossData, balanceSheetData] = await Promise.all([
     getProfitLossReport(startDate, endDate),

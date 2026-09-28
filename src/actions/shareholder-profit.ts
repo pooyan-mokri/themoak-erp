@@ -5,8 +5,18 @@ import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
+import { profitEntry } from '@/lib/profit-rows';
+import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await client.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 
 // --- Schemas ---
 
@@ -46,8 +56,13 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
   }
 
   const { periodStart, periodEnd, description } = validatedFields.data;
-  const startDate = new Date(periodStart);
-  const endDate = new Date(periodEnd);
+  // The period is whole Tehran days: the date picker sends the Tehran midnight
+  // a day starts at, and the last day's own rows belong in it too.
+  const startDate = tehranDayStart(tehranDay(new Date(periodStart)));
+  const endDate = tehranDayEnd(tehranDay(new Date(periodEnd)));
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
+    return { message: 'بازه دوره معتبر نیست.', success: false };
+  }
 
   try {
     // Check if profit for this period already exists
@@ -68,30 +83,26 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
         success: false,
       };
     }
-    // Calculate company profit for the period
-    // Exclude shareholder deposits and withdrawals from profit calculation
+    // The company's net profit for the period, as the profit and loss report
+    // works it out: revenue − cost of goods sold − operating expenses
+    // (src/lib/profit-rows.ts).
     const transactions = await prisma.transaction.findMany({
       where: {
         date: {
           gte: startDate,
           lte: endDate,
         },
-        category: {
-          notIn: ['Shareholder Deposit', 'Shareholder Profit Withdrawal'],
-        },
       },
+      include: { LoanPayment: { select: { interest: true } } },
     });
 
     let totalIncome = 0;
     let totalExpense = 0;
 
     transactions.forEach((tx: any) => {
-      const amount = Number(tx.amountInToman || tx.amount);
-      if (tx.type === 'INCOME') {
-        totalIncome += amount;
-      } else if (tx.type === 'EXPENSE') {
-        totalExpense += amount;
-      }
+      const entry = profitEntry(tx);
+      if (entry?.line === 'revenue') totalIncome += entry.amount;
+      else if (entry) totalExpense += entry.amount;
     });
 
     const netProfit = totalIncome - totalExpense;
@@ -126,17 +137,21 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
       };
     }
 
-    // Create profit records for each shareholder
+    // Each shareholder gets exactly their share of the profit: with 60% and
+    // 20%, a 10,000,000 profit pays 6,000,000 and 2,000,000, and 2,000,000
+    // stays undistributed (kept with the period so the profits page shows it).
+    let distributed = new Decimal(0);
     await prisma.$transaction(async (tx: any) => {
       for (const shareholder of shareholders) {
-        const percentage = Number(shareholder.percentage);
-        const shareholderProfit = (netProfit * percentage) / totalPercentage;
+        const shareholderProfit = new Decimal(netProfit).times(shareholder.percentage).dividedBy(100);
+        distributed = distributed.plus(shareholderProfit);
 
         await tx.shareholderProfit.create({
           data: {
             shareholderId: shareholder.id,
-            amount: new Prisma.Decimal(shareholderProfit),
-            withdrawn: new Prisma.Decimal(0),
+            amount: shareholderProfit,
+            withdrawn: new Decimal(0),
+            periodNetProfit: new Decimal(netProfit),
             description: description || `سود دوره ${periodStart} تا ${periodEnd}`,
             periodStart: startDate,
             periodEnd: endDate,
@@ -144,16 +159,19 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
         });
       }
     });
+    const undistributed = Number(new Decimal(netProfit).minus(distributed));
 
     revalidatePath('/dashboard/accounting/shareholders/profits');
     return {
-      message: `سود دوره با موفقیت محاسبه و ثبت شد. (سود کل: ${netProfit.toLocaleString('fa-IR')} تومان)`,
+      message:
+        `سود دوره با موفقیت محاسبه و ثبت شد. (سود کل: ${netProfit.toLocaleString('fa-IR')} تومان` +
+        (undistributed > 0 ? `، تقسیم‌نشده: ${Math.round(undistributed).toLocaleString('fa-IR')} تومان)` : ')'),
       success: true,
     };
   } catch (error: unknown) {
     console.error('Error calculating shareholder profits:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در محاسبه سود.',
+      message: userMessage(error, 'خطا در محاسبه سود.'),
       success: false,
     };
   }
@@ -181,8 +199,12 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
   }
 
   const { profitId, amount, accountId, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(prisma, requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     const profit = await prisma.shareholderProfit.findUnique({
       where: { id: profitId },
       include: {
@@ -230,11 +252,13 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
     const transactionDate = date ? new Date(date) : new Date();
 
     // Create withdrawal and update profit
-    await prisma.$transaction(async (tx: any) => {
+    const outcome = await prisma.$transaction(async (tx: any) => {
       // The profit row is locked and read again, so two payouts of the same
       // profit at once cannot both pass the check above.
       const [current] = await tx.$queryRaw`
         SELECT amount, withdrawn FROM "ShareholderProfit" WHERE id = ${profitId} FOR UPDATE`;
+      // A copy of this submission that waited here finds it booked.
+      if (await alreadyBooked(tx, requestId)) return 'duplicate';
       if (!current || amount > Number(current.amount) - Number(current.withdrawn)) {
         throw new Error('این سود هم‌زمان برداشت شد و مبلغ درخواستی دیگر قابل برداشت نیست.');
       }
@@ -250,6 +274,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
           description: description || `برداشت سود توسط ${profit.shareholder.name}`,
           category: 'Shareholder Profit Withdrawal',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -284,6 +309,7 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
 
       return withdrawal;
     });
+    if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
 
     revalidatePath('/dashboard/accounting/shareholders/profits');
     revalidatePath('/dashboard/accounting/shareholders');
@@ -294,9 +320,10 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error withdrawing profit:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در برداشت سود.',
+      message: userMessage(error, 'خطا در برداشت سود.'),
       success: false,
     };
   }
@@ -325,6 +352,7 @@ export async function getShareholderProfits(shareholderId?: string) {
       description: p.description ?? undefined,
       amount: Number(p.amount),
       withdrawn: Number(p.withdrawn),
+      periodNetProfit: p.periodNetProfit == null ? null : Number(p.periodNetProfit),
       available: Number(p.amount) - Number(p.withdrawn),
       shareholder: {
         ...p.shareholder,
@@ -364,6 +392,7 @@ export async function getShareholderProfitById(id: string) {
       description: profit.description ?? undefined,
       amount: Number(profit.amount),
       withdrawn: Number(profit.withdrawn),
+      periodNetProfit: profit.periodNetProfit == null ? null : Number(profit.periodNetProfit),
       available: Number(profit.amount) - Number(profit.withdrawn),
       shareholder: {
         ...profit.shareholder,

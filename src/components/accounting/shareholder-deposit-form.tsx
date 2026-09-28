@@ -13,6 +13,7 @@ import { Currency } from '@/lib/types';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
   message: '',
@@ -43,6 +44,12 @@ export function ShareholderDepositForm({
   accounts,
 }: ShareholderDepositFormProps) {
   const [state, dispatch] = useFormState(depositShareholderFunds, initialState);
+  // One id per submission, so a retry or a double click books once (src/lib/request-id.ts);
+  // a new one once this is booked, so the next entry is a new submission.
+  const [requestId, renewRequestId] = useRequestId();
+  useEffect(() => {
+    if (state.success) renewRequestId();
+  }, [state, renewRequestId]);
   const [shareholderId, setShareholderId] = useState<string>('');
   const [accountId, setAccountId] = useState<string>('');
   const [currency, setCurrency] = useState<string>('TOMAN');
@@ -80,6 +87,7 @@ export function ShareholderDepositForm({
         </p>
       </CardHeader>
       <form action={dispatch}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="shareholderId">صاحب سهام *</Label>

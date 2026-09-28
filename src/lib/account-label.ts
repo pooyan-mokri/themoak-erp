@@ -9,3 +9,12 @@ export function accountLabel(account: { name: string; currency?: string | null; 
   const currency = account.currency ? ` (${account.currency})` : '';
   return `${account.name}${currency}${card}`;
 }
+
+/** The account types as the account form names them; EXPENSE is the system's P&L buckets. */
+export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  BANK: 'بانک',
+  CASH: 'صندوق',
+  PERSON: 'شخص',
+  CRYPTO: 'کیف پول دیجیتال',
+  EXPENSE: 'حساب هزینه',
+};

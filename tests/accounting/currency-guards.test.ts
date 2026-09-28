@@ -26,12 +26,16 @@ const balances = async () => ({ novin: await balanceOf('novin'), usd: await bala
 
 test('repaying an employee from the dollar account moves the Toman debt divided by the rate', async () => {
   const employee = await prisma.employee.create({ data: { name: 'Sara', salary: 1 } });
+  // What Sara paid out of pocket, so there is a debt to repay (a repayment above it is refused).
+  await prisma.transaction.create({
+    data: { type: 'EXPENSE', amount: 300_000_000, amountInToman: 300_000_000, currency: 'TOMAN', employeeId: employee.id, category: 'خرید' },
+  });
 
   const paid = await payEmployeeDebt(undefined, form({ employeeId: employee.id, amount: '5000000', accountId: 'usd' }));
   assert.equal(paid.success, true, paid.message);
   assert.equal(await balanceOf('usd'), 950, '5,000,000 Toman at 100,000 is 50 dollars, not 5,000,000');
 
-  const row = await prisma.transaction.findFirstOrThrow({ where: { employeeId: employee.id } });
+  const row = await prisma.transaction.findFirstOrThrow({ where: { employeeId: employee.id, accountId: 'usd' } });
   assert.equal(Number(row.amount), 50);
   assert.equal(row.currency, 'USD');
   assert.equal(Number(row.amountInToman), 5_000_000);

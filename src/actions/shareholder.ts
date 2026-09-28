@@ -7,6 +7,13 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
+import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+
+/** A submission already booked under this id (src/lib/request-id.ts). */
+async function alreadyBooked(requestId: string | null): Promise<boolean> {
+  return !!requestId && !!(await prisma.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
+}
 
 // --- Schemas ---
 
@@ -84,7 +91,7 @@ export async function createShareholder(prevState: ActionState, formData: FormDa
     return { message: 'صاحب سهام با موفقیت ایجاد شد.', success: true };
   } catch (error: unknown) {
     console.error('Error creating shareholder:', error);
-    const message = error instanceof Error ? error.message : 'خطا در ایجاد صاحب سهام.';
+    const message = userMessage(error, 'خطا در ایجاد صاحب سهام.');
     return {
       message,
       success: false,
@@ -121,6 +128,9 @@ export async function updateShareholder(id: string, prevState: ActionState, form
       where: { id },
       select: { percentage: true },
     });
+    if (!currentShareholder) {
+      return { message: 'صاحب سهام یافت نشد.', success: false };
+    }
 
     const existingShareholders = await prisma.shareholder.findMany({
       where: { NOT: { id } },
@@ -155,7 +165,7 @@ export async function updateShareholder(id: string, prevState: ActionState, form
     return { message: 'صاحب سهام با موفقیت به‌روزرسانی شد.', success: true };
   } catch (error: unknown) {
     console.error('Error updating shareholder:', error);
-    const message = error instanceof Error ? error.message : 'خطا در به‌روزرسانی صاحب سهام.';
+    const message = userMessage(error, 'خطا در به‌روزرسانی صاحب سهام.');
     return {
       message,
       success: false,
@@ -180,6 +190,16 @@ export async function deleteShareholder(id: string): Promise<ActionResult> {
       };
     }
 
+    // Profits go with the shareholder (onDelete: Cascade), and with them the
+    // record of every payout, while the payout's money row stays.
+    const profits = await prisma.shareholderProfit.count({ where: { shareholderId: id } });
+    if (profits > 0) {
+      return {
+        success: false,
+        message: `نمی‌توان این صاحب سهام را حذف کرد چون ${profits} سود محاسبه‌شده دارد.`,
+      };
+    }
+
     await prisma.shareholder.delete({
       where: { id },
     });
@@ -188,7 +208,7 @@ export async function deleteShareholder(id: string): Promise<ActionResult> {
     return { success: true, message: 'صاحب سهام با موفقیت حذف شد.' };
   } catch (error: unknown) {
     console.error('Error deleting shareholder:', error);
-    const message = error instanceof Error ? error.message : 'خطا در حذف صاحب سهام.';
+    const message = userMessage(error, 'خطا در حذف صاحب سهام.');
     return {
       success: false,
       message,
@@ -276,8 +296,12 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
   }
 
   const { shareholderId, accountId, amount, currency, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     // Get shareholder and account
     const shareholder = await prisma.shareholder.findUnique({
       where: { id: shareholderId },
@@ -324,9 +348,10 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
 
     const transactionDate = date ? new Date(date) : new Date();
 
-    // The money lands in the account in the account's own currency.
+    // The money lands in the account in the account's own currency; an amount
+    // already in it is taken as typed, not × rate ÷ rate in floats.
     const { amount: amountInAccountCurrency, rate: accountRate } =
-      await inAccountCurrency(prisma, account, amountInToman);
+      currency === account.currency ? { amount, rate } : await inAccountCurrency(prisma, account, amountInToman);
 
     // Create transaction and update account balance
     // Type: INCOME (money comes in) but with shareholderId (creates Accounts Payable - debt to shareholder)
@@ -343,6 +368,7 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
           description: description || `واریز سرمایه توسط ${shareholder.name} (بدهی به سهامدار)`,
           category: 'Shareholder Deposit',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -367,8 +393,9 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error depositing funds:', error);
-    const message = error instanceof Error ? error.message : 'خطا در واریز مبلغ.';
+    const message = userMessage(error, 'خطا در واریز مبلغ.');
     return {
       message,
       success: false,
@@ -411,8 +438,12 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
   }
 
   const { shareholderId, accountId, amount, currency, description, date } = validatedFields.data;
+  const requestId = readRequestId(formData.get('requestId'));
 
   try {
+    // The same submission again (a retry, a double click): it was booked once.
+    if (await alreadyBooked(requestId)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
+
     // Get shareholder and account
     const shareholder = await prisma.shareholder.findUnique({
       where: { id: shareholderId },
@@ -457,9 +488,9 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       amountInToman = amount * rate;
     }
 
-    // The money leaves the account in the account's own currency.
+    // The money leaves the account in the account's own currency (as typed when it is in it).
     const { amount: amountInAccountCurrency, rate: accountRate } =
-      await inAccountCurrency(prisma, account, amountInToman);
+      currency === account.currency ? { amount, rate } : await inAccountCurrency(prisma, account, amountInToman);
 
     // Check account balance
     const accountBalance = Number(account.balance);
@@ -487,6 +518,7 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
           description: description || `برداشت سرمایه توسط ${shareholder.name} (طلب از سهامدار)`,
           category: 'Shareholder Withdrawal',
           date: transactionDate,
+          clientRequestId: requestId ?? undefined,
         },
       });
 
@@ -511,8 +543,9 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       success: true,
     };
   } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { message: DUPLICATE_REQUEST_MESSAGE, success: true };
     console.error('Error withdrawing funds:', error);
-    const message = error instanceof Error ? error.message : 'خطا در پرداخت مبلغ.';
+    const message = userMessage(error, 'خطا در پرداخت مبلغ.');
     return {
       message,
       success: false,

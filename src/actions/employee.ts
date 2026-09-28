@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { ActionState, ActionResult } from '@/lib/types';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { userMessage } from '@/lib/action-error';
+import { toLatinDigits } from '@/lib/digits';
 
 // --- Schemas ---
 
@@ -28,13 +30,15 @@ export async function createEmployee(prevState: ActionState, formData: FormData)
 
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
-    nationalId: formData.get('nationalId') || undefined,
-    phone: formData.get('phone') || undefined,
+    // Latin digits, so a national id typed on a Persian keyboard is still the
+    // same id to the uniqueness check, and a salary is a number (src/lib/digits.ts).
+    nationalId: toLatinDigits(formData.get('nationalId'))?.toString().trim() || undefined,
+    phone: toLatinDigits(formData.get('phone')) || undefined,
     email: formData.get('email') || undefined,
     address: formData.get('address') || undefined,
     position: formData.get('position') || undefined,
     hireDate: formData.get('hireDate') || undefined,
-    salary: formData.get('salary'),
+    salary: toLatinDigits(formData.get('salary')),
   });
 
   if (!validatedFields.success) {
@@ -96,7 +100,7 @@ export async function createEmployee(prevState: ActionState, formData: FormData)
   } catch (error: unknown) {
     console.error('Error creating employee:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در ثبت کارمند.',
+      message: userMessage(error, 'خطا در ثبت کارمند.'),
       success: false,
     };
   }
@@ -108,13 +112,15 @@ export async function updateEmployee(id: string, prevState: ActionState, formDat
 
   const validatedFields = EmployeeSchema.safeParse({
     name: formData.get('name'),
-    nationalId: formData.get('nationalId') || undefined,
-    phone: formData.get('phone') || undefined,
+    // Latin digits, so a national id typed on a Persian keyboard is still the
+    // same id to the uniqueness check, and a salary is a number (src/lib/digits.ts).
+    nationalId: toLatinDigits(formData.get('nationalId'))?.toString().trim() || undefined,
+    phone: toLatinDigits(formData.get('phone')) || undefined,
     email: formData.get('email') || undefined,
     address: formData.get('address') || undefined,
     position: formData.get('position') || undefined,
     hireDate: formData.get('hireDate') || undefined,
-    salary: formData.get('salary'),
+    salary: toLatinDigits(formData.get('salary')),
   });
 
   if (!validatedFields.success) {
@@ -180,7 +186,7 @@ export async function updateEmployee(id: string, prevState: ActionState, formDat
   } catch (error: unknown) {
     console.error('Error updating employee:', error);
     return {
-      message: error instanceof Error ? error.message : 'خطا در به‌روزرسانی کارمند.',
+      message: userMessage(error, 'خطا در به‌روزرسانی کارمند.'),
       success: false,
     };
   }
@@ -203,6 +209,20 @@ export async function deleteEmployee(id: string) {
       };
     }
 
+    // Payslips go with the employee (onDelete: Cascade), and with them the
+    // record of what was paid, while the money rows stay; an out-of-pocket
+    // expense would make the delete fail with a database error.
+    const [payrolls, transactions] = await Promise.all([
+      prisma.payroll.count({ where: { employeeId: id } }),
+      prisma.transaction.count({ where: { employeeId: id } }),
+    ]);
+    if (payrolls > 0 || transactions > 0) {
+      return {
+        success: false,
+        message: 'این کارمند فیش حقوقی یا تراکنش ثبت‌شده دارد و نمی‌تواند حذف شود.',
+      };
+    }
+
     await prisma.employee.delete({
       where: { id },
     });
@@ -213,7 +233,7 @@ export async function deleteEmployee(id: string) {
     console.error('Error deleting employee:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'خطا در حذف کارمند.',
+      message: userMessage(error, 'خطا در حذف کارمند.'),
     };
   }
 }

@@ -3,6 +3,8 @@
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
 import { requirePermission } from '@/lib/access';
+import { cashPosition, latestRates, supplierPositions } from '@/lib/money-totals';
+import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
 
 import { prisma } from '@/lib/prisma';
 
@@ -14,16 +16,16 @@ import { prisma } from '@/lib/prisma';
 export async function getDashboardFinancials() {
   await requirePermission('finance.view');
   try {
-    // Total Balance (all bank/cash accounts)
+    // Total Balance: every account that holds money (bank, cash box, person,
+    // crypto wallet), foreign ones at the latest rate (src/lib/money-totals.ts).
+    // EXPENSE-type accounts are P&L buckets, not money.
     const accounts = await prisma.account.findMany({
-      where: {
-        type: {
-          in: ['BANK', 'CASH']
-        }
-      }
+      where: { type: { not: 'EXPENSE' } },
     });
-    
-    const totalBalance = accounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
+
+    const rates = await latestRates(prisma);
+    const balances = cashPosition(accounts, rates);
+    const totalBalance = balances.total;
 
     // Total Receivables (actual unpaid amounts from orders)
     // فقط سفارشات با مشتری - سفارشات Guest (نقدی) طلبکار نیستند
@@ -50,18 +52,16 @@ export async function getDashboardFinancials() {
       return sum + (unpaid > 0 ? unpaid : 0);
     }, 0);
 
-    // Total Payables (received purchase orders - simplified)
-    const purchaseOrders = await prisma.purchaseOrder.findMany({
-      where: {
-        status: 'RECEIVED'
-      },
-      select: { totalAmount: true },
-    });
-    
-    const totalPayables = purchaseOrders.reduce((sum: any, po: any) => sum + Number(po.totalAmount), 0);
+    // Still to pay suppliers: what is unpaid on the purchase orders placed with
+    // them, in Toman (src/lib/money-totals.ts). Operational: the balance sheet
+    // owes only for goods received.
+    const totalPayables = (await supplierPositions(prisma, rates)).unpaidOnOrders;
 
     return {
       totalBalance,
+      balancesByType: balances.byType,
+      foreignBalances: balances.foreign,
+      unpricedBalances: balances.unpriced,
       totalReceivables,
       totalPayables,
     };
@@ -69,6 +69,9 @@ export async function getDashboardFinancials() {
     console.error('Error fetching dashboard financials:', error);
     return {
       totalBalance: 0,
+      balancesByType: [],
+      foreignBalances: [],
+      unpricedBalances: [],
       totalReceivables: 0,
       totalPayables: 0,
     };
@@ -81,14 +84,11 @@ export async function getDashboardFinancials() {
 export async function getDashboardSales() {
   await requirePermission('finance.view');
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Tehran's days, not the server's (it runs in UTC): src/lib/tehran-day.ts.
+    const todayInTehran = tehranDay(new Date());
+    const today = tehranDayStart(todayInTehran);
+    const yesterday = tehranDayStart(addDays(todayInTehran, -1));
+    const thirtyDaysAgo = tehranDayStart(addDays(todayInTehran, -30));
 
     // Sales today
     const ordersToday = await prisma.order.findMany({
@@ -133,14 +133,14 @@ export async function getDashboardSales() {
     // Last 30 days daily sales for chart
     const dailySales = await prisma.$queryRaw<Array<{ date: Date; total: number; count: number }>>`
       SELECT 
-        DATE("createdAt") as date,
+        DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tehran') as date,
         SUM("totalAmount")::float as total,
         COUNT(*)::int as count
       FROM "Order"
       WHERE "createdAt" >= ${thirtyDaysAgo}
         AND status != 'CANCELLED'
-      GROUP BY DATE("createdAt")
-      ORDER BY DATE("createdAt") ASC
+      GROUP BY 1
+      ORDER BY 1 ASC
     `;
 
     // Top 5 products
@@ -312,8 +312,8 @@ export async function getUserTasks() {
       title: task.title,
       projectName: task.project.name,
       status: task.status,
-      deadline: undefined, // Task model doesn't have deadline field
-      priority: 'MEDIUM' // Task model doesn't have priority field
+      deadline: task.dueDate ?? undefined,
+      priority: task.priority,
     }));
   } catch (error) {
     console.error('Error fetching user tasks:', error);

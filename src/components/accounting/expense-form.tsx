@@ -130,6 +130,8 @@ export function ExpenseForm({ accounts, projects = [], employees = [] }: { accou
                   <SelectItem value="Marketing">مارکتینگ</SelectItem>
                   <SelectItem value="Office">اداری</SelectItem>
                   <SelectItem value="Transport">حمل و نقل</SelectItem>
+                  {/* A fixed asset bought is an asset, not an expense (src/lib/profit-rows.ts). */}
+                  <SelectItem value="خرید تجهیزات">خرید تجهیزات (دارایی ثابت)</SelectItem>
                   <SelectItem value="Other">سایر</SelectItem>
                 </SelectContent>
               </Select>
