@@ -38,16 +38,24 @@ export const NON_OPERATING_CATEGORIES: readonly string[] = [
 ];
 
 /**
+ * A fixed asset bought: an asset, worn down by depreciation rows, never an
+ * expense. The payment form files it under «خرید تجهیزات», and the expense
+ * form offers the same category.
+ */
+export const FIXED_ASSET_PURCHASE_CATEGORY = 'خرید تجهیزات';
+
+/**
  * Money spent on stock, which is inventory until it is sold and then cost of
  * goods sold (a COGS row): a supplier payment 'Purchase Payment'
  * (src/actions/supplier-workflow.ts) and the arrival costs paid when an order
  * arrives, 'Purchase Arrival Cost'. Receiving rolls the order's additional and
  * arrival costs into the product's cost price (src/lib/landed-cost.ts), so
- * they reach the P&L through COGS.
+ * they reach the P&L through COGS. And a fixed asset bought (above).
  */
 export const CAPITALISED_CATEGORIES: readonly string[] = [
   'Purchase Payment',
   'Purchase Arrival Cost',
+  FIXED_ASSET_PURCHASE_CATEGORY,
 ];
 
 /** Cost of goods sold, at product cost: consignment sales and POS sales book it. */
