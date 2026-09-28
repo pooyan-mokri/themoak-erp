@@ -5,3 +5,15 @@
  * sync, for a web order the store left unpaid or on hold.
  */
 export const SOLD_ORDER_STATUS = { notIn: ['CANCELLED', 'PENDING'] };
+
+/** An order's status in Persian, the same on every screen and export that shows it. */
+export const ORDER_STATUS_LABELS: Record<string, string> = {
+  COMPLETED: 'تکمیل شده',
+  INVOICED: 'فاکتور شده',
+  PENDING: 'در انتظار',
+  CANCELLED: 'لغو شده',
+};
+
+export function orderStatusLabel(status: string): string {
+  return ORDER_STATUS_LABELS[status] ?? status;
+}

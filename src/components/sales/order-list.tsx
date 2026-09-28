@@ -18,6 +18,7 @@ import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { filterOrders, orderExportRow, orderRemaining } from '@/lib/order-list';
+import { ORDER_STATUS_LABELS, orderStatusLabel } from '@/lib/order-status';
 
 type Customer = {
   id: string;
@@ -302,18 +303,13 @@ export function OrderList({ orders }: OrderListProps) {
       label: 'وضعیت',
       sortable: true,
       render: (order) => {
-        const statusLabels: Record<string, string> = {
-          COMPLETED: 'تکمیل شده',
-          PENDING: 'در انتظار',
-          CANCELLED: 'لغو شده',
-        };
         const variant =
           order.status === 'COMPLETED' ? 'default' :
           order.status === 'CANCELLED' ? 'destructive' :
           'secondary';
         return (
           <Badge variant={variant}>
-            {statusLabels[order.status] || order.status}
+            {orderStatusLabel(order.status)}
           </Badge>
         );
       },
@@ -514,9 +510,7 @@ export function OrderList({ orders }: OrderListProps) {
             key: 'status',
             label: 'وضعیت',
             options: [
-              { value: 'COMPLETED', label: 'تکمیل شده' },
-              { value: 'PENDING', label: 'در انتظار' },
-              { value: 'CANCELLED', label: 'لغو شده' },
+              ...Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label })),
             ],
           },
         ]}

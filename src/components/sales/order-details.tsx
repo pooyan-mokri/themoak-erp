@@ -13,6 +13,7 @@ import { mayAttachReceipt } from '@/lib/receipt-ref';
 import { TransactionReceipt } from '@/components/accounting/transaction-receipt';
 import { WEBSITE_ORDER_LOCKED, formatShipTo, type SiteOrderData } from '@/lib/site-sale-data';
 import { exchangeSettlement, orderTotals } from '@/lib/order-balance';
+import { orderStatusLabel } from '@/lib/order-status';
 
 import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
@@ -186,7 +187,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
           </Link>
           <h1 className="text-3xl font-bold tracking-tight">سفارش #{order.number}</h1>
           <Badge variant={order.status === 'COMPLETED' ? 'default' : 'secondary'} className="mr-2">
-            {order.status === 'COMPLETED' ? 'تکمیل شده' : order.status}
+            {orderStatusLabel(order.status)}
           </Badge>
           {order.isConsignmentSale && (
             <Badge variant="outline" className="mr-2 border-amber-500 text-amber-700">

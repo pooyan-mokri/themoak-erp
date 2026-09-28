@@ -1,5 +1,6 @@
 import { formatJalaliDateTime } from '@/lib/date-utils';
 import { orderTotals } from '@/lib/order-balance';
+import { orderStatusLabel } from '@/lib/order-status';
 
 /**
  * The sales history list: its filters and its Excel rows, computed here so
@@ -78,8 +79,7 @@ export function orderExportRow(order: ListedOrder) {
     'وضعیت پرداخت': order.paymentStatus === 'PAID' ? 'پرداخت شده' :
                     order.paymentStatus === 'PARTIAL' ? 'پرداخت جزئی' : 'پرداخت نشده',
     'تعداد اقلام': order.items.reduce((acc, item) => acc + item.quantity, 0),
-    'وضعیت سفارش': order.status === 'COMPLETED' ? 'تکمیل شده' :
-                   order.status === 'CANCELLED' ? 'لغو شده' : 'در انتظار',
+    'وضعیت سفارش': orderStatusLabel(order.status),
     'تاریخ': formatJalaliDateTime(order.createdAt),
     'منبع': order.siteReference ? 'سایت' : order.wooId ? 'WooCommerce' : 'سیستم',
   };
