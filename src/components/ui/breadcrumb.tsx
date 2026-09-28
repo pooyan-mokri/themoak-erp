@@ -16,7 +16,7 @@ interface BreadcrumbProps {
 export function Breadcrumb({ items, className }: BreadcrumbProps) {
   return (
     <nav
-      aria-label="Breadcrumb"
+      aria-label="مسیر صفحه"
       className={cn('flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap text-[12.5px] text-muted-foreground', className)}
     >
       <Link
