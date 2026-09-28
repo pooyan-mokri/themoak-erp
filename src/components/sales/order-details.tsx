@@ -178,8 +178,8 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Link href="/dashboard/sales/history">
             <Button variant="ghost" size="icon">
               <ArrowRight className="h-4 w-4" />
@@ -195,7 +195,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             </Badge>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {order.invoice ? (
             <Link href={`/dashboard/sales/invoices/${order.invoice.id}`}>
               <Button variant="outline">
@@ -223,8 +223,8 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             <CardContent>
               <div className="space-y-4">
                 {order.items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
-                    <div className="flex items-center gap-4 flex-1">
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-y-3 border-b pb-4 last:border-0 last:pb-0">
+                    <div className="flex items-center gap-4 flex-1 min-w-[12rem]">
                       <div className="h-12 w-12 bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">
                         {item.product.image ? 'تصویر' : 'بدون تصویر'}
                       </div>
@@ -238,9 +238,9 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                     </div>
                     <div className="text-left ml-4">
                       <div className="font-medium">{Number(item.price).toLocaleString('fa-IR')} تومان</div>
-                      <div className="text-sm text-muted-foreground">x {item.quantity}</div>
+                      <div className="text-sm text-muted-foreground">x {item.quantity.toLocaleString('fa-IR')}</div>
                     </div>
-                    <div className="flex gap-2 mr-4 items-center">
+                    <div className="flex flex-wrap gap-2 mr-4 items-center">
                       {(item.status || 'PENDING') === 'RETURNED' && (
                         <Badge variant="destructive" className="ml-2">عودت شده</Badge>
                       )}
@@ -252,7 +252,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                       )}
                       {(item.remainingQuantity !== undefined && item.remainingQuantity < item.quantity) && (
                         <Badge variant="outline" className="ml-2">
-                          باقی‌مانده: {item.remainingQuantity} از {item.quantity}
+                          باقی‌مانده: {item.remainingQuantity.toLocaleString('fa-IR')} از {item.quantity.toLocaleString('fa-IR')}
                         </Badge>
                       )}
                       {order.siteReference ? (
