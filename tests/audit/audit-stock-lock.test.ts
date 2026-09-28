@@ -9,7 +9,7 @@ import { adjustStock, transferStock, transferStockBatch, updateStock } from '@/a
 import { giftProduct } from '@/actions/product';
 import { receivePurchaseOrderItems } from '@/actions/supplier';
 import { repairCancelledOrderStock } from '@/actions/lost-stock';
-import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { WarehouseUnderAudit, assertNoOpenAudit, holdOpenAudits } from '@/lib/audit-stock-lock';
 import { assertStockInvariants, qty, stockSnapshot, stockUp } from '../inventory/stock';
 
 // Pooyan's rule: while a warehouse is being counted (its audit frozen and not yet issued), no stock moves in
@@ -141,6 +141,8 @@ test('two freezes at once start the audit once', async () => {
 test('the helper: ignores missing ids and unknown warehouses, and throws its Persian refusal for an open audit', async () => {
   await assertNoOpenAudit(prisma, [null, undefined, 'nowhere', shop.id]);
   await audit();
+  // The website's writers only hold the audit; they are never refused.
+  await holdOpenAudits(prisma, [main.id, null]);
   await assert.rejects(assertNoOpenAudit(prisma, [shop.id, main.id]), (error: unknown) => {
     assert.ok(error instanceof WarehouseUnderAudit);
     assert.match((error as Error).message, UNDER_AUDIT);
