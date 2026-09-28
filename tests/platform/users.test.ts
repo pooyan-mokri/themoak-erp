@@ -1,5 +1,6 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import bcrypt from 'bcryptjs';
@@ -10,6 +11,7 @@ import {
   changePassword,
   createUser,
   deleteUser,
+  getUserOptions,
   getUsers,
   updateProfile,
   updateUser,
@@ -191,14 +193,28 @@ test('changing one\'s own password needs the current one; the new one works and 
   assert.notEqual((await change('new-pass-1', 'stranger-1')).success, true);
 });
 
-test('the user list never carries a password hash', async () => {
-  await staff();
+test('the user list never carries a password hash, and only an admin gets emails and phones', async () => {
+  await prisma.user.create({ data: { name: 'Staff', email: 'staff@example.com', password: 'x', role: 'SALES', phone: '09125550000' } });
+  const admin = await getUsers();
+  assert.equal(admin.length, 2);
+  assert.deepEqual(admin.find((u: { name: string }) => u.name === 'Staff')!.phone, '09125550000');
+  assert.equal(JSON.stringify(admin).includes('"password"'), false);
+
   for (const role of ROLES) {
     setTestRole(role);
-    const users = await getUsers();
-    assert.equal(users.length, 2);
-    assert.equal(JSON.stringify(users).includes('password'), false, role);
+    const options = await getUserOptions();
+    assert.deepEqual(options.map((u) => u.name), ['Staff', 'مدیر'], role);
+    for (const option of options) assert.deepEqual(Object.keys(option).sort(), ['id', 'name'], role);
+    if (role !== 'ADMIN') assert.deepEqual(await getUsers(), [], role);
   }
+  setTestRole(null);
+  assert.deepEqual(await getUserOptions(), []);
+  assert.deepEqual(await getUsers(), []);
+});
+
+test('no page but the users pages asks for the full user list', () => {
+  const callers = execSync('grep -rln "getUsers\\b" src/app src/components || true', { encoding: 'utf8' }).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(callers, ['src/app/dashboard/admin/users/page.tsx', 'src/app/dashboard/settings/users/page.tsx']);
 });
 
 test('the admin user list shows a refused role change or delete instead of failing silently', () => {

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Calendar, Coins } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getUsers } from '@/actions/user';
+import { getUserOptions } from '@/actions/user';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
 import { ViewToggle } from '@/components/projects/view-toggle';
 import { serializeDate } from '@/lib/serialize';
@@ -19,7 +19,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
   
   try {
     project = await getProjectById(params.id);
-    users = await getUsers();
+    users = await getUserOptions();
     
     // Debug: Log task count
     if (project) {

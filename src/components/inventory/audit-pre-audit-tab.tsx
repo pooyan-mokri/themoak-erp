@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { freezeInventory, addAuditTeamMember, removeAuditTeamMember } from '@/actions/inventory-audit';
-import { getUsers } from '@/actions/user';
+import { getUserOptions } from '@/actions/user';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { Camera, Users, CheckCircle2, XCircle, Plus } from 'lucide-react';
@@ -41,7 +41,7 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
 
   const loadUsers = async () => {
     try {
-      const usersList = await getUsers();
+      const usersList = await getUserOptions();
       setUsers(usersList);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -214,7 +214,7 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
                       <SelectContent>
                         {users.map((user) => (
                           <SelectItem key={user.id} value={user.id}>
-                            {user.name} ({user.email})
+                            {user.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

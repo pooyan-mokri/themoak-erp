@@ -17,7 +17,7 @@ const PRIORITY_LABELS: Record<string, string> = {
 interface TaskCardProps {
   task: any;
   projectId: string;
-  users?: Array<{ id: string; name: string; email: string }>;
+  users?: Array<{ id: string; name: string }>;
 }
 
 export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {

@@ -261,10 +261,11 @@ test('a task shows its assignee by name on the board and in the calendar, never 
   setTestRole('USER');
   const detail = await getProjectById(project.id);
   const assigned = detail!.tasks.find((t: { title: string }) => t.title === 'assigned')!;
-  assert.deepEqual(assigned.assignedToUser, { id: ali.id, name: 'علی رضایی', email: 'ali@example.com' });
+  assert.deepEqual(assigned.assignedToUser, { id: ali.id, name: 'علی رضایی' });
   assert.equal(assigneeName(assigned), 'علی رضایی');
   assert.equal(assigneeName(detail!.tasks.find((t: { title: string }) => t.title === 'open')!), undefined);
   assert.equal(JSON.stringify(detail).includes('secret-hash'), false, 'no password hash reaches the page');
+  assert.equal(JSON.stringify(detail).includes('ali@example.com'), false, 'nor a staff email');
 
   // A task on the board after a move has only the id: the board's user list names it.
   assert.equal(assigneeName({ assignedTo: ali.id }, [{ id: ali.id, name: 'علی رضایی' }]), 'علی رضایی');
@@ -275,7 +276,7 @@ test('a task shows its assignee by name on the board and in the calendar, never 
   const [calendar] = await getProjectsForCalendar();
   assert.deepEqual(calendar.tasks.map((t: { title: string }) => t.title).sort(), ['assigned', 'open']);
   const due = calendar.tasks.find((t: { title: string }) => t.title === 'assigned');
-  assert.deepEqual(due.assignedTo, { id: ali.id, name: 'علی رضایی', email: 'ali@example.com' });
+  assert.deepEqual(due.assignedTo, { id: ali.id, name: 'علی رضایی' });
   assert.deepEqual(due.project, { id: project.id, name: 'P1' });
   assert.equal(JSON.stringify(calendar).includes('secret-hash'), false);
 });

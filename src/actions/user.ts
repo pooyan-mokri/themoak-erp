@@ -43,9 +43,9 @@ async function removesLastAdmin(userId: string, newRole: string) {
   return (await prisma.user.count({ where: { role: 'ADMIN', NOT: { id: userId } } })) === 0;
 }
 
+/** The users page: staff emails and phones, for an admin only. */
 export async function getUsers() {
-  // Non-admin pages list users too (projects, audits), but never to a stranger.
-  if (!(await getCurrentUser())) return [];
+  if (!(await isAdmin())) return [];
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
@@ -68,6 +68,15 @@ export async function getUsers() {
   } catch (error) {
     return [];
   }
+}
+
+/**
+ * Who can be picked (a task's assignee, an audit team member): id and name
+ * only, for any signed-in user. Emails and phones stay on the users page.
+ */
+export async function getUserOptions(): Promise<Array<{ id: string; name: string }>> {
+  if (!(await getCurrentUser())) return [];
+  return prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
 }
 
 export async function createUser(prevState: any, formData: FormData) {
