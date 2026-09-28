@@ -522,19 +522,19 @@ export async function getInventoryAudit(auditId: string) {
         items: {
           include: {
             product: true,
-            countedBy1User: { select: { id: true, name: true, email: true } },
-            countedBy2User: { select: { id: true, name: true, email: true } },
-            countedBy3User: { select: { id: true, name: true, email: true } },
+            countedBy1User: { select: { id: true, name: true } },
+            countedBy2User: { select: { id: true, name: true } },
+            countedBy3User: { select: { id: true, name: true } },
           },
           orderBy: { product: { name: 'asc' } },
         },
         teams: {
           include: {
-            user: { select: { id: true, name: true, email: true, role: true } },
+            user: { select: { id: true, name: true } },
             assignedByUser: { select: { id: true, name: true } },
           },
         },
-        createdByUser: { select: { id: true, name: true, email: true } },
+        createdByUser: { select: { id: true, name: true } },
         _count: { select: { snapshots: true } },
       },
     });
@@ -587,7 +587,7 @@ export async function getInventoryAudits(warehouseId?: string) {
       where,
       include: {
         warehouse: true,
-        createdByUser: { select: { id: true, name: true, email: true } },
+        createdByUser: { select: { id: true, name: true } },
         _count: {
           select: {
             items: true,
@@ -1379,7 +1379,7 @@ export async function getPerformanceReport(auditId: string) {
         },
         teams: {
           include: {
-            user: { select: { id: true, name: true, email: true } },
+            user: { select: { id: true, name: true } },
           },
         },
         warehouse: true,

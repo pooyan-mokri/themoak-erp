@@ -214,7 +214,7 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
                       <SelectContent>
                         {users.map((user) => (
                           <SelectItem key={user.id} value={user.id}>
-                            {user.name} ({user.email})
+                            {user.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -254,7 +254,6 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
                   <div className="flex items-center gap-3">
                     <div>
                       <p className="font-medium">{team.user.name}</p>
-                      <p className="text-sm text-muted-foreground">{team.user.email}</p>
                     </div>
                     <Badge variant="outline">{getRoleLabel(team.role)}</Badge>
                     {team.canCount && (

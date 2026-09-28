@@ -21,6 +21,7 @@ import {
 } from '@/actions/inventory-audit';
 import { transferStock } from '@/actions/inventory';
 import { assertStockInvariants, qty, stockUp } from '../inventory/stock';
+import { getInventoryAudit } from '@/actions/inventory-audit';
 
 // Stocktaking from start to finish: creating and freezing an audit, the team, counting, discrepancies and
 // their reports, and the adjustments it issues keeping stock equal to its movements.
@@ -345,4 +346,23 @@ test('audit writes refuse every role without stock.manage and write nothing', as
   }
   assert.deepEqual(await prisma.inventoryAuditItem.findMany({ orderBy: { id: 'asc' } }), before);
   assert.equal(await prisma.inventoryAudit.count(), 1);
+});
+
+test('staff in audit reads carry their id and name only, never an email or role', async () => {
+  const id = await started();
+  await addAuditTeamMember(id, 'u2', 'COUNTER');
+  await recordCount(id, 'panj', 5, 1);
+  await setFinalQuantity(id, 'panj', 5);
+  setTestRole('WAREHOUSE');
+  const reads: unknown[] = [await getInventoryAudit(id), await getInventoryAudits(), await getPerformanceReport(id)];
+  const people: any[] = [];
+  const walk = (node: unknown, key = '') => {
+    if (!node || typeof node !== 'object' || node instanceof Date) return;
+    if (['user', 'createdByUser', 'countedBy1User', 'countedBy2User', 'countedBy3User', 'assignedByUser'].includes(key) && !Array.isArray(node)) people.push(node);
+    for (const [k, child] of Object.entries(node)) walk(child, k);
+  };
+  reads.forEach((read) => walk(read));
+  assert.ok(people.length >= 4, `found ${people.length} staff objects`);
+  for (const person of people) assert.deepEqual(Object.keys(person).sort(), person.id ? ['id', 'name'] : ['name']);
+  assert.doesNotMatch(JSON.stringify(reads), /@x\.test/);
 });
