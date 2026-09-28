@@ -6,7 +6,8 @@ import { TransactionType, Currency } from '@/lib/types';
 
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
-import { consignmentAmounts } from '@/lib/return-math';
+import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
+import { SOLD_ORDER_STATUS } from '@/lib/order-status';
 
 // const prisma = new PrismaClient();
 
@@ -131,10 +132,11 @@ export async function getSalesPerformance() {
   try {
     // Top Selling Products
     const orderItems = await prisma.orderItem.findMany({
-      include: { product: true, order: true },
+      // Units returned or exchanged away are not sold.
+      include: { product: true, order: true, returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } },
       where: {
         order: {
-          status: 'COMPLETED'
+          status: SOLD_ORDER_STATUS
         }
       }
     });
@@ -149,8 +151,8 @@ export async function getSalesPerformance() {
           total: 0
         };
       }
-      productSales[item.productId].quantity += item.quantity;
-      productSales[item.productId].total += item.quantity * Number(item.price);
+      productSales[item.productId].quantity += effectiveQuantity(item);
+      productSales[item.productId].total += effectiveQuantity(item) * Number(item.price);
     });
 
     const topProducts = Object.values(productSales)
@@ -170,7 +172,7 @@ export async function getSalesByCustomer() {
   await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
-      where: { status: 'COMPLETED' },
+      where: { status: SOLD_ORDER_STATUS },
       include: { customer: true }
     });
 

@@ -28,6 +28,7 @@ interface Customer {
   email?: string;
   address?: string;
   totalDebt?: number;
+  totalCredit?: number;
   segment?: string;
 }
 
@@ -70,14 +71,22 @@ export function CRMCustomerList({ customers }: CustomerListProps) {
       key: 'totalDebt',
       label: 'بدهی کل',
       sortable: true,
-      render: (customer) =>
-        customer.totalDebt && customer.totalDebt > 0 ? (
-          <span className="text-red-600 font-medium">
-            {new Intl.NumberFormat('fa-IR').format(customer.totalDebt)} تومان
-          </span>
-        ) : (
-          <span className="text-green-600">تسویه</span>
-        ),
+      render: (customer) => (
+        <>
+          {customer.totalDebt && customer.totalDebt > 0 ? (
+            <span className="text-red-600 font-medium">
+              {new Intl.NumberFormat('fa-IR').format(Math.round(customer.totalDebt))} تومان
+            </span>
+          ) : (
+            <span className="text-green-600">تسویه</span>
+          )}
+          {customer.totalCredit && customer.totalCredit > 0 ? (
+            <div className="text-xs text-green-600">
+              بستانکار: {new Intl.NumberFormat('fa-IR').format(Math.round(customer.totalCredit))} تومان
+            </div>
+          ) : null}
+        </>
+      ),
     },
     {
       key: 'actions',

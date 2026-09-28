@@ -130,7 +130,8 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       const money = orderMoney(order);
       const refundAmount = lineValue(money, Number(orderItem.price), quantity);
 
-      // 3. Recompute order totals. Cash leaves the account ONLY for the
+      // 3. Recompute order totals. The returned goods take their share of the
+      //    order discount with them. Cash leaves the account ONLY for the
       //    portion the customer actually overpaid relative to the new total
       //    (i.e. only what's owed back). The rest just cancels customer debt.
       //    The dialog shows the same figure from the same function.
@@ -197,6 +198,7 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         where: { id: orderId },
         data: {
           totalAmount: new Prisma.Decimal(change.newTotal),
+          discount: new Prisma.Decimal(change.newDiscount),
           paidAmount: new Prisma.Decimal(change.newPaid),
           paymentStatus: change.paymentStatus,
         },
@@ -247,16 +249,9 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
         },
       });
 
-      // 7. Update order item status
-      // Check if all quantity is returned
-      const returnedQuantity = await tx.orderReturn.aggregate({
-        where: { orderItemId },
-        _sum: { quantity: true },
-      });
-      const totalReturned = returnedQuantity._sum.quantity || 0;
-      
-      if (totalReturned >= orderItem.quantity) {
-        // All quantity returned
+      // 7. Update order item status: this return leaves none of the line
+      //    sold (earlier returns and exchanges took the rest).
+      if (quantity >= remaining) {
         await tx.orderItem.update({
           where: { id: orderItemId },
           data: { status: 'RETURNED' },

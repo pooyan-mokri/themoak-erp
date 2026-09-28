@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { ACCESS_DENIED_MESSAGE, hasPermission } from '@/lib/access';
 import type { Permission } from '@/lib/permissions';
+import { SOLD_ORDER_STATUS } from '@/lib/order-status';
 
 export interface AgentTool {
   name: string;
@@ -76,7 +77,7 @@ const tools: AgentTool[] = [
       const orders = await prisma.order.findMany({
         where: {
           createdAt: { gte: startDate },
-          status: { in: ['COMPLETED', 'DELIVERED'] },
+          status: SOLD_ORDER_STATUS,
         },
         include: {
           items: { include: { product: true } },

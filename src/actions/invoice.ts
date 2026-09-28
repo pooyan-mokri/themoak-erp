@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { accountForViewer, bookOrderPayment, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
+import { orderNet } from '@/lib/order-balance';
 
 // const prisma = new PrismaClient();
 
@@ -84,7 +85,7 @@ export async function createInvoiceFromOrder(orderId: string) {
     const subtotal = Number(order.totalAmount);
     const discount = Number(order.discount);
     const tax = 0; // TODO: Implement tax calculation
-    const total = subtotal - discount + tax;
+    const total = orderNet(order) + tax;
     const paidAmount = Number(order.paidAmount);
 
     // Determine status
@@ -312,9 +313,9 @@ export async function getARAgingReport() {
 
       const customerId = order.customerId;
 
-      // محاسبه بدهی واقعی: totalAmount قبلاً تخفیف را کم کرده است (در WooCommerce)
-      // پس فقط: totalAmount - paidAmount
-      const balance = Number(order.totalAmount) - Number(order.paidAmount || 0);
+      // بدهی واقعی: مبلغ قابل پرداخت (پس از تخفیف) منهای پرداخت‌شده.
+      // در سفارش‌های WooCommerce مبلغ کل از قبل پس از تخفیف است (src/lib/order-balance.ts).
+      const balance = orderNet(order) - Number(order.paidAmount || 0);
 
       if (balance <= 0) continue; // Skip if no balance due
 

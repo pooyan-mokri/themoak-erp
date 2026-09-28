@@ -144,7 +144,7 @@ test('a pricier exchange on an order holding the customer\'s credit takes the cr
 
   // The other frame for the dearer one: 600,000 more, of which the credit covers 300,000.
   // The dialog caps what it collects at the same figure.
-  assert.equal(receivableNow((await getOrderMoney(s.order.id))!, PRICIER - PRICE), 300_000);
+  assert.equal(receivableNow((await getOrderMoney(s.order.id))!, PRICE, PRICIER), 300_000);
   const tooMuch = await swap(s, s.pricier.id, { receivedNow: String(PRICIER - PRICE), accountId: s.bank.id });
   assert.equal(tooMuch.success, false);
   assert.equal(await prisma.orderExchange.count(), 1);

@@ -28,6 +28,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
           <CustomerDebtCard 
             creditLimit={Number(customer.creditLimit)} 
             totalDebt={customer.stats.totalDebt} 
+            totalCredit={customer.stats.totalCredit}
             paymentTerms={customer.paymentTerms}
           />
         </div>

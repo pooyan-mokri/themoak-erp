@@ -6,6 +6,14 @@
 -- so the deploy would fail. The index gets the exact name Prisma expects.
 -- imageUrl, siteUrl: plain nullable columns, added here too so that adding them
 -- gets the same short lock_timeout instead of queueing live traffic.
+-- OrderExchange.clientRequestId: an exchange's request id, unique for the same
+-- reason as webId (src/lib/request-id.ts). OrderItem.exchangeId: the exchange
+-- that issued a line, with its index and its foreign key to OrderExchange,
+-- here for the short lock_timeout; OrderItem comes before OrderExchange, the
+-- order an exchange takes its locks in.
+-- CustomerCredit: a new table, created here like SiteRefund so that its foreign
+-- keys, which lock Customer, Order and OrderExchange (in that order), get the
+-- same lock_timeout.
 -- Order.siteReference: the website's order reference, unique for the same
 -- reason as webId. The other website-sale columns (Customer.siteId, source;
 -- Order.siteData, siteRestockedAt) are plain nullable columns, here for the
@@ -200,5 +208,65 @@ BEGIN
     IF to_regclass('"Transaction_clientRequestId_key"') IS NULL THEN
       CREATE UNIQUE INDEX "Transaction_clientRequestId_key" ON "Transaction"("clientRequestId");
     END IF;
+  END IF;
+
+  -- OrderItem.exchangeId, its index and its foreign key, named and defined as
+  -- Prisma creates them (ON DELETE SET NULL, the default of an optional relation).
+  IF to_regclass('"OrderItem"') IS NOT NULL AND to_regclass('"OrderExchange"') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_attribute
+      WHERE attrelid = '"OrderItem"'::regclass AND attname = 'exchangeId' AND NOT attisdropped
+    ) THEN
+      ALTER TABLE "OrderItem" ADD COLUMN "exchangeId" TEXT;
+    END IF;
+    IF to_regclass('"OrderItem_exchangeId_idx"') IS NULL THEN
+      CREATE INDEX "OrderItem_exchangeId_idx" ON "OrderItem"("exchangeId");
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conrelid = '"OrderItem"'::regclass AND conname = 'OrderItem_exchangeId_fkey'
+    ) THEN
+      ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_exchangeId_fkey"
+        FOREIGN KEY ("exchangeId") REFERENCES "OrderExchange"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+  END IF;
+
+  -- OrderExchange.clientRequestId: the same reason as Transaction.clientRequestId.
+  IF to_regclass('"OrderExchange"') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_attribute
+      WHERE attrelid = '"OrderExchange"'::regclass AND attname = 'clientRequestId' AND NOT attisdropped
+    ) THEN
+      ALTER TABLE "OrderExchange" ADD COLUMN "clientRequestId" TEXT;
+    END IF;
+    IF to_regclass('"OrderExchange_clientRequestId_key"') IS NULL THEN
+      CREATE UNIQUE INDEX "OrderExchange_clientRequestId_key" ON "OrderExchange"("clientRequestId");
+    END IF;
+  END IF;
+
+  -- CustomerCredit, its indexes and foreign keys, exactly as Prisma creates them.
+  IF to_regclass('"CustomerCredit"') IS NULL
+    AND to_regclass('"Customer"') IS NOT NULL
+    AND to_regclass('"Order"') IS NOT NULL
+    AND to_regclass('"OrderExchange"') IS NOT NULL THEN
+    CREATE TABLE "CustomerCredit" (
+      "id" TEXT NOT NULL,
+      "customerId" TEXT NOT NULL,
+      "amount" DECIMAL(65,30) NOT NULL,
+      "orderId" TEXT,
+      "exchangeId" TEXT,
+      "reason" TEXT NOT NULL,
+      "userId" TEXT,
+      "clientRequestId" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CustomerCredit_pkey" PRIMARY KEY ("id")
+    );
+    CREATE UNIQUE INDEX "CustomerCredit_clientRequestId_key" ON "CustomerCredit"("clientRequestId");
+    CREATE INDEX "CustomerCredit_customerId_idx" ON "CustomerCredit"("customerId");
+    CREATE INDEX "CustomerCredit_orderId_idx" ON "CustomerCredit"("orderId");
+    CREATE INDEX "CustomerCredit_exchangeId_idx" ON "CustomerCredit"("exchangeId");
+    ALTER TABLE "CustomerCredit" ADD CONSTRAINT "CustomerCredit_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    ALTER TABLE "CustomerCredit" ADD CONSTRAINT "CustomerCredit_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    ALTER TABLE "CustomerCredit" ADD CONSTRAINT "CustomerCredit_exchangeId_fkey" FOREIGN KEY ("exchangeId") REFERENCES "OrderExchange"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;

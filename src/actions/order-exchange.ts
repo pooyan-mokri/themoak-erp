@@ -3,9 +3,10 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
+import { auth } from '@/auth';
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
-import { accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
+import { CREDIT_REASON, accountForViewer, productForViewer, syncInvoiceWithOrder } from '@/lib/sales-records';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
@@ -15,16 +16,53 @@ import { CASH_CHANGED_MESSAGE, exchangeChange, lineValue, orderMoney, receivable
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
   originalItemId: z.string().min(1, 'شناسه آیتم اصلی الزامی است'),
-  exchangeProductId: z.string().min(1, 'کالای تعویضی الزامی است'),
+  // Units of the original line given back.
   quantity: z.coerce.number().int().positive('تعداد باید بیشتر از صفر باشد'),
   accountId: z.string().min(1, 'حساب الزامی است'),
   returnWarehouseId: z.string().min(1, 'انبار برگشت کالا الزامی است'),
-  exchangeWarehouseId: z.string().min(1, 'انبار تحویل کالا الزامی است'),
+  // One new product for as many units as come back, at its catalog price (the
+  // one-for-one form); `lines` replaces both.
+  exchangeProductId: z.string().optional(),
+  exchangeWarehouseId: z.string().optional(),
   // Of a positive difference, what the cashier collects now; the rest is owed on the order.
   receivedNow: z.coerce.number().min(0, 'مبلغ دریافتی نمی‌تواند منفی باشد').optional(),
   // The cash the dialog showed; the server refuses when its own figure differs.
   expectedCash: z.coerce.number().optional(),
 });
+
+// The new goods: one or more lines, each from its own warehouse, at a price the
+// cashier may change (the catalog price when none is given).
+const ExchangeLineSchema = z.object({
+  productId: z.string().min(1, 'کالای تعویضی الزامی است'),
+  quantity: z.coerce.number().int().positive('تعداد کالای تعویضی باید بیشتر از صفر باشد'),
+  price: z.coerce.number().min(0, 'قیمت کالای تعویضی نمی‌تواند منفی باشد').optional(),
+  warehouseId: z.string().min(1, 'انبار تحویل کالا الزامی است'),
+});
+const ExchangeLinesSchema = z
+  .array(ExchangeLineSchema)
+  .min(1, 'دست‌کم یک کالای تعویضی لازم است')
+  .max(20, 'حداکثر ۲۰ کالای تعویضی در یک تعویض');
+
+type ExchangeLine = z.infer<typeof ExchangeLineSchema>;
+
+/** The new lines of the form: `lines` (JSON), or the one-for-one fields. */
+function readExchangeLines(formData: FormData, quantity: number, one: { productId?: string; warehouseId?: string }) {
+  const raw = formData.get('lines');
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { error: 'فهرست کالاهای تعویضی نامعتبر است.' };
+    }
+    const lines = ExchangeLinesSchema.safeParse(parsed);
+    if (!lines.success) return { error: lines.error.issues[0]?.message ?? 'فهرست کالاهای تعویضی نامعتبر است.' };
+    return { lines: lines.data };
+  }
+  if (!one.productId) return { error: 'کالای تعویضی الزامی است', field: 'exchangeProductId' };
+  if (!one.warehouseId) return { error: 'انبار تحویل کالا الزامی است', field: 'exchangeWarehouseId' };
+  return { lines: [{ productId: one.productId, quantity, warehouseId: one.warehouseId }] as ExchangeLine[] };
+}
 
 export async function exchangeOrderItem(prevState: any, formData: FormData) {
   const denied = await checkPermission('sales.manage');
@@ -32,11 +70,11 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
   const validatedFields = OrderExchangeSchema.safeParse({
     orderId: formData.get('orderId'),
     originalItemId: formData.get('originalItemId'),
-    exchangeProductId: formData.get('exchangeProductId'),
     quantity: formData.get('quantity'),
     accountId: formData.get('accountId'),
     returnWarehouseId: formData.get('returnWarehouseId'),
-    exchangeWarehouseId: formData.get('exchangeWarehouseId'),
+    exchangeProductId: formData.get('exchangeProductId') || undefined,
+    exchangeWarehouseId: formData.get('exchangeWarehouseId') || undefined,
     receivedNow: formData.get('receivedNow') || undefined,
     expectedCash: formData.get('expectedCash') || undefined,
   });
@@ -49,16 +87,41 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
     };
   }
 
-  const { orderId, originalItemId, exchangeProductId, quantity, accountId, returnWarehouseId, exchangeWarehouseId, receivedNow, expectedCash } = validatedFields.data;
-  // Of a negative difference, the customer gets cash back only when the cashier chooses it.
+  const { orderId, originalItemId, quantity, accountId, returnWarehouseId, receivedNow, expectedCash } = validatedFields.data;
+  const read = readExchangeLines(formData, quantity, {
+    productId: validatedFields.data.exchangeProductId,
+    warehouseId: validatedFields.data.exchangeWarehouseId,
+  });
+  if (!read.lines) {
+    return {
+      errors: read.field ? { [read.field]: [read.error] } : {},
+      message: read.error,
+      success: false,
+    };
+  }
+  const lines = read.lines;
+  // Of a negative difference, what the customer paid beyond the new total goes
+  // back as cash (refundNow) or to their credit account (toCredit), as the cashier chooses.
   const refundNow = formData.get('refundNow') === '1';
+  const toCredit = formData.get('toCredit') === '1';
+  if (refundNow && toCredit) {
+    return { message: 'مابه‌التفاوت یا پس داده می‌شود یا به اعتبار مشتری می‌رود، نه هر دو.', success: false };
+  }
   const requestId = readRequestId(formData.get('requestId'));
+  const userId = (await auth())?.user?.id ?? null;
 
   try {
     const outcome = await prisma.$transaction(async (tx: any) => {
       // One return or exchange at a time per order: the second re-reads what the first left.
       await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
-      if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
+      // A submission already booked: its exchange row carries the request id, whether or
+      // not money moved (an even swap, a difference left as debt).
+      if (
+        requestId &&
+        ((await tx.orderExchange.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })) ||
+          (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })) ||
+          (await tx.customerCredit.findUnique({ where: { clientRequestId: requestId }, select: { id: true } })))
+      ) {
         return 'duplicate';
       }
 
@@ -101,10 +164,12 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
       // Block re-exchanging an item that was itself created by a previous
       // exchange — that would chain A→B→C and make accounting (and history)
       // a tangle. Returns on such an item remain allowed.
-      const isExchangeDerived = await tx.orderExchange.findFirst({
-        where: { exchangeItemId: originalItemId },
-        select: { id: true },
-      });
+      const isExchangeDerived =
+        originalItem.exchangeId != null ||
+        (await tx.orderExchange.findFirst({
+          where: { exchangeItemId: originalItemId },
+          select: { id: true },
+        }));
       if (isExchangeDerived) {
         throw new Error('این آیتم خود حاصل یک تعویض است و دوباره قابل تعویض نیست. در صورت نیاز می‌توانید آن را عودت کنید.');
       }
@@ -134,54 +199,81 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
 
       // Virtual warehouses are only valid in this flow when the sale was
       // consignment AND the warehouse belongs to the order's customer.
-      const [returnWarehouse, exchangeWarehouseRecord] = await Promise.all([
-        tx.warehouse.findUnique({ where: { id: returnWarehouseId } }),
-        tx.warehouse.findUnique({ where: { id: exchangeWarehouseId } }),
-      ]);
+      const warehouseIds = Array.from(new Set([returnWarehouseId, ...lines.map((line) => line.warehouseId)]));
+      const warehouses = new Map(
+        (await tx.warehouse.findMany({ where: { id: { in: warehouseIds } } })).map((w: any) => [w.id, w]),
+      );
+      const returnWarehouse: any = warehouses.get(returnWarehouseId);
       if (!returnWarehouse) {
         throw new Error('انبار برگشت کالا یافت نشد.');
-      }
-      if (!exchangeWarehouseRecord) {
-        throw new Error('انبار تحویل کالا یافت نشد.');
       }
       if (returnWarehouse.isVirtual && returnWarehouse.customerId !== order.customerId) {
         throw new Error('انبار برگشت مجازی متعلق به مشتری این سفارش نیست.');
       }
-      if (exchangeWarehouseRecord.isVirtual && exchangeWarehouseRecord.customerId !== order.customerId) {
-        throw new Error('انبار تحویل مجازی متعلق به مشتری این سفارش نیست.');
+      for (const line of lines) {
+        const warehouse: any = warehouses.get(line.warehouseId);
+        if (!warehouse) {
+          throw new Error('انبار تحویل کالا یافت نشد.');
+        }
+        if (warehouse.isVirtual && warehouse.customerId !== order.customerId) {
+          throw new Error('انبار تحویل مجازی متعلق به مشتری این سفارش نیست.');
+        }
       }
 
-      // 2. Get exchange product
-      const exchangeProduct = await tx.product.findUnique({
-        where: { id: exchangeProductId },
+      // 2. Get the new products (the returned product itself is allowed: a
+      //    fresh unit for a faulty one).
+      const products = new Map(
+        (await tx.product.findMany({ where: { id: { in: lines.map((line) => line.productId) } } })).map((p: any) => [p.id, p]),
+      );
+      const newLines = lines.map((line) => {
+        const product: any = products.get(line.productId);
+        if (!product) {
+          throw new Error('کالای تعویضی یافت نشد.');
+        }
+        return { ...line, product, price: line.price ?? Number(product.sellPrice) };
       });
 
-      if (!exchangeProduct) {
-        throw new Error('کالای تعویضی یافت نشد.');
+      // 3. Check inventory of each new product in its warehouse (two lines of
+      //    the same product and warehouse need their sum).
+      const needed = new Map<string, { productId: string; warehouseId: string; name: string; quantity: number }>();
+      for (const line of newLines) {
+        const key = `${line.productId}|${line.warehouseId}`;
+        const entry = needed.get(key) ?? { productId: line.productId, warehouseId: line.warehouseId, name: line.product.name, quantity: 0 };
+        entry.quantity += line.quantity;
+        needed.set(key, entry);
+      }
+      for (const need of needed.values()) {
+        const stock = await tx.inventory.findUnique({
+          where: { productId_warehouseId: { productId: need.productId, warehouseId: need.warehouseId } },
+        });
+        if (!stock || stock.quantity < need.quantity) {
+          throw new Error(`موجودی کافی برای کالای تعویضی "${need.name}" در انبار انتخابی وجود ندارد.`);
+        }
       }
 
-      // 3. Check inventory for exchange product in the selected warehouse
-      const exchangeInventory = await tx.inventory.findUnique({
-        where: {
-          productId_warehouseId: {
-            productId: exchangeProductId,
-            warehouseId: exchangeWarehouseId,
-          },
-        },
-      });
-
-      if (!exchangeInventory || exchangeInventory.quantity < quantity) {
-        throw new Error(`موجودی کافی برای کالای تعویضی "${exchangeProduct.name}" در انبار انتخابی وجود ندارد.`);
-      }
-
-      // 4. Calculate price difference (each side net of the partner's
-      //    commission on a consignment sale, whose total is stored net)
+      // 4. Value of each side (net of the partner's commission on a
+      //    consignment sale, whose total is stored net). The goods given back
+      //    pass their share of the order discount to the new goods, at most
+      //    what those are worth (src/lib/return-math.ts, swapDiscount).
       const money = orderMoney(order);
       const originalPrice = lineValue(money, Number(originalItem.price), quantity);
-      const exchangePrice = lineValue(money, Number(exchangeProduct.sellPrice), quantity);
-      const priceDifference = exchangePrice - originalPrice;
+      const exchangePrice = newLines.reduce((sum, line) => sum + lineValue(money, line.price, line.quantity), 0);
+
+      // 5. Recompute order totals (src/lib/return-math.ts; the dialog shows
+      //    the same figures from the same function).
+      //    - the bill grows → owed on the order, except what the cashier
+      //      collects now (receivedNow).
+      //    - the bill shrinks → what the customer paid beyond the new total
+      //      goes back as cash (refundNow) or to their credit account
+      //      (toCredit); with neither it stays paid on the order.
+      if (toCredit && !order.customerId) {
+        throw new Error('این سفارش مشتری ندارد؛ مابه‌التفاوت را فقط می‌توان نقدی پس داد.');
+      }
+      const change = exchangeChange(money, originalPrice, exchangePrice, { receivedNow, refundNow, toCredit });
+      // What the exchange added to (or took off) the customer's bill.
+      const priceDifference = change.owedChange;
       // A credit the customer holds on the order pays the difference first.
-      const receivable = receivableNow(money, priceDifference);
+      const receivable = receivableNow(money, originalPrice, exchangePrice);
       if ((receivedNow ?? 0) > receivable + 0.01) {
         throw new Error(
           receivable < priceDifference - 0.01
@@ -189,16 +281,6 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
             : 'مبلغ دریافتی نمی‌تواند بیشتر از مابه‌التفاوت باشد.',
         );
       }
-
-      // 5. Recompute order totals (src/lib/return-math.ts; the dialog shows
-      //    the same figures from the same function).
-      //    - priceDifference > 0  → owed on the order, except what the
-      //      cashier collects now (receivedNow).
-      //    - priceDifference < 0  → only the portion the customer actually
-      //      overpaid relative to the new total can go back, and only when
-      //      the cashier chooses to refund it; otherwise it stays paid on the
-      //      order as the customer's credit.
-      const change = exchangeChange(money, priceDifference, { receivedNow, refundNow });
       const txType: TransactionType | null =
         change.cashIn > 0 ? TransactionType.INCOME : change.cashOut > 0 ? TransactionType.EXPENSE : null;
       const txAmount = change.cashIn || change.cashOut;
@@ -234,6 +316,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         const amountInAccountCurrency = txAmount / rate;
 
         const customerLabel = order.customer?.name ?? 'مشتری عمومی';
+        const newNames = newLines.map((line) => line.product.name).join('، ');
         const transaction = await tx.transaction.create({
           data: {
             type: txType,
@@ -245,7 +328,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
             customerId: order.customerId ?? undefined,
             orderId,
             clientRequestId: requestId ?? undefined,
-            description: `تعویض کالا - سفارش #${order.number} - ${customerLabel} - ${originalItem.product.name} → ${exchangeProduct.name}`,
+            description: `تعویض کالا - سفارش #${order.number} - ${customerLabel} - ${originalItem.product.name} → ${newNames}`,
             category: 'Exchange',
             date: new Date(),
           },
@@ -265,6 +348,7 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         where: { id: orderId },
         data: {
           totalAmount: new Prisma.Decimal(change.newTotal),
+          discount: new Prisma.Decimal(change.newDiscount),
           paidAmount: new Prisma.Decimal(change.newPaid),
           paymentStatus: change.paymentStatus,
         },
@@ -283,7 +367,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           (sum: number, c: any) => sum + Number(c.orderAmount),
           0
         );
-        const grossDifference = (Number(exchangeProduct.sellPrice) - Number(originalItem.price)) * quantity;
+        const grossDifference =
+          newLines.reduce((sum, line) => sum + line.price * line.quantity, 0) - Number(originalItem.price) * quantity;
         const newCommissionBase = Math.max(0, oldCommissionBase + grossDifference);
         const ratio = oldCommissionBase > 0 ? newCommissionBase / oldCommissionBase : 0;
         for (const commission of orderCommissions) {
@@ -300,57 +385,78 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         }
       }
 
-      // 8. Create exchange item in order (for record keeping)
-      const exchangeItem = await tx.orderItem.create({
-        data: {
-          orderId,
-          productId: exchangeProductId,
-          quantity,
-          price: new Prisma.Decimal(exchangeProduct.sellPrice),
-          warehouseId: exchangeWarehouseId,
-        },
-      });
+      // 8. The new lines, on the same order, each marked with this exchange.
+      const issued: any[] = [];
+      for (const line of newLines) {
+        issued.push(
+          await tx.orderItem.create({
+            data: {
+              orderId,
+              productId: line.productId,
+              quantity: line.quantity,
+              price: new Prisma.Decimal(line.price),
+              warehouseId: line.warehouseId,
+            },
+          }),
+        );
+      }
 
-      // 8. Create OrderExchange record
-      await tx.orderExchange.create({
+      // 8. Create OrderExchange record (exchangeItemId: the first new line)
+      const exchange = await tx.orderExchange.create({
         data: {
           orderId,
           originalItemId,
-          exchangeItemId: exchangeItem.id,
+          exchangeItemId: issued[0].id,
           quantity,
           priceDifference: new Prisma.Decimal(priceDifference),
           accountId,
           transactionId,
+          clientRequestId: requestId ?? undefined,
         },
       });
-
-      // 9. Update original order item status
-      // Check if all quantity is exchanged
-      const exchangedQuantity = await tx.orderExchange.aggregate({
-        where: { originalItemId },
-        _sum: { quantity: true },
+      await tx.orderItem.updateMany({
+        where: { id: { in: issued.map((item) => item.id) } },
+        data: { exchangeId: exchange.id },
       });
-      const totalExchanged = exchangedQuantity._sum.quantity || 0;
-      
-      if (totalExchanged >= originalItem.quantity) {
-        // All quantity exchanged
+
+      // 8a. What the customer paid beyond the new total and left with the
+      //     shop goes to their credit account.
+      if (change.creditIn > 0) {
+        await tx.customerCredit.create({
+          data: {
+            customerId: order.customerId,
+            amount: new Prisma.Decimal(change.creditIn),
+            orderId,
+            exchangeId: exchange.id,
+            reason: CREDIT_REASON.EXCHANGE,
+            userId: userId ?? undefined,
+            clientRequestId: requestId ?? undefined,
+          },
+        });
+      }
+
+      // 9. Update original order item status: this exchange leaves none of
+      //    the line sold (earlier returns and exchanges took the rest).
+      if (quantity >= remaining) {
         await tx.orderItem.update({
           where: { id: originalItemId },
           data: { status: 'EXCHANGED' },
         });
       }
 
-      // 10. Update inventory: deduct exchange product from selected warehouse,
-      //     restore original product to the warehouse chosen by the user.
-      await tx.inventory.update({
-        where: {
-          productId_warehouseId: {
-            productId: exchangeProductId,
-            warehouseId: exchangeWarehouseId,
+      // 10. Update inventory: deduct each new line from its warehouse,
+      //     restore the original product to the warehouse chosen by the user.
+      for (const need of needed.values()) {
+        await tx.inventory.update({
+          where: {
+            productId_warehouseId: {
+              productId: need.productId,
+              warehouseId: need.warehouseId,
+            },
           },
-        },
-        data: { quantity: { decrement: quantity } },
-      });
+          data: { quantity: { decrement: need.quantity } },
+        });
+      }
 
       const existingReturnInventory = await tx.inventory.findUnique({
         where: {
@@ -403,6 +509,12 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
   }
 }
 
+/** The names of the goods an exchange issued; an exchange from before exchangeId issued exchangeItem only. */
+function issuedNames(ex: any): string {
+  const items = ex.issuedItems?.length ? ex.issuedItems : ex.exchangeItem ? [ex.exchangeItem] : [];
+  return items.length ? items.map((item: any) => `${item.product?.name ?? '—'} × ${item.quantity}`).join('، ') : '—';
+}
+
 export async function getAllOrderExchanges(limit = 200) {
   await requirePermission('sales.view');
   try {
@@ -411,6 +523,7 @@ export async function getAllOrderExchanges(limit = 200) {
         order: { include: { customer: true } },
         originalItem: { include: { product: true } },
         exchangeItem: { include: { product: true } },
+        issuedItems: { include: { product: true }, orderBy: { id: 'asc' } },
         account: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -423,7 +536,7 @@ export async function getAllOrderExchanges(limit = 200) {
       orderNumber: ex.order?.number,
       customerName: ex.order?.customer?.name ?? 'مشتری عمومی',
       originalProductName: ex.originalItem?.product?.name ?? '—',
-      exchangeProductName: ex.exchangeItem?.product?.name ?? '—',
+      exchangeProductName: issuedNames(ex),
       quantity: ex.quantity,
       priceDifference: Number(ex.priceDifference),
       accountName: ex.account?.name ?? '—',
@@ -448,15 +561,20 @@ export async function getOrderExchanges(orderId: string) {
         exchangeItem: {
           include: { product: true },
         },
+        issuedItems: { include: { product: true }, orderBy: { id: 'asc' } },
+        credits: { select: { amount: true } },
         account: true,
         transaction: true,
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return exchanges.map((ex: any) => ({
+    return exchanges.map(({ issuedItems, credits, ...ex }: any) => ({
       ...ex,
       priceDifference: Number(ex.priceDifference),
+      // The new goods, and what of the difference went to the customer's credit.
+      issuedNames: issuedNames({ ...ex, issuedItems }),
+      toCredit: credits.reduce((sum: number, row: any) => sum + Number(row.amount), 0),
       transactionId: ex.transactionId ?? undefined,
       originalItem: ex.originalItem ? {
         ...ex.originalItem,
@@ -469,6 +587,9 @@ export async function getOrderExchanges(orderId: string) {
       account: ex.account ? accountForViewer(ex.account, canSeeBalance) : undefined,
       transaction: ex.transaction ? {
         ...ex.transaction,
+        amount: Number(ex.transaction.amount),
+        amountInToman: Number(ex.transaction.amountInToman),
+        rateSnapshot: Number(ex.transaction.rateSnapshot),
         description: ex.transaction.description ?? undefined,
         category: ex.transaction.category ?? undefined,
         accountId: ex.transaction.accountId ?? undefined,

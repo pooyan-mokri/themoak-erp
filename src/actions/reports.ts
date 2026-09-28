@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
+import { effectiveQuantity } from '@/lib/return-math';
 
 // Financial Reports
 
@@ -126,10 +127,10 @@ export async function getBalanceSheet(date: Date) {
       else inventoryValue += v;
     });
 
-    // Accounts Receivable (unpaid invoices)
+    // Accounts Receivable (unpaid invoices, overdue ones included)
     const unpaidInvoices = await prisma.invoice.findMany({
       where: {
-        status: { in: ['UNPAID', 'PARTIAL'] },
+        status: { in: ['UNPAID', 'PARTIAL', 'OVERDUE'] },
       },
       select: {
         total: true,
@@ -199,6 +200,9 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
             sku: true,
           },
         },
+        // Units returned or exchanged away are not sold.
+        returns: { select: { quantity: true } },
+        exchanges: { select: { quantity: true } },
       },
     });
 
@@ -213,8 +217,8 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
           revenue: 0,
         };
       }
-      productSales[key].quantity += item.quantity;
-      productSales[key].revenue += item.quantity * Number(item.price);
+      productSales[key].quantity += effectiveQuantity(item);
+      productSales[key].revenue += effectiveQuantity(item) * Number(item.price);
     });
 
     return Object.values(productSales).sort((a: any, b: any) => b.revenue - a.revenue);
