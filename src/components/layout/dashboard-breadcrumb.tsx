@@ -17,12 +17,13 @@ export function DashboardBreadcrumb({ customLabel }: DashboardBreadcrumbProps) {
 
   useEffect(() => {
     // Check if we're on a product detail page (with or without /barcode)
-    // /products/labels is the bulk label page, not a product.
-    const isProductDetailPage = pathname.match(/\/products\/[^/]+$/) && !pathname.endsWith('/products/labels');
+    // Only a record id (a cuid) names a product or warehouse; /products/new, /products/labels
+    // and /warehouses/archived are pages of their own.
+    const isProductDetailPage = pathname.match(/\/products\/c[a-z0-9]{20,}$/);
     const isBarcodePage = pathname.includes('/products/') && pathname.endsWith('/barcode');
     
     // Check if we're on a warehouse detail page
-    const isWarehouseDetailPage = pathname.match(/\/warehouses\/[^/]+$/);
+    const isWarehouseDetailPage = pathname.match(/\/warehouses\/c[a-z0-9]{20,}$/);
     
     if ((isProductDetailPage || isBarcodePage) && !customLabel) {
       // Extract product ID from pathname
