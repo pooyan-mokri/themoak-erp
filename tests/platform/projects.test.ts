@@ -23,6 +23,7 @@ console.log = () => {};
 console.error = () => {};
 
 const DENIED = 'شما به این بخش دسترسی ندارید.';
+const ASSIGNEE_UNAVAILABLE = 'کاربر انتخاب‌شده وجود ندارد یا غیرفعال است؛ کاربر دیگری را انتخاب کنید.';
 const MANAGERS = ROLES.filter((role) => can(role, 'projects.manage'));
 const NOT_MANAGERS = [null, ...ROLES.filter((role) => !can(role, 'projects.manage'))];
 
@@ -209,7 +210,7 @@ test('a task edit that fails says so in Persian, without the database message, a
   const before = await snapshot();
 
   const unknownUser = await updateTask(task.id, {}, taskForm(project.id, { assignedTo: 'no-such-user' }));
-  assert.deepEqual(unknownUser, { success: false, message: 'خطا در بروزرسانی وظیفه.', errors: undefined });
+  assert.deepEqual(unknownUser, { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined });
   const unknownTask = await updateTask('no-such-task', {}, taskForm(project.id));
   assert.equal(unknownTask.message, 'خطا در بروزرسانی وظیفه.');
   const late = await updateTask(task.id, {}, taskForm(project.id, { startDate: '2026-10-06T20:30:00.000Z' }));
@@ -333,4 +334,34 @@ test('the project pages pass the budget only to finance.view roles', () => {
   assert.match(readFileSync(join(process.cwd(), 'src/app/dashboard/projects/[id]/page.tsx'), 'utf8'), /showBudget=\{await hasPermission\('finance\.view'\)\}/);
   assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-form.tsx'), 'utf8'), /\{showBudget && \(/);
   assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-list.tsx'), 'utf8'), /column\.key !== 'budget'/);
+});
+
+test('a task is given only to an existing, active user; its current assignee stays through an edit after deactivation', async () => {
+  const { ali, sara, project } = await seed();
+  await prisma.user.update({ where: { id: sara.id }, data: { isActive: false } });
+  const before = await snapshot();
+
+  for (const assignedTo of [sara.id, 'no-such-user']) {
+    assert.deepEqual(await createTask({}, taskForm(project.id, { assignedTo })), { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined }, assignedTo);
+  }
+  assert.deepEqual(await snapshot(), before);
+
+  assert.equal((await createTask({}, taskForm(project.id, { assignedTo: ali.id }))).success, true);
+  const task = await prisma.task.findFirstOrThrow();
+  for (const assignedTo of [sara.id, 'no-such-user']) {
+    assert.deepEqual(await updateTask(task.id, {}, taskForm(project.id, { assignedTo, title: 'changed' })), { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined }, assignedTo);
+  }
+  const unchanged = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+  assert.deepEqual([unchanged.assignedTo, unchanged.title], [ali.id, 'طراحی ویترین']);
+
+  // Ali is deactivated after being given the task: the task can still be edited, and keeps him.
+  await prisma.user.update({ where: { id: ali.id }, data: { isActive: false } });
+  assert.equal((await updateTask(task.id, {}, taskForm(project.id, { assignedTo: ali.id, title: 'still Ali' }))).success, true);
+  const kept = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+  assert.deepEqual([kept.assignedTo, kept.title], [ali.id, 'still Ali']);
+});
+
+test('the report counts active admins only', () => {
+  const sql = readFileSync(join(process.cwd(), 'prisma/sql/report-platform-checks.sql'), 'utf8');
+  assert.match(sql, /SELECT count\(\*\) AS "activeAdmins" FROM "User" WHERE role = 'ADMIN' AND "isActive";/);
 });

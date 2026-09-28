@@ -66,6 +66,7 @@ WHERE a.action = 'record_expense' AND a.success
     OR acc.balance < 0
   );
 
--- 8. How many admins there are: with none, nobody can manage users (the last
---    admin could demote themself until now).
-SELECT count(*) AS admins FROM "User" WHERE role = 'ADMIN';
+-- 8. How many active admins there are: with none, nobody can manage users
+--    (the last admin could demote themself until now; a deactivated admin
+--    cannot sign in).
+SELECT count(*) AS "activeAdmins" FROM "User" WHERE role = 'ADMIN' AND "isActive";

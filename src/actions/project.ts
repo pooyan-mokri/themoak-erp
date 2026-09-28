@@ -19,6 +19,13 @@ const ProjectSchema = z.object({
 });
 
 const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'] as const;
+const ASSIGNEE_UNAVAILABLE = 'کاربر انتخاب‌شده وجود ندارد یا غیرفعال است؛ کاربر دیگری را انتخاب کنید.';
+
+/** Only an existing, active user can be given a task (the picker offers no one else). */
+async function isAssignable(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+  return !!user?.isActive;
+}
 const END_BEFORE_START = 'تاریخ پایان پروژه نمی‌تواند قبل از تاریخ شروع باشد.';
 
 /** Both dates given and the end before the start. */
@@ -241,6 +248,9 @@ export async function createTask(prevState: ActionState, formData: FormData): Pr
   }
 
   const { title, description, status, priority, startDate, dueDate, projectId, assignedTo } = validatedFields.data;
+  if (assignedTo && !(await isAssignable(assignedTo))) {
+    return { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined };
+  }
 
   // Ensure start date is not after due date
   if (startDate && startDate.trim() && dueDate && dueDate.trim()) {
@@ -405,6 +415,16 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
     console.log('Validation passed successfully');
 
     const { title, description, status, priority, startDate, dueDate, projectId, assignedTo } = validatedFields.data;
+
+    // A new assignee must be an existing, active user. The one the task already
+    // has stays through an edit, even after they were deactivated.
+    const newAssignee = assignedTo?.trim();
+    if (newAssignee) {
+        const current = await prisma.task.findUnique({ where: { id: taskId }, select: { assignedTo: true } });
+        if (current?.assignedTo !== newAssignee && !(await isAssignable(newAssignee))) {
+            return { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined };
+        }
+    }
 
     // Ensure start date is not after due date
     if (startDate && startDate.trim() && dueDate && dueDate.trim()) {
