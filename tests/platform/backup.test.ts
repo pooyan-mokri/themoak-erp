@@ -66,7 +66,11 @@ async function seedEverything() {
 
 type Fingerprint = Record<string, { rows: number; hash: string }>;
 
-/** Every table's row count and a hash of all its rows: equal only when the content is identical. */
+/**
+ * Every table's row count and a hash of all its rows: equal only when the content is identical. Rows are
+ * hashed as JSON, keyed by column name, so a database whose columns were added in another order (production,
+ * grown by deploys) fingerprints the same as a fresh one.
+ */
 async function fingerprint(client: PrismaClient): Promise<Fingerprint> {
   const tables: Array<{ name: string }> = await client.$queryRawUnsafe(
     `SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations' ORDER BY tablename`,
@@ -74,7 +78,7 @@ async function fingerprint(client: PrismaClient): Promise<Fingerprint> {
   const result: Fingerprint = {};
   for (const { name } of tables) {
     const [row]: Array<{ rows: number; hash: string }> = await client.$queryRawUnsafe(
-      `SELECT count(*)::int AS rows, coalesce(md5(string_agg(t::text, E'\\n' ORDER BY t::text)), '') AS hash FROM "${name}" t`,
+      `SELECT count(*)::int AS rows, coalesce(md5(string_agg(to_jsonb(t)::text, E'\\n' ORDER BY to_jsonb(t)::text)), '') AS hash FROM "${name}" t`,
     );
     result[name] = row;
   }
