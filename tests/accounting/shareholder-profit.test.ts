@@ -1,5 +1,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { beforeQuery } from '../helpers/hooks';
@@ -7,7 +9,11 @@ import { setTestRole } from '../stubs/auth';
 import { withdrawShareholderFunds } from '@/actions/shareholder';
 import { calculateShareholderProfits, getShareholderProfitById, getShareholderProfits, withdrawShareholderProfit } from '@/actions/shareholder-profit';
 import { withdrawalActionFor } from '@/components/accounting/shareholder-withdrawal-form';
+import { ShareholderProfitList } from '@/components/accounting/shareholder-profit-list';
+import { profitPeriods } from '@/lib/profit-periods';
 import { balanceOf, driftOf, openAccount } from './ledger';
+
+(globalThis as any).React = React;
 
 // The actions log every refusal these tests provoke on purpose.
 console.error = () => {};
@@ -153,4 +159,45 @@ test('a profit is paid out in parts, from a dollar account in dollars, never abo
   assert.equal(await withdrawnOf(), 900_000);
   assert.equal(await driftOf('bank'), 0);
   assert.equal(await driftOf('usd'), 0);
+});
+
+test('each shareholder gets exactly their share; what the shares do not cover stays undistributed, on the profits page', async () => {
+  await prisma.shareholderProfit.deleteMany();
+  await prisma.shareholder.update({ where: { id: profit.shareholderId }, data: { percentage: 60 } });
+  await prisma.shareholder.create({ data: { name: 'Reza', percentage: 20 } });
+  await sale('2026-10-05T08:00:00Z', 10_000_000);
+
+  const calculated = await calculateShareholderProfits(undefined, period('2026-10-01', '2026-10-31'));
+  assert.equal(calculated.success, true, calculated.message);
+  assert.match(calculated.message!, /تقسیم‌نشده: ۲٬۰۰۰٬۰۰۰ تومان/);
+  const profits = await getShareholderProfits();
+  assert.deepEqual(profits.map((p: any) => [p.shareholder.name, p.amount, p.periodNetProfit]).sort(), [
+    ['Ali', 6_000_000, 10_000_000],
+    ['Reza', 2_000_000, 10_000_000],
+  ]);
+
+  // A period calculated before the net profit was kept split all of it.
+  await prisma.shareholderProfit.create({
+    data: { shareholderId: profit.shareholderId, amount: 3_000_000, periodStart: new Date('2026-09-01T00:00:00Z'), periodEnd: new Date('2026-09-30T00:00:00Z') },
+  });
+  const periods = profitPeriods(await getShareholderProfits());
+  assert.deepEqual(periods.map((p) => [p.netProfit, p.distributed, p.undistributed]), [
+    [10_000_000, 8_000_000, 2_000_000],
+    [3_000_000, 3_000_000, 0],
+  ]);
+
+  const html = renderToStaticMarkup(React.createElement(ShareholderProfitList, { profits: await getShareholderProfits(), accounts: [] }));
+  assert.ok(html.includes('تقسیم‌نشده'));
+  assert.ok(html.includes('۲٬۰۰۰٬۰۰۰ تومان'));
+});
+
+test('shares of exactly a third each pay out the whole profit to the toman', async () => {
+  await prisma.shareholderProfit.deleteMany();
+  await prisma.shareholder.update({ where: { id: profit.shareholderId }, data: { percentage: 33.34 } });
+  await prisma.shareholder.create({ data: { name: 'Reza', percentage: 33.33 } });
+  await prisma.shareholder.create({ data: { name: 'Mina', percentage: 33.33 } });
+  await sale('2026-10-05T08:00:00Z', 10_000_000);
+  assert.equal((await calculateShareholderProfits(undefined, period('2026-10-01', '2026-10-31'))).success, true);
+  const amounts = (await prisma.shareholderProfit.findMany()).map((p: any) => p.amount.toString()).sort();
+  assert.deepEqual(amounts, ['3333000', '3333000', '3334000']);
 });

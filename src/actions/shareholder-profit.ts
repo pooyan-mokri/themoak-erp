@@ -5,6 +5,7 @@ import { Currency, TransactionType, ActionState, ActionResult } from '@/lib/type
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { userMessage } from '@/lib/action-error';
@@ -135,17 +136,21 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
       };
     }
 
-    // Create profit records for each shareholder
+    // Each shareholder gets exactly their share of the profit: with 60% and
+    // 20%, a 10,000,000 profit pays 6,000,000 and 2,000,000, and 2,000,000
+    // stays undistributed (kept with the period so the profits page shows it).
+    let distributed = new Decimal(0);
     await prisma.$transaction(async (tx: any) => {
       for (const shareholder of shareholders) {
-        const percentage = Number(shareholder.percentage);
-        const shareholderProfit = (netProfit * percentage) / totalPercentage;
+        const shareholderProfit = new Decimal(netProfit).times(shareholder.percentage).dividedBy(100);
+        distributed = distributed.plus(shareholderProfit);
 
         await tx.shareholderProfit.create({
           data: {
             shareholderId: shareholder.id,
-            amount: new Prisma.Decimal(shareholderProfit),
-            withdrawn: new Prisma.Decimal(0),
+            amount: shareholderProfit,
+            withdrawn: new Decimal(0),
+            periodNetProfit: new Decimal(netProfit),
             description: description || `سود دوره ${periodStart} تا ${periodEnd}`,
             periodStart: startDate,
             periodEnd: endDate,
@@ -153,10 +158,13 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
         });
       }
     });
+    const undistributed = Number(new Decimal(netProfit).minus(distributed));
 
     revalidatePath('/dashboard/accounting/shareholders/profits');
     return {
-      message: `سود دوره با موفقیت محاسبه و ثبت شد. (سود کل: ${netProfit.toLocaleString('fa-IR')} تومان)`,
+      message:
+        `سود دوره با موفقیت محاسبه و ثبت شد. (سود کل: ${netProfit.toLocaleString('fa-IR')} تومان` +
+        (undistributed > 0 ? `، تقسیم‌نشده: ${Math.round(undistributed).toLocaleString('fa-IR')} تومان)` : ')'),
       success: true,
     };
   } catch (error: unknown) {
@@ -343,6 +351,7 @@ export async function getShareholderProfits(shareholderId?: string) {
       description: p.description ?? undefined,
       amount: Number(p.amount),
       withdrawn: Number(p.withdrawn),
+      periodNetProfit: p.periodNetProfit == null ? null : Number(p.periodNetProfit),
       available: Number(p.amount) - Number(p.withdrawn),
       shareholder: {
         ...p.shareholder,
@@ -382,6 +391,7 @@ export async function getShareholderProfitById(id: string) {
       description: profit.description ?? undefined,
       amount: Number(profit.amount),
       withdrawn: Number(profit.withdrawn),
+      periodNetProfit: profit.periodNetProfit == null ? null : Number(profit.periodNetProfit),
       available: Number(profit.amount) - Number(profit.withdrawn),
       shareholder: {
         ...profit.shareholder,

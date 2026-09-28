@@ -858,6 +858,8 @@ model ShareholderProfit {
   shareholderId String
   amount        Decimal
   withdrawn     Decimal                 @default(0)
+  /// The company's net profit for the whole period; what no share covers stays undistributed. Null on periods calculated before it was kept.
+  periodNetProfit Decimal?
   description   String?
   periodStart   DateTime
   periodEnd     DateTime
