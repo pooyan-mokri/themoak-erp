@@ -57,9 +57,11 @@ function SubmitButton({ isEditing }: { isEditing: boolean }) {
 interface ProjectFormProps {
   project?: any;
   trigger?: React.ReactNode;
+  /** The budget is finance data (finance.view): without it the field is not shown, and not saved. */
+  showBudget?: boolean;
 }
 
-export function ProjectForm({ project, trigger }: ProjectFormProps) {
+export function ProjectForm({ project, trigger, showBudget = false }: ProjectFormProps) {
   const [open, setOpen] = useState(false);
   
   const action = project ? updateProject.bind(null, project.id) : createProject;
@@ -156,6 +158,7 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
                 </SelectContent>
               </Select>
             </div>
+            {showBudget && (
             <div className="grid gap-2">
               <Label htmlFor="budget">بودجه (تومان)</Label>
               <Input 
@@ -166,6 +169,7 @@ export function ProjectForm({ project, trigger }: ProjectFormProps) {
                 placeholder="0" 
               />
             </div>
+            )}
           </div>
 
           <DialogFooter>

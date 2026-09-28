@@ -22,7 +22,9 @@ export function SiteHookAlerts() {
     const load = () =>
       getSiteHookAlerts()
         .then((next) => {
-          if (current) setAlerts(next);
+          // Not a list when the request never reached the action (a session
+          // that ended, bounced by the middleware): keep what is shown.
+          if (current && Array.isArray(next)) setAlerts(next);
         })
         .catch(() => undefined); // keeps what is shown until the next read
     load();

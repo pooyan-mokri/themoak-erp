@@ -59,7 +59,25 @@ export async function saveBackupSettings(settings: {
       return { success: false, error: 'دسترسی غیرمجاز' };
     }
 
-    await saveSetting('backup_settings', settings);
+    // The same limits as the form: a day the Jalali calendar does not have in
+    // every month (30, 31) would skip months without a word.
+    const whole = (value: unknown, min: number, max: number) =>
+      Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
+    if (!['daily', 'weekly', 'monthly'].includes(settings.frequency)) {
+      return { success: false, error: 'تناوب بک‌آپ نامعتبر است.' };
+    }
+    if (settings.frequency === 'weekly' && !whole(settings.dayOfWeek ?? 0, 0, 6)) {
+      return { success: false, error: 'روز هفته نامعتبر است.' };
+    }
+    if (settings.frequency === 'monthly' && !whole(settings.dayOfMonth ?? 1, 1, 29)) {
+      return { success: false, error: 'روز ماه باید بین ۱ تا ۲۹ باشد.' };
+    }
+    if (!whole(settings.keepBackups ?? 30, 1, 365)) {
+      return { success: false, error: 'تعداد بک‌آپ‌های نگه‌داری‌شده باید بین ۱ تا ۳۶۵ باشد.' };
+    }
+
+    const saved = await saveSetting('backup_settings', settings);
+    if (!saved.success) return saved;
     revalidatePath('/dashboard/settings/backup');
     return { success: true };
   } catch (error: any) {

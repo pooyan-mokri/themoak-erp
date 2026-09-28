@@ -6,52 +6,55 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { Role } from '@prisma/client';
 import type { JWT } from 'next-auth/jwt';
+import { findUserByEmail } from '@/lib/user-email';
 
-// Debug logging
-console.log('[AUTH DEBUG] Initializing auth.ts');
-console.log('[AUTH DEBUG] AUTH_SECRET exists:', !!process.env.AUTH_SECRET);
-console.log('[AUTH DEBUG] AUTH_SECRET length:', process.env.AUTH_SECRET?.length || 0);
-console.log('[AUTH DEBUG] NEXTAUTH_SECRET exists:', !!process.env.NEXTAUTH_SECRET);
-console.log('[AUTH DEBUG] NEXTAUTH_SECRET length:', process.env.NEXTAUTH_SECRET?.length || 0);
-console.log('[AUTH DEBUG] DATABASE_URL exists:', !!process.env.DATABASE_URL);
+// No email, password result or session is ever logged here: these run on every
+// sign-in and every session read, and the logs are not a place for them.
 
 async function getUser(email: string) {
   try {
-    console.log('[AUTH DEBUG] Fetching user:', email);
-    const user = await prisma.user.findUnique({ where: { email } });
-    console.log('[AUTH DEBUG] User found:', !!user);
-    return user;
+    // Any letter case: people type Sara@… as often as sara@….
+    return await findUserByEmail(email);
   } catch (error) {
-    console.error('[AUTH DEBUG] Failed to fetch user:', error);
+    console.error('[auth] could not read the user:', error);
     throw new Error('Failed to fetch user.');
   }
 }
 
 /**
  * The role is copied into the JWT at login. Re-read it whenever the session is
- * read, so a role change applies on the next request and a deleted user's
- * session ends without waiting for a logout. Returning null makes Auth.js treat
+ * read, so a role change applies on the next request, and the session of a
+ * deleted or deactivated user, or one from before a password change, ends
+ * without waiting for a logout. Returning null makes Auth.js treat
  * the request as signed out (and clear the cookie where it can set one).
  * Middleware runs auth.config.ts on Edge, without Prisma, and never calls this.
  */
 export async function withCurrentRole(token: JWT): Promise<JWT | null> {
   if (!token.id) return null;
-  const user = await prisma.user.findUnique({ where: { id: token.id }, select: { role: true } });
-  if (!user) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: token.id },
+    select: { role: true, passwordChangedAt: true, isActive: true },
+  });
+  if (!user || !user.isActive) return null;
+  // A session from before the password last changed (by its owner, a reset
+  // link or an admin) ends. Auth.js re-issues the cookie on every read, so iat
+  // is its last use. Whole seconds, as iat: a sign-in in the second of the
+  // change still counts.
+  if (user.passwordChangedAt) {
+    const changed = Math.floor(user.passwordChangedAt.getTime() / 1000);
+    if (typeof token.iat !== 'number' || token.iat < changed) return null;
+  }
   return { ...token, role: user.role };
 }
 
 const authSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-console.log('[AUTH DEBUG] Using secret:', !!authSecret, 'Length:', authSecret?.length);
 
 if (!authSecret) {
-  console.error('[AUTH DEBUG] ❌ NO AUTH SECRET FOUND! This will cause authentication to fail.');
-  console.error('[AUTH DEBUG] Please set AUTH_SECRET or NEXTAUTH_SECRET environment variable.');
+  console.error('[auth] No AUTH_SECRET (or NEXTAUTH_SECRET) is set: sign-in cannot work.');
 }
 
 let authExport;
 try {
-  console.log('[AUTH DEBUG] Initializing NextAuth configuration...');
   authExport = NextAuth({
   ...authConfig,
   secret: authSecret,
@@ -59,28 +62,22 @@ try {
   providers: [
     Credentials({
       async authorize(credentials) {
-        console.log('[AUTH DEBUG] Authorize called with credentials:', { email: credentials?.email });
-
         const parsedCredentials = z
-          .object({ email: z.string().email(), password: z.string().min(6) })
+          .object({ email: z.string().trim().email(), password: z.string().min(6) })
           .safeParse(credentials);
-
-        console.log('[AUTH DEBUG] Credentials validation:', parsedCredentials.success);
 
         if (parsedCredentials.success) {
           const { email, password } = parsedCredentials.data;
           const user = await getUser(email);
 
-          if (!user) {
-            console.log('[AUTH DEBUG] User not found:', email);
+          // A deactivated user cannot sign in.
+          if (!user || !user.isActive) {
             return null;
           }
 
           const passwordsMatch = await bcrypt.compare(password, user.password);
-          console.log('[AUTH DEBUG] Password match:', passwordsMatch);
 
           if (passwordsMatch) {
-            console.log('[AUTH DEBUG] Login successful for:', email);
             return {
               id: user.id,
               email: user.email,
@@ -90,40 +87,32 @@ try {
           }
         }
 
-        console.log('[AUTH DEBUG] Invalid credentials');
         return null;
       },
     }),
   ],
   callbacks: {
     async session({ token, session }) {
-      console.log('[AUTH DEBUG] Session callback called');
-      console.log('[AUTH DEBUG] Token:', !!token, 'Session:', !!session);
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.name = token.name;
         session.user.email = token.email as string;
         session.user.role = token.role as Role;
       }
-      console.log('[AUTH DEBUG] Session created for user:', session.user?.email);
       return session;
     },
     async jwt({ token, user }) {
-      console.log('[AUTH DEBUG] JWT callback called');
-      console.log('[AUTH DEBUG] User:', !!user);
       if (user) {
         token.id = user.id as string; // authorize() always returns the id
         token.role = user.role;
-        console.log('[AUTH DEBUG] JWT token created for:', user.email);
         return token;
       }
       return withCurrentRole(token);
     },
   },
 });
-  console.log('[AUTH DEBUG] ✓ NextAuth configuration initialized successfully');
 } catch (error) {
-  console.error('[AUTH DEBUG] ❌ Failed to initialize NextAuth:', error);
+  console.error('[auth] NextAuth could not start:', error);
   throw error;
 }
 

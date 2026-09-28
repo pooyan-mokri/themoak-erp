@@ -1,7 +1,7 @@
 
 'use client';
 
-import { deleteUser, updateUserRole } from '@/actions/user';
+import { deleteUser, setUserActive, updateUserRole } from '@/actions/user';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +21,7 @@ import {
 import { Role } from '@prisma/client';
 import { ROLES, ROLE_LABELS } from '@/lib/permissions';
 import { MoreHorizontal, Trash } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { formatJalaliDate } from '@/lib/date-utils';
 interface UserListProps {
@@ -29,12 +30,19 @@ interface UserListProps {
 
 export function UserList({ users }: UserListProps) {
   const handleRoleChange = async (userId: string, newRole: Role) => {
-    await updateUserRole(userId, newRole);
+    const result = await updateUserRole(userId, newRole);
+    if (!result.success) toast.error(result.message);
+  };
+
+  const handleActive = async (userId: string, active: boolean) => {
+    const result = await setUserActive(userId, active);
+    if (!result.success) toast.error(result.message);
   };
 
   const handleDelete = async (userId: string) => {
     if (confirm('آیا از حذف این کاربر اطمینان دارید؟')) {
-      await deleteUser(userId);
+      const result = await deleteUser(userId);
+      if (!result.success) toast.error(result.message);
     }
   };
 
@@ -57,6 +65,7 @@ export function UserList({ users }: UserListProps) {
               <TableCell>{user.email}</TableCell>
               <TableCell>
                 <Badge variant="outline">{ROLE_LABELS[user.role as Role] ?? user.role}</Badge>
+                {!user.isActive && <Badge variant="outline" className="mr-1 bg-gray-100 text-gray-600">غیرفعال</Badge>}
               </TableCell>
               <TableCell>
                 {formatJalaliDate(user.createdAt)}
@@ -75,6 +84,9 @@ export function UserList({ users }: UserListProps) {
                         تغییر به {ROLE_LABELS[value]}
                       </DropdownMenuItem>
                     ))}
+                    <DropdownMenuItem onClick={() => handleActive(user.id, !user.isActive)}>
+                      {user.isActive ? 'غیرفعال کردن' : 'فعال کردن'}
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleDelete(user.id)}
                       className="text-red-600"

@@ -17,6 +17,10 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   phone               String?
+  /// When the password last changed (own change, reset link, admin): sessions from before it end.
+  passwordChangedAt   DateTime?
+  /// An inactive user cannot sign in and is not offered in pickers, but stays named in history.
+  isActive            Boolean              @default(true)
   aiConversations     AIConversation[]
   activityLogs        ActivityLog[]
   employee            Employee?

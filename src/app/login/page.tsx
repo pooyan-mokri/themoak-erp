@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { authenticate } from '@/actions/login';
 import { Button } from '@/components/ui/button';
@@ -8,8 +9,15 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 
-export default function LoginPage() {
-  const [errorMessage, dispatch] = useFormState(authenticate, undefined);
+export default function LoginPage({ searchParams }: { searchParams: { callbackUrl?: string } }) {
+  const [state, dispatch] = useFormState(authenticate, undefined);
+  const errorMessage = state?.error;
+
+  // A full page load, not a client navigation: the address bar shows where the
+  // user landed, and the session provider starts from the signed-in session.
+  useEffect(() => {
+    if (state?.redirectTo) window.location.assign(state.redirectTo);
+  }, [state]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
@@ -21,6 +29,7 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <form action={dispatch}>
+          <input type="hidden" name="callbackUrl" value={searchParams?.callbackUrl ?? ''} />
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">ایمیل</Label>
@@ -45,7 +54,7 @@ export default function LoginPage() {
             )}
           </CardContent>
           <CardFooter>
-            <LoginButton />
+            <LoginButton signedIn={!!state?.redirectTo} />
           </CardFooter>
         </form>
       </Card>
@@ -53,11 +62,11 @@ export default function LoginPage() {
   );
 }
 
-function LoginButton() {
+function LoginButton({ signedIn }: { signedIn: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button className="w-full" type="submit" disabled={pending}>
-      {pending ? 'در حال ورود...' : 'ورود'}
+    <Button className="w-full" type="submit" disabled={pending || signedIn}>
+      {pending || signedIn ? 'در حال ورود...' : 'ورود'}
     </Button>
   );
 }

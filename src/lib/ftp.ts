@@ -4,6 +4,9 @@ import { Client } from 'basic-ftp';
 import { Readable, Writable } from 'stream';
 import { readSystemSetting } from '@/lib/system-settings';
 
+/** Shown on the settings and backup pages: the code's own messages are Persian. */
+export const FTP_NOT_CONFIGURED = 'اطلاعات سرور FTP در تنظیمات وارد نشده است.';
+
 interface FTPCredentials {
   host: string;
   port: number;
@@ -23,9 +26,7 @@ async function getFTPClient(): Promise<Client> {
     | undefined;
 
   if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
-    throw new Error(
-      'FTP credentials not configured. Please set FTP credentials in settings.'
-    );
+    throw new Error(FTP_NOT_CONFIGURED);
   }
 
   const client = new Client();
@@ -50,7 +51,7 @@ export async function testFTPConnection(): Promise<{
     if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
       return {
         success: false,
-        error: 'FTP credentials not configured',
+        error: FTP_NOT_CONFIGURED,
       };
     }
 
@@ -87,7 +88,7 @@ export async function testFTPConnection(): Promise<{
     console.error('[FTP] Connection test error:', error);
 
     // Provide more helpful error messages
-    let errorMessage = error?.message || 'Failed to connect to FTP server';
+    let errorMessage = error?.message || 'اتصال به سرور FTP برقرار نشد.';
 
     if (error?.code === 'ETIMEDOUT' || error?.message?.includes('ETIMEDOUT')) {
       errorMessage =
@@ -153,7 +154,7 @@ export async function uploadToFTP(
       | undefined;
 
     if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
-      throw new Error('FTP credentials not configured');
+      throw new Error(FTP_NOT_CONFIGURED);
     }
 
     client = new Client();
@@ -178,7 +179,8 @@ export async function uploadToFTP(
     await client.access(accessOptions);
 
     // Navigate to base path if specified
-    const basePath = folder || ftpCreds.basePath || '/uploads/receipts';
+    // A folder typed with a trailing slash made every path `//name`, which no receipt reference accepts.
+    const basePath = (folder || ftpCreds.basePath || '/uploads/receipts').replace(/\/+$/, '');
     try {
       await client.ensureDir(basePath);
     } catch (error) {
@@ -203,7 +205,7 @@ export async function uploadToFTP(
     return { url, path: remotePath };
   } catch (error: any) {
     console.error('[FTP] Upload error:', error);
-    throw new Error(error?.message || 'Failed to upload to FTP server');
+    throw new Error(error?.message || 'آپلود به سرور FTP انجام نشد.');
   } finally {
     if (client) {
       try {
@@ -226,7 +228,7 @@ export async function deleteFromFTP(filePath: string): Promise<void> {
       | undefined;
 
     if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
-      throw new Error('FTP credentials not configured');
+      throw new Error(FTP_NOT_CONFIGURED);
     }
 
     client = new Client();
@@ -259,7 +261,7 @@ export async function deleteFromFTP(filePath: string): Promise<void> {
     await client.remove(cleanPath);
   } catch (error: any) {
     console.error('[FTP] Delete error:', error);
-    throw new Error(error?.message || 'Failed to delete from FTP server');
+    throw new Error(error?.message || 'حذف از سرور FTP انجام نشد.');
   } finally {
     if (client) {
       try {
@@ -283,7 +285,7 @@ export async function downloadFromFTP(filePath: string): Promise<Buffer | null> 
       | undefined;
 
     if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
-      throw new Error('FTP credentials not configured');
+      throw new Error(FTP_NOT_CONFIGURED);
     }
 
     client = new Client();
@@ -324,7 +326,7 @@ export async function downloadFromFTP(filePath: string): Promise<Buffer | null> 
     // 550: no such file.
     if (error?.code === 550) return null;
     console.error('[FTP] Download error:', error);
-    throw new Error(error?.message || 'Failed to download from FTP server');
+    throw new Error(error?.message || 'دریافت از سرور FTP انجام نشد.');
   } finally {
     if (client) {
       try {
@@ -347,7 +349,7 @@ export async function listFromFTP(
       | undefined;
 
     if (!ftpCreds?.host || !ftpCreds?.user || !ftpCreds?.password) {
-      throw new Error('FTP credentials not configured');
+      throw new Error(FTP_NOT_CONFIGURED);
     }
 
     client = new Client();
@@ -388,7 +390,7 @@ export async function listFromFTP(
       .sort((a, b) => b.name.localeCompare(a.name));
   } catch (error: any) {
     console.error('[FTP] List error:', error);
-    throw new Error(error?.message || 'Failed to list the FTP folder');
+    throw new Error(error?.message || 'فهرست پوشهٔ FTP خوانده نشد.');
   } finally {
     if (client) {
       try {

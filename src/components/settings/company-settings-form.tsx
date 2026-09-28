@@ -58,6 +58,8 @@ export function CompanySettingsForm() {
     basePath: '/uploads/receipts',
     ignoreCertificateErrors: false,
   });
+  // The saved password never comes to the page; an empty field keeps it.
+  const [ftpHasPassword, setFTPHasPassword] = useState(false);
   const [ftpTestResult, setFTPTestResult] = useState<{
     success: boolean;
     error?: string;
@@ -82,11 +84,12 @@ export function CompanySettingsForm() {
           host: ftpCreds.host || '',
           port: ftpCreds.port || 21,
           user: ftpCreds.user || '',
-          password: ftpCreds.password || '',
+          password: '',
           secure: ftpCreds.secure || false,
           basePath: ftpCreds.basePath || '/uploads/receipts',
           ignoreCertificateErrors: ftpCreds.ignoreCertificateErrors || false,
         });
+        setFTPHasPassword(ftpCreds.hasPassword);
       }
     };
     loadSettings();
@@ -302,7 +305,7 @@ export function CompanySettingsForm() {
                 <Input
                   id="ftp-password"
                   type="password"
-                  placeholder="password"
+                  placeholder={ftpHasPassword ? 'ذخیره شده؛ برای تغییر، رمز تازه را وارد کنید' : 'password'}
                   value={ftpCredentials.password}
                   onChange={(e) =>
                     setFTPCredentials({
@@ -377,6 +380,8 @@ export function CompanySettingsForm() {
                   if (result.success) {
                     toast.success('تنظیمات FTP ذخیره شد');
                     setFTPTestResult(null);
+                    setFTPHasPassword(true);
+                    setFTPCredentials((prev) => ({ ...prev, password: '' }));
                   } else {
                     toast.error(result.error || 'خطا در ذخیره تنظیمات');
                   }

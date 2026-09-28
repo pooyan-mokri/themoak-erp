@@ -5,9 +5,11 @@ import { Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { hasPermission } from '@/lib/access';
 
 export default async function ProjectsPage() {
   const projects = await getProjects();
+  const showBudget = await hasPermission('finance.view');
 
   return (
     <div className="space-y-6">
@@ -23,11 +25,11 @@ export default async function ProjectsPage() {
               نمای تقویمی
             </Button>
           </Link>
-          <ProjectForm />
+          <ProjectForm showBudget={showBudget} />
         </div>
       </div>
 
-      <ProjectList projects={projects} />
+      <ProjectList projects={projects} showBudget={showBudget} />
     </div>
   );
 }

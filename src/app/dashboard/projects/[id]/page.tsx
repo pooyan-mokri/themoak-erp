@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Calendar, Coins } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getUsers } from '@/actions/user';
+import { getUserOptions } from '@/actions/user';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
 import { ViewToggle } from '@/components/projects/view-toggle';
 import { serializeDate } from '@/lib/serialize';
+import { hasPermission } from '@/lib/access';
 
 export default async function ProjectDetailsPage({ params }: { params: { id: string } }) {
   let project;
@@ -19,7 +20,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
   
   try {
     project = await getProjectById(params.id);
-    users = await getUsers();
+    users = await getUserOptions();
     
     // Debug: Log task count
     if (project) {
@@ -55,7 +56,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ProjectForm project={project} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
+          <ProjectForm project={project} showBudget={await hasPermission('finance.view')} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
           <TaskForm projectId={project.id} users={users} />
         </div>
       </div>

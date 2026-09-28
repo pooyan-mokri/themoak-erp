@@ -91,7 +91,7 @@ async function seedSettings() {
   });
 }
 
-test('getSetting serves the FTP credentials and every other private key to an admin only', async () => {
+test('getSetting serves the FTP settings (without the password) and every other private key to an admin only', async () => {
   await seedSettings();
 
   for (const role of NON_ADMINS) {
@@ -105,9 +105,11 @@ test('getSetting serves the FTP credentials and every other private key to an ad
   }
 
   setTestRole('ADMIN');
-  assert.deepEqual(await getSetting('ftp_credentials'), FTP);
+  // The FTP password itself never goes to the browser, not even an admin's.
+  const { password: _password, ...ftpShown } = FTP;
+  assert.deepEqual(await getSetting('ftp_credentials'), { ...ftpShown, hasPassword: true });
   assert.deepEqual(await getSetting('woo_settings'), { warehouseId: 'w1' });
-  assert.deepEqual(await getFTPCredentials(), FTP);
+  assert.deepEqual(await getFTPCredentials(), { ...ftpShown, hasPassword: true });
   assert.deepEqual(await getBackupSettings(), { enabled: true, frequency: 'daily' });
   assert.deepEqual(await getLastBackup(), { filename: 'backup-x.sql' });
 
