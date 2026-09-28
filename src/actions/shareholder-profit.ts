@@ -9,7 +9,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { userMessage } from '@/lib/action-error';
-import { profitAmount, profitLine } from '@/lib/profit-rows';
+import { profitEntry } from '@/lib/profit-rows';
 import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
@@ -93,15 +93,16 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
           lte: endDate,
         },
       },
+      include: { LoanPayment: { select: { interest: true } } },
     });
 
     let totalIncome = 0;
     let totalExpense = 0;
 
     transactions.forEach((tx: any) => {
-      const line = profitLine(tx);
-      if (line === 'revenue') totalIncome += profitAmount(tx);
-      else if (line) totalExpense += profitAmount(tx);
+      const entry = profitEntry(tx);
+      if (entry?.line === 'revenue') totalIncome += entry.amount;
+      else if (entry) totalExpense += entry.amount;
     });
 
     const netProfit = totalIncome - totalExpense;

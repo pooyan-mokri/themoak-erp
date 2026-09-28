@@ -69,6 +69,8 @@ export type ProfitRow = {
   amountInToman?: unknown;
   amount?: unknown;
   currency?: string | null;
+  /** A loan repayment's split (src/actions/loan.ts), when read with it. */
+  LoanPayment?: { interest: unknown } | null;
 };
 
 /**
@@ -106,4 +108,21 @@ export function profitLine(row: ProfitRow): 'revenue' | 'cogs' | 'expense' | nul
   if (isNonOperating(row) || isCapitalised(row)) return null;
   if (row.type === 'INCOME') return 'revenue';
   return row.category === COGS_CATEGORY ? 'cogs' : 'expense';
+}
+
+/** Where a loan's interest is shown as revenue. */
+export const LOAN_INTEREST_CATEGORY = 'بهره وام';
+
+/**
+ * A row's place and value in profit and loss, or null. A loan repayment
+ * ('Loan Payment') is the principal coming back, which is not income, plus the
+ * interest, which is: its LoanPayment's interest counts as revenue.
+ */
+export function profitEntry(row: ProfitRow): { line: 'revenue' | 'cogs' | 'expense'; category: string; amount: number } | null {
+  if (row.category === 'Loan Payment') {
+    const interest = Number(row.LoanPayment?.interest ?? 0);
+    return interest > 0 ? { line: 'revenue', category: LOAN_INTEREST_CATEGORY, amount: interest } : null;
+  }
+  const line = profitLine(row);
+  return line && { line, category: row.category || 'سایر', amount: profitAmount(row) };
 }

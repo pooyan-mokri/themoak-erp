@@ -256,3 +256,16 @@ test('the expense breakdown adds up to the P&L\'s expenses over the same rows', 
   assert.equal(breakdown.reduce((sum: number, row: any) => sum + row.amount, 0), report.summary.expenses);
   assert.equal(report.summary.expenses, 2_000_000 + 300_000 + 7_000);
 });
+
+test('a loan repayment\'s interest is revenue; the principal coming back is not', async () => {
+  const loan = await prisma.loan.create({ data: { employeeId, amount: 3_000_000, remaining: 3_000_000, interestRate: 10 } });
+  ok(await recordLoanPayment(undefined, form({ loanId: loan.id, amount: '1100000', principal: '1000000', interest: '100000', accountId: 'bank', date: '2026-09-13' })));
+  ok(await recordLoanPayment(undefined, form({ loanId: loan.id, amount: '500000', accountId: 'bank', date: '2026-09-14' })));
+
+  const report = await getProfitLossReport(FROM, TO);
+  assert.deepEqual(report.summary, summary(100_000, 0, 0));
+  assert.deepEqual(report.incomeByCategory, { 'بهره وام': 100_000 });
+
+  ok(await calculateShareholderProfits(undefined, form({ periodStart: '2026-09-01T00:00:00.000Z', periodEnd: '2026-09-30T00:00:00.000Z' })));
+  assert.equal((await getShareholderProfits())[0].periodNetProfit, 100_000);
+});

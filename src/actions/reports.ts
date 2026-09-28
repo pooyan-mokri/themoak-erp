@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { cashPosition, latestRates, supplierPositions } from '@/lib/money-totals';
-import { profitAmount, profitLine } from '@/lib/profit-rows';
+import { profitEntry } from '@/lib/profit-rows';
 import { tehranDay } from '@/lib/tehran-day';
 
 // Financial Reports
@@ -35,6 +35,7 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
         date: true,
         exchangeGroupId: true,
         transferGroupId: true,
+        LoanPayment: { select: { interest: true } },
       },
     });
 
@@ -46,10 +47,9 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
     const monthlyData: Record<string, { income: number; cogs: number; expenses: number; profit: number }> = {};
 
     for (const t of rows as any[]) {
-      const line = profitLine(t);
-      if (!line) continue;
-      const amount = profitAmount(t);
-      const category = t.category || 'سایر';
+      const entry = profitEntry(t);
+      if (!entry) continue;
+      const { line, amount, category } = entry;
       const monthKey = tehranDay(t.date).substring(0, 7); // YYYY-MM, in Tehran
       const month = (monthlyData[monthKey] ??= { income: 0, cogs: 0, expenses: 0, profit: 0 });
 
