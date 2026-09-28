@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { consumableValue } from '@/lib/fixed-asset-value';
 
 // Use z.enum instead of z.nativeEnum to avoid runtime issues
 const FixedAssetSchema = z.object({
@@ -61,7 +62,8 @@ export async function createAsset(prevState: any, formData: FormData) {
         usefulLife,
         quantity: assetType === 'CONSUMABLE' ? quantity : undefined,
         depreciationMethod: DepreciationMethod.STRAIGHT_LINE,
-        currentValue: purchasePrice, // Initially equal to purchase price
+        // Initially the purchase price; a consumable is worth quantity × unit price (src/lib/fixed-asset-value.ts).
+        currentValue: assetType === 'CONSUMABLE' ? consumableValue({ quantity, purchasePrice }) : purchasePrice,
       },
     });
   } catch (error) {
@@ -86,7 +88,8 @@ export async function getAssets() {
     // Calculate current value on the fly for display accuracy
     // Convert Decimal to number for client components
     return assets.map((asset: any) => {
-      const currentValue = calculateCurrentValue(asset);
+      // A consumable is worth quantity × unit cost, not depreciated as one item.
+      const currentValue = asset.assetType === 'CONSUMABLE' ? consumableValue(asset) : calculateCurrentValue(asset);
       return {
         ...asset,
         purchasePrice: Number(asset.purchasePrice),

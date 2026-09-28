@@ -6,6 +6,7 @@ import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
 import { receivePurchaseOrder, receivePurchaseOrderItems } from '@/actions/supplier';
 import { recordArrival } from '@/actions/supplier-workflow';
+import { getAssets } from '@/actions/fixed-assets';
 import { assertStockInvariants, qty, stockSnapshot } from '../inventory/stock';
 import { USD_RATE, assertPurchaseInvariants, order, purchasingWorld, type World } from './world';
 
@@ -246,6 +247,22 @@ test('consumables go to fixed assets, not stock: one asset per product, its quan
   assert.equal(await prisma.inventory.count({ where: { productId: w.cloth.id } }), 0);
   assert.equal(await prisma.inventoryMovement.count({ where: { productId: w.cloth.id } }), 0);
   assert.equal(await statusOf(po.id), 'RECEIVED');
+});
+
+test('a later consumable receipt adds to the asset: quantity × unit cost, the unit cost the weighted average', async () => {
+  const first = await order(w, [{ productId: w.cloth.id, quantity: 60, unitCost: 50_000 }], [], 'ARRIVED');
+  const second = await order(w, [{ productId: w.cloth.id, quantity: 40, unitCost: 60_000 }], [], 'ARRIVED');
+  await receivePurchaseOrderItems(first.id, w.main.id, [{ itemId: first.items[0].id, receivedQuantity: 60 }]);
+  let asset = await prisma.fixedAsset.findFirstOrThrow({ where: { productId: w.cloth.id } });
+  assert.deepEqual([asset.quantity, Number(asset.purchasePrice), Number(asset.currentValue)], [60, 50_000, 3_000_000]);
+  const purchaseDate = asset.purchaseDate;
+  await receivePurchaseOrderItems(second.id, w.main.id, [{ itemId: second.items[0].id, receivedQuantity: 40 }]);
+  asset = await prisma.fixedAsset.findFirstOrThrow({ where: { productId: w.cloth.id } });
+  // 60 × 50,000 + 40 × 60,000 = 5,400,000 for 100: 54,000 each. The first 60 are not revalued at 60,000.
+  assert.deepEqual([asset.quantity, Number(asset.purchasePrice), Number(asset.currentValue)], [100, 54_000, 5_400_000]);
+  assert.equal(asset.purchaseDate.getTime(), purchaseDate.getTime(), 'the asset keeps its first purchase date');
+  const [listed] = await getAssets();
+  assert.equal(listed.currentValue, 5_400_000);
 });
 
 test('fixed assets: one asset per unit, and a second receipt of the same product works too', async () => {

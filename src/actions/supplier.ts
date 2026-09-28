@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
 import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
 import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { addToConsumable } from '@/lib/fixed-asset-value';
 import { kickSiteHook } from '@/lib/site-hook';
 import { ACCESS_DENIED_MESSAGE, checkPermission, hasPermission } from '@/lib/access';
 
@@ -618,18 +619,20 @@ export async function receivePurchaseOrderItems(
             },
           });
         } else if (productType === 'CONSUMABLE') {
-          // Add to FixedAsset for consumable items
+          // Add to FixedAsset for consumable items, valued at quantity × unit cost (src/lib/fixed-asset-value.ts)
           const existingAsset = await tx.fixedAsset.findUnique({
             where: { productId: orderItem.productId }
           });
 
           if (existingAsset) {
+            // A later receipt adds to the asset at its own cost; the earlier units keep theirs.
+            const added = addToConsumable(existingAsset, receivedItem.receivedQuantity, purchasePrice);
             await tx.fixedAsset.update({
               where: { id: existingAsset.id },
               data: {
-                quantity: { increment: receivedItem.receivedQuantity },
-                purchasePrice: purchasePrice,
-                purchaseDate: purchaseDate
+                quantity: added.quantity,
+                purchasePrice: added.unitCost,
+                currentValue: added.value,
               }
             });
           } else {
@@ -644,7 +647,7 @@ export async function receivePurchaseOrderItems(
                 usefulLife: 1,
                 quantity: receivedItem.receivedQuantity,
                 depreciationMethod: 'STRAIGHT_LINE',
-                currentValue: purchasePrice
+                currentValue: purchasePrice * receivedItem.receivedQuantity
               }
             });
           }
