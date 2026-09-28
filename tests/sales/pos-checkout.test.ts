@@ -7,7 +7,7 @@ import { createOrder } from '@/actions/sales';
 import { DUPLICATE_REQUEST_MESSAGE } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE } from '@/lib/receipt-ref';
 import { CHANNELS_FIELD } from '@/lib/consignment-channels';
-import { createConsignmentPartner, updateConsignmentPartner } from '@/actions/consignment';
+import { createConsignmentPartner } from '@/actions/consignment';
 import { form } from '../helpers/db';
 import {
   DENIED,
@@ -416,58 +416,22 @@ async function partnerWithChannels() {
   return { customerId: warehouse.customerId!, warehouse };
 }
 
-test('a POS sale to a partner books its commission through the default channel, on the total after discount, snapshotted', async () => {
+test('a POS sale to a partner is an ordinary sale: no commission, no channel, the full price owed', async () => {
   const s = await shop();
   const p = await partnerWithChannels();
-  const result = await sell(s, 2, { customerId: p.customerId, discount: 1_000_000, paidAmount: 0, accountId: '' });
-  assert.equal(result.success, true, result.message);
-
-  const order = await theOrder();
-  const shopChannel = await prisma.consignmentChannel.findFirstOrThrow({ where: { name: 'حضوری' } });
-  assert.equal(order.consignmentChannelId, shopChannel.id);
-  assert.equal(order.commissions.length, 1);
-  const [commission] = order.commissions;
-  assert.deepEqual(
-    [Number(commission.commissionRate), commission.channelName, Number(commission.orderAmount), Number(commission.commissionAmount), commission.isPaid, commission.customerId],
-    [20, 'حضوری', 19_000_000, 3_800_000, false, p.customerId],
-  );
-  // The order is stored gross; the stock came from the shop, not from the partner's warehouse.
-  assert.equal(Number(order.totalAmount), 2 * PRICE);
-  assert.equal(order.items[0].warehouseId, s.store.id);
-
-  // Changing the channel's rate later leaves the booked commission as it was.
-  const edited = await updateConsignmentPartner(
-    p.warehouse.id,
-    undefined,
-    form({
-      name: 'همکار',
-      [CHANNELS_FIELD]: JSON.stringify([
-        { name: 'آنلاین', commissionRate: 30, isDefault: false, isActive: true },
-        { id: shopChannel.id, name: 'حضوری', commissionRate: 50, isDefault: true, isActive: true },
-      ]),
-    }),
-  );
-  assert.equal(edited.success, true, edited.message);
-  const after = await prisma.consignmentCommission.findFirstOrThrow();
-  assert.deepEqual([Number(after.commissionRate), Number(after.commissionAmount)], [20, 3_800_000]);
-  await assertInvariants();
-});
-
-test('a partner from before channels is charged the rate on the customer; a closed default channel falls to the first open one', async () => {
-  const s = await shop();
   const legacy = await prisma.customer.create({ data: { name: 'همکار قدیمی', commissionRate: 10 } });
   await prisma.warehouse.create({ data: { name: 'انبار امانی - همکار قدیمی', isVirtual: true, customerId: legacy.id } });
-  assert.equal((await sell(s, 1, { customerId: legacy.id, paidAmount: 0, accountId: '' })).success, true);
-  const first = await prisma.consignmentCommission.findFirstOrThrow({ where: { customerId: legacy.id } });
-  assert.deepEqual([Number(first.commissionRate), first.channelName, Number(first.commissionAmount)], [10, null, 1_000_000]);
 
-  const p = await partnerWithChannels();
-  await prisma.consignmentChannel.updateMany({ where: { name: 'حضوری' }, data: { isActive: false } });
-  assert.equal((await sell(s, 1, { customerId: p.customerId, paidAmount: 0, accountId: '' })).success, true);
-  const second = await prisma.consignmentCommission.findFirstOrThrow({ where: { customerId: p.customerId } });
-  assert.deepEqual([Number(second.commissionRate), second.channelName], [30, 'آنلاین']);
-
-  // An ordinary customer is charged no commission at all.
-  assert.equal((await sell(s, 1, { paidAmount: 0, accountId: '' })).success, true);
-  assert.equal(await prisma.consignmentCommission.count(), 2);
+  for (const customerId of [p.customerId, legacy.id]) {
+    const result = await sell(s, 2, { customerId, discount: 1_000_000, paidAmount: 0, accountId: '' });
+    assert.equal(result.success, true, result.message);
+    const order = await prisma.order.findFirstOrThrow({ where: { customerId }, include: { commissions: true, items: true } });
+    assert.deepEqual(
+      [order.commissions.length, order.consignmentChannelId, Number(order.totalAmount), Number(order.discount), order.paymentStatus, order.items[0].warehouseId],
+      [0, null, 2 * PRICE, 1_000_000, 'UNPAID', s.store.id],
+    );
+  }
+  assert.equal(await prisma.consignmentCommission.count(), 0);
+  assert.equal(await prisma.transaction.count({ where: { category: 'CONSIGNMENT_COMMISSION' } }), 0);
+  await assertInvariants();
 });

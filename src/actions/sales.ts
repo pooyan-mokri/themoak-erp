@@ -22,7 +22,7 @@ import { PAYMENT_ACCOUNT_TYPE_MESSAGE, accountForViewer, bookOrderPayment, produ
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { accountLabel } from '@/lib/account-label';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
-import { defaultChannelOf } from '@/lib/consignment-channels';
+import { isConsignmentOrder } from '@/lib/consignment-amounts';
 
 // const prisma = new PrismaClient();
 
@@ -112,15 +112,7 @@ export async function createOrder(data: OrderData) {
       // 1. Fetch customer first to get name for transaction description
       let customer = undefined;
       if (customerId) {
-        customer = await tx.customer.findUnique({
-          where: { id: customerId },
-          include: {
-            warehouses: {
-              where: { isVirtual: true },
-            },
-            channels: { orderBy: { sortOrder: 'asc' } },
-          },
-        });
+        customer = await tx.customer.findUnique({ where: { id: customerId } });
         if (!customer) throw new Error('مشتری یافت نشد.');
       }
       if (invoiceAccountId && !(await tx.account.findUnique({ where: { id: invoiceAccountId }, select: { id: true } }))) {
@@ -234,44 +226,9 @@ export async function createOrder(data: OrderData) {
         await tx.transaction.update({ where: { id: transactionId }, data: { orderId: order.id } });
       }
 
-      // 5. Calculate and record commission if customer is a consignment partner.
-      //    A sale rung up here goes through the partner's default channel; its
-      //    rate and name are snapshotted on the commission (src/lib/consignment-channels.ts).
-      if (customer && customer.warehouses.length > 0) {
-        const channel = defaultChannelOf(
-          (customer.channels ?? []).map((one: any) => ({
-            id: one.id,
-            name: one.name,
-            commissionRate: Number(one.commissionRate),
-            isDefault: one.isDefault,
-            isActive: one.isActive,
-          })),
-        );
-        const commissionRate = channel
-          ? channel.commissionRate
-          : customer.commissionRate
-            ? Number(customer.commissionRate)
-            : 0;
-        const orderAmount = Number(totalAmount) - Number(discount);
-        const commissionAmount = (orderAmount * commissionRate) / 100;
-
-        if (commissionAmount > 0) {
-          if (channel) {
-            await tx.order.update({ where: { id: order.id }, data: { consignmentChannelId: channel.id } });
-          }
-          await tx.consignmentCommission.create({
-            data: {
-              customerId: customer.id,
-              orderId: order.id,
-              commissionRate: new Prisma.Decimal(commissionRate),
-              channelName: channel?.name,
-              orderAmount: new Prisma.Decimal(orderAmount),
-              commissionAmount: new Prisma.Decimal(commissionAmount),
-              isPaid: false,
-            },
-          });
-        }
-      }
+      // A sale at the POS is an ordinary sale, to a consignment partner too:
+      // no commission. Commission is taken only on what a partner sells out of
+      // its consignment stock and reports (recordConsignmentSales).
 
       // 7. Deduct inventory from the resolved warehouse for each item. The
       // stock check is part of the update, so two sales of the last unit at
@@ -489,8 +446,8 @@ export async function getOrder(id: string) {
         commissionRate: order.customer.commissionRate ? Number(order.customer.commissionRate) : undefined,
         type: order.customer.customerType,
       } : undefined,
-      isConsignmentSale: !!(order.commissions && order.commissions.length > 0)
-        || !!(order.customer && (order.customer as any).warehouses && (order.customer as any).warehouses.length > 0),
+      // Sold out of a partner's consignment stock, not a POS sale to a partner.
+      isConsignmentSale: !!order.customer?.warehouses?.length && isConsignmentOrder(order),
       commissions: order.commissions
         ? order.commissions.map((c: any) => ({
             ...c,

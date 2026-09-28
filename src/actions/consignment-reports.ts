@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
 import { channelSummary, DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
 import { consignmentAmounts } from '@/lib/return-math';
+import { CONSIGNMENT_ORDER } from '@/lib/consignment-amounts';
 
 /** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
@@ -25,12 +26,14 @@ export async function getConsignmentReport() {
     });
 
     // Get all orders from consignment partners. A cancelled order is no sale
-    // and owes nothing; a website order is settled on the website (as in the
-    // settlement list and the outstanding report).
+    // and owes nothing; a website order is settled on the website, and a POS
+    // sale to a partner is an ordinary sale (as in the settlement list and
+    // the outstanding report).
     const consignmentOrders = await prisma.order.findMany({
       where: {
         status: { not: 'CANCELLED' },
         siteReference: null,
+        ...CONSIGNMENT_ORDER,
         customer: {
           warehouses: {
             some: {

@@ -15,6 +15,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
 import { logActivity } from '@/lib/activity-log';
+import { CONSIGNMENT_ORDER, NOT_CONSIGNMENT_MESSAGE, isConsignmentOrder } from '@/lib/consignment-amounts';
 import { auth } from '@/auth';
 import {
   CHANNELS_FIELD,
@@ -855,6 +856,8 @@ export async function getPendingSettlements() {
         },
         // Website orders are paid and reversed only on the website.
         siteReference: null,
+        // A POS sale to a partner is an ordinary receivable, paid through «ثبت پرداخت».
+        ...CONSIGNMENT_ORDER,
       },
       include: {
         customer: true,
@@ -949,7 +952,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
       // 1. Get Order with items + commission so we can derive the net payable
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: { include: { returns: true, exchanges: true } }, commissions: true },
+        include: { items: { include: { returns: true, exchanges: true, warehouse: { select: { isVirtual: true } } } }, commissions: true },
       });
 
       if (!order) {
@@ -957,6 +960,9 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
       }
       if (order.siteReference) {
         throw new Error(WEBSITE_ORDER_LOCKED);
+      }
+      if (!isConsignmentOrder(order)) {
+        throw new Error(NOT_CONSIGNMENT_MESSAGE);
       }
       if (order.status === 'CANCELLED') {
         throw new Error('این سفارش لغو شده است و نمی‌توان برای آن پرداخت ثبت کرد.');
@@ -1069,10 +1075,11 @@ export async function markSettlementPaidOutside(orderId: string, expectedRemaini
       if (locked.length === 0) throw new Error('فاکتور یافت نشد.');
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: { include: { returns: true, exchanges: true } }, commissions: true },
+        include: { items: { include: { returns: true, exchanges: true, warehouse: { select: { isVirtual: true } } } }, commissions: true },
       });
       if (order.status === 'CANCELLED') throw new Error('این فاکتور لغو شده است.');
       if (order.siteReference !== null) throw new Error(WEBSITE_ORDER_LOCKED);
+      if (!isConsignmentOrder(order)) throw new Error(NOT_CONSIGNMENT_MESSAGE);
 
       const { grossAmount, commissionAmount, paidAmount, remainingAmount } = consignmentAmounts(order);
       if (remainingAmount <= 0.01) throw new Error('این فاکتور مانده‌ای ندارد.');
@@ -1143,14 +1150,15 @@ export async function deleteConsignmentOrder(
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: {
-          items: { include: { product: true } },
+          items: { include: { product: true, warehouse: { select: { isVirtual: true } } } },
           commissions: true,
           customer: { include: { warehouses: { where: { isVirtual: true } } } },
         },
       });
       if (!order) throw new Error('سفارش یافت نشد.');
       if (order.siteReference) throw new Error(WEBSITE_ORDER_LOCKED);
-      if (!order.customer?.warehouses?.length) {
+      // A POS sale to a partner is cancelled like any sale, from the sales history.
+      if (!order.customer?.warehouses?.length || !isConsignmentOrder(order)) {
         throw new Error('این سفارش یک فاکتور امانی نیست.');
       }
 

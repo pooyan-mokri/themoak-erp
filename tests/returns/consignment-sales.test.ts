@@ -17,6 +17,8 @@ import { getConsignmentCommissionsReport } from '@/actions/consignment-commissio
 import { getConsignmentReport } from '@/actions/consignment-reports';
 import { CHANNELS_FIELD } from '@/lib/consignment-channels';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
+import { NOT_CONSIGNMENT_MESSAGE } from '@/lib/consignment-amounts';
+import { createOrder, getOrder, getOrders, recordOrderPayment } from '@/actions/sales';
 import { INVALID_RECEIPT_MESSAGE } from '@/lib/receipt-ref';
 import { localDateString } from '@/lib/date-utils';
 import { DENIED, NON_SELLERS, assertInvariants, balanceOf, openAccount, quantityOf, sleep, snapshot, stockIn } from '../sales/world';
@@ -373,4 +375,50 @@ test('the settlement list, the outstanding report, the partner report and the st
     ['حضوری', 2_000_000, 700_000, 1_300_000],
   ]);
   assert.deepEqual([statement.financials.grossSales, statement.financials.commissionTotal, statement.financials.ourShare, statement.financials.receivedTotal], [4_000_000, 1_300_000, 2_700_000, 400_000]);
+});
+
+test('a POS sale to a partner is a receivable of that customer, not a settlement: every screen agrees', async () => {
+  const w = await world();
+  await report(w, 1); // a consignment sale: 700,000 owed through the settlement
+  const store = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  await stockIn(w.frame.id, store.id, 5);
+  const sold = await createOrder({
+    customerId: w.customerId,
+    items: [{ productId: w.frame.id, quantity: 1, price: 10_000_000 }],
+    paymentMethod: 'CASH',
+    accountId: '',
+    totalAmount: 10_000_000,
+    paidAmount: 0,
+    warehouseId: store.id,
+  });
+  assert.equal(sold.success, true, sold.message);
+  const pos = await prisma.order.findFirstOrThrow({ where: { items: { some: { warehouseId: store.id } } } });
+
+  // «ثبت پرداخت» and the order list: the full 10,000,000 is owed.
+  const listed = (await getOrders()).find((o: any) => o.id === pos.id)!;
+  assert.equal(listed.totalAmount - listed.discount - listed.paidAmount, 10_000_000);
+  assert.equal((await getOrder(pos.id))!.isConsignmentSale, false, 'no «فروش امانی» badge');
+  const consignment = await prisma.order.findFirstOrThrow({ where: { id: { not: pos.id } } });
+  assert.equal((await getOrder(consignment.id))!.isConsignmentSale, true);
+
+  // The consignment screens show only the reported sale.
+  assert.deepEqual((await getPendingSettlements()).map((o: any) => [o.id, o.remainingAmount]), [[consignment.id, 700_000]]);
+  assert.equal((await getConsignmentCommissionsReport()).grandTotal, 700_000);
+  const [partner] = (await getConsignmentReport()).partners as any[];
+  assert.deepEqual([partner.orderCount, partner.totalSales, partner.totalDebt], [1, 700_000, 700_000]);
+  const statement = (await getPartnerStatement(w.warehouse.id))!;
+  assert.deepEqual([statement.orders.length, statement.financials.balance, statement.logistics.soldQty], [1, 700_000, 1]);
+
+  // The settlement actions refuse it and change nothing.
+  const before = await snapshot();
+  assert.equal((await paySettlement(undefined, form({ orderId: pos.id, accountId: w.bank.id }))).message, NOT_CONSIGNMENT_MESSAGE);
+  assert.equal((await markSettlementPaidOutside(pos.id, 10_000_000)).message, NOT_CONSIGNMENT_MESSAGE);
+  assert.equal((await deleteConsignmentOrder(pos.id)).message, 'این سفارش یک فاکتور امانی نیست.');
+  assert.deepEqual(await snapshot(), before);
+
+  // It is paid like any sale, in full.
+  assert.equal((await recordOrderPayment(pos.id, w.bank.id, 10_000_000)).success, true);
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: pos.id } })).paymentStatus, 'PAID');
+  assert.equal((await getPendingSettlements()).length, 1);
+  await assertInvariants();
 });

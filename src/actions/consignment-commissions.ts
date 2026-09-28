@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { consignmentAmounts } from '@/lib/return-math';
 import { DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
+import { CONSIGNMENT_ORDER } from '@/lib/consignment-amounts';
 
 /**
  * "طلب از همکار" — outstanding NET amount partners owe us. Partners deduct
@@ -21,8 +22,10 @@ export async function getConsignmentCommissionsReport() {
         paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
         status: { not: 'CANCELLED' },
         customer: { warehouses: { some: { isVirtual: true } } },
-        // As in the settlement list: website orders are paid and reversed only on the website.
+        // As in the settlement list: website orders are paid and reversed only on the website,
+        // and a POS sale to a partner is an ordinary receivable, not a settlement.
         siteReference: null,
+        ...CONSIGNMENT_ORDER,
       },
       include: {
         customer: true,
