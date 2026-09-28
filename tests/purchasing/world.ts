@@ -82,9 +82,12 @@ export async function assertPurchaseInvariants() {
     const creditRows = await prisma.supplierCredit.findMany({ where: { purchaseOrderId: po.id } });
     const used = -creditRows.filter((c: any) => Number(c.amount) < 0).reduce((s: number, c: any) => s + Number(c.amount), 0);
     assert.ok(Math.abs(used - fromCredit.reduce((s: number, p: any) => s + Number(p.amount), 0)) < 1e-6, `order #${po.number} credit used ${used}`);
-    // A cancelled order's payments went to the credit, exactly once; no other order credits anything.
+    // A cancelled order's payments went to the credit, exactly once; an order closed short credited at most
+    // what was paid; no other order credits anything.
     const credited = creditRows.filter((c: any) => Number(c.amount) > 0).reduce((s: number, c: any) => s + Number(c.amount), 0);
-    assert.ok(Math.abs(credited - (po.status === 'CANCELLED' ? paid : 0)) < 1e-6, `order #${po.number} credited ${credited}`);
+    if (po.status === 'CANCELLED') assert.ok(Math.abs(credited - paid) < 1e-6, `order #${po.number} credited ${credited}`);
+    else if (po.status === 'RECEIVED') assert.ok(credited <= paid + 1e-6, `order #${po.number} credited ${credited} of ${paid}`);
+    else assert.equal(credited, 0, `order #${po.number} credited ${credited}`);
     for (const item of po.items) assert.ok(item.receivedQuantity >= 0 && item.receivedQuantity <= item.quantity, `line ${item.id} received ${item.receivedQuantity}`);
   }
   for (const id of ['toman', 'usd', 'eur']) assert.equal(await driftOf(id), 0, `${id} ledger drifted`);

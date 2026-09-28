@@ -7,8 +7,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { prisma, resetDatabase } from '../helpers/db';
 import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
-import { getPurchaseOrder, getSuppliers } from '@/actions/supplier';
-import { payPurchaseOrderFromCredit, recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
+import { closePurchaseOrderShort, getPurchaseOrder, getSuppliers, receivePurchaseOrderItems } from '@/actions/supplier';
+import { payPurchaseOrderFromCredit, recordArrival, recordPurchasePartialPayment, recordPurchasePayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { DUPLICATE_REQUEST_MESSAGE } from '@/lib/request-id';
 import { balanceOf } from '../accounting/ledger';
 import { OPENING, assertPurchaseInvariants, order, purchasingWorld, type World } from './world';
@@ -198,6 +198,64 @@ test('cancelling an order that was paid from the credit gives the credit back', 
   assert.equal(await balance(), 300_000);
   assert.equal((await updatePurchaseOrderStatus(next.id, 'CANCELLED', 600_000)).success, true);
   assert.equal(await balance(), 900_000);
+  await assertPurchaseInvariants();
+});
+
+// --- closing a short shipment ---
+
+/** 10 frames at 100,000 plus 200,000 freight on the order and 50,000 of arrival costs, paid in full, 8 arrived. */
+async function paidShortOrder() {
+  const po = await tenFrames();
+  assert.equal((await recordPurchasePayment(po.id, 'toman')).success, true);
+  assert.equal((await updatePurchaseOrderStatus(po.id, 'IN_PRODUCTION')).success, true);
+  assert.equal((await recordArrival(po.id, [{ title: 'ترخیص', amount: 50_000, currency: 'TOMAN' }], 'toman')).success, true);
+  assert.equal((await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 8 }])).success, true);
+  return po;
+}
+
+test('closing short a fully paid order credits the supplier with the 2 missing units at their Toman price, once', async () => {
+  const po = await paidShortOrder();
+  // Paid 1,200,000; the 8 that came are worth 8 × 100,000 plus all 200,000 of the order's freight.
+  assert.match((await closePurchaseOrderShort(po.id, 0)).error!, /تغییر کرده است/);
+  const closed = await closePurchaseOrderShort(po.id, 200_000);
+  assert.equal(closed.success, true, closed.error);
+  assert.match(closed.message!, /۲۰۰٬۰۰۰ تومان پرداخت‌شده بابت کالای نرسیده به طلب از تأمین‌کننده اضافه شد/);
+  const credits = await prisma.supplierCredit.findMany();
+  assert.deepEqual(
+    credits.map((c: any) => [Number(c.amount), c.purchaseOrderId, c.reason, c.clientRequestId]),
+    [[200_000, po.id, `کسری سفارش خرید #${po.number}`, `po-short:${po.id}`]],
+  );
+  assert.equal((await closePurchaseOrderShort(po.id, 200_000)).success, false);
+  assert.equal(await balance(), 200_000);
+  // Usable on the next order like any credit.
+  const next = await tenFrames();
+  assert.equal((await payPurchaseOrderFromCredit({ orderId: next.id })).success, true);
+  assert.equal(await balance(), 0);
+  await assertPurchaseInvariants();
+});
+
+test('two closes at once credit once', async () => {
+  const po = await paidShortOrder();
+  const results = await Promise.all([closePurchaseOrderShort(po.id), closePurchaseOrderShort(po.id)]);
+  assert.deepEqual(results.map((r) => r.success).sort(), [false, true]);
+  assert.equal(await prisma.supplierCredit.count(), 1);
+  assert.equal(await balance(), 200_000);
+  await assertPurchaseInvariants();
+});
+
+test('closing short an order whose payments do not cover even what came creates no credit; the rest stays owed', async () => {
+  // An order from before payments were required first: 500,000 paid, then moved on by hand.
+  const po = await tenFrames();
+  await recordPurchasePartialPayment({ orderId: po.id, accountId: 'toman', amount: 500_000 });
+  await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: 'ARRIVED' } });
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 8 }]);
+  const closed = await closePurchaseOrderShort(po.id, 0);
+  assert.equal(closed.success, true, closed.error);
+  assert.doesNotMatch(closed.message!, /طلب/);
+  assert.equal(await prisma.supplierCredit.count(), 0);
+  // 1,000,000 of goods and freight came; 500,000 was paid; the order stays with its payments as they are.
+  const payments = await prisma.purchaseOrderPayment.findMany({ where: { purchaseOrderId: po.id } });
+  assert.deepEqual(payments.map((p: any) => Number(p.amount)), [500_000]);
   await assertPurchaseInvariants();
 });
 

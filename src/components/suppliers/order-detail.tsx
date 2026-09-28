@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
-import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
+import { landedCostPerUnit as computeLandedCostPerUnit, shortShipmentCredit } from '@/lib/landed-cost';
 import { canMovePurchaseOrder } from '@/lib/purchase-order-status';
 import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -253,12 +253,23 @@ export function OrderDetail({
 
   const handleCloseShort = async () => {
     const missing = order.items.reduce((sum, item) => sum + Math.max(0, item.quantity - (item.receivedQuantity || 0)), 0);
-    const question = `${missing.toLocaleString('fa-IR')} عدد از این سفارش نرسیده است. دریافت با همین کسری بسته شود؟ هزینه‌های اضافی سفارش روی کالاهای دریافت‌شده سرشکن می‌شود.`;
+    // What was paid beyond the value of what came goes to the supplier's credit; named when the viewer sees
+    // both the prices and the payments, and checked again by the server.
+    const knowsCredit = canSeeCost && canSeeFinance;
+    const credit = knowsCredit
+      ? shortShipmentCredit(order, paidSoFar, (currency: string) => getExchangeRate(currency as Currency))
+      : 0;
+    const creditLine = !knowsCredit
+      ? ' اگر بیش از ارزش کالای رسیده پرداخت شده باشد، مازاد به «طلب از تأمین‌کننده» منتقل می‌شود.'
+      : credit > 0
+        ? ` ${toman(credit)} پرداخت‌شده بابت کالای نرسیده به «طلب از تأمین‌کننده» ${order.supplier.name} منتقل می‌شود.`
+        : '';
+    const question = `${missing.toLocaleString('fa-IR')} عدد از این سفارش نرسیده است. دریافت با همین کسری بسته شود؟ هزینه‌های اضافی سفارش روی کالاهای دریافت‌شده سرشکن می‌شود.${creditLine}`;
     if (!window.confirm(question)) return;
     setStatusLoading(true);
     setError('');
     try {
-      const result = await closePurchaseOrderShort(order.id);
+      const result = await closePurchaseOrderShort(order.id, knowsCredit ? credit : undefined);
       if (result.success) {
         router.refresh();
       } else {

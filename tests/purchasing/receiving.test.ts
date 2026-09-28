@@ -342,6 +342,18 @@ test('closing short a consumable adds the missing units\' share to its asset', a
   assert.deepEqual([asset.quantity, Number(asset.purchasePrice), Number(asset.currentValue)], [5, 70_000, 350_000]);
 });
 
+test('closing short when every unit that came is sold already says the cost could not carry its share', async () => {
+  const po = await order(w, [{ productId: w.yek.id, quantity: 10, unitCost: 100_000 }], [{ title: 'حمل', amount: 200_000, currency: 'TOMAN' }], 'ARRIVED');
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 8 }]);
+  // All 8 leave (sold before the close).
+  await prisma.inventory.update({ where: { productId_warehouseId: { productId: w.yek.id, warehouseId: w.main.id } }, data: { quantity: 0 } });
+  await prisma.inventoryMovement.create({ data: { productId: w.yek.id, fromWarehouseId: w.main.id, quantity: 8, type: 'SALE' } });
+  const closed = await closePurchaseOrderShort(po.id);
+  assert.equal(closed.success, true);
+  assert.match(closed.message!, /از «YEK - Black» موجودی‌ای نمانده بود/);
+  assert.equal(await costOf(w.yek.id), 120_000);
+});
+
 test('closing short is refused before anything arrived, once received, and for roles without stock.manage', async () => {
   const arrived = await order(w, [{ productId: w.yek.id, quantity: 2, unitCost: 1 }], [], 'ARRIVED');
   assert.deepEqual(await closePurchaseOrderShort(arrived.id), { success: false, error: 'فقط سفارشی که بخشی از آن دریافت شده، با کسری بسته می‌شود.' });

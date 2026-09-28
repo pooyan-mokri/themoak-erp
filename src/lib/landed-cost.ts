@@ -117,3 +117,33 @@ export function landedCostPerUnit(
 ): number {
   return unitCostInToman(item, getExchangeRate) + additionalCostPerUnit(item, order, getExchangeRate, basis);
 }
+
+/**
+ * What the units that came are worth to the supplier when an order is closed short: each received unit at the
+ * order's Toman price, plus all of the order's own additional costs, which the close re-spreads onto them.
+ * Arrival costs are left out: they were paid on arrival, not through the order's payments.
+ */
+export function receivedValueInToman(
+  order: LandedCostOrder,
+  getExchangeRate: (currency: string) => number
+): number {
+  const goods = order.items.reduce(
+    (sum, item) => sum + num(item.receivedQuantity) * unitCostInToman(item, getExchangeRate),
+    0
+  );
+  return goods + (order.additionalCosts ?? []).reduce((s, c) => s + num(c?.amountInToman), 0);
+}
+
+/**
+ * Closing short: what was paid beyond the value of the units that came (receivedValueInToman) becomes the
+ * supplier's credit. 0 when the payments do not cover even that (the rest stays owed), or differ by under a
+ * toman (the payments' rounding).
+ */
+export function shortShipmentCredit(
+  order: LandedCostOrder,
+  paidInToman: number,
+  getExchangeRate: (currency: string) => number
+): number {
+  const credit = paidInToman - receivedValueInToman(order, getExchangeRate);
+  return credit >= 1 ? credit : 0;
+}

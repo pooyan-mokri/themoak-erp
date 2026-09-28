@@ -5,7 +5,8 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
-import { additionalCostPerUnit, landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
+import { additionalCostPerUnit, landedCostPerUnit as computeLandedCostPerUnit, shortShipmentCredit } from '@/lib/landed-cost';
+import { auth } from '@/auth';
 import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 import { addToConsumable } from '@/lib/fixed-asset-value';
 import { kickSiteHook } from '@/lib/site-hook';
@@ -711,18 +712,29 @@ export async function receivePurchaseOrderItems(
  * decision: 10 ordered, 200,000 freight, 8 received gives 25,000 a unit). This is the one point where that is
  * known: before it, the rest may still arrive. The part the missing units carried is added to each line's
  * received cost and to its product's cost of record, spread over the stock on hand; for a consumable, to its
- * asset's units. The order becomes RECEIVED. What was paid for the missing goods is not touched here.
+ * asset's units. The order becomes RECEIVED.
+ *
+ * What was paid beyond the value of the units that came (shortShipmentCredit) becomes a credit with the
+ * supplier («طلب از تأمین‌کننده»), as a cancel's payments do: once per order (its key is unique), under the same
+ * lock as a cancel, the order row. expectedCredit is the amount the confirmation named; if it differs, nothing
+ * happens.
  */
-export async function closePurchaseOrderShort(orderId: string): Promise<ActionResult> {
+export async function closePurchaseOrderShort(orderId: string, expectedCredit?: number): Promise<ActionResult> {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
+  const session = await auth();
   try {
     const result = await prisma.$transaction(async (tx: any) => {
-      // Hold the order: a receipt or a second close waits, then finds it received.
+      // Hold the order: a receipt, a payment, a cancel or a second close waits, then finds it received.
       await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
       const order = await tx.purchaseOrder.findUnique({
         where: { id: orderId },
-        include: { items: { include: { product: true } }, additionalCosts: true, arrivalAdditionalCosts: true },
+        include: {
+          items: { include: { product: true } },
+          additionalCosts: true,
+          arrivalAdditionalCosts: true,
+          payments: { select: { amount: true } },
+        },
       });
       if (!order) throw new ReceiveRefusal('سفارش یافت نشد');
       if (order.status !== 'PARTIALLY_RECEIVED') {
@@ -739,7 +751,14 @@ export async function closePurchaseOrderShort(orderId: string): Promise<ActionRe
         return Number(rate.rateToToman);
       };
 
+      const paid = order.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+      const credit = shortShipmentCredit(order, paid, getExchangeRate);
+      if (expectedCredit !== undefined && Math.abs(expectedCredit - credit) >= 1) {
+        throw new ReceiveRefusal('پرداخت‌ها یا دریافت‌های این سفارش از وقتی صفحه باز شد تغییر کرده است؛ صفحه را تازه کنید و دوباره ببندید.');
+      }
+
       let respread = 0;
+      const nothingOnHand: string[] = [];
       for (const item of order.items) {
         if (item.receivedQuantity <= 0) continue;
         const extra =
@@ -764,6 +783,8 @@ export async function closePurchaseOrderShort(orderId: string): Promise<ActionRe
               where: { id: item.productId },
               data: { costPrice: new Prisma.Decimal(Number(product.costPrice) + extra / onHand) },
             });
+          } else if (extra > 0) {
+            nothingOnHand.push(product.name);
           }
         } else if (product.productType === 'CONSUMABLE') {
           const asset = await tx.fixedAsset.findUnique({ where: { productId: item.productId } });
@@ -778,8 +799,20 @@ export async function closePurchaseOrderShort(orderId: string): Promise<ActionRe
       }
 
       await tx.purchaseOrder.update({ where: { id: orderId }, data: { status: 'RECEIVED' } });
+      if (credit > 0) {
+        await tx.supplierCredit.create({
+          data: {
+            supplierId: order.supplierId,
+            amount: credit,
+            purchaseOrderId: orderId,
+            reason: `کسری سفارش خرید #${order.number}`,
+            userId: session?.user?.id ?? null,
+            clientRequestId: `po-short:${orderId}`,
+          },
+        });
+      }
       const missing = order.items.reduce((sum: number, item: any) => sum + Math.max(0, item.quantity - item.receivedQuantity), 0);
-      return { missing, respread };
+      return { missing, respread, credit, nothingOnHand };
     });
 
     try {
@@ -789,13 +822,17 @@ export async function closePurchaseOrderShort(orderId: string): Promise<ActionRe
     } catch (error) {
       // Ignore revalidatePath error outside of Next.js context
     }
-    return {
-      success: true,
-      message:
-        result.respread > 0
-          ? `دریافت سفارش با کسری ${result.missing.toLocaleString('fa-IR')} عدد بسته شد و ${Math.round(result.respread).toLocaleString('fa-IR')} تومان از هزینه‌های اضافی روی کالاهای دریافت‌شده سرشکن شد.`
-          : `دریافت سفارش با کسری ${result.missing.toLocaleString('fa-IR')} عدد بسته شد.`,
-    };
+    const toman = (amount: number) => `${Math.round(amount).toLocaleString('fa-IR')} تومان`;
+    const parts = [
+      result.respread > 0
+        ? `دریافت سفارش با کسری ${result.missing.toLocaleString('fa-IR')} عدد بسته شد و ${toman(result.respread)} از هزینه‌های اضافی روی کالاهای دریافت‌شده سرشکن شد.`
+        : `دریافت سفارش با کسری ${result.missing.toLocaleString('fa-IR')} عدد بسته شد.`,
+    ];
+    if (result.credit > 0) parts.push(`${toman(result.credit)} پرداخت‌شده بابت کالای نرسیده به طلب از تأمین‌کننده اضافه شد.`);
+    if (result.nothingOnHand.length > 0) {
+      parts.push(`از ${result.nothingOnHand.map((name: string) => `«${name}»`).join('، ')} موجودی‌ای نمانده بود؛ سهم هزینه‌های اضافی آن به بهای تمام‌شده اضافه نشد.`);
+    }
+    return { success: true, message: parts.join(' ') };
   } catch (error: unknown) {
     if (error instanceof ReceiveRefusal) return { success: false, error: error.message };
     console.error('Error closing purchase order short:', error);
