@@ -31,6 +31,8 @@ ORDER BY 1, 2, 3;
 
 -- 2. Shareholders' profit already calculated. Its amount was worked out with
 --    the old rule (and, by SQL NULL rules, without rows that have no category).
+--    The new rule is the P&L's (report-profit-loss-old-vs-new.sql): it also
+--    leaves out stock and equipment bought, and counts loan interest.
 --    For each period: the net profit by the old rule and by the new one; a
 --    period where they differ was distributed on a different figure.
 WITH periods AS (
@@ -43,9 +45,12 @@ rows AS (
     (t."exchangeGroupId" IS NOT NULL OR t."transferGroupId" IS NOT NULL OR t."type" = 'TRANSFER' OR t."category" IN (
       'Shareholder Deposit', 'Shareholder Withdrawal', 'Shareholder Profit Withdrawal',
       'قرض به کارمند', 'Loan Payment', 'Currency Exchange', 'انتقال وجه', 'انتقال داخلی',
-      'تسویه بدهی کارمند', 'Employee Debt Payment'
-    )) AS non_operating
+      'تسویه بدهی کارمند', 'Employee Debt Payment',
+      'Purchase Payment', 'Purchase Arrival Cost', 'خرید تجهیزات'
+    )) AS non_operating,
+    COALESCE(lp."interest", 0) AS loan_interest
   FROM "Transaction" t
+  LEFT JOIN "LoanPayment" lp ON lp."transactionId" = t."id"
   WHERE t."type" IN ('INCOME', 'EXPENSE')
 )
 SELECT
@@ -56,7 +61,8 @@ SELECT
   SUM(CASE WHEN r."category" NOT IN ('Shareholder Deposit', 'Shareholder Profit Withdrawal')
            THEN (CASE WHEN r."type" = 'INCOME' THEN 1 ELSE -1 END) * COALESCE(NULLIF(r."amountInToman", 0), r."amount") END) AS net_old_rule,
   SUM(CASE WHEN NOT r.non_operating
-           THEN (CASE WHEN r."type" = 'INCOME' THEN 1 ELSE -1 END) * COALESCE(NULLIF(r."amountInToman", 0), r."amount") END) AS net_new_rule
+           THEN (CASE WHEN r."type" = 'INCOME' THEN 1 ELSE -1 END) * COALESCE(NULLIF(r."amountInToman", 0), r."amount") ELSE 0 END)
+    + SUM(COALESCE(r.loan_interest, 0)) AS net_new_rule
 FROM periods p
 LEFT JOIN rows r ON r."date" >= p."periodStart" AND r."date" <= p."periodEnd"
 GROUP BY p."periodStart", p."periodEnd", p.distributed, p.withdrawn
