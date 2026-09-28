@@ -10,7 +10,8 @@ import { createLoan, recordLoanPayment } from '@/actions/loan';
 import { depositShareholderFunds, withdrawShareholderFunds } from '@/actions/shareholder';
 import { calculateShareholderProfits, getShareholderProfits, withdrawShareholderProfit } from '@/actions/shareholder-profit';
 import { POST } from '@/app/api/erp/route';
-import { isNonOperating } from '@/lib/profit-rows';
+import { profitLine } from '@/lib/profit-rows';
+import { recordArrival, recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { assertBooksAddUp, openAccount } from './ledger';
 
 // The actions log every refusal these tests provoke on purpose.
@@ -41,6 +42,26 @@ async function seed() {
 }
 
 const ok = (result: { success?: boolean; message?: string }) => assert.equal(result.success, true, result.message);
+
+/** A P&L summary: revenue − cost of goods sold − operating expenses. */
+const summary = (income: number, cogs: number, operatingExpenses: number) => {
+  const netProfit = income - cogs - operatingExpenses;
+  return {
+    income,
+    cogs,
+    grossProfit: income - cogs,
+    operatingExpenses,
+    expenses: cogs + operatingExpenses,
+    netProfit,
+    profitMargin: income > 0 ? (netProfit / income) * 100 : 0,
+  };
+};
+
+/** A purchase order waiting for payment, as the supplier module leaves one. */
+async function placedOrder(totalAmountInToman: number) {
+  const supplier = await prisma.supplier.create({ data: { name: 'تامین‌کننده' } });
+  return prisma.purchaseOrder.create({ data: { supplierId: supplier.id, status: 'PENDING_PAYMENT', totalAmount: totalAmountInToman, totalAmountInToman } });
+}
 
 /** Each kind of money that is not trading, booked through the screen (or the API) that books it. */
 const NON_TRADING: [string, () => Promise<void>][] = [
@@ -82,6 +103,16 @@ const NON_TRADING: [string, () => Promise<void>][] = [
     }));
     assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
   }],
+  ['paying a supplier for stock', async () => {
+    const order = await placedOrder(20_000_000);
+    ok(await recordPurchasePartialPayment({ orderId: order.id, accountId: 'bank', amount: 8_000_000 }));
+  }],
+  ['the arrival costs of a purchase order', async () => {
+    const order = await placedOrder(5_000_000);
+    ok(await recordPurchasePartialPayment({ orderId: order.id, accountId: 'bank', amount: 5_000_000 }));
+    ok(await updatePurchaseOrderStatus(order.id, 'IN_PRODUCTION'));
+    ok(await recordArrival(order.id, [{ title: 'گمرک', amount: 1_500_000, currency: 'TOMAN' }], 'bank'));
+  }],
   ['repaying what an employee paid out of pocket', async () => {
     // The expense itself (a real cost) is booked here without an account; only its repayment is under test.
     await prisma.transaction.create({
@@ -93,19 +124,18 @@ const NON_TRADING: [string, () => Promise<void>][] = [
 ];
 
 for (const [kind, book] of NON_TRADING) {
-  test(`${kind} is neither revenue nor expense; it stays in the journal`, async () => {
+  test(`${kind} is not revenue or expense; it stays in the journal`, async () => {
     const before = await prisma.transaction.count();
     await book();
     const rows = await prisma.transaction.findMany({ where: { NOT: { category: 'موجودی اولیه' } } });
     assert.ok(rows.length > 0 && (await prisma.transaction.count()) > before, 'the money was booked');
-    assert.ok(rows.every((row: any) => isNonOperating(row)), `every row it booked is non-trading: ${rows.map((r: any) => r.category)}`);
+    assert.ok(rows.every((row: any) => profitLine(row) === null), `every row it booked stays out of profit: ${rows.map((r: any) => r.category)}`);
 
     const report = await getProfitLossReport(FROM, TO);
-    assert.deepEqual(report.summary, { income: 0, expenses: 0, netProfit: 0, profitMargin: 0 });
+    assert.deepEqual(report.summary, summary(0, 0, 0));
     assert.deepEqual(report.incomeByCategory, {});
     assert.deepEqual(report.expensesByCategory, {});
-    // Months with only opening balances (ADJUSTMENT rows) show as zero.
-    assert.ok(report.monthlyTrend.every((m: any) => m.income === 0 && m.expenses === 0), JSON.stringify(report.monthlyTrend));
+    assert.deepEqual(report.monthlyTrend, []);
 
     const journal = await getTransactions();
     for (const row of rows) assert.ok(journal.some((t: any) => t.id === row.id), 'the row is still in the journal');
@@ -123,17 +153,12 @@ test('beside all of them, profit is the sales less the real costs, by category a
   await prisma.transaction.create({ data: { type: 'INCOME', amount: 100_000, amountInToman: 100_000, date: new Date('2026-09-20') } });
 
   const report = await getProfitLossReport(FROM, TO);
-  assert.deepEqual(report.summary, {
-    income: 12_100_000,
-    expenses: 2_000_000 + 300_000 + 700_000,
-    netProfit: 9_100_000,
-    profitMargin: (9_100_000 / 12_100_000) * 100,
-  });
+  assert.deepEqual(report.summary, summary(12_100_000, 0, 2_000_000 + 300_000 + 700_000));
   assert.deepEqual(report.incomeByCategory, { Sales: 12_000_000, 'سایر': 100_000 });
   assert.deepEqual(report.expensesByCategory, { 'اجاره': 2_000_000, 'اشتراک': 300_000, 'پیک': 700_000 });
   assert.deepEqual(report.monthlyTrend, [
-    { month: '2026-09', income: 12_100_000, expenses: 2_700_000, profit: 9_400_000 },
-    { month: '2026-10', income: 0, expenses: 300_000, profit: -300_000 },
+    { month: '2026-09', income: 12_100_000, cogs: 0, expenses: 2_700_000, profit: 9_400_000 },
+    { month: '2026-10', income: 0, cogs: 0, expenses: 300_000, profit: -300_000 },
   ]);
   await assertBooksAddUp();
 });
@@ -149,7 +174,41 @@ test('rows recorded before the legs were linked are still left out', async () =>
   await row({ type: 'INCOME', category: 'Sales' });
 
   const report = await getProfitLossReport(FROM, TO);
-  assert.deepEqual(report.summary, { income: 1_000_000, expenses: 0, netProfit: 1_000_000, profitMargin: 100 });
+  assert.deepEqual(report.summary, summary(1_000_000, 0, 0));
+});
+
+test('profit is revenue less the cost of what was sold and the operating costs; stock bought is not a cost', async () => {
+  const cogsAccount = await prisma.account.create({ data: { name: 'بهای تمام‌شده کالای فروش رفته', type: 'EXPENSE', currency: 'TOMAN', balance: 0 } });
+  // Stock bought and its arrival costs: inventory, not cost.
+  const order = await placedOrder(20_000_000);
+  ok(await recordPurchasePartialPayment({ orderId: order.id, accountId: 'bank', amount: 20_000_000 }));
+  ok(await updatePurchaseOrderStatus(order.id, 'IN_PRODUCTION'));
+  ok(await recordArrival(order.id, [{ title: 'حمل', amount: 1_000_000, currency: 'TOMAN' }], 'bank'));
+  // Two glasses sold for 10,000,000 net of a 1,000,000 discount; they cost 4,000,000 (booked at product cost).
+  ok(await recordDeposit(undefined, form({ amount: '10000000', currency: 'TOMAN', accountId: 'bank', description: 'فروش POS', category: 'Sales', date: '2026-09-18' })));
+  await prisma.transaction.create({
+    data: { type: 'EXPENSE', amount: 4_000_000, amountInToman: 4_000_000, category: 'COGS', accountId: cogsAccount.id, date: new Date('2026-09-18T10:00:00Z') },
+  });
+  // Operating costs: rent, and a gift valued at cost.
+  ok(await recordExpense(undefined, form({ amount: '2000000', currency: 'TOMAN', category: 'اجاره', accountId: 'bank', date: '2026-09-19' })));
+  await prisma.transaction.create({
+    data: { type: 'EXPENSE', amount: 1_000_000, amountInToman: 1_000_000, category: 'Marketing - Gift', date: new Date('2026-09-20T10:00:00Z') },
+  });
+
+  const report = await getProfitLossReport(FROM, TO);
+  assert.deepEqual(report.summary, summary(10_000_000, 4_000_000, 3_000_000));
+  assert.deepEqual(report.expensesByCategory, { 'اجاره': 2_000_000, 'Marketing - Gift': 1_000_000 });
+  assert.deepEqual(report.monthlyTrend, [{ month: '2026-09', income: 10_000_000, cogs: 4_000_000, expenses: 7_000_000, profit: 3_000_000 }]);
+  // The expense breakdown shows the same costs, and no stock bought.
+  const breakdown = await getExpenseBreakdown();
+  assert.equal(breakdown.reduce((sum: number, row: any) => sum + row.amount, 0), 7_000_000);
+  assert.ok(!breakdown.some((row: any) => /سفارش خرید|رسیدن به مقصد/.test(row.category)), JSON.stringify(breakdown));
+});
+
+test('a Toman row from before its Toman equivalent was kept counts at its amount; a foreign one never does', async () => {
+  await prisma.transaction.create({ data: { type: 'INCOME', amount: 700_000, amountInToman: 0, currency: 'TOMAN', category: 'Sales', date: new Date('2026-09-10') } });
+  await prisma.transaction.create({ data: { type: 'INCOME', amount: 7, amountInToman: 0, currency: 'USD', category: 'Sales', date: new Date('2026-09-10') } });
+  assert.equal((await getProfitLossReport(FROM, TO)).summary.income, 700_000);
 });
 
 test('the period bounds are inclusive, and a row outside them is left out', async () => {

@@ -4,14 +4,17 @@ import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { latestRates, totalsByCurrency } from '@/lib/money-totals';
-import { isNonOperating } from '@/lib/profit-rows';
+import { profitAmount, profitLine } from '@/lib/profit-rows';
 import { tehranDay } from '@/lib/tehran-day';
 
 // Financial Reports
 
 /**
  * Profit & Loss Report
- * Shows Income vs Expenses over a period
+ * Revenue − cost of goods sold − operating expenses, over a period
+ * (src/lib/profit-rows.ts). Money turned into stock (supplier payments,
+ * arrival costs) is not a cost until the goods are sold: it reaches the P&L as
+ * their COGS rows.
  */
 export async function getProfitLossReport(startDate: Date, endDate: Date) {
   await requirePermission('profit.view');
@@ -26,61 +29,58 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
       select: {
         type: true,
         amountInToman: true,
+        amount: true,
+        currency: true,
         category: true,
         date: true,
         exchangeGroupId: true,
         transferGroupId: true,
       },
     });
-    // Capital, loans, currency exchanges and transfers are not revenue or expense (src/lib/profit-rows.ts).
-    const transactions = rows.filter((t: any) => !isNonOperating(t));
 
-    const income = transactions
-      .filter((t: any) => t.type === 'INCOME')
-      .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
-
-    const expenses = transactions
-      .filter((t: any) => t.type === 'EXPENSE')
-      .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
-
-    const netProfit = income - expenses;
-
-    // Group by category
+    let income = 0;
+    let cogs = 0;
+    let operatingExpenses = 0;
     const incomeByCategory: Record<string, number> = {};
     const expensesByCategory: Record<string, number> = {};
+    const monthlyData: Record<string, { income: number; cogs: number; expenses: number; profit: number }> = {};
 
-    transactions.forEach((t: any) => {
+    for (const t of rows as any[]) {
+      const line = profitLine(t);
+      if (!line) continue;
+      const amount = profitAmount(t);
       const category = t.category || 'سایر';
-      const amount = Number(t.amountInToman);
-
-      if (t.type === 'INCOME') {
-        incomeByCategory[category] = (incomeByCategory[category] || 0) + amount;
-      } else if (t.type === 'EXPENSE') {
-        expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
-      }
-    });
-
-    // Monthly breakdown
-    const monthlyData: Record<string, { income: number; expenses: number; profit: number }> = {};
-    
-    transactions.forEach((t: any) => {
       const monthKey = tehranDay(t.date).substring(0, 7); // YYYY-MM, in Tehran
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { income: 0, expenses: 0, profit: 0 };
-      }
+      const month = (monthlyData[monthKey] ??= { income: 0, cogs: 0, expenses: 0, profit: 0 });
 
-      const amount = Number(t.amountInToman);
-      if (t.type === 'INCOME') {
-        monthlyData[monthKey].income += amount;
-      } else if (t.type === 'EXPENSE') {
-        monthlyData[monthKey].expenses += amount;
+      if (line === 'revenue') {
+        income += amount;
+        incomeByCategory[category] = (incomeByCategory[category] || 0) + amount;
+        month.income += amount;
+      } else {
+        if (line === 'cogs') {
+          cogs += amount;
+          month.cogs += amount;
+        } else {
+          operatingExpenses += amount;
+          expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
+        }
+        // The month's costs: what was sold at cost, and everything spent.
+        month.expenses += amount;
       }
-      monthlyData[monthKey].profit = monthlyData[monthKey].income - monthlyData[monthKey].expenses;
-    });
+      month.profit = month.income - month.expenses;
+    }
+
+    const grossProfit = income - cogs;
+    const expenses = cogs + operatingExpenses;
+    const netProfit = income - expenses;
 
     return {
       summary: {
         income,
+        cogs,
+        grossProfit,
+        operatingExpenses,
         expenses,
         netProfit,
         profitMargin: income > 0 ? (netProfit / income) * 100 : 0,

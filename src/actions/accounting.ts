@@ -13,7 +13,7 @@ import { balanceEffect, sumBalanceEffects, inAccountCurrency } from '@/lib/balan
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
-import { isNonOperating } from '@/lib/profit-rows';
+import { profitAmount, profitLine } from '@/lib/profit-rows';
 import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { randomUUID } from 'node:crypto';
 
@@ -853,8 +853,10 @@ export async function getExpenseBreakdown() {
     for (const expense of expenses) {
       // COGS and gift totals are cost data.
       if (!canSeeCost && isCostRow(expense)) continue;
-      // Not a cost at all: a loan, capital paid out, a currency bought (src/lib/profit-rows.ts).
-      if (isNonOperating(expense)) continue;
+      // Only what the P&L counts as a cost: not a loan, capital paid out or a
+      // currency bought, nor stock bought (its cost comes as COGS when sold) —
+      // src/lib/profit-rows.ts.
+      if (!profitLine(expense)) continue;
 
       // Extract category from description "Category - Description"
       const description = expense.description || 'سایر';
@@ -864,7 +866,7 @@ export async function getExpenseBreakdown() {
       if (!expenseByCategory[category]) {
         expenseByCategory[category] = 0;
       }
-      expenseByCategory[category] += Number(expense.amountInToman);
+      expenseByCategory[category] += profitAmount(expense);
     }
 
     return Object.entries(expenseByCategory)

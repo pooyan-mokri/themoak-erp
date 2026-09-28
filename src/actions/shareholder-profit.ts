@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { userMessage } from '@/lib/action-error';
-import { isNonOperating } from '@/lib/profit-rows';
+import { profitAmount, profitLine } from '@/lib/profit-rows';
 import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 
@@ -82,30 +82,25 @@ export async function calculateShareholderProfits(prevState: ActionState, formDa
         success: false,
       };
     }
-    // Calculate company profit for the period, as the profit and loss report
-    // does: capital, loans, currency exchanges and transfers are not profit
+    // The company's net profit for the period, as the profit and loss report
+    // works it out: revenue − cost of goods sold − operating expenses
     // (src/lib/profit-rows.ts).
-    const transactions = (
-      await prisma.transaction.findMany({
-        where: {
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        date: {
+          gte: startDate,
+          lte: endDate,
         },
-      })
-    ).filter((tx: any) => !isNonOperating(tx));
+      },
+    });
 
     let totalIncome = 0;
     let totalExpense = 0;
 
     transactions.forEach((tx: any) => {
-      const amount = Number(tx.amountInToman || tx.amount);
-      if (tx.type === 'INCOME') {
-        totalIncome += amount;
-      } else if (tx.type === 'EXPENSE') {
-        totalExpense += amount;
-      }
+      const line = profitLine(tx);
+      if (line === 'revenue') totalIncome += profitAmount(tx);
+      else if (line) totalExpense += profitAmount(tx);
     });
 
     const netProfit = totalIncome - totalExpense;

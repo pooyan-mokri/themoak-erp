@@ -6,6 +6,11 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 interface ProfitLossData {
   summary: {
     income: number;
+    /** Cost of goods sold. */
+    cogs?: number;
+    grossProfit?: number;
+    operatingExpenses?: number;
+    /** COGS + operating expenses. */
     expenses: number;
     netProfit: number;
     profitMargin: number;
@@ -50,6 +55,16 @@ export function ProfitLossReport({ data }: ProfitLossReportProps) {
             <CardTitle className="text-2xl text-red-600">
               {formatCurrency(summary.expenses)}
             </CardTitle>
+            {/* P&L = revenue − cost of goods sold − operating expenses */}
+            <p className="text-xs text-muted-foreground">
+              بهای تمام‌شده کالای فروش‌رفته: {formatCurrency(summary.cogs ?? 0)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              هزینه‌های عملیاتی: {formatCurrency(summary.operatingExpenses ?? summary.expenses)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              سود ناخالص: {formatCurrency(summary.grossProfit ?? summary.income)}
+            </p>
           </CardHeader>
         </Card>
 
