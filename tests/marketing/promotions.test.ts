@@ -14,6 +14,7 @@ import {
   giftProductToCustomer,
   incrementPromotionUsage,
 } from '@/actions/promotion';
+import { percentDiscount } from '@/lib/discount';
 import { DENIED, NON_SELLERS, NON_VIEWERS, SELLERS, assertInvariants, quantityOf, snapshot, stockIn } from '../sales/world';
 
 // The actions log every refusal these tests provoke on purpose.
@@ -164,4 +165,16 @@ test('a product given to a customer is a 0-price order that takes the stock once
   setTestRole('WAREHOUSE');
   assert.equal((await giftProductToCustomer(customer.id, frame.id, 1, store.id)).message, DENIED);
   assert.deepEqual(await snapshot(), before);
+});
+
+test('a percentage discount is rounded to the nearest whole toman', async () => {
+  assert.equal(percentDiscount(333_333, 15), 50_000); // 49,999.95
+  assert.equal(percentDiscount(333_330, 15), 50_000); // 49,999.5: half a toman goes up
+  assert.equal(percentDiscount(333_320, 15), 49_998); // 49,998.0
+  assert.equal(percentDiscount(1_000_001, 10), 100_000); // 100,000.1
+  assert.equal(percentDiscount(0, 15), 0);
+  const promo = await promotion({ discountPercent: 15 });
+  assert.equal((await applyPromotion(promo.id, 333_333) as any).discountAmount, 50_000);
+  const tiny = await promotion({ discountPercent: 12.5 });
+  assert.equal((await applyPromotion(tiny.id, 3) as any).discountAmount, 0); // 0.375
 });

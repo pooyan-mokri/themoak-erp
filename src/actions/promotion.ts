@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { percentDiscount } from '@/lib/discount';
 
 // const prisma = new PrismaClient();
 
@@ -211,7 +212,7 @@ export async function applyPromotion(promotionId: string, orderTotal: number) {
     let discountAmount = 0;
     if (promotion.type === 'DISCOUNT') {
       if (promotion.discountPercent) {
-        discountAmount = (orderTotal * Number(promotion.discountPercent)) / 100;
+        discountAmount = percentDiscount(orderTotal, Number(promotion.discountPercent));
       } else if (promotion.discountAmount) {
         discountAmount = Number(promotion.discountAmount);
       }
