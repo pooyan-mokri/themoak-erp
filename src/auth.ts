@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { Role } from '@prisma/client';
 import type { JWT } from 'next-auth/jwt';
+import { findUserByEmail } from '@/lib/user-email';
 
 // Debug logging
 console.log('[AUTH DEBUG] Initializing auth.ts');
@@ -18,7 +19,8 @@ console.log('[AUTH DEBUG] DATABASE_URL exists:', !!process.env.DATABASE_URL);
 async function getUser(email: string) {
   try {
     console.log('[AUTH DEBUG] Fetching user:', email);
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Any letter case: people type Sara@… as often as sara@….
+    const user = await findUserByEmail(email);
     console.log('[AUTH DEBUG] User found:', !!user);
     return user;
   } catch (error) {
@@ -62,7 +64,7 @@ try {
         console.log('[AUTH DEBUG] Authorize called with credentials:', { email: credentials?.email });
 
         const parsedCredentials = z
-          .object({ email: z.string().email(), password: z.string().min(6) })
+          .object({ email: z.string().trim().email(), password: z.string().min(6) })
           .safeParse(credentials);
 
         console.log('[AUTH DEBUG] Credentials validation:', parsedCredentials.success);

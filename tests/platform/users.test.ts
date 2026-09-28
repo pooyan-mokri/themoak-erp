@@ -206,3 +206,25 @@ test('the admin user list shows a refused role change or delete instead of faili
   assert.match(source, /const result = await updateUserRole\(userId, newRole\);\s*if \(!result\.success\) toast\.error\(result\.message\);/);
   assert.match(source, /const result = await deleteUser\(userId\);\s*if \(!result\.success\) toast\.error\(result\.message\);/);
 });
+
+test('emails are stored lower-case, and one differing only by case counts as taken', async () => {
+  const created: any = await createUser({}, newUser({ email: '  Sara@Example.COM ' }));
+  assert.equal(created.success, true, created.message);
+  const sara = await prisma.user.findFirstOrThrow({ where: { name: 'سارا' } });
+  assert.equal(sara.email, 'sara@example.com');
+
+  assert.equal(((await createUser({}, newUser({ name: 'دیگر', email: 'SARA@example.com' }))) as any).message, 'این ایمیل قبلا ثبت شده است.');
+  assert.equal(((await createUser({}, newUser({ name: 'دیگر', email: 'ADMIN@example.com' }))) as any).message, 'این ایمیل قبلا ثبت شده است.');
+
+  const other = await staff();
+  assert.match(((await updateUser(other.id, {}, form({ name: 'Staff', email: 'Sara@example.com', role: 'SALES', phone: '' }))) as any).message, /کاربر دیگری/);
+  assert.equal(((await updateUser(other.id, {}, form({ name: 'Staff', email: 'Staff.New@Example.com', role: 'SALES', phone: '' }))) as any).success, true);
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: other.id } })).email, 'staff.new@example.com');
+  // Keeping one's own address in another case is not a conflict.
+  assert.equal(((await updateUser(other.id, {}, form({ name: 'Staff', email: 'STAFF.NEW@example.com', role: 'SALES', phone: '' }))) as any).success, true);
+
+  setTestRole('SALES');
+  assert.match(((await updateProfile({}, form({ name: 'مدیر', email: 'SARA@EXAMPLE.COM', phone: '' }))) as any).message, /کاربر دیگری/);
+  assert.equal(((await updateProfile({}, form({ name: 'مدیر', email: 'Me.Again@Example.com', phone: '' }))) as any).success, true);
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: 'test-user' } })).email, 'me.again@example.com');
+});

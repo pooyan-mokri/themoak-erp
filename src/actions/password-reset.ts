@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { logActivity } from '@/lib/activity-log';
 import { mailSettings, sendMail } from '@/lib/mail';
+import { findUserByEmail } from '@/lib/user-email';
 
 const SENT_IF_REGISTERED = 'اگر این ایمیل در سیستم ثبت شده باشد، لینک بازیابی برای شما ارسال خواهد شد.';
 const MAIL_NOT_SET_UP = 'ارسال ایمیل بازیابی در این سامانه راه‌اندازی نشده است؛ برای تغییر رمز عبور با مدیر سیستم تماس بگیرید.';
@@ -32,7 +33,7 @@ function appOrigin(): string {
  */
 export async function requestPasswordReset(prevState: any, formData: FormData) {
   const schema = z.object({
-    email: z.string().email('ایمیل نامعتبر است'),
+    email: z.string().trim().email('ایمیل نامعتبر است'),
   });
 
   const validatedFields = schema.safeParse({
@@ -58,9 +59,7 @@ export async function requestPasswordReset(prevState: any, formData: FormData) {
 
   try {
     // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await findUserByEmail(email);
 
     // Always return success message for security (don't reveal if email exists)
     if (!user) {

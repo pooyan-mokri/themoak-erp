@@ -216,3 +216,11 @@ test('the same link submitted twice at once changes the password once', async ()
   assert.equal(await passwordIs(user.id, loser), false);
   assert.equal(await prisma.activityLog.count({ where: { action: 'RESET_PASSWORD' } }), 1);
 });
+
+test('a reset request finds the account whatever the letter case of the address', async () => {
+  const user = await staff();
+  assert.deepEqual(await request('  STAFF@Example.com '), { success: true, message: SENT_IF_REGISTERED });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].mail.to, 'staff@example.com');
+  assert.equal(await prisma.passwordResetToken.count({ where: { userId: user.id } }), 1);
+});

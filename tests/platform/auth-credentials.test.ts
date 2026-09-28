@@ -114,3 +114,21 @@ test('the middleware sends a stranger from the dashboard to login, and a signed-
   const bounced = authorized({ id: 'u1', role: 'SALES' }, '/login') as Response;
   assert.equal(bounced.headers.get('location'), 'http://localhost:3000/dashboard');
 });
+
+test('an email signs in whatever its letter case or surrounding spaces', async () => {
+  const user = await staff('SALES', 'sara@example.com');
+  for (const email of ['sara@example.com', 'SARA@Example.COM', '  Sara@example.com  ']) {
+    assert.equal((await signInWith({ email, password: PASSWORD })).token?.id, user.id, email);
+  }
+  // An address saved before emails were stored lower-case.
+  const legacy = await staff('AUDITOR', 'Old.Staff@Example.com');
+  assert.equal((await signInWith({ email: 'old.staff@example.com', password: PASSWORD })).token?.id, legacy.id);
+});
+
+test('two accounts that differ only by letter case: only the exact spelling signs in', async () => {
+  const lower = await staff('SALES', 'twin@example.com');
+  const upper = await staff('AUDITOR', 'Twin@example.com');
+  assert.equal((await signInWith({ email: 'twin@example.com', password: PASSWORD })).token?.id, lower.id);
+  assert.equal((await signInWith({ email: 'Twin@example.com', password: PASSWORD })).token?.id, upper.id);
+  assert.equal((await signInWith({ email: 'TWIN@example.com', password: PASSWORD })).token, null);
+});

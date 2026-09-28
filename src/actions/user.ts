@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { logActivity } from '@/lib/activity-log';
 import { hashPassword, verifyPassword, getCurrentUser } from '@/lib/auth-utils';
 import { ROLE_LABELS } from '@/lib/permissions';
+import { emailTakenByOther } from '@/lib/user-email';
 
 import { prisma } from '@/lib/prisma';
 
@@ -14,7 +15,8 @@ import { prisma } from '@/lib/prisma';
 
 const UserSchema = z.object({
   name: z.string().min(1, 'نام الزامی است'),
-  email: z.string().email('ایمیل نامعتبر است'),
+  // Stored lower-case: sign-in matches any letter case (src/lib/user-email.ts).
+  email: z.string().trim().toLowerCase().email('ایمیل نامعتبر است'),
   password: z.string().min(6, 'رمز عبور باید حداقل ۶ کاراکتر باشد').optional(),
   role: z.nativeEnum(Role),
   phone: z.string().optional(),
@@ -92,9 +94,7 @@ export async function createUser(prevState: any, formData: FormData) {
   }
 
   try {
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+    const existingUser = await emailTakenByOther(email);
 
     if (existingUser) {
       return { message: 'این ایمیل قبلا ثبت شده است.' };
@@ -144,12 +144,7 @@ export async function updateUser(id: string, prevState: any, formData: FormData)
 
   try {
     // Check if email is taken by another user
-    const existingUser = await prisma.user.findFirst({
-      where: { 
-        email,
-        NOT: { id }
-      },
-    });
+    const existingUser = await emailTakenByOther(email, id);
 
     if (existingUser) {
       return { message: 'این ایمیل توسط کاربر دیگری استفاده شده است.' };
@@ -221,7 +216,7 @@ export async function updateProfile(prevState: any, formData: FormData) {
 
   const schema = z.object({
     name: z.string().min(1, 'نام الزامی است'),
-    email: z.string().email('ایمیل نامعتبر است'),
+    email: z.string().trim().toLowerCase().email('ایمیل نامعتبر است'),
     phone: z.string().optional(),
   });
 
@@ -242,12 +237,7 @@ export async function updateProfile(prevState: any, formData: FormData) {
 
   try {
     // Check email uniqueness
-    const existingUser = await prisma.user.findFirst({
-      where: { 
-        email,
-        NOT: { id: currentUser.id }
-      },
-    });
+    const existingUser = await emailTakenByOther(email, currentUser.id);
 
     if (existingUser) {
       return { message: 'این ایمیل توسط کاربر دیگری استفاده شده است.' };
