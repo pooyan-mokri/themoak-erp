@@ -26,6 +26,10 @@ const TOTAL = 5_200_000;
 const ADMIN_ONLY = 'دسترسی غیرمجاز — فقط مدیر سیستم می‌تواند این عملیات را انجام دهد.';
 const USD_RATE = 100_000;
 
+/** Money rows only: a sale's cost of goods is a COGS row on the order, not money (src/lib/cogs.ts). */
+const isMoney = (row: { category?: string | null }) => row.category !== 'COGS';
+const moneyRows = async (where: Record<string, unknown> = {}) => (await prisma.transaction.findMany({ where, orderBy: { createdAt: 'asc' } })).filter(isMoney);
+
 let world: {
   saman: { id: string };
   cash: { id: string };
@@ -160,7 +164,7 @@ test('every decision is ADMIN-only and writes nothing otherwise', async () => {
   const cancelled = await sell(REAL);
   await call('setSaleStatus', { status: 'cancelled', reference: cancelled.siteReference });
   const unpaid = await sell({ ...REAL, trackId: null, paidAt: null });
-  const before = await prisma.transaction.count();
+  const before = (await moneyRows()).length;
 
   for (const role of ['ACCOUNTANT', 'SALES', 'AUDITOR', null]) {
     setTestRole(role);
@@ -170,7 +174,7 @@ test('every decision is ADMIN-only and writes nothing otherwise', async () => {
     const receipt = await recordSiteOrderReceipt({ orderId: unpaid.id, accountId: world.cash.id, amount: TOTAL, note: 'x' });
     assert.equal(receipt.message, ADMIN_ONLY, String(role));
   }
-  assert.equal(await prisma.transaction.count(), before);
+  assert.equal((await moneyRows()).length, before);
   assert.equal(readSiteOrderData((await prisma.order.findUniqueOrThrow({ where: { id: cancelled.id } })).siteData)?.history.length, 1);
 });
 
@@ -191,7 +195,7 @@ test('a refund is booked out of the account the admin picks, not the sale accoun
   // The sale's account keeps its income; the money left the cash box it was paid from.
   assert.equal(await balanceOf(world.saman.id), TOTAL);
   assert.equal(await balanceOf(world.cash.id), 20_000_000 - TOTAL);
-  const refund = await prisma.transaction.findFirstOrThrow({ where: { type: 'EXPENSE' } });
+  const refund = (await moneyRows({ type: 'EXPENSE' }))[0];
   assert.deepEqual(
     [refund.accountId, Number(refund.amount), refund.orderId, refund.category, refund.clientRequestId],
     [world.cash.id, TOTAL, order.id, 'Return', 'refund-request-0001'],
@@ -217,7 +221,7 @@ test('a refund is booked out of the account the admin picks, not the sale accoun
     requestId: 'refund-request-0001',
   });
   assert.equal(again.message, DUPLICATE_REQUEST_MESSAGE);
-  assert.equal(await prisma.transaction.count({ where: { type: 'EXPENSE' } }), 1);
+  assert.equal((await moneyRows({ type: 'EXPENSE' })).length, 1);
   await assertLedger(world.cash.id, 20_000_000);
   await assertLedger(world.saman.id, 0);
 });
@@ -229,7 +233,7 @@ test('a refund from a dollar account moves the dollar equivalent; partial refund
   const result = await recordSiteOrderRefund({ orderId: order.id, accountId: world.usd.id, amount: 2_000_000, note: 'نیمی دلاری' });
   assert.equal(result.success, true, result.message);
   assert.equal(await balanceOf(world.usd.id), 1_000 - 20);
-  const row = await prisma.transaction.findFirstOrThrow({ where: { type: 'EXPENSE' } });
+  const row = (await moneyRows({ type: 'EXPENSE' }))[0];
   assert.deepEqual([Number(row.amount), row.currency, Number(row.amountInToman)], [20, 'USD', 2_000_000]);
   await assertLedger(world.usd.id, 1_000);
 
@@ -250,7 +254,7 @@ test('a refund is refused beyond what the ERP holds, from an expense account, or
   for (const [label, input] of cases) {
     assert.equal((await recordSiteOrderRefund(input)).success, false, label);
   }
-  assert.equal(await prisma.transaction.count({ where: { type: 'EXPENSE' } }), 0);
+  assert.equal((await moneyRows({ type: 'EXPENSE' })).length, 0);
 });
 
 test('kept: no money moves, the decision is recorded, and the order leaves the list until the site cancels it', async () => {

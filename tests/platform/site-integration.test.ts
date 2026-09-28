@@ -14,6 +14,10 @@ const SITE = 'site-key-for-site-integration-tests';
 const USD_RATE = 100_000;
 const USD_OPENING = 500;
 
+/** Money rows only: a sale's cost of goods is a COGS row on the order, not money (src/lib/cogs.ts). */
+const isMoney = (row: { category?: string | null }) => row.category !== 'COGS';
+const moneyRows = async (where: Record<string, unknown> = {}) => (await prisma.transaction.findMany({ where, orderBy: { createdAt: 'asc' } })).filter(isMoney);
+
 let world: { usd: { id: string }; warehouse: { id: string }; frame: { id: string } };
 
 beforeEach(async () => {
@@ -102,17 +106,17 @@ test('a website sale paid into a dollar account books dollars at the latest rate
 
   const refunded = await post(SITE, { action: 'setSaleStatus', reference: 'M-USD1', status: 'refunded', amount: 5_000_000, refundId: 'rf-1', at: '2026-09-21T10:00:00.000Z' });
   assert.equal(refunded.status, 200, JSON.stringify(refunded.body));
-  const refund = await prisma.transaction.findFirstOrThrow({ where: { orderId: order.id, type: 'EXPENSE' } });
+  const refund = (await moneyRows({ orderId: order.id, type: 'EXPENSE' }))[0];
   assert.deepEqual([Number(refund.amount), refund.currency, Number(refund.amountInToman)], [50, 'USD', 5_000_000]);
   assert.equal(Number((await prisma.account.findUniqueOrThrow({ where: { id: world.usd.id } })).balance), USD_OPENING + 150);
 
   // The retry of the same refund books nothing more.
   assert.equal((await post(SITE, { action: 'setSaleStatus', reference: 'M-USD1', status: 'refunded', amount: 5_000_000, refundId: 'rf-1', at: '2026-09-21T10:00:00.000Z' })).status, 200);
-  assert.equal(await prisma.transaction.count({ where: { orderId: order.id, type: 'EXPENSE' } }), 1);
+  assert.equal((await moneyRows({ orderId: order.id, type: 'EXPENSE' })).length, 1);
 
   const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
   // What the order says was paid is what its money rows say.
-  const rows = await prisma.transaction.findMany({ where: { orderId: order.id } });
+  const rows = await moneyRows({ orderId: order.id });
   const net = rows.reduce((sum: number, t: any) => sum + (t.type === 'INCOME' ? 1 : -1) * Number(t.amountInToman), 0);
   assert.equal(Number(after.paidAmount), net);
   assert.equal(Number(after.paidAmount), 15_000_000);
@@ -143,12 +147,12 @@ test('the largest amount the ERP stores is taken; one above it is a 422 and noth
   assert.equal(Number(order.transaction!.amountInToman), big);
   assert.equal(Number(order.transaction!.amount), big / USD_RATE);
 
-  const before = await prisma.transaction.count();
+  const before = (await moneyRows()).length;
   for (const amount of [big + 1, -1, Number.NaN]) {
     const refused = await post(SITE, sale({ items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 1, unitPrice: 1 }], subtotal: 1, total: amount, payment: { gateway: 'zibal', trackId: 'TX', paidAt: null, amount: 1 } }));
     assert.equal(refused.status, 422, String(amount));
   }
-  assert.equal(await prisma.transaction.count(), before);
+  assert.equal((await moneyRows()).length, before);
   assert.equal(await prisma.order.count(), 1);
 });
 
