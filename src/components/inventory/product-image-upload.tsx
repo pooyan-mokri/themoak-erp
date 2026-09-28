@@ -7,6 +7,7 @@ import { Upload, X, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { uploadProductImage, deleteProductImage } from '@/actions/upload';
 import { toast } from 'sonner';
+import { isLocalProductImage } from '@/lib/product-image';
 
 interface ProductImageUploadProps {
   onUploadComplete: (url: string) => void;
@@ -79,8 +80,8 @@ export function ProductImageUpload({ onUploadComplete, onRemove, currentUrl }: P
           </Button>
           
           <div className="h-24 w-24 relative rounded overflow-hidden border bg-background flex items-center justify-center">
-            {currentUrl.startsWith('/uploads/') ? (
-              // Use regular img tag for local uploads
+            {isLocalProductImage(currentUrl) ? (
+              // A plain <img> for a photo on this ERP: it carries the session, which next/image's fetch would not
               <img
                 src={currentUrl}
                 alt="Product"

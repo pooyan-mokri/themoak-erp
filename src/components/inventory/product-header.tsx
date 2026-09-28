@@ -6,6 +6,7 @@ import { BackButton } from '@/components/ui/back-button';
 import { Package2, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import Image from 'next/image';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { isLocalProductImage } from '@/lib/product-image';
 
 interface ProductHeaderProps {
   product: {
@@ -41,8 +42,8 @@ export function ProductHeader({ product, showBackButton = false }: ProductHeader
             </div>
           ) : product.image ? (
             <div className="relative w-32 h-32 rounded-lg overflow-hidden border bg-gray-100">
-              {product.image.startsWith('/uploads/') ? (
-                // Use regular img tag for local uploads
+              {isLocalProductImage(product.image) ? (
+                // A plain <img> for a photo on this ERP: it carries the session, which next/image's fetch would not
                 <img
                   src={product.image}
                   alt={product.name}

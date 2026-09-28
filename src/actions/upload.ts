@@ -1,12 +1,13 @@
 'use server';
 
-import { writeFile, mkdir, unlink } from 'fs/promises';
+import { unlink } from 'fs/promises';
 import { join } from 'path';
-import { randomUUID } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { checkPermission } from '@/lib/access';
 import { INVALID_RECEIPT_MESSAGE, RECEIPT_EXTENSIONS, RECEIPT_MAX_BYTES, isReceiptRef } from '@/lib/receipt-ref';
 import { STORAGE_MISSING_MESSAGE, deleteReceiptFile, sniffReceiptType, storeReceipt } from '@/lib/receipt-storage';
+import { PRODUCT_IMAGE_STORAGE_MISSING, deleteProductImageFile, storeProductImage } from '@/lib/product-image-storage';
+import { productImageName } from '@/lib/product-image';
 
 // Who records money records its receipt: finance staff for any row, sales staff
 // for order payments (src/lib/receipt-ref.ts decides which row takes it).
@@ -61,54 +62,44 @@ export async function deleteReceipt(ref: string) {
 export async function uploadProductImage(formData: FormData) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
-  try {
-    const file = formData.get('file');
+  const file = formData.get('file');
 
-    if (!(file instanceof Blob) || file.size === 0) {
-      return { success: false, error: 'فایلی انتخاب نشده است.' };
-    }
+  if (!(file instanceof Blob) || file.size === 0) {
+    return { success: false, error: 'فایلی انتخاب نشده است.' };
+  }
 
-    // Validate file size (10MB for product images)
-    if (file.size > 10 * 1024 * 1024) {
-      return {
-        success: false,
-        error: 'حجم عکس نباید بیشتر از ۱۰ مگابایت باشد.',
-      };
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    // The bytes decide the type and the extension: the name and the type the
-    // browser sends are the caller's to choose, and a name like
-    // "x.png/../../y.html" wrote outside the folder, or an .html page into it.
-    const type = sniffReceiptType(buffer);
-    if (!type || type === 'application/pdf') {
-      return {
-        success: false,
-        error: 'فقط عکس JPG، PNG یا WEBP قابل آپلود است.',
-      };
-    }
-
-    // Create uploads directory if it doesn't exist
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'products');
-    await mkdir(uploadDir, { recursive: true });
-
-    // Generate unique filename
-    const filename = `${randomUUID()}.${RECEIPT_EXTENSIONS[type]}`;
-    const filepath = join(uploadDir, filename);
-
-    // Write file
-    await writeFile(filepath, buffer);
-
-    const url = `/uploads/products/${filename}`;
-
+  // Validate file size (10MB for product images)
+  if (file.size > 10 * 1024 * 1024) {
     return {
-      success: true,
-      url,
+      success: false,
+      error: 'حجم عکس نباید بیشتر از ۱۰ مگابایت باشد.',
     };
-  } catch (error) {
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // The bytes decide the type and the extension: the name and the type the
+  // browser sends are the caller's to choose, and a name like
+  // "x.png/../../y.html" wrote outside the folder, or an .html page into it.
+  const type = sniffReceiptType(buffer);
+  if (!type || type === 'application/pdf') {
+    return {
+      success: false,
+      error: 'فقط عکس JPG، PNG یا WEBP قابل آپلود است.',
+    };
+  }
+
+  try {
+    // On the FTP server, like receipts: public/ cannot be written on Vercel.
+    const url = await storeProductImage(buffer, RECEIPT_EXTENSIONS[type] as 'jpg' | 'png' | 'webp');
+    return { success: true, url };
+  } catch (error: any) {
     console.error('Upload error:', error);
-    return { success: false, error: 'آپلود عکس انجام نشد.' };
+    const message =
+      error?.message === PRODUCT_IMAGE_STORAGE_MISSING
+        ? PRODUCT_IMAGE_STORAGE_MISSING
+        : `آپلود عکس به سرور FTP انجام نشد: ${error?.message ?? 'خطای نامشخص'}`;
+    return { success: false, error: message };
   }
 }
 
@@ -116,7 +107,13 @@ export async function deleteProductImage(url: string) {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
   try {
-    // Only a file this action wrote: /uploads/products/<uuid>.<ext> (older ones kept the name's extension).
+    const stored = productImageName(url);
+    if (stored) {
+      await deleteProductImageFile(stored);
+      return { success: true };
+    }
+
+    // A photo uploaded before, in public/: /uploads/products/<uuid>.<ext> (the name's extension).
     const filename = /^\/uploads\/products\/([0-9a-f-]{36}\.[A-Za-z0-9]{1,5})$/i.exec(url)?.[1];
     if (!filename) return { success: false, error: 'نشانی عکس نامعتبر است.' };
 

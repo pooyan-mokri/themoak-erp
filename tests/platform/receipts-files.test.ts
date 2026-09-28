@@ -1,6 +1,6 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 import { fakeFtp, FTP_SETTINGS } from './fake-ftp';
@@ -22,6 +22,8 @@ import { STORAGE_MISSING_MESSAGE, deleteReceiptFile, readReceipt, storeReceipt }
 import { deleteProductImage, deleteReceipt, uploadProductImage, uploadReceipt } from '@/actions/upload';
 import { attachReceipt, removeReceipt } from '@/actions/receipts';
 import { GET } from '@/app/api/receipts/route';
+import { GET as serveProductImage } from '@/app/api/product-images/[name]/route';
+import { isLocalProductImage } from '@/lib/product-image';
 
 console.error = () => {};
 
@@ -42,6 +44,7 @@ beforeEach(async () => {
 });
 after(async () => {
   rmSync(join(process.cwd(), '.receipts'), { recursive: true, force: true });
+  rmSync(join(process.cwd(), '.product-images'), { recursive: true, force: true });
   // Only the product images these tests wrote.
   if (existsSync(PRODUCTS)) for (const name of readdirSync(PRODUCTS)) if (!productFilesBefore.has(name)) rmSync(join(PRODUCTS, name));
   await prisma.$disconnect();
@@ -298,6 +301,13 @@ test('two people attaching a receipt to the same row at once: one wins, the othe
 
 // ---------------------------------------------------------------- product images
 
+const imageUrlOk = (url: string, ext: string) => assert.match(url, new RegExp(`^/api/product-images/[0-9a-f-]{36}\\.${ext}$`));
+const imageName = (url: string) => url.slice('/api/product-images/'.length);
+const serve = async (name: string) => {
+  const response = await serveProductImage(new NextRequest(`http://localhost/api/product-images/${name}`), { params: Promise.resolve({ name }) });
+  return { status: response.status, type: response.headers.get('content-type'), body: Buffer.from(await response.arrayBuffer()), response };
+};
+
 test('a product image is typed by its bytes and named by the server, so no name can leave the folder', async () => {
   setTestRole('WAREHOUSE');
   const cases: Array<[Buffer, string, string, string]> = [
@@ -309,11 +319,13 @@ test('a product image is typed by its bytes and named by the server, so no name 
   for (const [bytes, name, type, ext] of cases) {
     const result: any = await uploadProductImage(fileForm(bytes, name, type));
     assert.equal(result.success, true, `${name}: ${result.error}`);
-    assert.match(result.url, new RegExp(`^/uploads/products/[0-9a-f-]{36}\\.${ext}$`), name);
-    assert.deepEqual(readFileSync(join(process.cwd(), 'public', result.url)), bytes);
+    imageUrlOk(result.url, ext);
+    // Without FTP settings (development): kept next to the code, never in public/.
+    assert.deepEqual(readFileSync(join(process.cwd(), '.product-images', imageName(result.url))), bytes);
   }
   assert.equal(existsSync(join(process.cwd(), 'evil.js')), false);
   assert.equal(existsSync(join(process.cwd(), 'public', 'evil.js')), false);
+  assert.deepEqual(existsSync(PRODUCTS) ? new Set(readdirSync(PRODUCTS)) : new Set(), productFilesBefore, 'nothing new in public/');
 
   const refused: Array<[Buffer, string]> = [
     [Buffer.from('<script>alert(1)</script>'), 'x.png'],
@@ -328,7 +340,68 @@ test('a product image is typed by its bytes and named by the server, so no name 
   assert.deepEqual(await uploadProductImage(fileForm(huge)), { success: false, error: 'حجم عکس نباید بیشتر از ۱۰ مگابایت باشد.' });
 });
 
-test('a product image is deleted only by stock managers and only inside the products folder', async () => {
+test('with FTP set, a product image is stored on the FTP server and served from there with its content type', async () => {
+  await withFtp();
+  setTestRole('ADMIN');
+  const result: any = await uploadProductImage(fileForm(WEBP, 'photo.webp', 'image/webp'));
+  assert.equal(result.success, true, result.error);
+  imageUrlOk(result.url, 'webp');
+  const name = imageName(result.url);
+  assert.deepEqual(fakeFtp.files.get(`/product-images/${name}`), WEBP);
+  assert.equal(existsSync(join(process.cwd(), '.product-images', name)), false);
+
+  for (const role of ROLES) {
+    setTestRole(role);
+    const served = await serve(name);
+    assert.equal(served.status, 200, role);
+    assert.equal(served.type, 'image/webp');
+    assert.deepEqual(served.body, WEBP);
+  }
+  assert.equal(served_header(await serve(name), 'x-content-type-options'), 'nosniff');
+  setTestRole(null);
+  assert.equal((await serve(name)).status, 401);
+
+  setTestRole('WAREHOUSE');
+  for (const junk of ['../.env', `${UUID}.html`, `${UUID}.png/..`, 'x.png', `${UUID.toUpperCase()}.png`]) {
+    assert.equal((await serve(junk)).status, 404, junk);
+  }
+  assert.equal((await serve(`${UUID}.png`)).status, 404, 'not stored');
+  // Bytes that are not what the name says are not served as an image.
+  fakeFtp.files.set(`/product-images/${UUID}.png`, Buffer.from('<html>'));
+  assert.equal((await serve(`${UUID}.png`)).status, 404);
+
+  fakeFtp.failWith = new Error('connect ETIMEDOUT');
+  const dead = await serve(name);
+  assert.equal(dead.status, 502);
+  assert.match(dead.body.toString('utf8'), /سرور FTP/);
+  fakeFtp.failWith = null;
+
+  assert.deepEqual(await deleteProductImage(result.url), { success: true });
+  assert.equal(fakeFtp.files.has(`/product-images/${name}`), false);
+  assert.equal((await serve(name)).status, 404);
+});
+
+function served_header(served: { response: Response }, header: string) {
+  return served.response.headers.get(header);
+}
+
+test('on Vercel without FTP settings a product image is refused in Persian, and nothing is written', async () => {
+  process.env.VERCEL = '1';
+  try {
+    setTestRole('WAREHOUSE');
+    assert.deepEqual(await uploadProductImage(fileForm(PNG)), {
+      success: false,
+      error: 'سرور FTP در تنظیمات وارد نشده است؛ عکس کالا ذخیره نمی‌شود. به مدیر سیستم خبر دهید.',
+    });
+  } finally {
+    delete process.env.VERCEL;
+  }
+  await withFtp();
+  fakeFtp.failWith = new Error('530 Login incorrect.');
+  assert.deepEqual(await uploadProductImage(fileForm(PNG)), { success: false, error: 'آپلود عکس به سرور FTP انجام نشد: 530 Login incorrect.' });
+});
+
+test('a product image is deleted only by stock managers; an image uploaded before, in public/, still shows and deletes', async () => {
   setTestRole('ADMIN');
   const { url } = (await uploadProductImage(fileForm(PNG, 'a.png'))) as any;
   for (const role of [null, 'SALES', 'ACCOUNTANT', 'AUDITOR', 'USER']) {
@@ -336,14 +409,28 @@ test('a product image is deleted only by stock managers and only inside the prod
     assert.equal(((await uploadProductImage(fileForm(PNG))) as any).message, ACCESS_DENIED_MESSAGE, String(role));
     assert.equal(((await deleteProductImage(url)) as any).message, ACCESS_DENIED_MESSAGE, String(role));
   }
-  assert.ok(existsSync(join(process.cwd(), 'public', url)));
+  assert.equal((await serve(imageName(url))).status, 200);
 
   setTestRole('WAREHOUSE');
-  for (const junk of ['/uploads/products/../../package.json', '/uploads/products/..', '../../package.json', 'https://themoak.com/wp-content/x.png', '/uploads/products/']) {
+  for (const junk of ['/uploads/products/../../package.json', '/uploads/products/..', '../../package.json', 'https://themoak.com/wp-content/x.png', '/uploads/products/', '/api/product-images/../x.png']) {
     assert.deepEqual(await deleteProductImage(junk), { success: false, error: 'نشانی عکس نامعتبر است.' }, junk);
   }
   assert.ok(existsSync(join(process.cwd(), 'package.json')));
   assert.deepEqual(await deleteProductImage(url), { success: true });
-  assert.equal(existsSync(join(process.cwd(), 'public', url)), false);
-  assert.deepEqual(await deleteProductImage(url), { success: false, error: 'حذف عکس انجام نشد.' });
+  assert.equal((await serve(imageName(url))).status, 404);
+
+  // An older photo in public/uploads/products: shown with a plain <img> as before, and deletable.
+  const legacy = `/uploads/products/${UUID}.jpeg`;
+  mkdirSync(PRODUCTS, { recursive: true });
+  writeFileSync(join(process.cwd(), 'public', legacy), JPEG);
+  assert.equal(isLocalProductImage(legacy), true);
+  assert.equal(isLocalProductImage(url), true);
+  assert.equal(isLocalProductImage('https://themoak.com/wp-content/x.png'), false);
+  assert.deepEqual(await deleteProductImage(legacy), { success: true });
+  assert.equal(existsSync(join(process.cwd(), 'public', legacy)), false);
+  assert.deepEqual(await deleteProductImage(legacy), { success: false, error: 'حذف عکس انجام نشد.' });
+
+  for (const file of ['src/components/inventory/product-header.tsx', 'src/components/inventory/product-image-upload.tsx']) {
+    assert.match(readFileSync(join(process.cwd(), file), 'utf8'), /isLocalProductImage\(/, file);
+  }
 });
