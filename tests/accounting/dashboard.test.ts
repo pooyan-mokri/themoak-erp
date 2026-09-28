@@ -11,7 +11,7 @@ import { getBalanceSheet } from '@/actions/reports';
 import { recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { FinancialCards } from '@/components/dashboard/financial-cards';
 import { BalanceSheetReport } from '@/components/reports/balance-sheet-report';
-import { totalsByCurrency, unpaidOnPurchaseOrder } from '@/lib/money-totals';
+import { cashPosition, unpaidOnPurchaseOrder } from '@/lib/money-totals';
 import { assertBooksAddUp, openAccount } from './ledger';
 
 (globalThis as any).React = React;
@@ -24,15 +24,15 @@ beforeEach(async () => {
 });
 after(() => prisma.$disconnect());
 
-/** Two Toman accounts, a dollar and a euro account, and what must stay out of «موجودی کل». */
+/** Accounts of every type: Toman, dollars at the latest rate, euros with no rate, and a P&L bucket. */
 async function seedAccounts() {
   await openAccount('saman', 50_000_000, 'TOMAN', { type: 'BANK' });
   await openAccount('cash', 10_000_000, 'TOMAN', { type: 'CASH' });
+  await openAccount('person', 5_000_000, 'TOMAN', { type: 'PERSON' });
   await openAccount('usd', 1_000, 'USD', { type: 'BANK' });
   await openAccount('usd-cash', 250.5, 'USD', { type: 'CASH' });
+  await openAccount('usdt', 300, 'USD', { type: 'CRYPTO' });
   await openAccount('eur', 200, 'EUR', { type: 'CASH' });
-  // Not a bank or the cash box: the card is labelled «بانک‌ها و صندوق».
-  await openAccount('person', 5_000_000, 'TOMAN', { type: 'PERSON' });
   // A P&L bucket, never money.
   await prisma.account.create({ data: { name: 'COGS', type: 'EXPENSE', currency: 'TOMAN', balance: -9_000_000 } });
   // An older dollar rate and the latest one; no euro rate at all.
@@ -40,80 +40,78 @@ async function seedAccounts() {
   await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20T08:00:00Z') } });
 }
 
-test('«موجودی کل» adds Toman accounts only; each other currency is shown on its own, valued at its latest rate', async () => {
+// 65M Toman + 1,550.5 dollars at 100,000.
+const TOTAL = 65_000_000 + 155_050_000;
+
+test('«موجودی کل» adds every account that holds money, dollars at the latest rate; a currency with no rate is listed, not added', async () => {
   await seedAccounts();
   const financials = await getDashboardFinancials();
 
-  assert.equal(financials.totalBalance, 60_000_000, 'dollars and euros are not added as Toman');
+  assert.equal(financials.totalBalance, TOTAL);
+  assert.deepEqual(
+    financials.balancesByType.map((t: any) => [t.type, t.total]).sort(),
+    [['BANK', 150_000_000], ['CASH', 35_050_000], ['CRYPTO', 30_000_000], ['PERSON', 5_000_000]],
+  );
   assert.deepEqual(financials.foreignBalances, [
-    { currency: 'EUR', total: 200, rate: null, rateDate: null, approxToman: null },
-    {
-      currency: 'USD',
-      total: 1_250.5,
-      rate: 100_000,
-      rateDate: new Date('2026-09-20T08:00:00Z'),
-      approxToman: 125_050_000,
-    },
+    { currency: 'USD', total: 1_550.5, rate: 100_000, rateDate: new Date('2026-09-20T08:00:00Z'), approxToman: 155_050_000 },
   ]);
+  assert.deepEqual(financials.unpricedBalances, [{ currency: 'EUR', total: 200 }]);
   await assertBooksAddUp();
 });
 
-test('the dashboard card shows the Toman total, and each currency with its rate and date or «no rate»', async () => {
+test('the dashboard card shows the total, its account types, the rate and date used, and a currency with no rate', async () => {
   await seedAccounts();
   const html = renderToStaticMarkup(React.createElement(FinancialCards, { financials: await getDashboardFinancials() }));
-  assert.ok(html.includes('۶۰٬۰۰۰٬۰۰۰ تومان'), 'the Toman total');
-  assert.ok(html.includes('۱٬۲۵۰٫۵ USD'), 'the dollar total in dollars');
-  assert.ok(html.includes('۱۲۵٬۰۵۰٬۰۰۰ تومان'), 'its approximate Toman value');
+  assert.ok(html.includes('۲۲۰٬۰۵۰٬۰۰۰ تومان'), 'the total');
+  assert.ok(html.includes('بانک: ۱۵۰٬۰۰۰٬۰۰۰ تومان'));
+  assert.ok(html.includes('شخص: ۵٬۰۰۰٬۰۰۰ تومان'));
+  assert.ok(html.includes('کیف پول دیجیتال: ۳۰٬۰۰۰٬۰۰۰ تومان'));
+  assert.ok(html.includes('شامل ۱٬۵۵۰٫۵ USD'), 'the dollars it includes');
   assert.ok(html.includes('نرخ ۱۰۰٬۰۰۰ در ۱۴۰۵/۰۶/۲۹'), 'the rate and its Jalali date');
-  assert.ok(html.includes('۲۰۰ EUR'), 'the euro total');
-  assert.ok(html.includes('نرخی ثبت نشده است'), 'a currency with no rate says so');
+  assert.ok(html.includes('۲۰۰ EUR: نرخی ثبت نشده است (در جمع نیست)'), 'a currency with no rate says so');
 });
 
-test('with no foreign account there is no foreign line, and an account with no rows counts as 0', async () => {
+test('with only an empty Toman account the total is 0 and there is no foreign line', async () => {
   await prisma.account.create({ data: { name: 'تازه', type: 'BANK', currency: 'TOMAN', balance: 0 } });
   const financials = await getDashboardFinancials();
   assert.equal(financials.totalBalance, 0);
-  assert.deepEqual(financials.foreignBalances, []);
+  assert.deepEqual([financials.foreignBalances, financials.unpricedBalances], [[], []]);
 });
 
-test('the balance sheet counts only Toman cash in its Toman figures and lists the foreign cash on its own', async () => {
+test('the balance sheet\'s cash is the dashboard\'s «موجودی کل», and it is in the total assets', async () => {
   await seedAccounts();
   const sheet = await getBalanceSheet(new Date());
-  assert.equal(sheet.assets.cash, 60_000_000);
-  assert.deepEqual(
-    sheet.assets.foreignCash.map((f) => [f.currency, f.total, f.approxToman]),
-    [['EUR', 200, null], ['USD', 1_250.5, 125_050_000]],
-  );
-  assert.equal(sheet.assets.total, 60_000_000, 'nothing else is on this balance sheet');
-  assert.equal(sheet.assets.approxTotalWithForeign, null, 'the euro has no rate, so no approximate total');
+  assert.equal(sheet.assets.cash, TOTAL);
+  assert.equal((await getDashboardFinancials()).totalBalance, sheet.assets.cash);
+  assert.deepEqual(sheet.assets.unpricedCash, [{ currency: 'EUR', total: 200 }]);
+  assert.equal(sheet.assets.total, TOTAL, 'nothing else is on this balance sheet');
   assert.equal(sheet.equity.total, sheet.assets.total - sheet.liabilities.total);
 
-  // The dashboard and the balance sheet show the same Toman cash.
-  assert.equal((await getDashboardFinancials()).totalBalance, sheet.assets.cash);
-
+  // Once the euro has a rate, it is added too.
   await prisma.exchangeRate.create({ data: { currency: 'EUR', rateToToman: 110_000, date: new Date('2026-09-21T08:00:00Z') } });
   const priced = await getBalanceSheet(new Date());
-  assert.equal(priced.assets.approxTotalWithForeign, 60_000_000 + 125_050_000 + 22_000_000);
+  assert.equal(priced.assets.cash, TOTAL + 22_000_000);
+  assert.deepEqual(priced.assets.unpricedCash, []);
 
   const html = renderToStaticMarkup(React.createElement(BalanceSheetReport, { data: priced }));
-  assert.ok(html.includes('نقدینگی USD'));
-  assert.ok(html.includes('جمع با احتساب ارز (تقریبی)'));
-  assert.ok(html.includes('۲۰۷٬۰۵۰٬۰۰۰ تومان'));
+  assert.ok(html.includes('شامل USD'));
+  assert.ok(html.includes('نرخ ۱۱۰٬۰۰۰ در ۱۴۰۵/۰۶/۳۰'));
+  assert.ok(html.includes('کیف پول دیجیتال'));
 });
 
-test('totalsByCurrency sums in exact decimals', () => {
-  const totals = totalsByCurrency(
+test('cashPosition sums in exact decimals', () => {
+  const position = cashPosition(
     [
-      { currency: 'USD', balance: '0.1' },
-      { currency: 'USD', balance: '0.2' },
-      { currency: 'TOMAN', balance: '1000000000000' },
-      { currency: 'TOMAN', balance: '-250' },
+      { type: 'BANK', currency: 'USD', balance: '0.1' },
+      { type: 'BANK', currency: 'USD', balance: '0.2' },
+      { type: 'CASH', currency: 'TOMAN', balance: '1000000000000' },
+      { type: 'CASH', currency: 'TOMAN', balance: '-250' },
     ],
     [{ currency: 'USD', rateToToman: '100000', date: new Date('2026-09-20') }],
   );
-  assert.equal(totals.toman, 999_999_999_750);
-  assert.equal(totals.foreign[0].total, 0.3);
-  assert.equal(totals.foreign[0].approxToman, 30_000);
+  assert.equal(position.total, 999_999_999_750 + 30_000);
+  assert.equal(position.foreign[0].total, 0.3);
+  assert.equal(position.foreign[0].approxToman, 30_000);
 });
 
 // ─── «بدهی‌ها»: what is still unpaid to suppliers ────────────────────────────

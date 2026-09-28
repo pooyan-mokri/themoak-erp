@@ -34,16 +34,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { AccountForm } from './account-form';
+import { ACCOUNT_TYPE_LABELS } from '@/lib/account-label';
 
-
-/** The account types as the account form names them; EXPENSE is the system's P&L buckets. */
-const ACCOUNT_TYPE_LABELS: Record<string, string> = {
-  BANK: 'بانک',
-  CASH: 'صندوق',
-  PERSON: 'شخص',
-  CRYPTO: 'کیف پول دیجیتال',
-  EXPENSE: 'حساب هزینه',
-};
 interface Account {
   id: string;
   name: string;

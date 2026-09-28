@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
-import { latestRates, totalsByCurrency } from '@/lib/money-totals';
+import { cashPosition, latestRates } from '@/lib/money-totals';
 import { profitAmount, profitLine } from '@/lib/profit-rows';
 import { tehranDay } from '@/lib/tehran-day';
 
@@ -106,20 +106,21 @@ export async function getBalanceSheet(date: Date) {
   await requirePermission('profit.view');
   try {
     // Assets
+    // Every account that holds money, foreign ones at the latest rate, as the
+    // dashboard's «موجودی کل» (src/lib/money-totals.ts).
     const cashAccounts = await prisma.account.findMany({
       where: {
-        type: { in: ['CASH', 'BANK'] },
+        type: { not: 'EXPENSE' },
       },
       select: {
+        type: true,
         balance: true,
         currency: true,
       },
     });
 
-    // Toman accounts only; a foreign balance is listed in its own currency,
-    // valued at the latest recorded rate (src/lib/money-totals.ts).
-    const balances = totalsByCurrency(cashAccounts, await latestRates(prisma));
-    const totalCash = balances.toman;
+    const balances = cashPosition(cashAccounts, await latestRates(prisma));
+    const totalCash = balances.total;
 
     // Inventory Value (cost price * quantity) — split own vs. consignment
     const inventory = await prisma.inventory.findMany({
@@ -155,10 +156,6 @@ export async function getBalanceSheet(date: Date) {
 
     const totalAssets =
       totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable;
-    // The same total with the foreign cash at the latest rates; null while a currency has no rate.
-    const approxTotalWithForeign = balances.foreign.every((f) => f.approxToman !== null)
-      ? balances.foreign.reduce((sum, f) => sum + (f.approxToman as number), totalAssets)
-      : null;
 
     // Liabilities (for now, simplified - we don't track AP yet)
     const accountsPayable = 0; // TODO: implement when we add bills/payables
@@ -171,12 +168,13 @@ export async function getBalanceSheet(date: Date) {
     return {
       assets: {
         cash: totalCash,
+        cashByType: balances.byType,
         foreignCash: balances.foreign,
+        unpricedCash: balances.unpriced,
         inventory: inventoryValue,
         consignmentInventory: consignmentInventoryValue,
         accountsReceivable,
         total: totalAssets,
-        approxTotalWithForeign,
       },
       liabilities: {
         accountsPayable,

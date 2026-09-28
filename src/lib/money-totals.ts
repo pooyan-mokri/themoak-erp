@@ -1,14 +1,14 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
 /**
- * Totals of account balances across currencies, for the dashboard and the
- * balance sheet.
+ * Totals of account balances across currencies, for the dashboard's «موجودی کل»
+ * and the balance sheet's cash: every account that holds money (bank, cash box,
+ * person, crypto wallet; not the EXPENSE-type P&L buckets).
  *
  * A balance is kept in its account's own currency, so a dollar balance of 1,000
- * is 1,000 dollars, not 1,000 Toman. The Toman total adds Toman accounts only.
- * Every other currency is totalled on its own and, when a rate is recorded,
- * valued at the latest recorded rate: an approximation, shown with that rate
- * and its date.
+ * is 1,000 dollars, not 1,000 Toman. A foreign balance is converted at the latest
+ * recorded rate, shown with that rate and its date. A currency with no recorded
+ * rate cannot be converted: it is listed on its own and not added.
  */
 
 export type RateRow = { currency: string; rateToToman: unknown; date: Date };
@@ -17,39 +17,59 @@ export type CurrencyTotal = {
   currency: string;
   /** The sum of the balances, in this currency. */
   total: number;
-  /** Toman per 1 unit, the latest recorded; null when no rate was ever recorded. */
-  rate: number | null;
-  rateDate: Date | null;
-  /** total × rate, approximate; null without a rate. */
-  approxToman: number | null;
+  /** Toman per 1 unit, the latest recorded. */
+  rate: number;
+  rateDate: Date;
+  /** total × rate. */
+  approxToman: number;
 };
 
-export type BalanceTotals = { toman: number; foreign: CurrencyTotal[] };
+export type CashPosition = {
+  /** Toman balances plus every foreign balance with a rate, converted. */
+  total: number;
+  /** The same total by account type (BANK, CASH, PERSON, CRYPTO, …). */
+  byType: Array<{ type: string; total: number }>;
+  /** Each foreign currency that was converted, with its rate. */
+  foreign: CurrencyTotal[];
+  /** Foreign currencies with no recorded rate: not in the total. */
+  unpriced: Array<{ currency: string; total: number }>;
+};
 
-export function totalsByCurrency(
-  accounts: Array<{ currency: string; balance: unknown }>,
+export function cashPosition(
+  accounts: Array<{ type: string; currency: string; balance: unknown }>,
   latestRates: RateRow[],
-): BalanceTotals {
-  const sums = new Map<string, Decimal>();
+): CashPosition {
+  const rateOf = (currency: string) => latestRates.find((rate) => rate.currency === currency);
+  const byCurrency = new Map<string, Decimal>();
+  const byType = new Map<string, Decimal>();
+  let total = new Decimal(0);
   for (const account of accounts) {
     const balance = new Decimal(account.balance as Decimal.Value);
-    sums.set(account.currency, (sums.get(account.currency) ?? new Decimal(0)).plus(balance));
+    byCurrency.set(account.currency, (byCurrency.get(account.currency) ?? new Decimal(0)).plus(balance));
+    const rate = account.currency === 'TOMAN' ? 1 : rateOf(account.currency)?.rateToToman;
+    if (rate === undefined) continue;
+    const toman = balance.times(rate as Decimal.Value);
+    total = total.plus(toman);
+    byType.set(account.type, (byType.get(account.type) ?? new Decimal(0)).plus(toman));
   }
-  const foreign = [...sums.entries()]
-    .filter(([currency]) => currency !== 'TOMAN')
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([currency, sum]) => {
-      const latest = latestRates.find((rate) => rate.currency === currency);
-      const rate = latest ? Number(latest.rateToToman) : null;
-      return {
-        currency,
-        total: Number(sum),
-        rate,
-        rateDate: latest?.date ?? null,
-        approxToman: rate === null ? null : Number(sum.times(rate)),
-      };
-    });
-  return { toman: Number(sums.get('TOMAN') ?? 0), foreign };
+  const foreign: CurrencyTotal[] = [];
+  const unpriced: CashPosition['unpriced'] = [];
+  for (const [currency, sum] of [...byCurrency.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    if (currency === 'TOMAN') continue;
+    const latest = rateOf(currency);
+    if (!latest) {
+      unpriced.push({ currency, total: Number(sum) });
+      continue;
+    }
+    const rate = Number(latest.rateToToman);
+    foreign.push({ currency, total: Number(sum), rate, rateDate: latest.date, approxToman: Number(sum.times(rate)) });
+  }
+  return {
+    total: Number(total),
+    byType: [...byType.entries()].map(([type, sum]) => ({ type, total: Number(sum) })),
+    foreign,
+    unpriced,
+  };
 }
 
 /** The latest recorded rate of each currency (`client` is a Prisma client or transaction). */

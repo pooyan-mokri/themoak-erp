@@ -3,14 +3,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatJalaliDate } from '@/lib/date-utils';
-import type { CurrencyTotal } from '@/lib/money-totals';
+import type { CashPosition } from '@/lib/money-totals';
+import { ACCOUNT_TYPE_LABELS } from '@/lib/account-label';
 
 interface FinancialCardsProps {
   financials: {
-    /** Toman accounts only. */
+    /** Every account that holds money, foreign ones converted at the latest rate. */
     totalBalance: number;
-    /** Each other currency's accounts, in that currency, with the latest rate when one is recorded. */
-    foreignBalances?: CurrencyTotal[];
+    balancesByType?: CashPosition['byType'];
+    /** The foreign currencies converted, with the rate used. */
+    foreignBalances?: CashPosition['foreign'];
+    /** Foreign currencies with no rate recorded: not in the total. */
+    unpricedBalances?: CashPosition['unpriced'];
     totalReceivables: number;
     totalPayables: number;
   };
@@ -31,17 +35,24 @@ export function FinancialCards({ financials }: FinancialCardsProps) {
           <DollarSign className="h-4 w-4 text-muted-foreground animate-pulse-slow" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatCurrency(financials.totalBalance)}</div>
+          <div className="text-2xl font-bold">{formatCurrency(Math.round(financials.totalBalance))}</div>
           <p className="text-xs text-muted-foreground">
-            بانک‌ها و صندوق
+            همه حساب‌ها، ارزها به آخرین نرخ ثبت‌شده
           </p>
-          {/* A foreign balance is not added to the Toman total: it is shown in its own currency. */}
+          {(financials.balancesByType ?? []).map((part) => (
+            <p key={part.type} className="text-xs text-muted-foreground mt-1">
+              {`${ACCOUNT_TYPE_LABELS[part.type] ?? part.type}: ${formatCurrency(Math.round(part.total))}`}
+            </p>
+          ))}
           {(financials.foreignBalances ?? []).map((foreign) => (
             <p key={foreign.currency} className="text-xs text-muted-foreground mt-1">
-              {`+ ${formatNumber(foreign.total)} ${foreign.currency}`}
-              {foreign.rate !== null && foreign.approxToman !== null
-                ? ` ≈ ${formatCurrency(Math.round(foreign.approxToman))} (نرخ ${formatNumber(foreign.rate)} در ${formatJalaliDate(foreign.rateDate ?? undefined)})`
-                : ' (نرخی ثبت نشده است)'}
+              {`شامل ${formatNumber(foreign.total)} ${foreign.currency} ≈ ${formatCurrency(Math.round(foreign.approxToman))} (نرخ ${formatNumber(foreign.rate)} در ${formatJalaliDate(foreign.rateDate)})`}
+            </p>
+          ))}
+          {/* A currency with no rate cannot be converted: shown on its own, not added. */}
+          {(financials.unpricedBalances ?? []).map((unpriced) => (
+            <p key={unpriced.currency} className="text-xs text-amber-700 mt-1">
+              {`${formatNumber(unpriced.total)} ${unpriced.currency}: نرخی ثبت نشده است (در جمع نیست)`}
             </p>
           ))}
         </CardContent>
