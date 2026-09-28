@@ -65,13 +65,13 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
         {project.startDate && (
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>شروع: {new Date(project.startDate).toLocaleDateString('fa-IR')}</span>
+            <span>شروع: {new Date(project.startDate).toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' })}</span>
           </div>
         )}
         {project.endDate && (
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>پایان: {new Date(project.endDate).toLocaleDateString('fa-IR')}</span>
+            <span>پایان: {new Date(project.endDate).toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' })}</span>
           </div>
         )}
         {project.budget && (

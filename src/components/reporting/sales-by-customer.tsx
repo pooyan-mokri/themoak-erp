@@ -40,7 +40,7 @@ export function SalesByCustomer({ data }: SalesByCustomerProps) {
                 <TableRow key={index}>
                   <TableCell className="font-medium">{customer.name}</TableCell>
                   <TableCell className="text-center">{customer.count}</TableCell>
-                  <TableCell>{customer.total.toLocaleString()}</TableCell>
+                  <TableCell>{customer.total.toLocaleString('fa-IR')}</TableCell>
                 </TableRow>
               ))
             )}

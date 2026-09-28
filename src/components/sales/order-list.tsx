@@ -213,7 +213,7 @@ export function OrderList({ orders }: OrderListProps) {
 
     // Generate filename with current date
     const now = new Date();
-    const filename = `سفارشات-${now.toLocaleDateString('fa-IR').replace(/\//g, '-')}.xlsx`;
+    const filename = `سفارشات-${now.toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' }).replace(/\//g, '-')}.xlsx`;
 
     // Download
     XLSX.writeFile(wb, filename);

@@ -205,7 +205,7 @@ export async function applyPromotion(promotionId: string, orderTotal: number) {
     if (promotion.minPurchase && orderTotal < Number(promotion.minPurchase)) {
       return { 
         success: false, 
-        message: `حداقل مبلغ خرید برای این کمپین ${Number(promotion.minPurchase).toLocaleString()} تومان است.` 
+        message: `حداقل مبلغ خرید برای این کمپین ${Number(promotion.minPurchase).toLocaleString('fa-IR')} تومان است.` 
       };
     }
 

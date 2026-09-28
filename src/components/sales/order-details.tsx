@@ -236,7 +236,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                       </div>
                     </div>
                     <div className="text-left ml-4">
-                      <div className="font-medium">{Number(item.price).toLocaleString()} تومان</div>
+                      <div className="font-medium">{Number(item.price).toLocaleString('fa-IR')} تومان</div>
                       <div className="text-sm text-muted-foreground">x {item.quantity}</div>
                     </div>
                     <div className="flex gap-2 mr-4 items-center">
@@ -296,31 +296,31 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <span>جمع کل</span>
-                  <span>{totals.gross.toLocaleString()} تومان</span>
+                  <span>{totals.gross.toLocaleString('fa-IR')} تومان</span>
                 </div>
                 {totals.discount > 0 && (
                   <div className="flex justify-between items-center text-red-600">
                     <span>تخفیف</span>
-                    <span>-{totals.discount.toLocaleString()} تومان</span>
+                    <span>-{totals.discount.toLocaleString('fa-IR')} تومان</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center font-bold text-lg">
                   <span>مبلغ قابل پرداخت</span>
-                  <span>{totals.net.toLocaleString()} تومان</span>
+                  <span>{totals.net.toLocaleString('fa-IR')} تومان</span>
                 </div>
                 <div className="flex justify-between items-center text-muted-foreground">
                   <span>پرداخت‌شده</span>
-                  <span>{totals.paid.toLocaleString()} تومان</span>
+                  <span>{totals.paid.toLocaleString('fa-IR')} تومان</span>
                 </div>
                 {totals.credit > 0 ? (
                   <div className="flex justify-between items-center font-medium text-green-600">
                     <span>بستانکار</span>
-                    <span>{totals.credit.toLocaleString()} تومان</span>
+                    <span>{totals.credit.toLocaleString('fa-IR')} تومان</span>
                   </div>
                 ) : (
                   <div className={`flex justify-between items-center font-medium ${totals.remaining > 0 ? 'text-red-600' : ''}`}>
                     <span>باقی‌مانده</span>
-                    <span>{totals.remaining.toLocaleString()} تومان</span>
+                    <span>{totals.remaining.toLocaleString('fa-IR')} تومان</span>
                   </div>
                 )}
               </div>
@@ -350,7 +350,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                         </div>
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>تعداد: {ret.quantity}</span>
-                          <span>وجه پس‌داده‌شده: {Number(ret.transaction?.amountInToman ?? 0).toLocaleString()} تومان</span>
+                          <span>وجه پس‌داده‌شده: {Number(ret.transaction?.amountInToman ?? 0).toLocaleString('fa-IR')} تومان</span>
                         </div>
                         {ret.reason && (
                           <div className="text-sm text-muted-foreground">دلیل: {ret.reason}</div>
@@ -377,7 +377,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                             {(settlements.get(ex.id) ?? []).length === 0 && 'بدون مابه‌التفاوت'}
                             {(settlements.get(ex.id) ?? []).map((part) => (
                               <span key={part.label}>
-                                {part.label}: {Math.round(part.amount).toLocaleString()} تومان
+                                {part.label}: {Math.round(part.amount).toLocaleString('fa-IR')} تومان
                               </span>
                             ))}
                           </span>
@@ -441,7 +441,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                   {order.received.map((row) => (
                     <div key={row.id} className="flex items-center justify-between gap-2 text-sm">
                       <span className="min-w-0 truncate">
-                        {formatJalaliDate(row.date)} · {row.amountInToman.toLocaleString()} تومان
+                        {formatJalaliDate(row.date)} · {row.amountInToman.toLocaleString('fa-IR')} تومان
                         {row.accountName ? ` · ${row.accountName}` : ''}
                       </span>
                       <TransactionReceipt

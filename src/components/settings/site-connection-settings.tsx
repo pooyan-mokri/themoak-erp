@@ -35,7 +35,7 @@ function listPreview(values: string[]) {
 }
 
 function when(iso: string) {
-  return `${formatJalaliDate(iso)} ${new Date(iso).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}`;
+  return `${formatJalaliDate(iso)} ${new Date(iso).toLocaleTimeString('fa-IR', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function age(iso: string) {
@@ -246,7 +246,7 @@ export function SiteConnectionSettings({ initial }: { initial: SiteConnectionFor
               <div className="font-medium">{last.message}</div>
               <div className="text-xs text-muted-foreground mt-1">
                 آخرین اجرا: {formatJalaliDate(last.at)}{' '}
-                {new Date(last.at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
+                {new Date(last.at).toLocaleTimeString('fa-IR', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit' })}
               </div>
               {last.ok && (
                 <ul className="text-xs text-muted-foreground mt-2 space-y-1">

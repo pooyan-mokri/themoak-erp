@@ -37,7 +37,7 @@ export function CartSummary({ cart, onRemove, onUpdateQuantity, total }: CartSum
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm md:text-base truncate">{item.product.name}</div>
             <div className="text-xs md:text-sm text-muted-foreground">
-              {Number(item.product.sellPrice).toLocaleString()} تومان
+              {Number(item.product.sellPrice).toLocaleString('fa-IR')} تومان
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">

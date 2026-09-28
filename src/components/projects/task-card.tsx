@@ -82,7 +82,7 @@ export function TaskCard({ task, projectId, users = [] }: TaskCardProps) {
             {task.dueDate && (
               <div className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                <span>{new Date(task.dueDate).toLocaleDateString('fa-IR')}</span>
+                <span>{new Date(task.dueDate).toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' })}</span>
               </div>
             )}
             {assigneeName(task, users) && (

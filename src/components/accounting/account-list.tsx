@@ -80,7 +80,7 @@ export function AccountList({ accounts }: AccountListProps) {
                     <Badge variant="outline">{ACCOUNT_TYPE_LABELS[account.type] ?? account.type}</Badge>
                   </TableCell>
                   <TableCell>{account.currency}</TableCell>
-                  <TableCell dir="ltr" className="text-right">{Number(account.balance).toLocaleString()}</TableCell>
+                  <TableCell dir="ltr" className="text-right">{Number(account.balance).toLocaleString('fa-IR')}</TableCell>
                   <TableCell className="text-left">
                     <AccountActions account={account} />
                   </TableCell>

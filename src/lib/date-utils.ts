@@ -4,6 +4,16 @@ import moment from 'moment-jalaali';
 moment.loadPersian({ dialect: 'persian-modern', usePersianDigits: true });
 
 /**
+ * Dates and times are shown as Tehran lives them, whatever clock renders
+ * them: the server runs in UTC (Vercel) and the browser in Tehran, so a
+ * format in the runtime's own zone showed the server's hour (and, after
+ * 20:30, the day before) and failed hydration. Iran has kept +03:30 all
+ * year since 2022 (src/lib/tehran-day.ts).
+ */
+const TEHRAN_UTC_OFFSET_MINUTES = 3 * 60 + 30;
+const inTehran = (date: Date | string) => moment(date).utcOffset(TEHRAN_UTC_OFFSET_MINUTES);
+
+/**
  * Format a date to Persian Jalali format
  * @param date - Date object, string, or undefined
  * @param format - Format string (default: 'jYYYY/jMM/jDD')
@@ -14,7 +24,7 @@ export function formatJalaliDate(
   format: string = 'jYYYY/jMM/jDD'
 ): string {
   if (!date) return '-';
-  return moment(date).format(format);
+  return inTehran(date).format(format);
 }
 
 /**
@@ -26,7 +36,7 @@ export function formatJalaliDateTime(
   date: Date | string | undefined
 ): string {
   if (!date) return '-';
-  return moment(date).format('jYYYY/jMM/jDD HH:mm');
+  return inTehran(date).format('jYYYY/jMM/jDD HH:mm');
 }
 
 /**
@@ -38,7 +48,7 @@ export function formatJalaliDateLong(
   date: Date | string | undefined
 ): string {
   if (!date) return '-';
-  return moment(date).format('jYYYY jMMMM jDD');
+  return inTehran(date).format('jYYYY jMMMM jDD');
 }
 
 /**
@@ -50,7 +60,7 @@ export function formatJalaliDateShort(
   date: Date | string | undefined
 ): string {
   if (!date) return '-';
-  return moment(date).format('jDD jMMMM');
+  return inTehran(date).format('jDD jMMMM');
 }
 
 /**
@@ -83,7 +93,7 @@ export function parseJalaliDate(
  * @returns Current date in Jalali format
  */
 export function getCurrentJalaliDate(): string {
-  return moment().format('jYYYY/jMM/jDD');
+  return inTehran(new Date()).format('jYYYY/jMM/jDD');
 }
 
 /**
@@ -91,7 +101,7 @@ export function getCurrentJalaliDate(): string {
  * @returns Current date and time in Jalali format
  */
 export function getCurrentJalaliDateTime(): string {
-  return moment().format('jYYYY/jMM/jDD HH:mm:ss');
+  return inTehran(new Date()).format('jYYYY/jMM/jDD HH:mm:ss');
 }
 
 /**

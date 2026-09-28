@@ -634,7 +634,7 @@ export function PostAuditTab({ audit, isAdmin, canSeeCost }: PostAuditTabProps) 
               <div>
                 <p className="font-semibold">انبارگردانی تکمیل شد</p>
                 <p className="text-sm text-green-600">
-                  در تاریخ: {audit.completedDate && new Date(audit.completedDate).toLocaleDateString('fa-IR')}
+                  در تاریخ: {audit.completedDate && new Date(audit.completedDate).toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' })}
                 </p>
               </div>
             </div>

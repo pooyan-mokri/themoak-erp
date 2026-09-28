@@ -72,10 +72,10 @@ export default async function AssetsPage() {
                     {formatJalaliDate(asset.purchaseDate)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {Number(asset.purchasePrice).toLocaleString()} تومان
+                    {Number(asset.purchasePrice).toLocaleString('fa-IR')} تومان
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-bold">
-                    {Math.round(asset.currentValue).toLocaleString()} تومان
+                    {Math.round(asset.currentValue).toLocaleString('fa-IR')} تومان
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {asset.usefulLife}

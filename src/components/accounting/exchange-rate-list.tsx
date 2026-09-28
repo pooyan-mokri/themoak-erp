@@ -71,7 +71,7 @@ export function ExchangeRateManager({ rates }: { rates: any[] }) {
               {rates.map((rate) => (
                 <TableRow key={rate.id}>
                   <TableCell className="font-bold">{rate.currency}</TableCell>
-                  <TableCell>{Number(rate.rateToToman).toLocaleString()}</TableCell>
+                  <TableCell>{Number(rate.rateToToman).toLocaleString('fa-IR')}</TableCell>
                   <TableCell>{formatJalaliDate(rate.date)}</TableCell>
                 </TableRow>
               ))}

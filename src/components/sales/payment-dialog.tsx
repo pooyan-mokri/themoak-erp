@@ -112,7 +112,7 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
     }
 
     if (paymentAmount > remainingDebt) {
-      toast.error(`مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString()} تومان) باشد.`);
+      toast.error(`مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString('fa-IR')} تومان) باشد.`);
       return;
     }
 
@@ -158,15 +158,15 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">مبلغ کل سفارش:</span>
-              <span className="font-medium">{totalAmount.toLocaleString()} تومان</span>
+              <span className="font-medium">{totalAmount.toLocaleString('fa-IR')} تومان</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">مبلغ پرداخت شده:</span>
-              <span className="font-medium text-green-600">{paidAmount.toLocaleString()} تومان</span>
+              <span className="font-medium text-green-600">{paidAmount.toLocaleString('fa-IR')} تومان</span>
             </div>
             <div className="flex justify-between text-lg font-bold border-t pt-2">
               <span>بدهی باقیمانده:</span>
-              <span className="text-red-600">{remainingDebt.toLocaleString()} تومان</span>
+              <span className="text-red-600">{remainingDebt.toLocaleString('fa-IR')} تومان</span>
             </div>
           </div>
 
@@ -174,10 +174,10 @@ export function PaymentDialog({ order, open, onOpenChange }: PaymentDialogProps)
             <div className="space-y-2 rounded-md border border-green-200 bg-green-50 p-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">اعتبار مشتری:</span>
-                <span className="font-medium text-green-700">{creditBalance.toLocaleString()} تومان</span>
+                <span className="font-medium text-green-700">{creditBalance.toLocaleString('fa-IR')} تومان</span>
               </div>
               <Button type="button" variant="outline" className="w-full" onClick={handleUseCredit} disabled={isSubmitting}>
-                پرداخت {creditToUse.toLocaleString()} تومان از اعتبار مشتری
+                پرداخت {creditToUse.toLocaleString('fa-IR')} تومان از اعتبار مشتری
               </Button>
               <p className="text-xs text-muted-foreground">بدون دریافت وجه؛ از اعتبار مشتری کم می‌شود.</p>
             </div>

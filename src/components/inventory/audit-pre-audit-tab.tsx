@@ -134,7 +134,7 @@ export function PreAuditTab({ audit }: PreAuditTabProps) {
               <span className="font-medium">موجودی فریز شده است</span>
               {audit.frozenAt && (
                 <span className="text-sm text-muted-foreground">
-                  در تاریخ: {new Date(audit.frozenAt).toLocaleDateString('fa-IR')}
+                  در تاریخ: {new Date(audit.frozenAt).toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' })}
                 </span>
               )}
             </div>

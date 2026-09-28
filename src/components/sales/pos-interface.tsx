@@ -213,7 +213,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
     const paidVal = paidAmount === '' ? (totalAmount - discountVal - creditVal) : Number(paidAmount);
 
     if (creditTooMuch) {
-      toast.error(`از اعتبار مشتری حداکثر ${creditMax.toLocaleString()} تومان قابل استفاده است.`);
+      toast.error(`از اعتبار مشتری حداکثر ${creditMax.toLocaleString('fa-IR')} تومان قابل استفاده است.`);
       return;
     }
 
@@ -298,7 +298,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
             disabled={cart.length === 0}
             onClick={openCheckout}
           >
-            تسویه حساب ({totalAmount.toLocaleString()} تومان)
+            تسویه حساب ({totalAmount.toLocaleString('fa-IR')} تومان)
           </Button>
         </div>
       </div>
@@ -316,7 +316,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               <span className="absolute top-2 left-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
                 {cart.reduce((sum, item) => sum + item.quantity, 0)}
               </span>
-              سبد خرید ({totalAmount.toLocaleString()} تومان)
+              سبد خرید ({totalAmount.toLocaleString('fa-IR')} تومان)
             </>
           ) : (
             'سبد خرید خالی است'
@@ -341,7 +341,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
           <div className="p-4 border-t bg-gray-50 flex-shrink-0 space-y-2">
             <div className="flex justify-between items-center text-lg font-bold">
               <span>جمع کل:</span>
-              <span>{totalAmount.toLocaleString()} تومان</span>
+              <span>{totalAmount.toLocaleString('fa-IR')} تومان</span>
             </div>
             <Button
               className="w-full h-14 text-lg font-semibold"
@@ -541,7 +541,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
               <div className="space-y-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-900">
                 <div className="flex justify-between text-base md:text-sm">
                   <span className="text-green-800 dark:text-green-200">اعتبار مشتری:</span>
-                  <span className="font-medium text-green-700">{customerCredit.toLocaleString()} تومان</span>
+                  <span className="font-medium text-green-700">{customerCredit.toLocaleString('fa-IR')} تومان</span>
                 </div>
                 <Label className="text-base md:text-sm">استفاده از اعتبار (تومان)</Label>
                 <div className="flex gap-2">
@@ -558,7 +558,7 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
                   </Button>
                 </div>
                 {creditTooMuch && (
-                  <p className="text-red-500 text-sm">حداکثر {creditMax.toLocaleString()} تومان قابل استفاده است.</p>
+                  <p className="text-red-500 text-sm">حداکثر {creditMax.toLocaleString('fa-IR')} تومان قابل استفاده است.</p>
                 )}
               </div>
             )}
@@ -573,26 +573,26 @@ export function POSInterface({ products, customers: initialCustomers, accounts, 
             <div className="pt-4 border-t space-y-3 md:space-y-2">
               <div className="flex justify-between text-base md:text-sm">
                 <span>مبلغ کل:</span>
-                <span>{totalAmount.toLocaleString()} تومان</span>
+                <span>{totalAmount.toLocaleString('fa-IR')} تومان</span>
               </div>
               <div className="flex justify-between text-base md:text-sm text-red-600">
                 <span>تخفیف:</span>
-                <span>{(Number(discount) || 0).toLocaleString()} تومان</span>
+                <span>{(Number(discount) || 0).toLocaleString('fa-IR')} تومان</span>
               </div>
               <div className="flex justify-between text-xl md:text-lg font-bold">
                 <span>مبلغ قابل پرداخت:</span>
-                <span>{finalAmount.toLocaleString()} تومان</span>
+                <span>{finalAmount.toLocaleString('fa-IR')} تومان</span>
               </div>
               {creditVal > 0 && (
                 <div className="flex justify-between text-base md:text-sm text-green-700">
                   <span>از اعتبار مشتری:</span>
-                  <span>{creditVal.toLocaleString()} تومان</span>
+                  <span>{creditVal.toLocaleString('fa-IR')} تومان</span>
                 </div>
               )}
               {debt > 0 && (
                 <div className="flex justify-between text-base md:text-sm text-orange-600 font-medium bg-orange-50 p-3 md:p-2 rounded">
                   <span>مانده حساب (بدهی):</span>
-                  <span>{debt.toLocaleString()} تومان</span>
+                  <span>{debt.toLocaleString('fa-IR')} تومان</span>
                 </div>
               )}
             </div>

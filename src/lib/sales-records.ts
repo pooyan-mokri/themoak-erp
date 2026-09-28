@@ -50,7 +50,7 @@ export async function bookOrderPayment(
   const totalAmount = orderNet(order);
   const remainingDebt = totalAmount - Number(order.paidAmount);
   if (amount > remainingDebt) {
-    throw new Error(`مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString()} تومان) باشد.`);
+    throw new Error(`مبلغ پرداخت نمی‌تواند بیشتر از بدهی باقیمانده (${remainingDebt.toLocaleString('fa-IR')} تومان) باشد.`);
   }
 
   const account = await tx.account.findUnique({ where: { id: accountId } });

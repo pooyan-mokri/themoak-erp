@@ -28,7 +28,7 @@ export default async function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {pl.totalIncome.toLocaleString()} تومان
+                {pl.totalIncome.toLocaleString('fa-IR')} تومان
               </div>
             </CardContent>
           </Card>
@@ -39,7 +39,7 @@ export default async function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {pl.totalExpense.toLocaleString()} تومان
+                {pl.totalExpense.toLocaleString('fa-IR')} تومان
               </div>
             </CardContent>
           </Card>
@@ -50,7 +50,7 @@ export default async function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${pl.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {pl.netProfit.toLocaleString()} تومان
+                {pl.netProfit.toLocaleString('fa-IR')} تومان
               </div>
             </CardContent>
           </Card>
@@ -70,20 +70,20 @@ export default async function ReportsPage() {
             <CardContent className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">نقد و بانک:</span>
-                <span className="font-medium">{bs.assets.cashAndBank.toLocaleString()}</span>
+                <span className="font-medium">{bs.assets.cashAndBank.toLocaleString('fa-IR')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">ارزش موجودی کالا:</span>
-                <span className="font-medium">{bs.assets.inventory.toLocaleString()}</span>
+                <span className="font-medium">{bs.assets.inventory.toLocaleString('fa-IR')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">حساب‌های دریافتنی:</span>
-                <span className="font-medium">{bs.assets.accountsReceivable.toLocaleString()}</span>
+                <span className="font-medium">{bs.assets.accountsReceivable.toLocaleString('fa-IR')}</span>
               </div>
               <Separator className="my-2" />
               <div className="flex justify-between font-bold text-lg">
                 <span>جمع دارایی‌ها:</span>
-                <span>{bs.assets.total.toLocaleString()}</span>
+                <span>{bs.assets.total.toLocaleString('fa-IR')}</span>
               </div>
             </CardContent>
           </Card>
@@ -95,12 +95,12 @@ export default async function ReportsPage() {
             <CardContent className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">جمع بدهی‌ها:</span>
-                <span className="font-medium">{bs.liabilities.total.toLocaleString()}</span>
+                <span className="font-medium">{bs.liabilities.total.toLocaleString('fa-IR')}</span>
               </div>
               <Separator className="my-2" />
               <div className="flex justify-between">
                 <span className="text-muted-foreground">حقوق صاحبان سهام:</span>
-                <span className="font-medium">{bs.equity.total.toLocaleString()}</span>
+                <span className="font-medium">{bs.equity.total.toLocaleString('fa-IR')}</span>
               </div>
               <div className="text-xs text-muted-foreground mt-2">
                 (دارایی - بدهی)
@@ -131,7 +131,7 @@ export default async function ReportsPage() {
                     <tr key={index} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                       <td className="p-4 align-middle font-medium">{product.name}</td>
                       <td className="p-4 align-middle">{product.quantity}</td>
-                      <td className="p-4 align-middle">{product.total.toLocaleString()} تومان</td>
+                      <td className="p-4 align-middle">{product.total.toLocaleString('fa-IR')} تومان</td>
                     </tr>
                   ))}
                   {sales.topProducts.length === 0 && (

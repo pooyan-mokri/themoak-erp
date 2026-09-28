@@ -20,7 +20,7 @@ export function ProfitLossCard({ data }: ProfitLossCardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-600">
-            {data.totalIncome.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">تومان</span>
+            {data.totalIncome.toLocaleString('fa-IR')} <span className="text-sm font-normal text-muted-foreground">تومان</span>
           </div>
         </CardContent>
       </Card>
@@ -31,7 +31,7 @@ export function ProfitLossCard({ data }: ProfitLossCardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-red-600">
-            {data.totalExpense.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">تومان</span>
+            {data.totalExpense.toLocaleString('fa-IR')} <span className="text-sm font-normal text-muted-foreground">تومان</span>
           </div>
         </CardContent>
       </Card>
@@ -42,7 +42,7 @@ export function ProfitLossCard({ data }: ProfitLossCardProps) {
         </CardHeader>
         <CardContent>
           <div className={`text-2xl font-bold ${data.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {data.netProfit.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">تومان</span>
+            {data.netProfit.toLocaleString('fa-IR')} <span className="text-sm font-normal text-muted-foreground">تومان</span>
           </div>
         </CardContent>
       </Card>

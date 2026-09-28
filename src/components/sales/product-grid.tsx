@@ -72,7 +72,7 @@ export function ProductGrid({ products, onAddToCart, cart = [] }: ProductGridPro
                 <div className="font-medium text-xs md:text-sm line-clamp-2 min-h-[2.5rem] md:min-h-[2.75rem]">{product.name}</div>
                 <div className="text-[10px] md:text-xs text-muted-foreground">{product.sku}</div>
                 <div className="font-bold text-primary text-sm md:text-base">
-                  {Number(product.sellPrice).toLocaleString()} تومان
+                  {Number(product.sellPrice).toLocaleString('fa-IR')} تومان
                 </div>
               </CardContent>
             </Card>
