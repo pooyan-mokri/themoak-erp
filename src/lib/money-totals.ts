@@ -1,5 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
-import { landedCostPerUnit } from '@/lib/landed-cost';
+import { isClosedShort, landedCostPerUnit, receivedValueInToman } from '@/lib/landed-cost';
 import { orderTotals } from '@/lib/order-balance';
 
 /**
@@ -108,19 +108,21 @@ export const PAYABLE_PURCHASE_ORDERS = { status: { notIn: ['DRAFT', 'CANCELLED']
 
 /** What the payables reader needs of an order (a Prisma select). */
 export const PURCHASE_ORDER_DEBT_FIELDS = {
+  status: true,
   totalAmountInToman: true,
   payments: { select: { amount: true } },
-  items: { select: { quantity: true, unitCost: true, currency: true, exchangeRateSnapshot: true } },
-  additionalCosts: { select: { amount: true, currency: true, exchangeRateSnapshot: true } },
+  items: { select: { quantity: true, unitCost: true, currency: true, exchangeRateSnapshot: true, unitCostInToman: true, receivedQuantity: true } },
+  additionalCosts: { select: { amount: true, currency: true, exchangeRateSnapshot: true, amountInToman: true } },
 };
 
 type Priced = { currency: string; exchangeRateSnapshot?: unknown };
 
 type PurchaseOrderDebt = {
+  status?: string;
   totalAmountInToman: unknown;
   payments: Array<{ amount: unknown }>;
-  items?: Array<Priced & { quantity: number; unitCost: unknown }>;
-  additionalCosts?: Array<Priced & { amount: unknown }>;
+  items?: Array<Priced & { quantity: number; unitCost: unknown; unitCostInToman?: unknown; receivedQuantity?: number }>;
+  additionalCosts?: Array<Priced & { amount: unknown; amountInToman?: unknown }>;
 };
 
 /**
@@ -132,6 +134,8 @@ type PurchaseOrderDebt = {
  * costs at the latest rate (or, lacking one, the rate kept on the line).
  * Arrival costs are paid when recorded, so they are never owed. A remainder of
  * 1 Toman or less is rounding: the payment code marks an order paid at total − 1.
+ * An order closed short owes only for the units that came (receivedValueInToman
+ * in src/lib/landed-cost.ts, as the close credits the supplier with the rest).
  */
 export function unpaidOnPurchaseOrder(order: PurchaseOrderDebt, rates: RateRow[] = []): number {
   const rateOf = (line: Priced) => {
@@ -140,7 +144,9 @@ export function unpaidOnPurchaseOrder(order: PurchaseOrderDebt, rates: RateRow[]
     return new Decimal((latest?.rateToToman ?? line.exchangeRateSnapshot ?? 0) as Decimal.Value);
   };
   let total = new Decimal((order.totalAmountInToman ?? 0) as Decimal.Value);
-  if (total.isZero()) {
+  if (order.items && isClosedShort({ status: order.status, items: order.items })) {
+    total = new Decimal(receivedValueInToman(order as any, (currency) => Number(rateOf({ currency }))));
+  } else if (total.isZero()) {
     for (const item of order.items ?? []) total = total.plus(rateOf(item).times(item.quantity).times(item.unitCost as Decimal.Value));
     for (const cost of order.additionalCosts ?? []) total = total.plus(rateOf(cost).times(cost.amount as Decimal.Value));
   }

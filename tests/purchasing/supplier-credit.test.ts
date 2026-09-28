@@ -10,6 +10,8 @@ import { setTestRole } from '../stubs/auth';
 import { closePurchaseOrderShort, getPurchaseOrder, getSuppliers, receivePurchaseOrderItems } from '@/actions/supplier';
 import { payPurchaseOrderFromCredit, recordArrival, recordPurchasePartialPayment, recordPurchasePayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { DUPLICATE_REQUEST_MESSAGE } from '@/lib/request-id';
+import { getDashboardFinancials } from '@/actions/dashboard';
+import { owedTotalInToman } from '@/lib/landed-cost';
 import { balanceOf } from '../accounting/ledger';
 import { OPENING, assertPurchaseInvariants, order, purchasingWorld, type World } from './world';
 
@@ -256,6 +258,27 @@ test('closing short an order whose payments do not cover even what came creates 
   // 1,000,000 of goods and freight came; 500,000 was paid; the order stays with its payments as they are.
   const payments = await prisma.purchaseOrderPayment.findMany({ where: { purchaseOrderId: po.id } });
   assert.deepEqual(payments.map((p: any) => Number(p.amount)), [500_000]);
+  await assertPurchaseInvariants();
+});
+
+test('an order closed short owes only for what came: the dashboard and the order page agree', async () => {
+  // 10 frames at 100,000 and 200,000 freight (1,200,000), 500,000 paid, 8 came, closed short: 1,000,000 of goods
+  // and freight came, so 500,000 is still owed, not 700,000.
+  const po = await tenFrames();
+  await recordPurchasePartialPayment({ orderId: po.id, accountId: 'toman', amount: 500_000 });
+  await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: 'ARRIVED' } });
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 8 }]);
+  assert.equal((await getDashboardFinancials()).totalPayables, 700_000, 'before the close, the whole order is still to come');
+  assert.equal((await closePurchaseOrderShort(po.id, 0)).success, true);
+  assert.equal((await getDashboardFinancials()).totalPayables, 500_000);
+  // The order page reads the same rule (src/lib/landed-cost.ts owedTotalInToman) from the order it is given.
+  const { data: page } = await getPurchaseOrder(po.id);
+  const owed = owedTotalInToman(page as any, () => 1) - Number((page as any).paidAmountInToman);
+  assert.equal(owed, 500_000);
+  // Fully paid and closed short: the rest went to the supplier's credit, nothing is owed.
+  const paid = await paidShortOrder();
+  assert.equal((await closePurchaseOrderShort(paid.id)).success, true);
+  assert.equal((await getDashboardFinancials()).totalPayables, 500_000);
   await assertPurchaseInvariants();
 });
 

@@ -135,6 +135,29 @@ export function receivedValueInToman(
 }
 
 /**
+ * An order closed short (closePurchaseOrderShort): received, with a line that came in below what was ordered.
+ * An order received the old way records no received quantities and is not one.
+ */
+export function isClosedShort(order: { status?: string | null; items: Array<{ quantity: Numeric; receivedQuantity?: Numeric }> }): boolean {
+  return (
+    order.status === 'RECEIVED' &&
+    order.items.some((item) => num(item.receivedQuantity) > 0) &&
+    order.items.some((item) => num(item.receivedQuantity) < num(item.quantity))
+  );
+}
+
+/**
+ * What the supplier is owed for an order in all, in Toman, before payments: its Toman total, or for an order
+ * closed short the value of the units that came (receivedValueInToman; the rest was never delivered).
+ */
+export function owedTotalInToman(
+  order: LandedCostOrder & { status?: string | null; totalAmountInToman?: Numeric },
+  getExchangeRate: (currency: string) => number
+): number {
+  return isClosedShort(order) ? receivedValueInToman(order, getExchangeRate) : num(order.totalAmountInToman);
+}
+
+/**
  * Closing short: what was paid beyond the value of the units that came (receivedValueInToman) becomes the
  * supplier's credit. 0 when the payments do not cover even that (the rest stays owed), or differ by under a
  * toman (the payments' rounding).

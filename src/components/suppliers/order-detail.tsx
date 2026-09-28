@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
-import { landedCostPerUnit as computeLandedCostPerUnit, shortShipmentCredit } from '@/lib/landed-cost';
+import { landedCostPerUnit as computeLandedCostPerUnit, isClosedShort, owedTotalInToman, shortShipmentCredit } from '@/lib/landed-cost';
 import { canMovePurchaseOrder } from '@/lib/purchase-order-status';
 import { Package, CheckCircle, ArrowRight, CreditCard, Truck, Factory } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -299,8 +299,9 @@ export function OrderDetail({
     }
   };
 
-  // Payment figures (partial payments)
-  const totalInToman = Number(order.totalAmountInToman) || 0;
+  // Payment figures (partial payments). An order closed short owes only for the units that came.
+  const totalInToman = owedTotalInToman(order, (currency: string) => getExchangeRate(currency as Currency)) || 0;
+  const totalLabel = isClosedShort(order) ? 'مبلغ کالای رسیده' : 'مبلغ کل';
   const paidSoFar = order.paidAmountInToman ?? (order.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
   const remaining = Math.max(0, totalInToman - paidSoFar);
   const creditBalance = order.supplierCreditBalance ?? 0;
@@ -658,7 +659,7 @@ export function OrderDetail({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-lg border p-3">
-                <div className="text-xs text-muted-foreground">مبلغ کل</div>
+                <div className="text-xs text-muted-foreground">{totalLabel}</div>
                 <div className="font-bold">{Math.round(totalInToman).toLocaleString('fa-IR')}</div>
                 <div className="text-[10px] text-muted-foreground">تومان</div>
               </div>
@@ -897,7 +898,7 @@ export function OrderDetail({
             {/* Summary */}
             <div className="grid grid-cols-3 gap-2 text-center text-sm rounded-lg border p-3 bg-muted/30">
               <div>
-                <div className="text-xs text-muted-foreground">مبلغ کل</div>
+                <div className="text-xs text-muted-foreground">{totalLabel}</div>
                 <div className="font-semibold">{Math.round(totalInToman).toLocaleString('fa-IR')}</div>
               </div>
               <div>
