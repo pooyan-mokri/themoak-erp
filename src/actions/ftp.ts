@@ -11,11 +11,22 @@ import { ACCESS_DENIED_MESSAGE } from '@/lib/access';
 // receipt viewer would refuse makes every upload fail.
 const FOLDER = /^(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$/;
 
-export async function saveFTPCredentials(credentials: {
+type FtpSettings = {
   host: string;
   port: number;
   user: string;
   password: string;
+  secure: boolean;
+  basePath?: string;
+  ignoreCertificateErrors?: boolean;
+};
+
+export async function saveFTPCredentials(credentials: {
+  host: string;
+  port: number;
+  user: string;
+  /** Empty keeps the saved password. */
+  password?: string;
   secure: boolean;
   basePath?: string;
   ignoreCertificateErrors?: boolean;
@@ -40,8 +51,26 @@ export async function saveFTPCredentials(credentials: {
     };
   }
 
+  // The page never receives the saved password, so an empty field keeps it;
+  // but only for the server and login it was saved for.
+  const stored = (await readSystemSetting('ftp_credentials')) as FtpSettings | undefined;
+  let password = credentials.password ?? '';
+  if (!password) {
+    if (!stored?.password) return { success: false, error: 'رمز عبور FTP را وارد کنید.' };
+    if (stored.host !== credentials.host.trim() || stored.user !== credentials.user.trim()) {
+      return { success: false, error: 'با تغییر سرور یا نام کاربری FTP، رمز عبور را دوباره وارد کنید.' };
+    }
+    password = stored.password;
+  }
+
   try {
-    const saved = await saveSetting('ftp_credentials', { ...credentials, basePath: basePath || undefined });
+    const saved = await saveSetting('ftp_credentials', {
+      ...credentials,
+      host: credentials.host.trim(),
+      user: credentials.user.trim(),
+      password,
+      basePath: basePath || undefined,
+    });
     return saved.success ? { success: true } : saved;
   } catch (error) {
     console.error('Error saving FTP credentials:', error);
@@ -57,18 +86,11 @@ export async function getFTPCredentials() {
   }
 
   try {
-    const creds = await readSystemSetting('ftp_credentials');
-    return creds as
-      | {
-          host: string;
-          port: number;
-          user: string;
-          password: string;
-          secure: boolean;
-          basePath?: string;
-          ignoreCertificateErrors?: boolean;
-        }
-      | null;
+    const creds = (await readSystemSetting('ftp_credentials')) as FtpSettings | undefined;
+    if (!creds) return null;
+    // The password never goes to the browser: only whether one is saved.
+    const { password, ...shown } = creds;
+    return { ...shown, hasPassword: Boolean(password) };
   } catch (error) {
     console.error('Error getting FTP credentials:', error);
     return null;

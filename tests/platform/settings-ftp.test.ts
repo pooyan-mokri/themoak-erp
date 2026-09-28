@@ -1,5 +1,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fakeFtp, FTP_SETTINGS } from './fake-ftp';
 import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
@@ -28,7 +30,8 @@ const form = { ...FTP_SETTINGS, basePath: '/uploads/receipts', ignoreCertificate
 test('an admin saves the FTP settings; a trailing slash on the folder is dropped', async () => {
   assert.deepEqual(await saveFTPCredentials({ ...form, basePath: '/moak/receipts/' }), { success: true });
   assert.deepEqual(await readSystemSetting('ftp_credentials'), { ...form, basePath: '/moak/receipts' });
-  assert.deepEqual(await getFTPCredentials(), { ...form, basePath: '/moak/receipts' });
+  const { password: _password, ...shown } = form;
+  assert.deepEqual(await getFTPCredentials(), { ...shown, basePath: '/moak/receipts', hasPassword: true });
 
   // An empty folder means the default one.
   assert.deepEqual(await saveFTPCredentials({ ...form, basePath: '' }), { success: true });
@@ -126,4 +129,37 @@ test('the generic settings actions refuse in Persian, and company info stays wit
   }
   setTestRole('ADMIN');
   assert.equal(await getSetting('no_such_key'), undefined);
+});
+
+test('the FTP password never reaches the browser, and an empty password field keeps the saved one', async () => {
+  assert.deepEqual(await saveFTPCredentials({ ...form, password: '' }), { success: false, error: 'رمز عبور FTP را وارد کنید.' });
+  assert.equal(await readSystemSetting('ftp_credentials'), undefined);
+
+  await saveFTPCredentials(form);
+  for (const served of [await getFTPCredentials(), await getSetting('ftp_credentials')]) {
+    assert.equal(JSON.stringify(served).includes('ftp-secret'), false);
+    assert.equal((served as any).hasPassword, true);
+    assert.equal('password' in (served as any), false);
+  }
+
+  // The form comes back with the password field empty: the saved one stays.
+  assert.deepEqual(await saveFTPCredentials({ ...form, password: '', port: 2121, basePath: '/moak' }), { success: true });
+  assert.deepEqual(await readSystemSetting('ftp_credentials'), { ...form, port: 2121, basePath: '/moak' });
+  assert.deepEqual(await saveFTPCredentials({ ...form, password: undefined as any }), { success: true });
+  assert.equal((await readSystemSetting('ftp_credentials')).password, 'ftp-secret');
+
+  // The saved password only ever goes to the server and login it was saved for.
+  for (const change of [{ host: 'attacker.example' }, { user: 'someone-else' }]) {
+    assert.deepEqual(await saveFTPCredentials({ ...form, ...change, password: '' }), {
+      success: false,
+      error: 'با تغییر سرور یا نام کاربری FTP، رمز عبور را دوباره وارد کنید.',
+    });
+  }
+  assert.equal((await readSystemSetting('ftp_credentials')).host, 'ftp.example.test');
+
+  // A new password replaces it.
+  assert.deepEqual(await saveFTPCredentials({ ...form, host: 'ftp2.example.test', password: 'new-secret' }), { success: true });
+  assert.deepEqual([(await readSystemSetting('ftp_credentials')).host, (await readSystemSetting('ftp_credentials')).password], ['ftp2.example.test', 'new-secret']);
+  const page = readFileSync(join(process.cwd(), 'src/components/settings/company-settings-form.tsx'), 'utf8');
+  assert.doesNotMatch(page, /ftpCreds\.password/);
 });

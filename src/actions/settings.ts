@@ -22,7 +22,13 @@ export async function getSetting(key: string) {
   if (!SIGNED_IN_SETTING_KEYS.includes(key) && session.user.role !== Role.ADMIN) return undefined;
   const value = await readSystemSetting(key);
   // The WooCommerce store is gone: its url and keys are never served.
-  return key === 'woo_settings' && value ? withoutWooConnection(value) : value;
+  if (key === 'woo_settings' && value) return withoutWooConnection(value);
+  // Nor is the FTP password, even to an admin: only whether one is saved.
+  if (key === 'ftp_credentials' && value) {
+    const { password, ...shown } = value;
+    return { ...shown, hasPassword: Boolean(password) };
+  }
+  return value;
 }
 
 export async function saveSetting(key: string, value: any) {
