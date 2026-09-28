@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { receivePurchaseOrderItems } from '@/actions/supplier';
+import { closePurchaseOrderShort, receivePurchaseOrderItems } from '@/actions/supplier';
 import { updatePurchaseOrderStatus, recordPurchasePartialPayment, recordArrival, payPurchaseOrderFromCredit } from '@/actions/supplier-workflow';
 import { getLatestExchangeRates } from '@/actions/accounting';
 import { Button } from '@/components/ui/button';
@@ -185,8 +185,9 @@ export function OrderDetail({
 
   // Landed cost per unit — delegates to the same shared helper the server uses
   // when receiving goods, so what is displayed always equals what is stored.
+  // An order closed short carries its additional costs on the units received (as its stored costs do).
   const calculateLandedCostPerUnit = (item: PurchaseOrderItem, order: PurchaseOrder): number =>
-    computeLandedCostPerUnit(item, order, (currency: string) => getExchangeRate(currency as Currency));
+    computeLandedCostPerUnit(item, order, (currency: string) => getExchangeRate(currency as Currency), order.status === 'RECEIVED' ? 'received' : 'ordered');
 
   const updateReceivedItem = (itemId: string, field: string, value: number) => {
     setReceivedItems(prev => ({
@@ -248,6 +249,26 @@ export function OrderDetail({
     const newCosts = [...arrivalCosts];
     newCosts[index] = { ...newCosts[index], [field]: value } as { title: string; amount: number; currency: Currency };
     setArrivalCosts(newCosts);
+  };
+
+  const handleCloseShort = async () => {
+    const missing = order.items.reduce((sum, item) => sum + Math.max(0, item.quantity - (item.receivedQuantity || 0)), 0);
+    const question = `${missing.toLocaleString('fa-IR')} عدد از این سفارش نرسیده است. دریافت با همین کسری بسته شود؟ هزینه‌های اضافی سفارش روی کالاهای دریافت‌شده سرشکن می‌شود.`;
+    if (!window.confirm(question)) return;
+    setStatusLoading(true);
+    setError('');
+    try {
+      const result = await closePurchaseOrderShort(order.id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error || result.message || 'خطا در بستن سفارش با کسری');
+      }
+    } catch (err) {
+      setError('خطا در ارتباط با سرور');
+    } finally {
+      setStatusLoading(false);
+    }
   };
 
   const handleStatusChange = async (newStatus: string, expectedCredit?: number) => {
@@ -531,6 +552,11 @@ export function OrderDetail({
                 >
                   <Package className="w-4 h-4 ml-2" />
                   دریافت کالا
+                </Button>
+              )}
+              {order.status === 'PARTIALLY_RECEIVED' && canReceive && (
+                <Button onClick={handleCloseShort} variant="outline" disabled={statusLoading}>
+                  بستن دریافت با کسری
                 </Button>
               )}
               {canMovePurchaseOrder(order.status, 'CANCELLED') && canChangeStatus && (

@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
-import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
+import { additionalCostPerUnit, landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
 import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 import { addToConsumable } from '@/lib/fixed-asset-value';
 import { kickSiteHook } from '@/lib/site-hook';
@@ -701,6 +701,105 @@ export async function receivePurchaseOrderItems(
     if (error instanceof ReceiveRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error receiving purchase order items:', error);
     return { success: false, error: 'خطا در دریافت کالاها' };
+  }
+}
+
+/**
+ * Finish receiving a PARTIALLY_RECEIVED order with what came (a short shipment). Receipts cost each unit with
+ * the order's additional costs (freight, customs, arrival costs) spread over the units ORDERED; closing short
+ * re-spreads them over the units RECEIVED, so all of it reaches the cost of the units that came (Pooyan's
+ * decision: 10 ordered, 200,000 freight, 8 received gives 25,000 a unit). This is the one point where that is
+ * known: before it, the rest may still arrive. The part the missing units carried is added to each line's
+ * received cost and to its product's cost of record, spread over the stock on hand; for a consumable, to its
+ * asset's units. The order becomes RECEIVED. What was paid for the missing goods is not touched here.
+ */
+export async function closePurchaseOrderShort(orderId: string): Promise<ActionResult> {
+  const denied = await checkPermission('stock.manage');
+  if (denied) return denied;
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      // Hold the order: a receipt or a second close waits, then finds it received.
+      await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.purchaseOrder.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { product: true } }, additionalCosts: true, arrivalAdditionalCosts: true },
+      });
+      if (!order) throw new ReceiveRefusal('سفارش یافت نشد');
+      if (order.status !== 'PARTIALLY_RECEIVED') {
+        throw new ReceiveRefusal('فقط سفارشی که بخشی از آن دریافت شده، با کسری بسته می‌شود.');
+      }
+
+      const exchangeRates = await tx.exchangeRate.findMany({ orderBy: { date: 'desc' }, distinct: ['currency'] });
+      const getExchangeRate = (currency: string) => {
+        if (currency === 'TOMAN') return 1;
+        const rate = exchangeRates.find((r: any) => r.currency === currency);
+        if (!rate) {
+          throw new ReceiveRefusal(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+        }
+        return Number(rate.rateToToman);
+      };
+
+      let respread = 0;
+      for (const item of order.items) {
+        if (item.receivedQuantity <= 0) continue;
+        const extra =
+          item.receivedQuantity *
+          (additionalCostPerUnit(item, order, getExchangeRate, 'received') -
+            additionalCostPerUnit(item, order, getExchangeRate, 'ordered'));
+        if (Math.abs(extra) < 1e-9) continue;
+        respread += extra;
+
+        await tx.purchaseOrderItem.update({
+          where: { id: item.id },
+          data: { totalCostInToman: Number(item.totalCostInToman ?? 0) + extra },
+        });
+
+        const product = await tx.product.findUniqueOrThrow({ where: { id: item.productId } });
+        if (product.productType === 'SALEABLE' || product.productType === 'OTHER') {
+          const stock = await tx.inventory.aggregate({ where: { productId: item.productId }, _sum: { quantity: true } });
+          const onHand = Math.max(0, Number(stock._sum.quantity ?? 0));
+          // With nothing on hand (all of it sold already) there is no stock left to carry it.
+          if (onHand > 0) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { costPrice: new Prisma.Decimal(Number(product.costPrice) + extra / onHand) },
+            });
+          }
+        } else if (product.productType === 'CONSUMABLE') {
+          const asset = await tx.fixedAsset.findUnique({ where: { productId: item.productId } });
+          if (asset && (asset.quantity ?? 0) > 0) {
+            const value = (asset.quantity ?? 0) * Number(asset.purchasePrice) + extra;
+            await tx.fixedAsset.update({
+              where: { id: asset.id },
+              data: { purchasePrice: value / (asset.quantity ?? 1), currentValue: value },
+            });
+          }
+        }
+      }
+
+      await tx.purchaseOrder.update({ where: { id: orderId }, data: { status: 'RECEIVED' } });
+      const missing = order.items.reduce((sum: number, item: any) => sum + Math.max(0, item.quantity - item.receivedQuantity), 0);
+      return { missing, respread };
+    });
+
+    try {
+      revalidatePath('/dashboard/suppliers/orders');
+      revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
+      revalidatePath('/dashboard/inventory');
+    } catch (error) {
+      // Ignore revalidatePath error outside of Next.js context
+    }
+    return {
+      success: true,
+      message:
+        result.respread > 0
+          ? `دریافت سفارش با کسری ${result.missing.toLocaleString('fa-IR')} عدد بسته شد و ${Math.round(result.respread).toLocaleString('fa-IR')} تومان از هزینه‌های اضافی روی کالاهای دریافت‌شده سرشکن شد.`
+          : `دریافت سفارش با کسری ${result.missing.toLocaleString('fa-IR')} عدد بسته شد.`,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ReceiveRefusal) return { success: false, error: error.message };
+    console.error('Error closing purchase order short:', error);
+    return { success: false, error: 'خطا در بستن سفارش با کسری' };
   }
 }
 

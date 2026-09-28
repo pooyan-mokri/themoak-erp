@@ -13,12 +13,21 @@
  *   landedPerUnit_i    = unitCostInToman_i + perUnit_i
  *
  * The allocation is exact: Σ quantity_i × perUnit_i === poolInToman.
+ *
+ * Receiving costs each unit on the ORDERED quantities. An order closed short (closePurchaseOrderShort) is
+ * re-spread on the RECEIVED quantities instead, so the whole pool lands on the units that came: 10 ordered,
+ * 200,000 freight, 8 received gives 25,000 a unit (Pooyan's decision).
  */
+
+/** Which quantities the pool is spread over. */
+export type CostBasis = 'ordered' | 'received';
 
 type Numeric = number | string | { toString(): string } | null | undefined;
 
 export interface LandedCostItem {
   quantity: Numeric;
+  /** Needed for the 'received' basis only. */
+  receivedQuantity?: Numeric;
   unitCost: Numeric;
   currency?: string | null;
   /** Toman value snapshotted at order time; preferred over a live re-conversion. */
@@ -62,13 +71,16 @@ export function additionalCostPool(order: LandedCostOrder): number {
   return orderCosts + arrivalCosts;
 }
 
-/** Total ordered value in Toman — the basis for value-weighted allocation. */
+const quantityOn = (item: LandedCostItem, basis: CostBasis) => num(basis === 'received' ? item.receivedQuantity : item.quantity);
+
+/** Total ordered (or received) value in Toman — the basis for value-weighted allocation. */
 export function orderValueInToman(
   order: LandedCostOrder,
-  getExchangeRate: (currency: string) => number
+  getExchangeRate: (currency: string) => number,
+  basis: CostBasis = 'ordered'
 ): number {
   return order.items.reduce(
-    (sum, item) => sum + num(item.quantity) * unitCostInToman(item, getExchangeRate),
+    (sum, item) => sum + quantityOn(item, basis) * unitCostInToman(item, getExchangeRate),
     0
   );
 }
@@ -81,17 +93,18 @@ export function orderValueInToman(
 export function additionalCostPerUnit(
   item: LandedCostItem,
   order: LandedCostOrder,
-  getExchangeRate: (currency: string) => number
+  getExchangeRate: (currency: string) => number,
+  basis: CostBasis = 'ordered'
 ): number {
   const pool = additionalCostPool(order);
   if (pool === 0) return 0;
 
-  const totalValue = orderValueInToman(order, getExchangeRate);
+  const totalValue = orderValueInToman(order, getExchangeRate, basis);
   if (totalValue > 0) {
     return (pool * unitCostInToman(item, getExchangeRate)) / totalValue;
   }
 
-  const totalQuantity = order.items.reduce((s, i) => s + num(i.quantity), 0);
+  const totalQuantity = order.items.reduce((s, i) => s + quantityOn(i, basis), 0);
   return totalQuantity > 0 ? pool / totalQuantity : 0;
 }
 
@@ -99,7 +112,8 @@ export function additionalCostPerUnit(
 export function landedCostPerUnit(
   item: LandedCostItem,
   order: LandedCostOrder,
-  getExchangeRate: (currency: string) => number
+  getExchangeRate: (currency: string) => number,
+  basis: CostBasis = 'ordered'
 ): number {
-  return unitCostInToman(item, getExchangeRate) + additionalCostPerUnit(item, order, getExchangeRate);
+  return unitCostInToman(item, getExchangeRate) + additionalCostPerUnit(item, order, getExchangeRate, basis);
 }

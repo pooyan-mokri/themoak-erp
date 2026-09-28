@@ -4,7 +4,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { prisma, resetDatabase } from '../helpers/db';
 import { beforeQuery } from '../helpers/hooks';
 import { setTestRole } from '../stubs/auth';
-import { receivePurchaseOrder, receivePurchaseOrderItems } from '@/actions/supplier';
+import { closePurchaseOrderShort, receivePurchaseOrder, receivePurchaseOrderItems } from '@/actions/supplier';
 import { recordArrival } from '@/actions/supplier-workflow';
 import { getAssets } from '@/actions/fixed-assets';
 import { assertStockInvariants, qty, stockSnapshot } from '../inventory/stock';
@@ -282,6 +282,79 @@ test('fixed assets: one asset per unit, and a second receipt of the same product
   );
   assert.equal(await prisma.inventory.count({ where: { productId: w.lathe.id } }), 0);
   assert.equal(await statusOf(po.id), 'RECEIVED');
+});
+
+// --- short shipments (Pooyan's decision: the additional costs land on the units that came) ---
+
+test('closing short: 10 ordered, 200,000 freight, 8 received costs 25,000 a unit, all of the freight reaching cost', async () => {
+  const po = await order(w, [{ productId: w.yek.id, quantity: 10, unitCost: 100_000 }], [{ title: 'حمل', amount: 200_000, currency: 'TOMAN' }], 'ARRIVED');
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 8 }]);
+  // Received on the ordered basis: 20,000 of freight a unit, for now.
+  assert.equal(await costOf(w.yek.id), 120_000);
+  const closed = await closePurchaseOrderShort(po.id);
+  assert.deepEqual(closed, { success: true, message: 'دریافت سفارش با کسری ۲ عدد بسته شد و ۴۰٬۰۰۰ تومان از هزینه‌های اضافی روی کالاهای دریافت‌شده سرشکن شد.' });
+  assert.equal(await statusOf(po.id), 'RECEIVED');
+  assert.equal(await costOf(w.yek.id), 125_000);
+  // The line's received cost is its 8 units plus the whole 200,000.
+  assert.equal(Number((await item(po.items[0].id)).totalCostInToman), 800_000 + 200_000);
+  // Closed: nothing more comes in, and closing again does nothing.
+  assert.equal((await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 2 }])).success, false);
+  assert.equal((await closePurchaseOrderShort(po.id)).success, false);
+  assert.equal(await costOf(w.yek.id), 125_000);
+  assert.equal(await qty(w.yek.id, w.main.id), 8);
+  await assertStockInvariants();
+});
+
+test('closing short spreads the missing units\' share over the whole stock on hand of the product', async () => {
+  // 5 PANJ on hand at 300,000; 8 of 10 arrive at 100,000 + 20,000.
+  const po = await arrivedPanj();
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 8 }]);
+  assert.ok(Math.abs((await costOf(w.panj.id)) - (5 * 300_000 + 8 * 120_000) / 13) < 1e-6);
+  assert.equal((await closePurchaseOrderShort(po.id)).success, true);
+  // As if the 8 had come at 125,000 each.
+  assert.ok(Math.abs((await costOf(w.panj.id)) - (5 * 300_000 + 8 * 125_000) / 13) < 1e-6);
+});
+
+test('closing short with a whole line missing puts the whole pool on the line that came, by value', async () => {
+  const po = await order(w, [
+    { productId: w.yek.id, quantity: 10, unitCost: 100_000 },
+    { productId: w.other.id, quantity: 5, unitCost: 400_000 },
+  ], [{ title: 'حمل', amount: 100_000, currency: 'TOMAN' }], 'IN_PRODUCTION');
+  await recordArrival(po.id, [{ title: 'گمرک', amount: 200_000, currency: 'TOMAN' }], 'toman');
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 10 }]);
+  assert.equal(await costOf(w.yek.id), 110_000);
+  assert.equal((await closePurchaseOrderShort(po.id)).success, true);
+  // All 300,000 of the pool on the 10 YEK: 30,000 each.
+  assert.equal(await costOf(w.yek.id), 130_000);
+  assert.equal(Number((await item(po.items[0].id)).totalCostInToman), 1_300_000);
+  assert.equal(Number((await item(po.items[1].id)).totalCostInToman ?? 0), 0);
+  assert.equal(await costOf(w.other.id), 50_000, 'nothing of the strap arrived');
+});
+
+test('closing short a consumable adds the missing units\' share to its asset', async () => {
+  const po = await order(w, [{ productId: w.cloth.id, quantity: 10, unitCost: 50_000 }], [{ title: 'حمل', amount: 100_000, currency: 'TOMAN' }], 'ARRIVED');
+  await receivePurchaseOrderItems(po.id, w.main.id, [{ itemId: po.items[0].id, receivedQuantity: 5 }]);
+  let asset = await prisma.fixedAsset.findFirstOrThrow({ where: { productId: w.cloth.id } });
+  assert.deepEqual([asset.quantity, Number(asset.purchasePrice)], [5, 60_000]);
+  assert.equal((await closePurchaseOrderShort(po.id)).success, true);
+  asset = await prisma.fixedAsset.findFirstOrThrow({ where: { productId: w.cloth.id } });
+  // 100,000 over 5 units: 70,000 each, 350,000 in all.
+  assert.deepEqual([asset.quantity, Number(asset.purchasePrice), Number(asset.currentValue)], [5, 70_000, 350_000]);
+});
+
+test('closing short is refused before anything arrived, once received, and for roles without stock.manage', async () => {
+  const arrived = await order(w, [{ productId: w.yek.id, quantity: 2, unitCost: 1 }], [], 'ARRIVED');
+  assert.deepEqual(await closePurchaseOrderShort(arrived.id), { success: false, error: 'فقط سفارشی که بخشی از آن دریافت شده، با کسری بسته می‌شود.' });
+  assert.deepEqual(await closePurchaseOrderShort('missing'), { success: false, error: 'سفارش یافت نشد' });
+  await receivePurchaseOrderItems(arrived.id, w.main.id, [{ itemId: arrived.items[0].id, receivedQuantity: 1 }]);
+  for (const role of ['AUDITOR', 'ACCOUNTANT', 'SALES', 'PROJECT_MANAGER', 'USER', null]) {
+    setTestRole(role);
+    assert.equal((await closePurchaseOrderShort(arrived.id)).error, DENIED, String(role));
+  }
+  assert.equal(await statusOf(arrived.id), 'PARTIALLY_RECEIVED');
+  setTestRole('WAREHOUSE');
+  assert.equal((await closePurchaseOrderShort(arrived.id)).success, true);
+  assert.equal(await statusOf(arrived.id), 'RECEIVED');
 });
 
 test('the old whole-order receive now receives what remains, through the same path', async () => {

@@ -6,7 +6,9 @@
 --    whole order RECEIVED; the old whole-order receive and a manual
 --    ARRIVED -> RECEIVED move set RECEIVED without touching the lines; and a
 --    PARTIALLY_RECEIVED order lost its receive button. Each row is a line whose
---    remaining units never reached stock.
+--    remaining units never reached stock. From the short-shipment change on, an
+--    order closed short on purpose (closePurchaseOrderShort) is RECEIVED with
+--    units missing too; its additional costs were re-spread when it was closed.
 SELECT po."number",
        po."status",
        po."createdAt",
