@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
-import { cashPosition, latestRates } from '@/lib/money-totals';
+import { cashPosition, latestRates, supplierPositions } from '@/lib/money-totals';
 import { profitAmount, profitLine } from '@/lib/profit-rows';
 import { tehranDay } from '@/lib/tehran-day';
 
@@ -119,8 +119,14 @@ export async function getBalanceSheet(date: Date) {
       },
     });
 
-    const balances = cashPosition(cashAccounts, await latestRates(prisma));
+    const rates = await latestRates(prisma);
+    const balances = cashPosition(cashAccounts, rates);
     const totalCash = balances.total;
+
+    // Purchase orders: what is still owed on placed orders (the dashboard's
+    // «بدهی‌ها»), and what was paid on orders not yet received, an asset until
+    // the goods are in stock (src/lib/money-totals.ts).
+    const suppliers = await supplierPositions(prisma, rates);
 
     // Inventory Value (cost price * quantity) — split own vs. consignment
     const inventory = await prisma.inventory.findMany({
@@ -155,10 +161,10 @@ export async function getBalanceSheet(date: Date) {
     );
 
     const totalAssets =
-      totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable;
+      totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable + suppliers.prepaid;
 
-    // Liabilities (for now, simplified - we don't track AP yet)
-    const accountsPayable = 0; // TODO: implement when we add bills/payables
+    // Liabilities: what is still owed to suppliers
+    const accountsPayable = suppliers.payables;
 
     const totalLiabilities = accountsPayable;
 
@@ -174,6 +180,7 @@ export async function getBalanceSheet(date: Date) {
         inventory: inventoryValue,
         consignmentInventory: consignmentInventoryValue,
         accountsReceivable,
+        prepaidPurchases: suppliers.prepaid,
         total: totalAssets,
       },
       liabilities: {

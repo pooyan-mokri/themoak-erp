@@ -133,3 +133,32 @@ export function unpaidOnPurchaseOrder(order: PurchaseOrderDebt, rates: RateRow[]
   const unpaid = total.minus(paid);
   return unpaid.greaterThan(1) ? Number(unpaid) : 0;
 }
+
+/** Statuses whose goods are (at least partly) in stock: their value is in the inventory. */
+const RECEIVED_STATUSES = ['RECEIVED', 'PARTIALLY_RECEIVED'];
+
+/**
+ * What the company and its suppliers owe each other on purchase orders, in
+ * Toman, for the dashboard and the balance sheet alike:
+ *  - payables: what is still unpaid on every placed, uncancelled order
+ *    (unpaidOnPurchaseOrder);
+ *  - prepaid: what was paid on orders whose goods have not been received yet
+ *    (their payments and the arrival costs paid on them), an asset until the
+ *    goods arrive in stock and their cost moves into the inventory.
+ * `client` is a Prisma client or transaction; `rates` the latest rates.
+ */
+export async function supplierPositions(client: any, rates: RateRow[]): Promise<{ payables: number; prepaid: number }> {
+  const orders = await client.purchaseOrder.findMany({
+    where: PAYABLE_PURCHASE_ORDERS,
+    select: { ...PURCHASE_ORDER_DEBT_FIELDS, status: true, arrivalAdditionalCosts: { select: { amountInToman: true } } },
+  });
+  let payables = 0;
+  let prepaid = new Decimal(0);
+  for (const order of orders) {
+    payables += unpaidOnPurchaseOrder(order, rates);
+    if (RECEIVED_STATUSES.includes(order.status)) continue;
+    for (const payment of order.payments) prepaid = prepaid.plus(new Decimal(payment.amount as Decimal.Value));
+    for (const cost of order.arrivalAdditionalCosts) prepaid = prepaid.plus(new Decimal((cost.amountInToman ?? 0) as Decimal.Value));
+  }
+  return { payables, prepaid: Number(prepaid) };
+}

@@ -3,13 +3,7 @@
 import { PrismaClient } from '@prisma/client';
 import { auth } from '@/auth';
 import { requirePermission } from '@/lib/access';
-import {
-  latestRates,
-  PAYABLE_PURCHASE_ORDERS,
-  PURCHASE_ORDER_DEBT_FIELDS,
-  cashPosition,
-  unpaidOnPurchaseOrder,
-} from '@/lib/money-totals';
+import { cashPosition, latestRates, supplierPositions } from '@/lib/money-totals';
 import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
 
 import { prisma } from '@/lib/prisma';
@@ -59,13 +53,8 @@ export async function getDashboardFinancials() {
     }, 0);
 
     // Total Payables: what is still unpaid on the purchase orders placed with
-    // suppliers, in Toman (src/lib/money-totals.ts).
-    const purchaseOrders = await prisma.purchaseOrder.findMany({
-      where: PAYABLE_PURCHASE_ORDERS,
-      select: PURCHASE_ORDER_DEBT_FIELDS,
-    });
-
-    const totalPayables = purchaseOrders.reduce((sum: number, po: any) => sum + unpaidOnPurchaseOrder(po, rates), 0);
+    // suppliers, in Toman, the balance sheet's figure too (src/lib/money-totals.ts).
+    const totalPayables = (await supplierPositions(prisma, rates)).payables;
 
     return {
       totalBalance,

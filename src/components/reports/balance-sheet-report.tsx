@@ -18,6 +18,8 @@ interface BalanceSheetData {
     inventory: number;
     consignmentInventory?: number;
     accountsReceivable: number;
+    /** Paid on purchase orders whose goods are not in stock yet. */
+    prepaidPurchases?: number;
     total: number;
   };
   liabilities: {
@@ -33,7 +35,7 @@ interface BalanceSheetReportProps {
   data: BalanceSheetData;
 }
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
   const { assets, liabilities, equity } = data;
@@ -48,6 +50,7 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
     { name: 'موجودی کالا (خودی)', value: assets.inventory },
     { name: 'کالای امانی نزد همکاران', value: assets.consignmentInventory ?? 0 },
     { name: 'حساب‌های دریافتنی', value: assets.accountsReceivable },
+    { name: 'پیش‌پرداخت خرید', value: assets.prepaidPurchases ?? 0 },
   ];
 
   return (
@@ -99,6 +102,10 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">حساب‌های دریافتنی:</span>
                 <span>{formatCurrency(assets.accountsReceivable)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">پیش‌پرداخت خرید (کالای دریافت‌نشده):</span>
+                <span>{formatCurrency(assets.prepaidPurchases ?? 0)}</span>
               </div>
             </div>
           </CardContent>
