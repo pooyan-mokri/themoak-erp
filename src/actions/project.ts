@@ -4,7 +4,10 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { ActionState, ActionResult } from '@/lib/types';
-import { checkPermission, getCurrentRole } from '@/lib/access';
+import { checkPermission, getCurrentRole, hasPermission } from '@/lib/access';
+
+/** A project's budget is finance data: shown to, and set by, finance.view only. */
+const seesBudget = () => hasPermission('finance.view');
 
 const ProjectSchema = z.object({
   name: z.string().min(1, 'نام پروژه الزامی است'),
@@ -67,7 +70,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
         status,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        budget,
+        budget: (await seesBudget()) ? budget : undefined,
       },
     });
   } catch (error) {
@@ -84,6 +87,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
 
 export async function getProjects() {
   if (!(await getCurrentRole())) return [];
+  const showBudget = await seesBudget();
   try {
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: 'desc' },
@@ -95,7 +99,7 @@ export async function getProjects() {
     });
     return projects.map((project: any) => ({
       ...project,
-      budget: project.budget ? Number(project.budget) : undefined,
+      budget: showBudget && project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
@@ -107,6 +111,7 @@ export async function getProjects() {
 
 export async function getProjectById(id: string) {
   if (!(await getCurrentRole())) return undefined;
+  const showBudget = await seesBudget();
   try {
     const project = await prisma.project.findUnique({
       where: { id },
@@ -137,7 +142,7 @@ export async function getProjectById(id: string) {
     // Map tasks with user information
     return {
       ...project,
-      budget: project.budget ? Number(project.budget) : undefined,
+      budget: showBudget && project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
@@ -159,6 +164,7 @@ export async function getProjectById(id: string) {
 
 export async function getProjectsForCalendar() {
   if (!(await getCurrentRole())) return [];
+  const showBudget = await seesBudget();
   try {
     const projects = await prisma.project.findMany({
       include: {
@@ -189,7 +195,7 @@ export async function getProjectsForCalendar() {
     // Map projects with user information
     return projects.map((project: any) => ({
       ...project,
-      budget: project.budget ? Number(project.budget) : undefined,
+      budget: showBudget && project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
@@ -342,7 +348,8 @@ export async function updateProject(id: string, prevState: ActionState, formData
         status,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        budget,
+        // A role that does not see the budget leaves it as it is.
+        budget: (await seesBudget()) ? budget : undefined,
       },
     });
   } catch (error) {

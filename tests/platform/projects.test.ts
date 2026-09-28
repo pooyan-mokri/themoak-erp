@@ -291,3 +291,46 @@ test('the task card and task list show the assignee name and a Persian priority,
   assert.doesNotMatch(card, /\{task\.priority\}/);
   assert.match(card, /PRIORITY_LABELS\[task\.priority\]/);
 });
+
+test('a project budget is shown to and set by finance.view roles only; others leave it as it is', async () => {
+  const { project } = await seed();
+  await prisma.project.update({ where: { id: project.id }, data: { budget: 7_000_000 } });
+
+  for (const role of ROLES) {
+    setTestRole(role);
+    const shown = can(role, 'finance.view') ? 7_000_000 : undefined;
+    assert.equal((await getProjects())[0].budget, shown, `list / ${role}`);
+    assert.equal((await getProjectById(project.id))!.budget, shown, `detail / ${role}`);
+    assert.equal((await getProjectsForCalendar())[0].budget, shown, `calendar / ${role}`);
+    if (!shown) {
+      for (const served of [await getProjects(), await getProjectById(project.id), await getProjectsForCalendar()]) {
+        assert.equal(JSON.stringify(served).includes('7000000'), false, role);
+      }
+    }
+  }
+
+  // Without finance.view the form has no budget field: an edit or a new project sets none.
+  for (const role of ['SALES', 'WAREHOUSE', 'PROJECT_MANAGER', 'USER']) {
+    setTestRole(role);
+    assert.equal((await updateProject(project.id, {}, projectForm({ name: 'P1', budget: '' }))).success, true, role);
+    assert.equal((await updateProject(project.id, {}, projectForm({ name: 'P1', budget: '1' }))).success, true, role);
+    assert.equal(Number((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).budget), 7_000_000, role);
+  }
+  setTestRole('SALES');
+  assert.equal((await createProject({}, projectForm({ name: 'by sales', budget: '999' }))).success, true);
+  assert.equal((await prisma.project.findFirstOrThrow({ where: { name: 'by sales' } })).budget, null);
+
+  setTestRole('ACCOUNTANT');
+  assert.equal((await updateProject(project.id, {}, projectForm({ name: 'P1', budget: '8000000' }))).success, true);
+  assert.equal(Number((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).budget), 8_000_000);
+});
+
+test('the project pages pass the budget only to finance.view roles', () => {
+  const list = readFileSync(join(process.cwd(), 'src/app/dashboard/projects/page.tsx'), 'utf8');
+  assert.match(list, /const showBudget = await hasPermission\('finance\.view'\);/);
+  assert.match(list, /<ProjectList projects=\{projects\} showBudget=\{showBudget\} \/>/);
+  assert.match(readFileSync(join(process.cwd(), 'src/app/dashboard/projects/new/page.tsx'), 'utf8'), /<ProjectForm showBudget=\{showBudget\} \/>/);
+  assert.match(readFileSync(join(process.cwd(), 'src/app/dashboard/projects/[id]/page.tsx'), 'utf8'), /showBudget=\{await hasPermission\('finance\.view'\)\}/);
+  assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-form.tsx'), 'utf8'), /\{showBudget && \(/);
+  assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-list.tsx'), 'utf8'), /column\.key !== 'budget'/);
+});

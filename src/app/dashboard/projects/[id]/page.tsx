@@ -12,6 +12,7 @@ import { getUserOptions } from '@/actions/user';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
 import { ViewToggle } from '@/components/projects/view-toggle';
 import { serializeDate } from '@/lib/serialize';
+import { hasPermission } from '@/lib/access';
 
 export default async function ProjectDetailsPage({ params }: { params: { id: string } }) {
   let project;
@@ -55,7 +56,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ProjectForm project={project} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
+          <ProjectForm project={project} showBudget={await hasPermission('finance.view')} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
           <TaskForm projectId={project.id} users={users} />
         </div>
       </div>

@@ -9,10 +9,12 @@ import { formatJalaliDate } from '@/lib/date-utils';
 
 interface ProjectListProps {
   projects: any[];
+  /** The budget is finance data (finance.view). */
+  showBudget?: boolean;
 }
 
-export function ProjectList({ projects }: ProjectListProps) {
-  const columns: DataTableColumn<any>[] = [
+export function ProjectList({ projects, showBudget = false }: ProjectListProps) {
+  const allColumns: DataTableColumn<any>[] = [
     {
       key: 'name',
       label: 'نام پروژه',
@@ -77,6 +79,7 @@ export function ProjectList({ projects }: ProjectListProps) {
       ),
     },
   ];
+  const columns = showBudget ? allColumns : allColumns.filter((column) => column.key !== 'budget');
 
   return (
     <DataTable
