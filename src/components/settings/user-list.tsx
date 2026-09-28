@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, UserPlus } from 'lucide-react';
+import { Edit, KeyRound, Trash2, UserPlus } from 'lucide-react';
 import { UserForm } from './user-form';
+import { SetPasswordDialog } from './set-password-dialog';
 import { deleteUser } from '@/actions/user';
 import { toast } from 'sonner';
 import { Role } from '@/lib/types';
@@ -19,6 +20,7 @@ interface UserListProps {
 export function UserList({ users }: UserListProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(undefined);
+  const [passwordUser, setPasswordUser] = useState<{ id: string; name: string } | undefined>(undefined);
 
   const handleEdit = (user: any) => {
     setSelectedUser(user);
@@ -113,6 +115,9 @@ export function UserList({ users }: UserListProps) {
                 <Button variant="ghost" size="icon" onClick={() => handleEdit(user)}>
                   <Edit className="h-4 w-4" />
                 </Button>
+                <Button variant="ghost" size="icon" title="تغییر رمز عبور" onClick={() => setPasswordUser(user)}>
+                  <KeyRound className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -146,6 +151,7 @@ export function UserList({ users }: UserListProps) {
         onOpenChange={setIsFormOpen} 
         user={selectedUser} 
       />
+      <SetPasswordDialog user={passwordUser} onOpenChange={(open) => !open && setPasswordUser(undefined)} />
     </div>
   );
 }

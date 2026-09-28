@@ -6,7 +6,8 @@ import bcrypt from 'bcryptjs';
 import { NextRequest } from 'next/server';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
-import { changePassword } from '@/actions/user';
+import { changePassword, setUserPassword } from '@/actions/user';
+import { ROLES } from '@/lib/permissions';
 import { resetPassword } from '@/actions/password-reset';
 
 // The real Auth.js configuration (src/auth.ts), not the test stub that @/auth maps to.
@@ -109,4 +110,45 @@ test('the column is created before db push, with the short lock timeout, as Pris
   assert.ok(sql.indexOf("set_config('lock_timeout', '5s', true)") < sql.indexOf('"passwordChangedAt"'));
   assert.match(readFileSync(join(process.cwd(), 'prisma/schema.prisma'), 'utf8'), /\n  passwordChangedAt\s+DateTime\?\n/);
   assert.match(readFileSync(join(process.cwd(), 'src/components/settings/password-form.tsx'), 'utf8'), /await signOut\(\{ callbackUrl: '\/login' \}\)/);
+});
+
+test('an admin sets another user\'s password: their sessions end, the new one signs in, and the log says so in Persian', async () => {
+  // The stub signs in test-user: here the admin. The staff member signs in as me@example.com.
+  const staff = await prisma.user.create({
+    data: { id: 'staff-user', name: 'Me', email: 'me@example.com', password: await bcrypt.hash(PASSWORD, 10), role: 'SALES' },
+  });
+  await prisma.user.create({ data: { id: 'test-user', name: 'مدیر', email: 'admin@example.com', password: 'x', role: 'ADMIN' } });
+  const before = await signIn();
+  assert.equal((await session(before!)).body.user.id, staff.id);
+  await nextSecond();
+  const set = (userId: string, newPassword: string, confirmPassword = newPassword) =>
+    setUserPassword(userId, null, form({ newPassword, confirmPassword })) as Promise<any>;
+
+  // Nobody but an admin, and nothing changes.
+  for (const role of [null, ...ROLES.filter((r) => r !== 'ADMIN')]) {
+    setTestRole(role);
+    assert.deepEqual(await set(staff.id, 'hijacked-pass'), { success: false, message: 'فقط مدیر سیستم می‌تواند کاربران را مدیریت کند.' }, String(role));
+  }
+  setTestRole('ADMIN');
+  assert.equal((await set(staff.id, '12345')).success, false);
+  assert.equal((await set(staff.id, 'new-pass-1', 'new-pass-2')).success, false);
+  assert.deepEqual(await set('no-such-user', 'new-pass-1'), { success: false, message: 'خطا در تغییر رمز عبور.' });
+  // One's own password goes through the profile page, with the current one.
+  assert.deepEqual(await set('test-user', 'new-pass-1'), { success: false, message: 'رمز عبور خودتان را از «پروفایل من» تغییر دهید.' });
+  assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: staff.id } })).passwordChangedAt, null);
+  assert.ok((await session(before!)).body, 'refusals leave the session');
+
+  const done = await set(staff.id, 'admin-set-pass');
+  assert.deepEqual(done, { success: true, message: 'رمز عبور کاربر تغییر یافت؛ او باید با رمز تازه وارد شود.' });
+  assert.equal((await session(before!)).body, null, 'their session ended');
+  assert.equal(await signIn(PASSWORD), null);
+  assert.ok(await signIn('admin-set-pass'));
+  const log = await prisma.activityLog.findFirstOrThrow({ where: { action: 'SET_PASSWORD' } });
+  assert.deepEqual([log.userId, log.details], ['test-user', 'رمز عبور کاربر Me توسط مدیر سیستم تغییر یافت.']);
+});
+
+test('the users page offers the set-password dialog', () => {
+  const list = readFileSync(join(process.cwd(), 'src/components/settings/user-list.tsx'), 'utf8');
+  assert.match(list, /<SetPasswordDialog user=\{passwordUser\}/);
+  assert.match(readFileSync(join(process.cwd(), 'src/components/settings/set-password-dialog.tsx'), 'utf8'), /setUserPassword\(user\.id, null, /);
 });

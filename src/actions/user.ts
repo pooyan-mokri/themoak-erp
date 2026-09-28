@@ -219,6 +219,52 @@ export async function deleteUser(userId: string) {
   }
 }
 
+/**
+ * An admin sets another user's password: one who forgot theirs, while the
+ * reset email is not set up, or whose account must be taken back. Their
+ * sessions end (passwordChangedAt).
+ */
+export async function setUserPassword(userId: string, prevState: any, formData: FormData) {
+  if (!(await isAdmin())) return { success: false, message: ADMIN_ONLY };
+  const schema = z.object({
+    newPassword: z.string().min(6, 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد'),
+    confirmPassword: z.string().min(1, 'تکرار رمز عبور الزامی است'),
+  }).refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'رمز عبور جدید و تکرار آن مطابقت ندارند',
+    path: ['confirmPassword'],
+  });
+  const validatedFields = schema.safeParse({
+    newPassword: formData.get('newPassword'),
+    confirmPassword: formData.get('confirmPassword'),
+  });
+  if (!validatedFields.success) {
+    return {
+      success: false,
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'لطفا خطاها را بررسی کنید.',
+    };
+  }
+
+  const currentUser = await getCurrentUser();
+  // One's own password is changed with the current one, on the profile page.
+  if (currentUser?.id === userId) {
+    return { success: false, message: 'رمز عبور خودتان را از «پروفایل من» تغییر دهید.' };
+  }
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { password: await hashPassword(validatedFields.data.newPassword), passwordChangedAt: new Date() },
+      select: { name: true },
+    });
+    await logActivity(currentUser?.id, 'SET_PASSWORD', `رمز عبور کاربر ${user.name} توسط مدیر سیستم تغییر یافت.`);
+    revalidatePath('/dashboard/settings/users');
+    return { success: true, message: 'رمز عبور کاربر تغییر یافت؛ او باید با رمز تازه وارد شود.' };
+  } catch (error) {
+    return { success: false, message: 'خطا در تغییر رمز عبور.' };
+  }
+}
+
 export async function updateProfile(prevState: any, formData: FormData) {
   const currentUser = await getCurrentUser();
   if (!currentUser) return { message: 'کاربر احراز هویت نشده است.' };
