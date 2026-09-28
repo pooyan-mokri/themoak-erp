@@ -82,9 +82,9 @@ test('an order returned in full after a discount is worth nothing to the ranking
   const returned = await sell(2_000_000, 8_000_000);
   const back = await returnOrderItem({}, form({ orderId: returned.id, orderItemId: returned.items[0].id, quantity: '1', accountId: bank.id, warehouseId: store.id }));
   assert.equal(back.success, true, back.message);
-  // The return left the order at 0 with its 2,000,000 discount still on it.
+  // The return left the order at 0; its discount went back with the goods.
   const after = await prisma.order.findUniqueOrThrow({ where: { id: returned.id } });
-  assert.deepEqual([Number(after.totalAmount), Number(after.discount)], [0, 2_000_000]);
+  assert.deepEqual([Number(after.totalAmount), Number(after.discount)], [0, 0]);
   await sell(0, 0);
 
   const [top] = (await getCRMDashboardStats()).topCustomers as any[];

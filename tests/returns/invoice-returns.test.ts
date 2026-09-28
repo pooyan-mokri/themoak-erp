@@ -70,7 +70,7 @@ test('a return books the proportional refund and the smaller discount, and the i
 
   assert.deepEqual(await orderRow(order.id), { total: A, discount: 200_000, paid: 800_000, status: 'PAID' });
   assert.equal(await tillBalance(s), 800_000);
-  const refund = await prisma.transaction.findFirstOrThrow({ where: { type: 'EXPENSE' } });
+  const refund = await prisma.transaction.findFirstOrThrow({ where: { type: 'EXPENSE', category: 'Return' } });
   assert.equal(Number(refund.amountInToman), 800_000);
   await assertInvoice(order.id, invoiceId, {
     lines: ['SOLD PANJ ×1 = 1000000', 'RETURNED PANJ (برگشتی) ×1 = 1000000'],

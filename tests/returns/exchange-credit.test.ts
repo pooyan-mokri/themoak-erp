@@ -274,8 +274,8 @@ test('credit pays part of a later POS sale: no cash row for it, the balance goes
   assert.equal(r.success, true, r.message);
   const order = await prisma.order.findFirstOrThrow({ where: { totalAmount: SMALL } });
   assert.deepEqual(await orderRow(order.id), { total: SMALL, discount: 0, paid: SMALL, status: 'PAID' });
-  // Only the cash part is a money row.
-  const rows = await prisma.transaction.findMany({ where: { orderId: order.id } });
+  // Only the cash part is a money row (the sale's cost of goods is a COGS row, not money).
+  const rows = await prisma.transaction.findMany({ where: { orderId: order.id, NOT: { category: 'COGS' } } });
   assert.deepEqual(rows.map((t: any) => [t.type, Number(t.amountInToman)]), [['INCOME', 200_000]]);
   assert.equal(await tillBalance(s), till + 200_000);
   assert.equal(await balanceOf(s.customer.id), 0);
@@ -298,7 +298,7 @@ test('a sale paid entirely from credit writes no money row, and is booked once',
   assert.equal(again.message, DUPLICATE_REQUEST_MESSAGE);
   const order = await prisma.order.findFirstOrThrow({ where: { totalAmount: price } });
   assert.deepEqual(await orderRow(order.id), { total: price, discount: 0, paid: price, status: 'PAID' });
-  assert.equal(await prisma.transaction.count({ where: { orderId: order.id } }), 0);
+  assert.equal(await prisma.transaction.count({ where: { orderId: order.id, NOT: { category: 'COGS' } } }), 0);
   assert.equal(await balanceOf(s.customer.id), 0);
 
   // Cancelling it gives the credit back, and the cancelled order is no debt.
