@@ -17,7 +17,7 @@ import { getConsignmentCommissionsReport } from '@/actions/consignment-commissio
 import { getConsignmentReport } from '@/actions/consignment-reports';
 import { CHANNELS_FIELD } from '@/lib/consignment-channels';
 import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
-import { NOT_CONSIGNMENT_MESSAGE } from '@/lib/consignment-amounts';
+import { NOT_CONSIGNMENT_MESSAGE, consignmentSplit } from '@/lib/consignment-amounts';
 import { createOrder, getOrder, getOrders, recordOrderPayment } from '@/actions/sales';
 import { INVALID_RECEIPT_MESSAGE } from '@/lib/receipt-ref';
 import { localDateString } from '@/lib/date-utils';
@@ -420,5 +420,53 @@ test('a POS sale to a partner is a receivable of that customer, not a settlement
   assert.equal((await recordOrderPayment(pos.id, w.bank.id, 10_000_000)).success, true);
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: pos.id } })).paymentStatus, 'PAID');
   assert.equal((await getPendingSettlements()).length, 1);
+  await assertInvariants();
+});
+
+test('the commission is taken after the discount: 10,000,000 with 1,000,000 off at 20% is 1,800,000 commission and 7,200,000 owed, everywhere', async () => {
+  assert.deepEqual(consignmentSplit(10_000_000, 1_000_000, 20), {
+    grossAmount: 9_000_000,
+    commissionRate: 20,
+    commissionAmount: 1_800_000,
+    netAmount: 7_200_000,
+    storedTotal: 8_200_000,
+  });
+  assert.deepEqual(consignmentSplit(500_000, 1_000_000, 20).grossAmount, 0, 'a discount beyond the goods leaves nothing to commission');
+
+  const w = await world();
+  await setRate(w, 'آنلاین', 20);
+  assert.equal((await report(w, 1, { unitPrice: 5_000_000 })).success, true);
+  const order = await prisma.order.findFirstOrThrow();
+  // A 1,000,000 discount on the day's invoice, then the rest of the day's report joins it.
+  await prisma.order.update({ where: { id: order.id }, data: { discount: 1_000_000 } });
+  assert.equal((await report(w, 2, { unitPrice: 2_500_000 })).success, true);
+
+  // Booking: the commission row and the commission expense.
+  const booked = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { commissions: true } });
+  assert.deepEqual(
+    [Number(booked.commissions[0].orderAmount), Number(booked.commissions[0].commissionAmount), Number(booked.totalAmount) - Number(booked.discount)],
+    [9_000_000, 1_800_000, 7_200_000],
+  );
+  assert.deepEqual(await expenses('CONSIGNMENT_COMMISSION'), [1_000_000, 800_000]);
+
+  // The settlement list, the outstanding report, the partner report and the statement.
+  const [pending] = await getPendingSettlements();
+  assert.deepEqual([pending.grossAmount, pending.commissionAmount, pending.totalAmount, pending.remainingAmount], [9_000_000, 1_800_000, 7_200_000, 7_200_000]);
+  assert.equal((await getConsignmentCommissionsReport()).grandTotal, 7_200_000);
+  const [partner] = (await getConsignmentReport()).partners as any[];
+  assert.deepEqual([partner.totalSales, partner.totalDebt, partner.totalCommissions], [7_200_000, 7_200_000, 1_800_000]);
+  assert.deepEqual(partner.channelBreakdown.map((row: any) => [row.grossSales, row.commissions, row.netSales]), [[9_000_000, 1_800_000, 7_200_000]]);
+  const statement = (await getPartnerStatement(w.warehouse.id))!;
+  assert.deepEqual(
+    [statement.financials.grossSales, statement.financials.commissionTotal, statement.financials.ourShare, statement.financials.balance],
+    [9_000_000, 1_800_000, 7_200_000, 7_200_000],
+  );
+  assert.deepEqual(statement.orders.map((o: any) => [o.gross, o.commission, o.net]), [[9_000_000, 1_800_000, 7_200_000]]);
+
+  // Settling it takes 7,200,000 and closes it.
+  assert.equal((await paySettlement(undefined, form({ orderId: order.id, accountId: w.bank.id }))).success, true);
+  const settled = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+  assert.deepEqual([Number(settled.paidAmount), settled.paymentStatus, Number(settled.totalAmount)], [7_200_000, 'PAID', 8_200_000]);
+  assert.equal(await balanceOf(w.bank.id), 1_000_000 + 7_200_000);
   await assertInvariants();
 });

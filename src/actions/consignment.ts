@@ -13,9 +13,15 @@ import { checkPermission, getCurrentRole, hasPermission, requirePermission } fro
 import { balanceEffect, inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
-import { consignmentAmounts, effectiveQuantity } from '@/lib/return-math';
+import { effectiveQuantity } from '@/lib/return-math';
 import { logActivity } from '@/lib/activity-log';
-import { CONSIGNMENT_ORDER, NOT_CONSIGNMENT_MESSAGE, isConsignmentOrder } from '@/lib/consignment-amounts';
+import {
+  CONSIGNMENT_ORDER,
+  NOT_CONSIGNMENT_MESSAGE,
+  consignmentSplit,
+  isConsignmentOrder,
+  settlementAmounts,
+} from '@/lib/consignment-amounts';
 import { auth } from '@/auth';
 import {
   CHANNELS_FIELD,
@@ -602,21 +608,23 @@ export async function recordConsignmentSales(input: {
             });
           }
           // Recalculate gross from ALL items, counting only units still sold
-          // (returned and exchanged units are no longer owed or commissioned)
+          // (returned and exchanged units are no longer owed or commissioned),
+          // and the commission on it after the order's discount.
           const allItems = await tx.orderItem.findMany({
             where: { orderId: order.id },
             include: { returns: true, exchanges: true },
           });
-          const newGross = allItems.reduce(
-            (sum: number, it: any) => sum + effectiveQuantity(it) * Number(it.price),
-            0,
+          const split = consignmentSplit(
+            allItems.reduce((sum: number, it: any) => sum + effectiveQuantity(it) * Number(it.price), 0),
+            Number(order.discount ?? 0),
+            rate,
           );
-          const newCommission = (newGross * rate) / 100;
-          const newNet = newGross - newCommission;
+          const newGross = split.grossAmount;
+          const newCommission = split.commissionAmount;
 
           await tx.order.update({
             where: { id: order.id },
-            data: { totalAmount: new Prisma.Decimal(newNet) },
+            data: { totalAmount: new Prisma.Decimal(split.storedTotal) },
           });
 
           // Update or create the single commission record for the order
@@ -873,7 +881,7 @@ export async function getPendingSettlements() {
       // Our share = gross − partner commission. Derive it instead of trusting
       // order.totalAmount, which is gross for legacy single-item orders.
       const { grossAmount, commissionAmount, commissionRate, netAmount, paidAmount, remainingAmount } =
-        consignmentAmounts(order);
+        settlementAmounts(order);
       return {
         ...order,
         totalAmount: netAmount,
@@ -974,8 +982,8 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
       // Net payable = gross (units still sold) − partner commission. Derived
       // so it is correct for both legacy (gross-stored) and new (net-stored)
       // orders, and after returns and exchanges.
-      const { grossAmount, commissionAmount, netAmount: netPayable, paidAmount: currentPaid, remainingAmount: remaining } =
-        consignmentAmounts(order);
+      const { storedTotal, netAmount: netPayable, paidAmount: currentPaid, remainingAmount: remaining } =
+        settlementAmounts(order);
       const payAmount = amount ?? remaining;
 
       if (payAmount <= 0) {
@@ -1034,7 +1042,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
           // Store the total net of the partner's commission, over the units still sold
           // (before the discount, as Order.totalAmount always is). A legacy order stored
           // gross is normalised here; a net one keeps the same figure.
-          totalAmount: new Prisma.Decimal(grossAmount - commissionAmount),
+          totalAmount: new Prisma.Decimal(storedTotal),
           // Always standard COMPLETED (also normalises legacy PENDING_PAYMENT)
           status: 'COMPLETED',
           // Only set transactionId for full payment (preserves last-payment ref)
@@ -1081,7 +1089,7 @@ export async function markSettlementPaidOutside(orderId: string, expectedRemaini
       if (order.siteReference !== null) throw new Error(WEBSITE_ORDER_LOCKED);
       if (!isConsignmentOrder(order)) throw new Error(NOT_CONSIGNMENT_MESSAGE);
 
-      const { grossAmount, commissionAmount, paidAmount, remainingAmount } = consignmentAmounts(order);
+      const { storedTotal, paidAmount, remainingAmount } = settlementAmounts(order);
       if (remainingAmount <= 0.01) throw new Error('این فاکتور مانده‌ای ندارد.');
       if (Math.abs(remainingAmount - expectedRemaining) > 0.5) {
         throw new Error('مانده این فاکتور از زمان باز شدن صفحه تغییر کرده است؛ صفحه را تازه کنید.');
@@ -1093,7 +1101,7 @@ export async function markSettlementPaidOutside(orderId: string, expectedRemaini
           paidAmount: new Prisma.Decimal(paidAmount + remainingAmount),
           paymentStatus: 'PAID',
           // As a full payment stores it (paySettlement): net of the partner's commission.
-          totalAmount: new Prisma.Decimal(grossAmount - commissionAmount),
+          totalAmount: new Prisma.Decimal(storedTotal),
           status: 'COMPLETED',
           tags: { push: 'تسویه بیرون از سیستم' },
         },
@@ -1448,7 +1456,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
     // The same money, split by the channel each order was sold through.
     const perChannel = new Map<string, { channel: string; gross: number; commission: number; net: number }>();
     for (const order of orders) {
-      const amounts = consignmentAmounts(order);
+      const amounts = settlementAmounts(order);
       grossSales += amounts.grossAmount;
       commissionTotal += amounts.commissionAmount;
       receivedTotal += amounts.paidAmount;
@@ -1456,7 +1464,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
       const row = perChannel.get(name) ?? { channel: name, gross: 0, commission: 0, net: 0 };
       row.gross += amounts.grossAmount;
       row.commission += amounts.commissionAmount;
-      row.net += amounts.grossAmount - amounts.commissionAmount;
+      row.net += amounts.netAmount;
       perChannel.set(name, row);
     }
     const ourShare = grossSales - commissionTotal;
@@ -1489,7 +1497,7 @@ export async function getPartnerStatement(partnerWarehouseId: string) {
           quantity: inv.quantity,
         })),
       orders: orders.map((o: any) => {
-        const { grossAmount: gross, commissionAmount: commission } = consignmentAmounts(o);
+        const { grossAmount: gross, commissionAmount: commission } = settlementAmounts(o);
         return {
           id: o.id,
           number: o.number,

@@ -4,8 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
 import { channelSummary, DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
-import { consignmentAmounts } from '@/lib/return-math';
-import { CONSIGNMENT_ORDER } from '@/lib/consignment-amounts';
+import { CONSIGNMENT_ORDER, settlementAmounts } from '@/lib/consignment-amounts';
 
 /** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
@@ -73,7 +72,7 @@ export async function getConsignmentReport() {
       // net of the partner's commission, whether the order stored it gross or net
       // (the same arithmetic as the settlement list and the partner statement).
       const totalSales = partnerOrders.reduce(
-  (sum: any, order: any) => sum + consignmentAmounts(order).netAmount,
+  (sum: any, order: any) => sum + settlementAmounts(order).netAmount,
         0
       );
 
@@ -133,7 +132,7 @@ export async function getConsignmentReport() {
         const name =
           order.consignmentChannel?.name ?? order.commissions?.[0]?.channelName ?? DEFAULT_CHANNEL_NAME;
         // Over the units still sold, as the totals above.
-        const { grossAmount: gross, commissionAmount: commission, netAmount: netSales } = consignmentAmounts(order);
+        const { grossAmount: gross, commissionAmount: commission, netAmount: netSales } = settlementAmounts(order);
         const row = byChannel.get(name) ?? {
           channel: name,
           // The channel's rate today; for a channel that is gone, the rate the order was booked at.
