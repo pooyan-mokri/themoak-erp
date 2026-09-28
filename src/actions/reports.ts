@@ -123,9 +123,9 @@ export async function getBalanceSheet(date: Date) {
     const balances = cashPosition(cashAccounts, rates);
     const totalCash = balances.total;
 
-    // Purchase orders: what is still owed on placed orders (the dashboard's
-    // «بدهی‌ها»), and what was paid on orders not yet received, an asset until
-    // the goods are in stock (src/lib/money-totals.ts).
+    // Purchase orders: owed for goods received and not yet paid, and paid for
+    // goods not yet received (src/lib/money-totals.ts). An order only placed
+    // is a commitment and is on neither side.
     const suppliers = await supplierPositions(prisma, rates);
 
     // Inventory Value (cost price * quantity) — split own vs. consignment

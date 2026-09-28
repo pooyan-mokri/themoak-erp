@@ -75,13 +75,13 @@ export function FinancialCards({ financials }: FinancialCardsProps) {
       {/* Total Payables */}
       <Card className="animate-fade-in-up hover:scale-[1.02] transition-transform duration-300" style={{ animationDelay: '0.3s' }}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">بدهی‌ها</CardTitle>
+          <CardTitle className="text-sm font-medium">مانده پرداخت به تأمین‌کنندگان</CardTitle>
           <TrendingDown className="h-4 w-4 text-red-600 animate-bounce-in" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatCurrency(financials.totalPayables)}</div>
           <p className="text-xs text-muted-foreground">
-            بدهی به تأمین‌کنندگان
+            پرداخت‌نشده از سفارش‌های خرید ثبت‌شده
           </p>
         </CardContent>
       </Card>

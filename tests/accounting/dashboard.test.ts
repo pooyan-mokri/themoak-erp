@@ -8,7 +8,8 @@ import { getDashboardFinancials, getDashboardSales, getLowStockItems, getRecentA
 import { getSalesByProduct } from '@/actions/accounting';
 import { getARAgingReport } from '@/actions/invoice';
 import { getBalanceSheet } from '@/actions/reports';
-import { recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
+import { receivePurchaseOrderItems } from '@/actions/supplier';
+import { recordArrival, recordPurchasePartialPayment, updatePurchaseOrderStatus } from '@/actions/supplier-workflow';
 import { FinancialCards } from '@/components/dashboard/financial-cards';
 import { BalanceSheetReport } from '@/components/reports/balance-sheet-report';
 import { cashPosition, unpaidOnPurchaseOrder } from '@/lib/money-totals';
@@ -330,24 +331,92 @@ test('the balance sheet values own and consignment stock at cost', async () => {
   assert.equal(sheet.assets.total, 20_000_000 + sheet.assets.cash + sheet.assets.accountsReceivable);
 });
 
-test('the balance sheet owes the dashboard\'s «بدهی‌ها» and holds what was paid on goods not yet received', async () => {
-  await purchaseOrder('PENDING_PAYMENT', 30_000_000, [10_000_000]); // owes 20M; 10M prepaid
-  const arrived = await purchaseOrder('ARRIVED', 5_000_000, [5_000_000]); // 5M prepaid, and its arrival cost
+test('the balance sheet owes for goods received and unpaid, and holds what was paid beyond the goods received', async () => {
+  const product = await prisma.product.create({ data: { name: 'PANJ', sku: 'P1', costPrice: 0, sellPrice: 1 } });
+  const withLines = async (status: string, total: number, paid: number[], received: number) => {
+    const order = await purchaseOrder(status, total, paid);
+    await prisma.purchaseOrderItem.create({
+      data: { purchaseOrderId: order.id, productId: product.id, quantity: 10, unitCost: total / 10, unitCostInToman: total / 10, currency: 'TOMAN', receivedQuantity: received },
+    });
+    return order;
+  };
+  await withLines('PENDING_PAYMENT', 30_000_000, [], 0); // placed only: a commitment
+  await withLines('PARTIALLY_PAID', 20_000_000, [8_000_000], 0); // 8M prepaid
+  const arrived = await withLines('ARRIVED', 5_000_000, [5_000_000], 0); // 5M + 1M arrival prepaid
   await prisma.purchaseOrderArrivalCost.create({ data: { purchaseOrderId: arrived.id, title: 'گمرک', amount: 1_000_000, currency: 'TOMAN', amountInToman: 1_000_000 } });
-  await purchaseOrder('PARTIALLY_RECEIVED', 6_000_000, [2_000_000]); // owes 4M; in stock, not prepaid
-  await purchaseOrder('RECEIVED', 8_000_000, [8_000_000]); // paid and in stock
-  await purchaseOrder('DRAFT', 9_000_000, []);
-  await purchaseOrder('CANCELLED', 7_000_000, [2_000_000]);
+  await withLines('PARTIALLY_RECEIVED', 10_000_000, [2_000_000], 6); // 6M received, 2M paid: owes 4M
+  await withLines('PARTIALLY_RECEIVED', 10_000_000, [9_000_000], 4); // 4M received, 9M paid: 5M prepaid
+  await withLines('RECEIVED', 8_000_000, [8_000_000], 10); // settled
+  await purchaseOrder('RECEIVED', 3_000_000, []); // received the old way, no quantities: owes 3M
+  await withLines('DRAFT', 9_000_000, [], 0);
+  await withLines('CANCELLED', 7_000_000, [2_000_000], 0);
 
   const sheet = await getBalanceSheet(new Date());
-  assert.equal(sheet.liabilities.accountsPayable, 24_000_000);
-  assert.equal(sheet.liabilities.accountsPayable, (await getDashboardFinancials()).totalPayables);
-  assert.equal(sheet.assets.prepaidPurchases, 16_000_000);
-  assert.equal(sheet.assets.total, sheet.assets.cash + 16_000_000);
-  assert.equal(sheet.equity.total, sheet.assets.total - 24_000_000);
+  assert.equal(sheet.liabilities.accountsPayable, 4_000_000 + 3_000_000);
+  assert.equal(sheet.assets.prepaidPurchases, 8_000_000 + 6_000_000 + 5_000_000);
+  assert.equal(sheet.equity.total, sheet.assets.total - sheet.liabilities.total);
+  // The dashboard's operational figure: everything still to pay on placed orders.
+  assert.equal((await getDashboardFinancials()).totalPayables, 30_000_000 + 12_000_000 + 8_000_000 + 1_000_000 + 3_000_000);
 
   const html = renderToStaticMarkup(React.createElement(BalanceSheetReport, { data: sheet }));
   assert.ok(html.includes('پیش‌پرداخت خرید'));
-  assert.ok(html.includes('۱۶٬۰۰۰٬۰۰۰ تومان'));
-  assert.ok(html.includes('۲۴٬۰۰۰٬۰۰۰ تومان'));
+  assert.ok(html.includes('۱۹٬۰۰۰٬۰۰۰ تومان'));
+  assert.ok(html.includes('۷٬۰۰۰٬۰۰۰ تومان'));
+  const card = renderToStaticMarkup(React.createElement(FinancialCards, { financials: await getDashboardFinancials() }));
+  assert.ok(card.includes('مانده پرداخت به تأمین‌کنندگان'));
+});
+
+test('placing, paying and receiving an order each leave equity where it was', async () => {
+  await openAccount('bank', 100_000_000);
+  const warehouse = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  const product = await prisma.product.create({ data: { name: 'PANJ', sku: 'P1', costPrice: 0, sellPrice: 1 } });
+  const supplier = await prisma.supplier.create({ data: { name: 'تامین‌کننده' } });
+  const order = (total: number) =>
+    prisma.purchaseOrder.create({
+      data: {
+        supplierId: supplier.id, status: 'DRAFT', totalAmount: total, totalAmountInToman: total,
+        items: { create: [{ productId: product.id, quantity: 10, unitCost: total / 10, unitCostInToman: total / 10, currency: 'TOMAN' }] },
+      },
+      include: { items: true },
+    });
+  const equity = async () => (await getBalanceSheet(new Date())).equity.total;
+  const same = async (before: number, step: string) => assert.ok(Math.abs((await equity()) - before) < 1, `${step}: ${await equity()} ≠ ${before}`);
+  const ok = (r: { success?: boolean; message?: string }) => assert.equal(r.success, true, r.message);
+  const start = await equity();
+
+  // Paid ahead: place, pay, arrive (an arrival cost paid), receive.
+  const ahead = await order(20_000_000);
+  ok(await updatePurchaseOrderStatus(ahead.id, 'PENDING_PAYMENT'));
+  await same(start, 'placed');
+  assert.deepEqual([(await getBalanceSheet(new Date())).liabilities.accountsPayable, (await getBalanceSheet(new Date())).assets.prepaidPurchases], [0, 0]);
+  ok(await recordPurchasePartialPayment({ orderId: ahead.id, accountId: 'bank', amount: 20_000_000 }));
+  await same(start, 'paid');
+  assert.equal((await getBalanceSheet(new Date())).assets.prepaidPurchases, 20_000_000);
+  ok(await updatePurchaseOrderStatus(ahead.id, 'IN_PRODUCTION'));
+  ok(await recordArrival(ahead.id, [{ title: 'حمل', amount: 2_000_000, currency: 'TOMAN' }], 'bank'));
+  await same(start, 'arrived, its freight paid');
+  ok(await receivePurchaseOrderItems(ahead.id, warehouse.id, [{ itemId: ahead.items[0].id, receivedQuantity: 10 }]));
+  await same(start, 'received');
+  let sheet = await getBalanceSheet(new Date());
+  assert.deepEqual([sheet.assets.inventory, sheet.assets.prepaidPurchases, sheet.liabilities.accountsPayable], [22_000_000, 0, 0]);
+
+  // Received before it is paid: half, then paid, then the rest.
+  const later = await order(10_000_000);
+  ok(await updatePurchaseOrderStatus(later.id, 'PENDING_PAYMENT'));
+  await same(start, 'second order placed');
+  ok(await receivePurchaseOrderItems(later.id, warehouse.id, [{ itemId: later.items[0].id, receivedQuantity: 5 }]));
+  await same(start, 'half received, unpaid');
+  assert.equal((await getBalanceSheet(new Date())).liabilities.accountsPayable, 5_000_000);
+  // The payment form takes an order waiting for payment; an order received first is paid the same way.
+  await prisma.purchaseOrder.update({ where: { id: later.id }, data: { status: 'PENDING_PAYMENT' } });
+  ok(await recordPurchasePartialPayment({ orderId: later.id, accountId: 'bank', amount: 10_000_000 }));
+  await prisma.purchaseOrder.update({ where: { id: later.id }, data: { status: 'PARTIALLY_RECEIVED' } });
+  await same(start, 'paid in full');
+  sheet = await getBalanceSheet(new Date());
+  assert.deepEqual([sheet.liabilities.accountsPayable, sheet.assets.prepaidPurchases], [0, 5_000_000]);
+  ok(await receivePurchaseOrderItems(later.id, warehouse.id, [{ itemId: later.items[0].id, receivedQuantity: 5 }]));
+  await same(start, 'the rest received');
+  sheet = await getBalanceSheet(new Date());
+  assert.deepEqual([sheet.assets.prepaidPurchases, sheet.liabilities.accountsPayable], [0, 0]);
+  await assertBooksAddUp();
 });

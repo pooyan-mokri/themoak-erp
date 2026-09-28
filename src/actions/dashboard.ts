@@ -52,9 +52,10 @@ export async function getDashboardFinancials() {
       return sum + (unpaid > 0 ? unpaid : 0);
     }, 0);
 
-    // Total Payables: what is still unpaid on the purchase orders placed with
-    // suppliers, in Toman, the balance sheet's figure too (src/lib/money-totals.ts).
-    const totalPayables = (await supplierPositions(prisma, rates)).payables;
+    // Still to pay suppliers: what is unpaid on the purchase orders placed with
+    // them, in Toman (src/lib/money-totals.ts). Operational: the balance sheet
+    // owes only for goods received.
+    const totalPayables = (await supplierPositions(prisma, rates)).unpaidOnOrders;
 
     return {
       totalBalance,

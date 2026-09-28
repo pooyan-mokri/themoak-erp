@@ -1,4 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { landedCostPerUnit } from '@/lib/landed-cost';
 
 /**
  * Totals of account balances across currencies, for the dashboard's «موجودی کل»
@@ -134,31 +135,77 @@ export function unpaidOnPurchaseOrder(order: PurchaseOrderDebt, rates: RateRow[]
   return unpaid.greaterThan(1) ? Number(unpaid) : 0;
 }
 
-/** Statuses whose goods are (at least partly) in stock: their value is in the inventory. */
-const RECEIVED_STATUSES = ['RECEIVED', 'PARTIALLY_RECEIVED'];
-
 /**
  * What the company and its suppliers owe each other on purchase orders, in
- * Toman, for the dashboard and the balance sheet alike:
- *  - payables: what is still unpaid on every placed, uncancelled order
- *    (unpaidOnPurchaseOrder);
- *  - prepaid: what was paid on orders whose goods have not been received yet
- *    (their payments and the arrival costs paid on them), an asset until the
- *    goods arrive in stock and their cost moves into the inventory.
- * `client` is a Prisma client or transaction; `rates` the latest rates.
+ * Toman.
+ *
+ * - unpaidOnOrders, the dashboard's «مانده پرداخت به تأمین‌کنندگان»: what is
+ *   still to pay on every placed, uncancelled order (unpaidOnPurchaseOrder).
+ *   An operational figure: an order placed and not yet received or paid is a
+ *   commitment, not a liability.
+ * - payables and prepaid, the balance sheet's: per order, the value of the
+ *   units received so far at their landed Toman cost (src/lib/landed-cost.ts,
+ *   the cost receiving rolls into the inventory) against what was paid on it
+ *   (its payments and the arrival costs paid when it arrived, which the
+ *   landed cost includes). Received beyond paid is owed (payables, orders
+ *   received in part or in full); paid beyond received is «پیش‌پرداخت خرید»
+ *   (orders not fully received). So placing an order changes nothing on the
+ *   balance sheet, paying moves cash into prepaid, and receiving moves prepaid
+ *   into the inventory, or makes a payable when unpaid.
+ *   An order received the old way (receivePurchaseOrder) has no received
+ *   quantities; RECEIVED, it is valued at its whole landed total.
+ *
+ * `client` is a Prisma client or transaction; `rates` the latest rates, for
+ * lines priced in a foreign currency with no Toman snapshot.
  */
-export async function supplierPositions(client: any, rates: RateRow[]): Promise<{ payables: number; prepaid: number }> {
+export async function supplierPositions(
+  client: any,
+  rates: RateRow[],
+): Promise<{ unpaidOnOrders: number; payables: number; prepaid: number }> {
   const orders = await client.purchaseOrder.findMany({
     where: PAYABLE_PURCHASE_ORDERS,
-    select: { ...PURCHASE_ORDER_DEBT_FIELDS, status: true, arrivalAdditionalCosts: { select: { amountInToman: true } } },
+    select: {
+      ...PURCHASE_ORDER_DEBT_FIELDS,
+      status: true,
+      items: {
+        select: { quantity: true, unitCost: true, currency: true, exchangeRateSnapshot: true, unitCostInToman: true, receivedQuantity: true },
+      },
+      additionalCosts: { select: { amount: true, currency: true, exchangeRateSnapshot: true, amountInToman: true } },
+      arrivalAdditionalCosts: { select: { amountInToman: true } },
+    },
   });
-  let payables = 0;
+  const rateOf = (currency: string) => {
+    if (currency === 'TOMAN') return 1;
+    return Number(rates.find((rate) => rate.currency === currency)?.rateToToman ?? 0);
+  };
+  let unpaidOnOrders = 0;
+  let payables = new Decimal(0);
   let prepaid = new Decimal(0);
   for (const order of orders) {
-    payables += unpaidOnPurchaseOrder(order, rates);
-    if (RECEIVED_STATUSES.includes(order.status)) continue;
-    for (const payment of order.payments) prepaid = prepaid.plus(new Decimal(payment.amount as Decimal.Value));
-    for (const cost of order.arrivalAdditionalCosts) prepaid = prepaid.plus(new Decimal((cost.amountInToman ?? 0) as Decimal.Value));
+    unpaidOnOrders += unpaidOnPurchaseOrder(order, rates);
+
+    let paid = new Decimal(0);
+    for (const payment of order.payments) paid = paid.plus(new Decimal(payment.amount as Decimal.Value));
+    for (const cost of order.arrivalAdditionalCosts) paid = paid.plus(new Decimal((cost.amountInToman ?? 0) as Decimal.Value));
+
+    const anyReceived = order.items.some((item: any) => item.receivedQuantity > 0);
+    let received = new Decimal(0);
+    if (anyReceived) {
+      for (const item of order.items) {
+        if (!item.receivedQuantity) continue;
+        received = received.plus(new Decimal(landedCostPerUnit(item, order, rateOf)).times(item.receivedQuantity));
+      }
+    } else if (order.status === 'RECEIVED') {
+      const arrival = order.arrivalAdditionalCosts.reduce((sum: number, cost: any) => sum + Number(cost.amountInToman ?? 0), 0);
+      received = new Decimal(unpaidOnPurchaseOrder({ ...order, payments: [] }, rates) + arrival);
+    }
+
+    const balance = received.minus(paid);
+    if (balance.greaterThan(1) && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED')) {
+      payables = payables.plus(balance);
+    } else if (balance.lessThan(-1) && order.status !== 'RECEIVED') {
+      prepaid = prepaid.minus(balance);
+    }
   }
-  return { payables, prepaid: Number(prepaid) };
+  return { unpaidOnOrders, payables: Number(payables), prepaid: Number(prepaid) };
 }
