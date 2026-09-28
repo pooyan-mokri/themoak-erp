@@ -89,6 +89,9 @@ function TaskColumn({ id, title, tasks, projectId, users, canManage }: TaskColum
 export function TaskBoard({ tasks, projectId, users = [], canManage = true }: TaskBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | undefined>(undefined);
   const [optimisticTasks, setOptimisticTasks] = useState(tasks);
+  // The drag overlay is portalled into document.body, which only exists in the browser.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Debug: Log tasks
   console.log('TaskBoard received tasks:', tasks.length, tasks.map((t) => ({ id: t.id, title: t.title, status: t.status })));
@@ -196,12 +199,13 @@ export function TaskBoard({ tasks, projectId, users = [], canManage = true }: Ta
         })}
       </div>
 
-      {createPortal(
-        <DragOverlay>
-          {activeTask ? <TaskCard task={activeTask} projectId={projectId} users={users} /> : null}
-        </DragOverlay>,
-        document.body
-      )}
+      {mounted &&
+        createPortal(
+          <DragOverlay>
+            {activeTask ? <TaskCard task={activeTask} projectId={projectId} users={users} /> : null}
+          </DragOverlay>,
+          document.body
+        )}
     </DndContext>
   );
 }
