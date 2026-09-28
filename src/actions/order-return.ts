@@ -11,6 +11,8 @@ import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { CASH_CHANGED_MESSAGE, lineValue, orderMoney, returnChange } from '@/lib/return-math';
+import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { reverseCogs } from '@/lib/cogs';
 
 const OrderReturnSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -124,6 +126,8 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
       if (warehouse.isVirtual && warehouse.customerId !== order.customerId) {
         throw new Error('این انبار مجازی متعلق به مشتری این سفارش نیست.');
       }
+      // No stock moves into a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, [warehouseId]);
 
       // 2. Value of the returned goods to this order: net of the partner's
       //    commission on a consignment sale, whose total is stored net.
@@ -287,6 +291,19 @@ export async function returnOrderItem(prevState: any, formData: FormData) {
           },
         });
       }
+      await tx.inventoryMovement.create({
+        data: {
+          productId: orderItem.productId,
+          toWarehouseId: warehouseId,
+          quantity,
+          type: 'RETURN',
+          referenceId: orderId,
+          note: `مرجوعی سفارش #${order.number}`,
+        },
+      });
+
+      // 8. The goods' cost comes off the order's cost of goods sold (src/lib/cogs.ts).
+      await reverseCogs(tx, order, 'return', [{ productId: orderItem.productId, quantity }], new Date());
       return 'done';
     });
     if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };

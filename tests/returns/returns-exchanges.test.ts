@@ -80,11 +80,11 @@ const orderNow = async (s: Sale) => {
   return { total: Number(o.totalAmount), paid: Number(o.paidAmount), status: o.paymentStatus };
 };
 const balance = async (id: string) => Number((await prisma.account.findUniqueOrThrow({ where: { id } })).balance);
-/** Every money row except the sale's own checkout row. */
+/** Every money row except the sale's own checkout row (a COGS row is cost, not money: src/lib/cogs.ts). */
 const newRows = async (s: Sale) =>
-  (await prisma.transaction.findMany({ where: { id: { not: s.order.transactionId ?? '' } }, orderBy: { createdAt: 'asc' } })).map(
-    (t: any) => ({ type: t.type, amount: Number(t.amount), accountId: t.accountId, orderId: t.orderId }),
-  );
+  (await prisma.transaction.findMany({ where: { id: { not: s.order.transactionId ?? '' } }, orderBy: { createdAt: 'asc' } }))
+    .filter((t: any) => t.category !== 'COGS')
+    .map((t: any) => ({ type: t.type, amount: Number(t.amount), accountId: t.accountId, orderId: t.orderId }));
 
 test('an exchange to a pricier item on an unpaid order books no income and raises the debt', async () => {
   const s = await sale(0);

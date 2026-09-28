@@ -15,6 +15,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { effectiveQuantity } from '@/lib/return-math';
 import { logActivity } from '@/lib/activity-log';
+import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
 import { COGS_ACCOUNT_NAME, COMMISSION_ACCOUNT_NAME, ensureExpenseAccount } from '@/lib/expense-accounts';
 import {
   CONSIGNMENT_ORDER,
@@ -278,6 +279,8 @@ export async function transferStock(prevState: ActionState, formData: FormData):
 
   try {
     await prisma.$transaction(async (tx: any) => {
+      // No stock moves in or out of a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, [sourceWarehouseId, targetWarehouseId]);
       // Decrement source, only while enough is left: the check is part of the update.
       const taken = await tx.inventory.updateMany({
         where: { productId, warehouseId: sourceWarehouseId, quantity: { gte: quantity } },
@@ -359,6 +362,8 @@ export async function transferStockBatch(input: {
 
   try {
     await prisma.$transaction(async (tx: any) => {
+      // No stock moves in or out of a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, [sourceWarehouseId, targetWarehouseId]);
       for (const item of validItems) {
         // Only while enough is left: a concurrent transfer or sale cannot drive it below 0.
         const taken = await tx.inventory.updateMany({
@@ -504,6 +509,9 @@ export async function recordConsignmentSales(input: {
         });
         if (already) return { duplicate: true };
       }
+
+      // No stock leaves the partner's warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, [partnerWarehouseId]);
 
       // 3. Check stock once per product, over every line that uses it, and
       //    keep the cost for the COGS rows.
@@ -1304,6 +1312,8 @@ export async function returnConsignmentStock(input: {
       if (!partner || !partner.isVirtual) {
         throw new Error('انبار مبدا یک انبار امانی معتبر نیست.');
       }
+      // No stock moves in or out of a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, [partnerWarehouseId, targetWarehouseId]);
 
       for (const item of items) {
         const stock = await tx.inventory.findUnique({

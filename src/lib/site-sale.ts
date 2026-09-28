@@ -27,6 +27,8 @@ import {
   type SiteStatusEvent,
 } from '@/lib/site-sale-data';
 import { syncInvoiceWithOrder } from '@/lib/sales-records';
+import { holdOpenAudits } from '@/lib/audit-stock-lock';
+import { bookSaleCogs, reverseCogs } from '@/lib/cogs';
 
 export type SiteSaleResult = { status: 200 | 422; body: Record<string, unknown> };
 
@@ -413,6 +415,9 @@ async function recordSale(
 
   // Deduct even what isn't there: the sale happened, the shortfall gets a tag.
   // Rows in a fixed order, so two sales of the same frames can't deadlock.
+  // A count in progress accepts it (its issue accounts for it); holding the
+  // audit orders this write against a freeze starting now (src/lib/audit-stock-lock.ts).
+  await holdOpenAudits(tx, [warehouse.id]);
   const quantities = new Map<string, number>();
   for (const line of input.lines) {
     quantities.set(productOf(line), (quantities.get(productOf(line)) ?? 0) + line.quantity);
@@ -520,6 +525,14 @@ async function recordSale(
       note: `فروش سایت ${input.reference}`,
     })),
   });
+  // The goods' cost, as a POS sale books it (src/lib/cogs.ts).
+  await bookSaleCogs(
+    tx,
+    { ...order, customerId },
+    'website',
+    input.lines.map((line) => ({ productId: productOf(line), quantity: line.quantity })),
+    input.issuedAt,
+  );
   return order;
 }
 
@@ -790,6 +803,8 @@ async function applyStatus(tx: any, change: StatusChange): Promise<SiteSaleResul
         const key = `${item.productId}|${warehouseId}`;
         back.set(key, { productId: item.productId, warehouseId, quantity: (back.get(key)?.quantity ?? 0) + item.quantity });
       }
+      // Accepted during a count, like the sale (see recordSale).
+      await holdOpenAudits(tx, Array.from(back.values()).map((line) => line.warehouseId));
       for (const key of Array.from(back.keys()).sort()) {
         const { productId, warehouseId, quantity } = back.get(key) as { productId: string; warehouseId: string; quantity: number };
         await tx.inventory.upsert({
@@ -808,6 +823,8 @@ async function applyStatus(tx: any, change: StatusChange): Promise<SiteSaleResul
           },
         });
       }
+      // The goods' cost comes off the sale's cost of goods sold (src/lib/cogs.ts).
+      await reverseCogs(tx, order, 'websiteRestock', Array.from(back.values()), new Date(change.event.at));
     }
   }
 

@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { percentDiscount } from '@/lib/discount';
+import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 
 // const prisma = new PrismaClient();
 
@@ -311,6 +312,9 @@ export async function giftProductToCustomer(customerId: string, productId: strin
         throw new Error('محصول یافت نشد.');
       }
 
+      // No stock leaves a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, [warehouseId]);
+
       // Deduct from inventory, only while enough is left
       const taken = await tx.inventory.updateMany({
         where: { productId, warehouseId, quantity: { gte: quantity } },
@@ -364,7 +368,9 @@ export async function giftProductToCustomer(customerId: string, productId: strin
     return { success: true, message: 'هدیه با موفقیت ثبت شد.', orderId: order.id };
   } catch (error) {
     console.error('Error gifting product:', error);
-    const known = error instanceof Error && ['محصول یافت نشد.', 'موجودی کافی نیست.'].includes(error.message);
+    const known =
+      error instanceof WarehouseUnderAudit ||
+      (error instanceof Error && ['محصول یافت نشد.', 'موجودی کافی نیست.'].includes(error.message));
     return { success: false, message: known ? (error as Error).message : 'خطا در ثبت هدیه.' };
   }
 }

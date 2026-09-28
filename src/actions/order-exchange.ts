@@ -12,6 +12,8 @@ import { WEBSITE_ORDER_LOCKED } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { CASH_CHANGED_MESSAGE, exchangeChange, lineValue, orderMoney, receivableNow } from '@/lib/return-math';
+import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { bookSaleCogs, reverseCogs } from '@/lib/cogs';
 
 const OrderExchangeSchema = z.object({
   orderId: z.string().min(1, 'شناسه سفارش الزامی است'),
@@ -219,6 +221,8 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           throw new Error('انبار تحویل مجازی متعلق به مشتری این سفارش نیست.');
         }
       }
+      // No stock moves in or out of a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, warehouseIds);
 
       // 2. Get the new products (the returned product itself is allowed: a
       //    fresh unit for a faulty one).
@@ -444,17 +448,27 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
         });
       }
 
-      // 10. Update inventory: deduct each new line from its warehouse,
-      //     restore the original product to the warehouse chosen by the user.
+      // 10. Update inventory: deduct each new line from its warehouse, only
+      //     while enough is left (a sale at the same moment may have taken it),
+      //     restore the original product to the warehouse chosen by the user,
+      //     each with its movement.
       for (const need of needed.values()) {
-        await tx.inventory.update({
-          where: {
-            productId_warehouseId: {
-              productId: need.productId,
-              warehouseId: need.warehouseId,
-            },
-          },
+        const taken = await tx.inventory.updateMany({
+          where: { productId: need.productId, warehouseId: need.warehouseId, quantity: { gte: need.quantity } },
           data: { quantity: { decrement: need.quantity } },
+        });
+        if (taken.count === 0) {
+          throw new Error(`موجودی کافی برای کالای تعویضی "${need.name}" در انبار انتخابی وجود ندارد.`);
+        }
+        await tx.inventoryMovement.create({
+          data: {
+            productId: need.productId,
+            fromWarehouseId: need.warehouseId,
+            quantity: need.quantity,
+            type: 'SALE',
+            referenceId: orderId,
+            note: `تعویض سفارش #${order.number}`,
+          },
         });
       }
 
@@ -486,6 +500,22 @@ export async function exchangeOrderItem(prevState: any, formData: FormData) {
           },
         });
       }
+      await tx.inventoryMovement.create({
+        data: {
+          productId: originalItem.productId,
+          toWarehouseId: returnWarehouseId,
+          quantity,
+          type: 'RETURN',
+          referenceId: orderId,
+          note: `تعویض سفارش #${order.number}`,
+        },
+      });
+
+      // 11. Cost of goods sold (src/lib/cogs.ts): the goods given back come off
+      //     it, the new goods go on it, as a sale books them.
+      const now = new Date();
+      await reverseCogs(tx, order, 'exchangeBack', [{ productId: originalItem.productId, quantity }], now);
+      await bookSaleCogs(tx, order, 'exchange', newLines, now);
       return 'done';
     });
     if (outcome === 'duplicate') return { message: DUPLICATE_REQUEST_MESSAGE, success: true };

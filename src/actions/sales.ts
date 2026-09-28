@@ -33,7 +33,8 @@ import { accountLabel } from '@/lib/account-label';
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { auth } from '@/auth';
 import { isConsignmentOrder } from '@/lib/consignment-amounts';
-import { COGS_ACCOUNT_NAME, ensureExpenseAccount } from '@/lib/expense-accounts';
+import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { bookSaleCogs } from '@/lib/cogs';
 
 // const prisma = new PrismaClient();
 
@@ -220,13 +221,12 @@ export async function createOrder(data: OrderData) {
           itemWarehouses.push(warehouseId);
         } else {
           // Only a live warehouse of our own: a partner's consignment stock is not ours to sell here.
-          const inv = await tx.inventory.findFirst({
-            where: {
-              productId: item.productId,
-              quantity: { gte: item.quantity },
-              warehouse: { isVirtual: false, isArchived: false },
-            },
-          });
+          // One not being counted first; if only a counted one holds enough, the audit refuses below.
+          const own = { isVirtual: false, isArchived: false };
+          const enough = { productId: item.productId, quantity: { gte: item.quantity } };
+          const inv =
+            (await tx.inventory.findFirst({ where: { ...enough, warehouse: { ...own, audits: { none: { status: 'IN_PROGRESS' } } } } })) ??
+            (await tx.inventory.findFirst({ where: { ...enough, warehouse: own } }));
           if (!inv) {
             const product = await tx.product.findUnique({ where: { id: item.productId }, select: { name: true } });
             throw new Error(`موجودی کافی برای محصول "${product?.name || item.productId}" وجود ندارد.`);
@@ -283,6 +283,9 @@ export async function createOrder(data: OrderData) {
       // no commission. Commission is taken only on what a partner sells out of
       // its consignment stock and reports (recordConsignmentSales).
 
+      // No stock leaves a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, itemWarehouses);
+
       // 7. Deduct inventory from the resolved warehouse for each item. The
       // stock check is part of the update, so two sales of the last unit at
       // the same time cannot both take it: the second waits, then finds none.
@@ -314,32 +317,10 @@ export async function createOrder(data: OrderData) {
         });
       }
       // 8. Cost of goods sold, as a consignment sale books it: one non-cash
-      // EXPENSE row per order at each product's cost at the time of sale, on
-      // the COGS account whose balance it never moves. The P&L reads it; a
-      // cancel deletes it with the order's other rows.
-      const costs = await tx.product.findMany({
-        where: { id: { in: items.map((item) => item.productId) } },
-        select: { id: true, costPrice: true },
-      });
-      const costOf = new Map<string, number>(costs.map((product: any) => [product.id, Number(product.costPrice || 0)]));
-      const cogsTotal = items.reduce((sum, item) => sum + item.quantity * (costOf.get(item.productId) ?? 0), 0);
-      if (cogsTotal > 0) {
-        await tx.transaction.create({
-          data: {
-            type: TransactionType.EXPENSE,
-            currency: 'TOMAN',
-            amount: new Prisma.Decimal(cogsTotal),
-            amountInToman: new Prisma.Decimal(cogsTotal),
-            rateSnapshot: 1,
-            accountId: await ensureExpenseAccount(tx, COGS_ACCOUNT_NAME),
-            category: 'COGS',
-            description: `بهای تمام‌شده کالای فروش‌رفته - سفارش #${order.number}`,
-            customerId: customerId || undefined,
-            orderId: order.id,
-            date: orderDate,
-          },
-        });
-      }
+      // row per order at each product's cost at the time of sale, on the COGS
+      // account whose balance it never moves (src/lib/cogs.ts). The P&L reads
+      // it; a cancel deletes it with the order's other rows.
+      await bookSaleCogs(tx, order, 'pos', items, orderDate);
       return 'booked';
     });
     if (outcome === 'duplicate') return { success: true, message: DUPLICATE_REQUEST_MESSAGE };

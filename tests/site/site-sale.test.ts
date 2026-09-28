@@ -544,7 +544,8 @@ test('shipped and delivered only add to the history', async () => {
   const history = readSiteOrderData(after.siteData)?.history ?? [];
   assert.deepEqual(history.map((event) => [event.status, event.trackingCode]), [['shipped', 'TPX-1'], ['delivered', null]]);
   assert.equal(history[0].at, '2026-09-11T08:00:00.000Z');
-  assert.equal(await prisma.transaction.count({ where: { type: 'EXPENSE' } }), 0);
+  // No money left: the only EXPENSE rows are the sales' cost of goods (src/lib/cogs.ts).
+  assert.deepEqual((await prisma.transaction.findMany({ where: { type: 'EXPENSE' } })).filter((t: any) => t.category !== 'COGS'), []);
   await assertBooksBalance();
 });
 
@@ -608,7 +609,9 @@ test('each refund is booked once, never beyond what was paid, and a full refund 
   assert.equal(Number(order.totalAmount), 12_950_000);
   assert.equal(order.paymentStatus, 'PAID');
   assert.ok(!order.tags.includes(TAG_NEEDS_REVIEW), JSON.stringify(readSiteOrderData(order.siteData)?.review));
-  const refunds = await prisma.transaction.findMany({ where: { type: 'EXPENSE' }, orderBy: { date: 'asc' } });
+  const refunds = (await prisma.transaction.findMany({ where: { type: 'EXPENSE' }, orderBy: { date: 'asc' } })).filter(
+    (t: any) => t.category !== 'COGS',
+  );
   assert.deepEqual(
     refunds.map((t: any) => [t.category, Number(t.amount), t.accountId, t.date.toISOString()]),
     [
@@ -639,7 +642,7 @@ test('each refund is booked once, never beyond what was paid, and a full refund 
 
   // The same refundId again with another amount is ignored, and a person is told.
   await status({ status: 'refunded', reference, amount: 1, refundId: 'r1' });
-  assert.equal(await prisma.transaction.count({ where: { type: 'EXPENSE' } }), 3);
+  assert.equal(await prisma.transaction.count({ where: { type: 'EXPENSE', category: 'Return' } }), 3);
   assert.ok(readSiteOrderData((await orderOf(reference)).siteData)?.review.some((reason) => reason.includes('r1')));
 });
 

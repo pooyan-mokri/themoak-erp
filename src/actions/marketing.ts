@@ -9,6 +9,7 @@ import { kickSiteHook } from '@/lib/site-hook';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
 
 // --- Schemas ---
 
@@ -97,6 +98,9 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
       if (requestId && (await tx.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }))) {
         return 'duplicate';
       }
+
+      // No stock leaves a warehouse while it is being counted (src/lib/audit-stock-lock.ts).
+      await assertNoOpenAudit(tx, items.map((item: any) => item.warehouseId));
 
       // 1. Validate all products and calculate total cost
       let totalCost = 0;

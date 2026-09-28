@@ -14,6 +14,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
 import { profitAmount, profitLine } from '@/lib/profit-rows';
+import { COGS_LABEL, cogsSourceLabel } from '@/lib/cogs';
 import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { randomUUID } from 'node:crypto';
 
@@ -612,7 +613,8 @@ function systemOwnerOf(expense: any): string | null {
   if (expense.LoanPayment) return 'پرداخت وام';
   if (expense.PayrollPayment) return 'پرداخت حقوق';
   if (expense.ShareholderWithdrawal) return 'برداشت سهامدار';
-  if (expense.category === 'COGS') return 'بهای تمام‌شده کالای فروش امانی';
+  // Named by its source: a POS, consignment or website sale, a return, an exchange (src/lib/cogs.ts).
+  if (expense.category === 'COGS') return cogsSourceLabel(expense.description);
   if (expense.category === 'CONSIGNMENT_COMMISSION') return 'کمیسیون همکار امانی';
   if (expense.category === 'Currency Exchange') return 'مبادله ارز';
   // The loan's own record (amount, remaining) would stay as it was.
@@ -858,10 +860,12 @@ export async function getExpenseBreakdown() {
       // src/lib/profit-rows.ts.
       if (!profitLine(expense)) continue;
 
-      // Extract category from description "Category - Description"
+      // Extract category from description "Category - Description". Cost of
+      // goods sold is one category, net of the goods that came back (their
+      // rows are negative, src/lib/cogs.ts).
       const description = expense.description || 'سایر';
       const parts = description.split(' - ');
-      const category = parts.length > 0 ? parts[0] : 'سایر';
+      const category = profitLine(expense) === 'cogs' ? COGS_LABEL : parts.length > 0 ? parts[0] : 'سایر';
 
       if (!expenseByCategory[category]) {
         expenseByCategory[category] = 0;
