@@ -564,7 +564,8 @@ export async function getCRMDashboardStats() {
         where: { stage: { notIn: ['WON', 'LOST'] } },
         _sum: { value: true }
       }),
-      prisma.supportTicket.count({ where: { status: { not: 'CLOSED' } } }),
+      // «باز»: neither resolved nor closed.
+      prisma.supportTicket.count({ where: { status: { notIn: ['RESOLVED', 'CLOSED'] } } }),
       prisma.lead.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },

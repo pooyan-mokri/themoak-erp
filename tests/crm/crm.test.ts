@@ -167,6 +167,17 @@ test('a ticket is opened, assigned, moved and resolved; an unknown status is ref
   assert.deepEqual(await snapshot(), before);
 });
 
+test('the open tickets count leaves out resolved and closed tickets', async () => {
+  const customer = await prisma.customer.create({ data: { name: 'سارا' } });
+  for (const status of ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'OPEN']) {
+    await prisma.supportTicket.create({ data: { customerId: customer.id, subject: status, description: 'x', status } });
+  }
+  assert.equal((await getCRMDashboardStats()).openTicketsCount, 3);
+  const ticket = await prisma.supportTicket.findFirstOrThrow({ where: { status: 'IN_PROGRESS' } });
+  assert.equal((await resolveTicket(ticket.id, 'حل شد')).success, true);
+  assert.equal((await getCRMDashboardStats()).openTicketsCount, 2);
+});
+
 test('every CRM write needs sales.manage; a refused one changes nothing', async () => {
   const customer = await prisma.customer.create({ data: { name: 'سارا' } });
   await createLead(undefined, leadFields());
