@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { tomanTick } from '@/lib/chart-format';
 
 interface ProfitLossData {
   summary: {
@@ -98,7 +99,7 @@ export function ProfitLossReport({ data }: ProfitLossReportProps) {
             <BarChart data={monthlyTrend}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="month" />
-              <YAxis />
+              <YAxis tickFormatter={tomanTick} width={90} style={{ fontSize: '11px' }} />
               <Tooltip 
                 formatter={(value) => formatCurrency(Number(value))}
                 labelStyle={{ direction: 'rtl' }}

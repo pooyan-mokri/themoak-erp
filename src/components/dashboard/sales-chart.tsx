@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { tomanTick } from '@/lib/chart-format';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
@@ -94,7 +95,8 @@ export function SalesChart({ sales }: SalesChartProps) {
                 style={{ fontSize: '12px' }}
               />
               <YAxis 
-                tickFormatter={(value) => formatCurrency(value)}
+                tickFormatter={tomanTick}
+                width={90}
                 style={{ fontSize: '12px' }}
               />
               <Tooltip

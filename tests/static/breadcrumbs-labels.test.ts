@@ -34,3 +34,20 @@ test('every order status is named in Persian, on the order page, the list and it
   });
   assert.equal(row['وضعیت سفارش'], 'فاکتور شده');
 });
+
+test('every dashboard page\'s breadcrumb is Persian: no route segment falls back to its English name', async () => {
+  const { readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = join(process.cwd(), 'src/app/dashboard');
+  const routes: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (name === 'page.tsx') routes.push('/dashboard' + dir.slice(root.length).replace(/\[[^\]]+\]/g, 'cmul2uzpp000g3hr2khryv9ys'));
+    }
+  };
+  walk(root);
+  const english = routes.flatMap((route) => getBreadcrumbs(route).filter((c) => /[A-Za-z]/.test(c.label)).map((c) => `${route}: ${c.label}`));
+  assert.deepEqual(english, []);
+});

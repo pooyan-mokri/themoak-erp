@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { tomanTick } from '@/lib/chart-format';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface SalesData {
@@ -83,7 +84,7 @@ const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
             <LineChart data={salesOverTime}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" />
-              <YAxis />
+              <YAxis tickFormatter={tomanTick} width={90} style={{ fontSize: '11px' }} />
               <Tooltip formatter={(value) => formatCurrency(Number(value))} />
               <Legend />
               <Line type="monotone" dataKey="revenue" stroke="#10b981" name="فروش" strokeWidth={2} />
@@ -102,7 +103,7 @@ const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={topProducts} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
+              <XAxis type="number" tickFormatter={tomanTick} style={{ fontSize: '11px' }} />
               <YAxis dataKey="name" type="category" width={150} />
               <Tooltip formatter={(value) => formatCurrency(Number(value))} />
               <Bar dataKey="revenue" fill="#3b82f6" name="فروش" />

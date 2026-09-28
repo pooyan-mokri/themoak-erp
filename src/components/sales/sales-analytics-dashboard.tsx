@@ -6,6 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   Area, AreaChart
 } from 'recharts';
+import { tomanTick } from '@/lib/chart-format';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowUp, ArrowDown, TrendingUp, ShoppingCart, DollarSign, Users, Package } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -193,7 +194,8 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
                 interval="preserveStartEnd"
               />
               <YAxis 
-                tickFormatter={(value) => formatCurrency(value)}
+                tickFormatter={tomanTick}
+                width={90}
                 style={{ fontSize: '11px' }}
               />
               <Tooltip 
@@ -241,7 +243,7 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
             <ResponsiveContainer width="100%" height={350}>
               <BarChart data={topProducts} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tickFormatter={(value) => formatCurrency(value)} />
+                <XAxis type="number" tickFormatter={tomanTick} />
                 <YAxis 
                   dataKey="name" 
                   type="category" 
