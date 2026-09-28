@@ -633,14 +633,35 @@ model ActivityLog {
 }
 
 model Supplier {
-  id        String          @id @default(cuid())
+  id        String           @id @default(cuid())
   name      String
   phone     String?
   email     String?
   address   String?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
   orders    PurchaseOrder[]
+  credits   SupplierCredit[]
+}
+
+/// What a supplier owes us back («طلب از تأمین‌کننده»), in Toman. One row per change, signed: + when a paid
+/// purchase order is cancelled (what was paid on it), − when the credit pays a later order of the same supplier.
+/// The balance is the sum. Created by prisma/sql/pre-push-unique-columns.sql.
+model SupplierCredit {
+  id              String         @id @default(cuid())
+  supplierId      String
+  amount          Decimal
+  purchaseOrderId String?
+  reason          String
+  userId          String?
+  /// A cancel's credit carries "po-cancel:<order id>"; a use carries the payment form's request id.
+  clientRequestId String?        @unique
+  createdAt       DateTime       @default(now())
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  @@index([supplierId])
+  @@index([purchaseOrderId])
 }
 
 model PurchaseOrder {
@@ -662,19 +683,21 @@ model PurchaseOrder {
   arrivalAdditionalCosts PurchaseOrderArrivalCost[]
   items                  PurchaseOrderItem[]
   payments               PurchaseOrderPayment[]
+  supplierCredits        SupplierCredit[]
 }
 
 model PurchaseOrderPayment {
   id              String        @id @default(cuid())
   purchaseOrderId String
   amount          Decimal // amount paid, in Toman
-  accountId       String
+  /// null for a payment from the supplier's credit, which moves no account (then transactionId is null too).
+  accountId       String?
   transactionId   String?       @unique
   description     String?
   date            DateTime      @default(now())
   createdAt       DateTime      @default(now())
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  account         Account       @relation(fields: [accountId], references: [id])
+  account         Account?      @relation(fields: [accountId], references: [id], onDelete: Restrict)
   transaction     Transaction?  @relation("PurchaseOrderPaymentTxn", fields: [transactionId], references: [id])
 
   @@index([purchaseOrderId])

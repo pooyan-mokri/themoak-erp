@@ -19,6 +19,14 @@ interface StockBreakdownTableProps {
 
 export function StockBreakdownTable({ breakdown }: StockBreakdownTableProps) {
   const getStatusBadge = (status: string) => {
+    if (status === 'OUT') {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          ناموجود
+        </Badge>
+      );
+    }
     if (status === 'LOW') {
       return (
         <Badge variant="destructive" className="gap-1">

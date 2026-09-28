@@ -74,6 +74,8 @@ export function AssetList({ assets, canManage }: AssetListProps) {
   };
 
   const calculateDepreciation = (asset: Asset) => {
+    // A consumable is valued at quantity × unit cost, with no depreciation.
+    if (asset.assetType === 'CONSUMABLE') return { depreciation: 0, depreciationPercent: 0 };
     const depreciation = Number(asset.purchasePrice) - asset.currentValue;
     const depreciationPercent = (depreciation / Number(asset.purchasePrice)) * 100;
     return { depreciation, depreciationPercent };
@@ -121,7 +123,11 @@ export function AssetList({ assets, canManage }: AssetListProps) {
       key: 'purchasePrice',
       label: 'قیمت خرید',
       sortable: true,
-      render: (asset) => formatCurrency(Number(asset.purchasePrice)),
+      // For a consumable this is the unit cost; its value is quantity × unit cost.
+      render: (asset) =>
+        asset.assetType === 'CONSUMABLE'
+          ? `${formatCurrency(Number(asset.purchasePrice))} (هر واحد)`
+          : formatCurrency(Number(asset.purchasePrice)),
     },
     {
       key: 'currentValue',

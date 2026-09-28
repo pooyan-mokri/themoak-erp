@@ -2,15 +2,16 @@
 
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
+import { STOCK_TYPES, stockLevel } from '@/lib/stock-levels';
 
 // Stock values at cost throughout; only the cost.view inventory reports page reads it.
 export async function getInventoryReport() {
   await requirePermission('cost.view');
   try {
-    // Get all saleable products with inventory
+    // Every product held as stock (SALEABLE and OTHER, src/lib/stock-levels.ts), with its inventory
     const saleableProducts = await prisma.product.findMany({
       where: {
-        productType: 'SALEABLE',
+        productType: { in: [...STOCK_TYPES] },
       },
       include: {
         inventory: {
@@ -21,7 +22,7 @@ export async function getInventoryReport() {
       },
     });
 
-    // Calculate total inventory value and quantity for saleable products
+    // Calculate total inventory value and quantity for the stock products
     let totalValue = 0;
     let totalQuantity = 0;
     const lowStockItems: any[] = [];
@@ -47,8 +48,8 @@ export async function getInventoryReport() {
         warehouseDistribution[warehouseName].quantity += quantity;
         warehouseDistribution[warehouseName].value += value;
 
-        // Check for low stock (less than 10 units)
-        if (quantity > 0 && quantity <= 10) {
+        // Low and out of stock by the one rule (src/lib/stock-levels.ts)
+        if (stockLevel(quantity) === 'LOW') {
           lowStockItems.push({
             productId: product.id,
             productName: product.name,
@@ -61,8 +62,8 @@ export async function getInventoryReport() {
           });
         }
 
-        // Check for out of stock
-        if (quantity === 0) {
+        // Out of stock: 0 or less, a negative row included
+        if (stockLevel(quantity) === 'OUT') {
           outOfStockItems.push({
             productId: product.id,
             productName: product.name,

@@ -5,8 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { TransactionType, ActionResult } from '@/lib/types';
 import { z } from 'zod';
 import { checkPermission } from '@/lib/access';
+import { auth } from '@/auth';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_SET_BY, canMovePurchaseOrder } from '@/lib/purchase-order-status';
 
 /** A figure in the account's own unit, for balance messages. */
 const inUnit = (amount: number, currency: string) =>
@@ -27,50 +29,86 @@ async function lockOrderAndAccount(tx: any, orderId: string, accountId: string) 
   await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
 }
 
+/** Paid in Toman: the sum of an order's payments, whatever paid them. */
+const paidOn = (order: { payments: Array<{ amount: unknown }> }) =>
+  order.payments.reduce((sum: number, payment) => sum + Number(payment.amount), 0);
+
 // Workflow Actions
-export async function updatePurchaseOrderStatus(orderId: string, newStatus: string): Promise<ActionResult> {
-  // Moving an order along is procurement work; marking it paid is a payment.
-  const denied = await checkPermission(
-    newStatus === 'PAID' || newStatus === 'PARTIALLY_PAID' ? 'finance.manage' : ['stock.manage', 'finance.manage'],
-  );
+/**
+ * Moves an order along by hand. Cancelling an order that has payments moves what was paid on it (in Toman)
+ * into the supplier's credit («طلب از تأمین‌کننده»), once: the order row is held for the transaction, so a
+ * second cancel waits and then finds it cancelled, and the credit's key is unique per order.
+ * expectedCredit is the amount the cancel confirmation named; if the payments changed since, nothing happens.
+ */
+export async function updatePurchaseOrderStatus(orderId: string, newStatus: string, expectedCredit?: number): Promise<ActionResult> {
+  // Moving an order along is procurement work. Paid and received statuses are not set here at all.
+  const denied = await checkPermission(['stock.manage', 'finance.manage']);
   if (denied) return denied;
+  const session = await auth();
   try {
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id: orderId }
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // Hold the order: a payment, receipt or second move waits for this one, and this one reads what they wrote.
+      await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.purchaseOrder.findUnique({
+        where: { id: orderId },
+        include: { payments: { select: { amount: true } }, supplier: { select: { name: true } } },
+      });
+
+      if (!order) {
+        return { refused: 'سفارش یافت نشد' };
+      }
+
+      // Validate status transition
+      if (!canMovePurchaseOrder(order.status, newStatus)) {
+        const label = (status: string) => PURCHASE_ORDER_STATUS_LABELS[status] ?? status;
+        const setBy = PURCHASE_ORDER_STATUS_SET_BY[newStatus];
+        return {
+          refused: setBy
+            ? `وضعیت «${label(newStatus)}» فقط با ${setBy} ثبت می‌شود و دستی تغییر نمی‌کند.`
+            : `تغییر وضعیت از «${label(order.status)}» به «${label(newStatus)}» مجاز نیست`,
+        };
+      }
+
+      const credit = newStatus === 'CANCELLED' ? paidOn(order) : 0;
+      if (newStatus === 'CANCELLED' && expectedCredit !== undefined && Math.abs(expectedCredit - credit) >= 1) {
+        return { refused: 'پرداخت‌های این سفارش از وقتی صفحه باز شد تغییر کرده است؛ صفحه را تازه کنید و دوباره لغو کنید.' };
+      }
+
+      await tx.purchaseOrder.update({
+        where: { id: orderId },
+        data: { status: newStatus }
+      });
+      if (credit > 0) {
+        await tx.supplierCredit.create({
+          data: {
+            supplierId: order.supplierId,
+            amount: credit,
+            purchaseOrderId: orderId,
+            reason: `لغو سفارش خرید #${order.number}`,
+            userId: session?.user?.id ?? null,
+            clientRequestId: `po-cancel:${orderId}`,
+          },
+        });
+      }
+      return { credit, supplierName: order.supplier.name as string };
     });
-
-    if (!order) {
-      return { success: false, message: 'سفارش یافت نشد' };
+    if ('refused' in outcome) {
+      return { success: false, message: outcome.refused };
     }
-
-    // Validate status transition
-    const validTransitions: Record<string, string[]> = {
-      'DRAFT': ['PENDING_PAYMENT', 'CANCELLED'],
-      'PENDING_PAYMENT': ['PARTIALLY_PAID', 'PAID', 'CANCELLED'],
-      'PARTIALLY_PAID': ['PAID', 'CANCELLED'],
-      'PAID': ['IN_PRODUCTION', 'CANCELLED'],
-      'IN_PRODUCTION': ['ARRIVED', 'CANCELLED'],
-      'ARRIVED': ['RECEIVED', 'CANCELLED'],
-      'RECEIVED': [],
-      'CANCELLED': [],
-    };
-
-    if (!validTransitions[order.status]?.includes(newStatus)) {
-      return { success: false, message: `تغییر وضعیت از ${order.status} به ${newStatus} مجاز نیست` };
-    }
-
-    await prisma.purchaseOrder.update({
-      where: { id: orderId },
-      data: { status: newStatus }
-    });
 
     revalidatePath('/dashboard/suppliers/orders');
     revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
-    return { success: true, message: 'وضعیت سفارش به‌روزرسانی شد' };
+    revalidatePath('/dashboard/suppliers/management');
+    return {
+      success: true,
+      message:
+        outcome.credit > 0
+          ? `سفارش لغو شد و ${Math.round(outcome.credit).toLocaleString('fa-IR')} تومان پرداخت‌شده به طلب از تأمین‌کننده «${outcome.supplierName}» اضافه شد.`
+          : 'وضعیت سفارش به‌روزرسانی شد',
+    };
   } catch (error: unknown) {
     console.error('Error updating purchase order status:', error);
-    const message = error instanceof Error ? error.message : 'خطا در به‌روزرسانی وضعیت';
-    return { success: false, message };
+    return { success: false, message: 'خطا در به‌روزرسانی وضعیت' };
   }
 }
 
@@ -230,6 +268,7 @@ export async function recordPurchasePartialPayment(input: {
 
   if (!accountId) return { success: false, message: 'لطفا حساب پرداخت را انتخاب کنید.' };
   if (!amount || amount <= 0) return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
+  if (date && Number.isNaN(new Date(date).getTime())) return { success: false, message: 'تاریخ پرداخت نامعتبر است.' };
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
@@ -364,6 +403,104 @@ export async function recordPurchasePartialPayment(input: {
     console.error('Error recording partial payment:', error);
     const message = error instanceof Error ? error.message : 'خطا در ثبت پرداخت';
     return { success: false, message };
+  }
+}
+
+// A refusal found inside a transaction: thrown so everything rolls back, then shown to the user as it is.
+class CreditRefusal extends Error {}
+
+/**
+ * Pay an order (PENDING_PAYMENT or PARTIALLY_PAID) from its supplier's credit («طلب از تأمین‌کننده»): a payment
+ * row with no account and no transaction, and a matching − row on the credit. At most min(credit, remaining),
+ * the whole of it when no amount is given; a little over (1 toman, the payments' rounding) is capped. The order
+ * and then its supplier are held, so two uses at once cannot both spend the same credit; one form submission
+ * (requestId, stored on the credit row) pays once.
+ */
+export async function payPurchaseOrderFromCredit(input: {
+  orderId: string;
+  /** In Toman; the most the credit can pay when left out. */
+  amount?: number;
+  requestId?: string;
+}): Promise<ActionResult> {
+  const denied = await checkPermission('finance.manage');
+  if (denied) return denied;
+  const { orderId, amount } = input;
+  const clientRequestId = readRequestId(input.requestId);
+  if (amount !== undefined && !(amount > 0)) return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
+  const session = await auth();
+
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
+      if (clientRequestId && (await tx.supplierCredit.findUnique({ where: { clientRequestId }, select: { id: true } }))) {
+        return null;
+      }
+      const order = await tx.purchaseOrder.findUnique({ where: { id: orderId }, include: { payments: true } });
+      if (!order) throw new CreditRefusal('سفارش یافت نشد');
+      if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PARTIALLY_PAID') {
+        throw new CreditRefusal('این سفارش در وضعیت قابل پرداخت نیست');
+      }
+      await tx.$queryRaw`SELECT id FROM "Supplier" WHERE id = ${order.supplierId} FOR UPDATE`;
+
+      const balance = Number(
+        (await tx.supplierCredit.aggregate({ where: { supplierId: order.supplierId }, _sum: { amount: true } }))._sum.amount ?? 0,
+      );
+      const total = Number(order.totalAmountInToman) || 0;
+      const paidSoFar = paidOn(order);
+      const remaining = total - paidSoFar;
+      if (balance <= 0) throw new CreditRefusal('از این تأمین‌کننده طلبی ثبت نشده است.');
+      if (remaining <= 0) throw new CreditRefusal('این سفارش قبلاً به‌طور کامل تسویه شده است.');
+      const cap = Math.min(balance, remaining);
+      if (amount !== undefined && amount > cap + 1) {
+        throw new CreditRefusal(`مبلغ از طلب قابل استفاده بیشتر است. حداکثر: ${Math.round(cap).toLocaleString('fa-IR')} تومان`);
+      }
+      const payAmount = amount === undefined ? cap : Math.min(amount, cap);
+
+      await tx.purchaseOrderPayment.create({
+        data: {
+          purchaseOrderId: orderId,
+          amount: payAmount,
+          accountId: null,
+          description: 'از طلب تأمین‌کننده',
+          date: new Date(),
+        },
+      });
+      await tx.supplierCredit.create({
+        data: {
+          supplierId: order.supplierId,
+          amount: -payAmount,
+          purchaseOrderId: orderId,
+          reason: `پرداخت سفارش خرید #${order.number} از طلب`,
+          userId: session?.user?.id ?? null,
+          clientRequestId: clientRequestId ?? undefined,
+        },
+      });
+
+      const newPaid = paidSoFar + payAmount;
+      const fullyPaid = newPaid >= total - 1; // rounding tolerance, as for account payments
+      await tx.purchaseOrder.update({
+        where: { id: orderId },
+        data: { status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID' },
+      });
+      return { payAmount, fullyPaid, remaining: Math.max(0, total - newPaid) };
+    });
+    if (!result) return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
+
+    revalidatePath('/dashboard/suppliers/orders');
+    revalidatePath(`/dashboard/suppliers/orders/${orderId}`);
+    revalidatePath('/dashboard/suppliers/management');
+    const paid = `${Math.round(result.payAmount).toLocaleString('fa-IR')} تومان از طلب تأمین‌کننده پرداخت شد`;
+    return {
+      success: true,
+      message: result.fullyPaid
+        ? `${paid} و سفارش به‌طور کامل تسویه شد.`
+        : `${paid}. باقیمانده: ${Math.round(result.remaining).toLocaleString('fa-IR')} تومان`,
+    };
+  } catch (error: unknown) {
+    if (isDuplicateRequest(error)) return { success: true, message: DUPLICATE_REQUEST_MESSAGE };
+    if (error instanceof CreditRefusal) return { success: false, message: error.message };
+    console.error('Error paying from supplier credit:', error);
+    return { success: false, message: 'خطا در پرداخت از طلب تأمین‌کننده' };
   }
 }
 

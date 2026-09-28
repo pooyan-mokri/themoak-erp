@@ -41,11 +41,18 @@ export function MovementHistory({ movements }: MovementHistoryProps) {
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { variant: any; label: string }> = {
       COMPLETED: { variant: 'secondary', label: 'تکمیل شده' },
+      PENDING: { variant: 'outline', label: 'در انتظار' },
       CONFIRMED: { variant: 'default', label: 'تأیید شده' },
       DELIVERED: { variant: 'secondary', label: 'تحویل داده شده' },
       RECEIVED: { variant: 'secondary', label: 'دریافت شده' },
+      PARTIALLY_RECEIVED: { variant: 'default', label: 'نیمه دریافت شده' },
       CANCELLED: { variant: 'destructive', label: 'لغو شده' },
       DRAFT: { variant: 'outline', label: 'پیش‌نویس' },
+      PENDING_PAYMENT: { variant: 'outline', label: 'منتظر پرداخت' },
+      PARTIALLY_PAID: { variant: 'outline', label: 'پرداخت جزئی' },
+      PAID: { variant: 'default', label: 'پرداخت شده' },
+      IN_PRODUCTION: { variant: 'default', label: 'در حال تولید' },
+      ARRIVED: { variant: 'default', label: 'رسیده به مقصد' },
     };
 
     const config = statusMap[status] || { variant: 'outline', label: status };

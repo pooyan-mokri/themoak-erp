@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
+import { stockLevel } from '@/lib/stock-levels';
 
 interface InventoryItem {
   productId: string;
@@ -74,7 +75,7 @@ export function StockList({ inventory, canSeeCost }: StockListProps) {
                   <TableCell className="font-medium">{item.product.name}</TableCell>
                   <TableCell className="text-muted-foreground">{item.product.sku}</TableCell>
                   <TableCell>
-                    <span className={`font-bold ${item.quantity <= 10 ? 'text-red-600' : ''}`}>
+                    <span className={`font-bold ${stockLevel(item.quantity) !== 'OK' ? 'text-red-600' : ''}`}>
                       {item.quantity}
                     </span>
                   </TableCell>
@@ -89,9 +90,9 @@ export function StockList({ inventory, canSeeCost }: StockListProps) {
                     </TableCell>
                   )}
                   <TableCell>
-                    {item.quantity <= 0 ? (
+                    {stockLevel(item.quantity) === 'OUT' ? (
                       <Badge variant="destructive">ناموجود</Badge>
-                    ) : item.quantity <= 10 ? (
+                    ) : stockLevel(item.quantity) === 'LOW' ? (
                       <Badge variant="secondary" className="bg-yellow-500 hover:bg-yellow-600 text-white">کم‌موجودی</Badge>
                     ) : (
                       <Badge variant="default" className="bg-green-500 hover:bg-green-600">موجود</Badge>

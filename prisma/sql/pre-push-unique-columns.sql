@@ -269,4 +269,36 @@ BEGIN
     ALTER TABLE "CustomerCredit" ADD CONSTRAINT "CustomerCredit_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE SET NULL ON UPDATE CASCADE;
     ALTER TABLE "CustomerCredit" ADD CONSTRAINT "CustomerCredit_exchangeId_fkey" FOREIGN KEY ("exchangeId") REFERENCES "OrderExchange"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
+
+  -- SupplierCredit («طلب از تأمین‌کننده»): a new table, created here so that its
+  -- foreign keys, which lock Supplier and PurchaseOrder, get the same
+  -- lock_timeout. Names are Prisma's own (prisma migrate diff).
+  IF to_regclass('"SupplierCredit"') IS NULL AND to_regclass('"Supplier"') IS NOT NULL AND to_regclass('"PurchaseOrder"') IS NOT NULL THEN
+    CREATE TABLE "SupplierCredit" (
+      "id" TEXT NOT NULL,
+      "supplierId" TEXT NOT NULL,
+      "amount" DECIMAL(65,30) NOT NULL,
+      "purchaseOrderId" TEXT,
+      "reason" TEXT NOT NULL,
+      "userId" TEXT,
+      "clientRequestId" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "SupplierCredit_pkey" PRIMARY KEY ("id")
+    );
+    CREATE UNIQUE INDEX "SupplierCredit_clientRequestId_key" ON "SupplierCredit"("clientRequestId");
+    CREATE INDEX "SupplierCredit_supplierId_idx" ON "SupplierCredit"("supplierId");
+    CREATE INDEX "SupplierCredit_purchaseOrderId_idx" ON "SupplierCredit"("purchaseOrderId");
+    ALTER TABLE "SupplierCredit" ADD CONSTRAINT "SupplierCredit_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    ALTER TABLE "SupplierCredit" ADD CONSTRAINT "SupplierCredit_purchaseOrderId_fkey" FOREIGN KEY ("purchaseOrderId") REFERENCES "PurchaseOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+  -- PurchaseOrderPayment.accountId becomes optional: a payment from a supplier
+  -- credit moves no account. Only the NOT NULL goes; the foreign key stays
+  -- ON DELETE RESTRICT. Checked in the catalog first, so later deploys take no
+  -- lock on the table.
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = to_regclass('"PurchaseOrderPayment"') AND attname = 'accountId' AND attnotnull AND NOT attisdropped
+  ) THEN
+    ALTER TABLE "PurchaseOrderPayment" ALTER COLUMN "accountId" DROP NOT NULL;
+  END IF;
 END $$;

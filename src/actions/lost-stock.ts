@@ -109,6 +109,8 @@ export async function repairCancelledOrderStock(orderId: string): Promise<Action
 
   try {
     const repaired = await prisma.$transaction(async (tx: any) => {
+      // Hold the order: a second repair (a double click, another tab) waits, then finds the lines stamped.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
       const order = await tx.order.findUnique({
         where: { id: orderId },
         include: { items: { include: { product: { select: { name: true } } } } },
@@ -122,6 +124,7 @@ export async function repairCancelledOrderStock(orderId: string): Promise<Action
       let count = 0;
       for (const item of order.items) {
         if (item.warehouseId) continue; // already accounted for
+        if ((await restorableQuantity(tx, item)) <= 0) continue; // returned or exchanged already: nothing owed
 
         const note = await restoreOrderItemStock(
           tx,
