@@ -404,6 +404,9 @@ test('placing, paying and receiving an order each leave equity where it was', as
   const later = await order(10_000_000);
   ok(await updatePurchaseOrderStatus(later.id, 'PENDING_PAYMENT'));
   await same(start, 'second order placed');
+  // Goods are received once arrived, which the lifecycle reaches only when paid; an older order
+  // could be received first, and the balance sheet must still hold for it.
+  await prisma.purchaseOrder.update({ where: { id: later.id }, data: { status: 'ARRIVED' } });
   ok(await receivePurchaseOrderItems(later.id, warehouse.id, [{ itemId: later.items[0].id, receivedQuantity: 5 }]));
   await same(start, 'half received, unpaid');
   assert.equal((await getBalanceSheet(new Date())).liabilities.accountsPayable, 5_000_000);
