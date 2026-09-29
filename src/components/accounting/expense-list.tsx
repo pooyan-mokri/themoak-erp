@@ -18,6 +18,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, X, Trash2 } from 'lucide-react';
+import { currencyName } from './amount-words';
+import { categoryLabel as categoryName } from '@/lib/category-labels';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { ExpenseEditDialog } from './expense-edit-dialog';
 import { deleteExpense } from '@/actions/accounting';
@@ -153,7 +155,7 @@ export function ExpenseList({ expenses, isAdmin = false, accounts = [] }: { expe
             <SelectContent>
               <SelectItem value="all">همه دسته‌بندی‌ها</SelectItem>
               {categories.map(cat => (
-                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                <SelectItem key={cat} value={cat}>{categoryName(cat)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -218,7 +220,7 @@ export function ExpenseList({ expenses, isAdmin = false, accounts = [] }: { expe
                     <TableCell className="font-semibold">
                       {expense.amount == null ? '—' : Number(expense.amount).toLocaleString('fa-IR')}
                     </TableCell>
-                    <TableCell>{expense.currency}</TableCell>
+                    <TableCell>{currencyName(expense.currency)}</TableCell>
                     <TableCell>
                       {expense.account ? (
                         expense.account.name
@@ -231,7 +233,7 @@ export function ExpenseList({ expenses, isAdmin = false, accounts = [] }: { expe
                     {categories.length > 0 && (
                       <TableCell>
                         <span className="text-xs px-2 py-1 bg-muted rounded-full">
-                          {expense.category || '-'}
+                          {expense.category ? categoryName(expense.category) : '-'}
                         </span>
                       </TableCell>
                     )}

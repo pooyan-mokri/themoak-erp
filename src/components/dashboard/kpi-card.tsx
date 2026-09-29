@@ -27,14 +27,15 @@ export function KpiCard({
   note?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-card px-4 py-3.5">
+    <div className="min-w-0 rounded-lg border bg-card px-4 py-3.5">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         {Icon && <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />}
         {label}
       </div>
-      <div className="mt-1.5 text-[19px] font-medium tabular-nums">
-        {value}
-        {unit && <small className="ms-1 text-[11px] font-normal text-muted-foreground">{unit}</small>}
+      {/* On a narrow card (two to a row on a phone) the unit wraps under a long figure instead of spilling out. */}
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1 text-[19px] font-medium tabular-nums">
+        <span className="min-w-0 break-all">{value}</span>
+        {unit && <small className="text-[11px] font-normal text-muted-foreground">{unit}</small>}
       </div>
       {(delta || note) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11.5px] text-muted-foreground">

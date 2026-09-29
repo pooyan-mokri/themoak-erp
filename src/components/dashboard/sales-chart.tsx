@@ -51,7 +51,7 @@ export function SalesChart({
               labelFormatter={(label) => formatJalaliDate(new Date(label))}
               contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
             />
-            <Area type="monotone" dataKey="total" stroke={INDIGO} strokeWidth={1.75} fill={INDIGO} fillOpacity={0.08} dot={false} />
+            <Area type="monotone" dataKey="total" stroke={INDIGO} strokeWidth={1.75} fill={INDIGO} fillOpacity={0.08} dot={false} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

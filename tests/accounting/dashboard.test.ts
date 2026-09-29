@@ -64,7 +64,7 @@ test('the dashboard card shows the total, its account types, the rate and date u
   await seedAccounts();
   const html = renderToStaticMarkup(React.createElement(FinancialCards, { financials: await getDashboardFinancials() }));
   // The card shows the figure, with its unit beside it (src/components/dashboard/kpi-card.tsx).
-  assert.ok(/>۲۲۰٬۰۵۰٬۰۰۰<small[^>]*>تومان</.test(html), 'the total');
+  assert.ok(/>۲۲۰٬۰۵۰٬۰۰۰<\/span><small[^>]*>تومان</.test(html), 'the total');
   assert.ok(html.includes('بانک: ۱۵۰٬۰۰۰٬۰۰۰ تومان'));
   assert.ok(html.includes('شخص: ۵٬۰۰۰٬۰۰۰ تومان'));
   assert.ok(html.includes('کیف پول دیجیتال: ۳۰٬۰۰۰٬۰۰۰ تومان'));

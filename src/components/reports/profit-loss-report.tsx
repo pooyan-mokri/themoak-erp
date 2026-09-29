@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { KpiCard, type KpiTone } from '@/components/dashboard/kpi-card';
 import { SectionCard } from '@/components/dashboard/section-card';
 import { tomanTick } from '@/lib/chart-format';
+import { categoryLabel } from '@/lib/category-labels';
 import { cn } from '@/lib/utils';
 
 interface ProfitLossData {
@@ -42,27 +43,8 @@ const INDIGO = '#353DB2';
 const INDIGO_SOFT = '#A9AEDE';
 const INK = '#2D333D';
 
-/** Category names as the actions store them, in Persian. Anything else is shown as stored. */
-const CATEGORY_LABELS: Record<string, string> = {
-  Sales: 'فروش',
-  Return: 'مرجوعی',
-  Exchange: 'تعویض کالا',
-  COGS: 'بهای تمام‌شده کالای فروش‌رفته',
-  Salary: 'حقوق',
-  Depreciation: 'استهلاک',
-  'Purchase Payment': 'پرداخت خرید',
-  'Purchase Arrival Cost': 'هزینه حمل و ورود خرید',
-  'Marketing/Gift': 'هدیه بازاریابی',
-  'Marketing - Gift': 'هدیه بازاریابی',
-  'Loan Payment': 'بازپرداخت قرض',
-  'Currency Exchange': 'معامله ارز',
-  'Shareholder Deposit': 'واریز سرمایه سهامدار',
-  'Shareholder Withdrawal': 'برداشت سرمایه سهامدار',
-  'Shareholder Profit Withdrawal': 'برداشت سود سهامدار',
-  CONSIGNMENT_COMMISSION: 'کمیسیون فروش امانی',
-  Other: 'سایر',
-};
-const labelOf = (category: string) => CATEGORY_LABELS[category] ?? category;
+/** Category names in Persian (src/lib/category-labels.ts). */
+const labelOf = categoryLabel;
 
 const fa = (n: number, digits = 0) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: digits }).format(n);
 const signed = (n: number, digits = 1) => `${n > 0 ? '+' : ''}${fa(n, digits)}`;
@@ -305,9 +287,9 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
               contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="income" fill={INDIGO} name="درآمد" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="expenses" fill={INDIGO_SOFT} name="هزینه" radius={[2, 2, 0, 0]} />
-            <Bar dataKey="profit" fill={INK} name="سود" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="income" fill={INDIGO} name="درآمد" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+            <Bar dataKey="expenses" fill={INDIGO_SOFT} name="هزینه" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+            <Bar dataKey="profit" fill={INK} name="سود" radius={[2, 2, 0, 0]} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
         </div>

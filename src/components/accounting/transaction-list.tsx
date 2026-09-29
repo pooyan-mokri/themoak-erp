@@ -1,5 +1,6 @@
 'use client';
 
+import { categoryLabel } from '@/lib/category-labels';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -188,7 +189,7 @@ export function TransactionList({
     const list = inAccount.filter((t) => {
       if (!currentView.match(t)) return false;
       if (!q) return true;
-      return [t.description, accountNameOf(t), t.category, t.payee, ...(t.tags ?? [])]
+      return [t.description, accountNameOf(t), t.category, t.category && categoryLabel(t.category), t.payee, ...(t.tags ?? [])]
         .some((field) => typeof field === 'string' && field.toLowerCase().includes(q));
     });
     const value = (t: any): number | string =>
@@ -565,7 +566,7 @@ export function TransactionList({
                           </div>
                         </td>
                         <td className="max-w-[200px] truncate px-3 text-[13px]">{accountNameOf(t)}</td>
-                        <td className="max-w-[160px] truncate px-3 text-[12.5px] text-muted-foreground">{t.category || '-'}</td>
+                        <td className="max-w-[160px] truncate px-3 text-[12.5px] text-muted-foreground">{t.category ? categoryLabel(t.category) : '-'}</td>
                         <td className="whitespace-nowrap px-3 text-end">{amountCell(t)}</td>
                         <td className="px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <TransactionReceipt
@@ -652,7 +653,7 @@ export function TransactionList({
                 )}
               </dd>
               <dt className="text-muted-foreground">دسته‌بندی</dt>
-              <dd>{peek.category || '-'}</dd>
+              <dd>{peek.category ? categoryLabel(peek.category) : '-'}</dd>
               {peek.payee && (
                 <>
                   <dt className="text-muted-foreground">گیرنده</dt>
