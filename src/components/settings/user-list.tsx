@@ -106,22 +106,14 @@ export function UserList({ users }: UserListProps) {
               ),
             },
             {
+              // Email and mobile in one column, so the row's actions stay in view beside the settings menu.
               key: 'email',
-              label: 'ایمیل',
+              label: 'ایمیل و موبایل',
               sortable: true,
               render: (user) => (
-                <span className="font-mono text-[12.5px] text-muted-foreground" dir="ltr">
-                  {user.email}
-                </span>
-              ),
-            },
-            {
-              key: 'phone',
-              label: 'موبایل',
-              sortable: true,
-              render: (user) => (
-                <span className="font-mono text-[12.5px]" dir="ltr">
-                  {user.phone || '-'}
+                <span className="block font-mono text-[12.5px] leading-5" dir="ltr" style={{ textAlign: 'end' }}>
+                  <span className="block text-muted-foreground">{user.email}</span>
+                  {user.phone && <span className="block">{user.phone}</span>}
                 </span>
               ),
             },
