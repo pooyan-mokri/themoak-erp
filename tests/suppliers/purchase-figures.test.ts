@@ -4,6 +4,7 @@ import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { getPurchaseOrders } from '@/actions/supplier';
 import { purchaseFigures, supplierBalances } from '@/components/suppliers/purchase-figures';
+import { getDashboardFinancials } from '@/actions/dashboard';
 
 beforeEach(async () => {
   setTestRole('ADMIN');
@@ -66,4 +67,29 @@ test('without finance.view the list has no payments and the figures no money', a
   assert.equal(figures.payable, undefined);
   assert.equal(figures.open, 3);
   assert.equal(figures.leadTimeDays, 10);
+});
+
+test('an order closed short owes only for what came, as «مانده پرداخت به تأمین‌کنندگان» on the dashboard counts it', async () => {
+  const supplier = await prisma.supplier.create({ data: { name: 'Mazzucchelli' } });
+  const product = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ', costPrice: 0, sellPrice: 1 } });
+  const bank = await prisma.account.create({ data: { name: 'بانک', type: 'BANK', currency: 'TOMAN', balance: 0 } });
+  // 10 ordered at 100,000, 6 came, the order closed short; 200,000 paid: 400,000 still owed, not 800,000.
+  await prisma.purchaseOrder.create({
+    data: {
+      supplierId: supplier.id,
+      status: 'RECEIVED',
+      totalAmount: 1_000_000,
+      totalAmountInToman: 1_000_000,
+      items: { create: [{ productId: product.id, quantity: 10, receivedQuantity: 6, unitCost: 100_000, unitCostInToman: 100_000 }] },
+      payments: { create: [{ amount: 200_000, accountId: bank.id }] },
+    },
+  });
+  setTestRole('ACCOUNTANT');
+  const orders: any[] = (await getPurchaseOrders()).data;
+  assert.equal(orders[0].unpaidInToman, 400_000);
+  assert.equal(purchaseFigures(orders).payable, 400_000);
+  assert.deepEqual(supplierBalances(orders), { [supplier.id]: 400_000 });
+  assert.equal((await getDashboardFinancials()).totalPayables, 400_000);
+  setTestRole('WAREHOUSE');
+  assert.ok(((await getPurchaseOrders()).data as any[]).every((o) => o.unpaidInToman === undefined), 'no money without finance.view');
 });
