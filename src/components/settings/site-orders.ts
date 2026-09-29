@@ -1,3 +1,6 @@
+import { orderNet } from '@/lib/order-balance';
+import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
+
 /**
  * The website's orders as the site page shows them, from the ERP's own orders
  * (every order with a siteReference). Plain functions, run on the server page.
@@ -28,6 +31,7 @@ export type SiteOrderSummary = {
 };
 
 type Order = {
+  wooId?: number | null;
   id: string;
   number: number;
   siteReference?: string | null;
@@ -43,11 +47,12 @@ export function siteOrderSummary(orders: Order[], now: Date = new Date(), recent
   const site = orders
     .filter((o) => !!o.siteReference)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const weekStart = new Date(today);
-  weekStart.setDate(weekStart.getDate() - 6);
-  const final = (o: Order) => Number(o.totalAmount) - Number(o.discount ?? 0);
+  // Days are Tehran's (src/lib/tehran-day.ts): the server runs in UTC.
+  const todayInTehran = tehranDay(now);
+  const today = tehranDayStart(todayInTehran);
+  const weekStart = tehranDayStart(addDays(todayInTehran, -6));
+  // What the customer pays: the total after the discount (src/lib/order-balance.ts).
+  const final = (o: Order) => orderNet(o);
   const live = site.filter((o) => o.status !== 'CANCELLED');
   const week = live.filter((o) => new Date(o.createdAt) >= weekStart);
   return {

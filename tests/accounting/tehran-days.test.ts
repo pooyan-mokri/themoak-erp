@@ -92,16 +92,24 @@ test('the dashboard\'s today and yesterday are Tehran days, on a server that run
   ]);
 });
 
-test('the profit and loss page\'s month runs from its first Tehran midnight through the whole of its last day', async () => {
-  await sale('2026-08-31T20:29:00Z', 1_000); // 31 Aug 23:59 Tehran: August
-  await sale('2026-08-31T20:45:00Z', 20_000); // 1 Sep 00:15 Tehran
-  await sale('2026-09-30T15:00:00Z', 300_000); // 30 Sep 18:30 Tehran: the last day
-  await sale('2026-09-30T20:45:00Z', 4_000_000); // 1 Oct 00:15 Tehran
-  at('2026-09-30T19:00:00Z');
+test('the profit and loss page\'s month (the Jalali month) runs from its first Tehran midnight through the whole of its last day', async () => {
+  await sale('2026-09-22T20:29:00Z', 1_000); // 31 Shahrivar 23:59 Tehran: the month before
+  await sale('2026-09-22T20:45:00Z', 20_000); // 1 Mehr 00:15 Tehran
+  await sale('2026-10-22T15:00:00Z', 300_000); // 30 Mehr 18:30 Tehran: the last day
+  await sale('2026-10-22T20:45:00Z', 4_000_000); // 1 Aban 00:15 Tehran
+  at('2026-10-22T19:00:00Z'); // 30 Mehr 22:30 Tehran
 
   const page = await FinancialReportsPage({ searchParams: {} });
   const report = propsOf(page, ProfitLossReport).data;
   assert.equal(report.summary.income, 320_000);
+});
+
+test('an asked range of days runs from its first Tehran midnight through the whole of its last day', async () => {
+  await sale('2026-08-31T20:29:00Z', 1_000); // 31 Aug 23:59 Tehran: August
+  await sale('2026-08-31T20:45:00Z', 20_000); // 1 Sep 00:15 Tehran
+  await sale('2026-09-30T15:00:00Z', 300_000); // 30 Sep 18:30 Tehran
+  await sale('2026-09-30T20:45:00Z', 4_000_000); // 1 Oct 00:15 Tehran: the last day
+  at('2026-09-30T19:00:00Z');
 
   const asked = propsOf(await FinancialReportsPage({ searchParams: { from: '2026-09-01', to: '2026-10-01' } }), ProfitLossReport).data;
   assert.equal(asked.summary.income, 4_320_000);

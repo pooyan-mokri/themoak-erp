@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ActionState, ActionResult } from '@/lib/types';
 import { checkPermission, getCurrentRole, hasPermission } from '@/lib/access';
 import { auth } from '@/auth';
+import { tehranDay, tehranDayStart } from '@/lib/tehran-day';
 
 /** A project's budget is finance data: shown to, and set by, finance.view only. */
 const seesBudget = () => hasPermission('finance.view');
@@ -125,8 +126,8 @@ export type ProjectFigures = { tasks: number; done: number; overdue: number; spe
  */
 export async function getProjectFigures(): Promise<Record<string, ProjectFigures>> {
   if (!(await getCurrentRole())) return {};
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Today's Tehran midnight: a due day picked in Tehran is stored at its Tehran midnight (src/lib/tehran-day.ts).
+  const today = tehranDayStart(tehranDay(new Date()));
   const [tasks, canSeeMoney] = await Promise.all([
     prisma.task.findMany({ select: { projectId: true, status: true, dueDate: true } }),
     hasPermission('finance.view'),

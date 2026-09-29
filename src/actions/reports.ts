@@ -436,8 +436,10 @@ export async function getInventoryAgingReport() {
   await requirePermission('cost.view');
   try {
     // This would ideally track when each inventory item was received
-    // For now, we'll use product creation date as a proxy
+    // For now, we'll use product creation date as a proxy. Only the types held as stock (SALEABLE and OTHER,
+    // src/lib/stock-levels.ts): a consumable or fixed asset is not stock, and has no stock value.
     const products = await prisma.product.findMany({
+      where: { productType: { in: [...STOCK_TYPES] } },
       include: {
         inventory: {
           select: {

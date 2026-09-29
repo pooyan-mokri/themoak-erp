@@ -49,6 +49,22 @@ test('a project counts its tasks, done and overdue; with finance.view also what 
   assert.deepEqual(await getProjectFigures(), {});
 });
 
+test('a task due today in Tehran is not overdue yet; one due yesterday is', async () => {
+  const project = await prisma.project.create({ data: { name: 'پاییز' } });
+  // A due day picked in Tehran is stored at its Tehran midnight (20:30 UTC the day before).
+  const tehranMidnight = (daysFromToday: number) => {
+    const day = new Date(Date.now() + 3.5 * 3_600_000 + daysFromToday * DAY).toISOString().slice(0, 10);
+    return new Date(`${day}T00:00:00.000+03:30`);
+  };
+  await prisma.task.createMany({
+    data: [
+      { title: 'امروز', projectId: project.id, status: 'TODO', dueDate: tehranMidnight(0) },
+      { title: 'دیروز', projectId: project.id, status: 'TODO', dueDate: tehranMidnight(-1) },
+    ],
+  });
+  assert.equal((await getProjectFigures())[project.id].overdue, 1);
+});
+
 test('my tasks are the open ones assigned to me, soonest due first, with their project', async () => {
   const { project } = await seed();
   setTestRole('USER');

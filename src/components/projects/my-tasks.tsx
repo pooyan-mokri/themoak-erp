@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { SectionCard } from '@/components/dashboard/section-card';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
+import { tehranDay, tehranDayStart } from '@/lib/tehran-day';
 import { PILL, fa, taskPriority, taskStatus } from './project-labels';
 
 type MyTask = {
@@ -15,8 +16,8 @@ type MyTask = {
 
 /** The signed-in user's open tasks across projects, soonest due first. */
 export function MyTasks({ tasks }: { tasks: MyTask[] }) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Today's Tehran midnight, on the server (UTC) and in the browser alike.
+  const today = tehranDayStart(tehranDay(new Date()));
 
   return (
     <SectionCard title="کارهای من" count={tasks.length ? fa(tasks.length) : undefined}>

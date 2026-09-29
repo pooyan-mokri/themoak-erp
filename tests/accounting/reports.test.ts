@@ -70,4 +70,12 @@ test('stock turnover is units sold in 90 days over units in stock; inventory age
     ['RAW', 10, 30_000_000, 'بیش از 180 روز'],
     ['PANJ', 4, 16_000_000, 'کمتر از 90 روز'],
   ]);
+
+  // A fixed asset or a consumable is not stock (src/lib/stock-levels.ts): the aging report, and the stock value
+  // the reports page adds up from it, leave it out; OTHER is stock like SALEABLE.
+  for (const [name, productType] of [['SHELF', 'FIXED_ASSET'], ['BAGS', 'CONSUMABLE'], ['CASE', 'OTHER']]) {
+    const product = await prisma.product.create({ data: { name, sku: name, costPrice: 1_000, sellPrice: 1, productType: productType as any } });
+    await prisma.inventory.create({ data: { productId: product.id, warehouseId: warehouse.id, quantity: 3 } });
+  }
+  assert.deepEqual((await getInventoryAgingReport()).map((a: any) => a.name).sort(), ['CASE', 'PANJ', 'RAW']);
 });

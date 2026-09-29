@@ -44,6 +44,7 @@ import { foldSearchText } from './audit-count-view';
 import { GiftProductDialog } from './gift-product-dialog';
 import { ProductForm } from './product-form';
 import { ProductActions as ExcelActions } from './product-actions';
+import { holdsStock } from '@/lib/stock-levels';
 import { LOW_STOCK_MAX, PRODUCT_TYPE_LABELS, STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
 
 interface Product {
@@ -76,11 +77,13 @@ interface ProductTableProps {
 }
 
 type Row = Product & { total: number; sellable: number; value: number };
+const isStock = (r: Row) => holdsStock(r.productType || 'SALEABLE');
 
 const VIEWS = [
   { id: 'all', label: 'همه', match: () => true },
-  { id: 'low', label: 'موجودی کم', match: (r: Row) => stockStatus(r.total) === 'low' },
-  { id: 'out', label: 'ناموجود', match: (r: Row) => stockStatus(r.total) === 'out' },
+  // Low and out of stock are stock products' states, as the dashboard's alert counts them.
+  { id: 'low', label: 'موجودی کم', match: (r: Row) => isStock(r) && stockStatus(r.total) === 'low' },
+  { id: 'out', label: 'ناموجود', match: (r: Row) => isStock(r) && stockStatus(r.total) === 'out' },
 ] as const;
 
 type SortKey = 'name' | 'sku' | 'barcode' | 'productType' | 'total' | 'sellable' | 'costPrice' | 'sellPrice' | 'value';
@@ -113,8 +116,10 @@ export function ProductTable({ products, stock, canSeeCost, canSeeSellPrice, can
     () =>
       products.map((p) => {
         const s = stock?.[p.id] ?? { total: 0, sellable: 0 };
-        // Stock value is units × cost: only for roles that see the cost (the cost is not sent otherwise).
-        return { ...p, total: s.total, sellable: s.sellable, value: canSeeCost ? s.total * Number(p.costPrice ?? 0) : 0 };
+        // Stock value is units × cost: only for roles that see the cost (the cost is not sent otherwise), and only
+        // for the types held as stock (SALEABLE and OTHER, src/lib/stock-levels.ts), as on every stock screen.
+        const value = canSeeCost && holdsStock(p.productType || 'SALEABLE') ? s.total * Number(p.costPrice ?? 0) : 0;
+        return { ...p, total: s.total, sellable: s.sellable, value };
       }),
     [products, stock, canSeeCost],
   );
@@ -162,8 +167,8 @@ export function ProductTable({ products, stock, canSeeCost, canSeeSellPrice, can
 
   const counts = {
     all: scoped.length,
-    low: scoped.filter((r) => stockStatus(r.total) === 'low').length,
-    out: scoped.filter((r) => stockStatus(r.total) === 'out').length,
+    low: scoped.filter((r) => isStock(r) && stockStatus(r.total) === 'low').length,
+    out: scoped.filter((r) => isStock(r) && stockStatus(r.total) === 'out').length,
   };
   const units = scoped.reduce((sum, r) => sum + r.total, 0);
   const sellableUnits = scoped.reduce((sum, r) => sum + r.sellable, 0);

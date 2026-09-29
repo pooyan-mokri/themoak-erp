@@ -53,18 +53,19 @@ test('a customer is worth the orders not cancelled, net of discount, with a retu
   const { warehouse, till, sara, walkIn, paid, unpaid } = await seed();
   assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 2, lifetimeValue: PRICE * 3 - 100_000 });
 
-  // One frame of the paid order comes back: the order's total drops by its price, once.
+  // One frame of the paid order comes back: the order's total drops by its price, once, and the frame
+  // takes its share of the discount (50,000 of the 100,000) with it.
   const back = await returnOrderItem(
     {},
     form({ orderId: paid.id, orderItemId: paid.items[0].id, quantity: '1', accountId: till.id, warehouseId: warehouse.id }),
   );
   assert.equal(back.success, true, back.message);
-  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 2, lifetimeValue: PRICE * 2 - 100_000 });
+  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 2, lifetimeValue: PRICE * 2 - 50_000 });
 
   // A cancelled order counts neither as an order nor as value.
   const cancelled = await cancelOrder(unpaid!.id);
   assert.equal(cancelled.success, true, cancelled.message);
-  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 1, lifetimeValue: PRICE - 100_000 });
+  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 1, lifetimeValue: PRICE - 50_000 });
 
   // A customer with no orders has no entry.
   assert.equal((await getCustomerOrderSummaries())[walkIn.id], undefined);

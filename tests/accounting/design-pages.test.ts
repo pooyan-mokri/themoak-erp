@@ -4,6 +4,7 @@ import * as React from 'react';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { recordExpense, recordWithdrawal } from '@/actions/accounting';
+import { getDashboardFinancials } from '@/actions/dashboard';
 import { balanceEffect } from '@/lib/balance-reconciliation';
 import AccountingPage from '../../src/app/dashboard/accounting/page';
 import AccountsPage from '../../src/app/dashboard/accounting/accounts/page';
@@ -111,6 +112,10 @@ test('no trend is drawn for an account with a row whose amount the role may not 
 
 test('the hub adds a dollar balance at the latest rate, never as Toman, and leaves out a currency with no rate', async () => {
   await openAccount('rial', 1_000_000);
+  // «موجودی کل» is every account that holds money, a person's and a wallet's too (src/lib/money-totals.ts).
+  await openAccount('person', 250_000, 'TOMAN', { type: 'PERSON' });
+  await openAccount('wallet', 30_000, 'TOMAN', { type: 'CRYPTO' });
+  await prisma.account.create({ data: { name: 'COGS', type: 'EXPENSE', currency: 'TOMAN', balance: -9_000_000 } });
   await openAccount('dollar', 100, 'USD');
   await openAccount('euro', 50, 'EUR');
   await prisma.exchangeRate.createMany({
@@ -121,8 +126,10 @@ test('the hub adds a dollar balance at the latest rate, never as Toman, and leav
   });
 
   const kpis = allPropsOf(await AccountingPage(), KpiCard);
-  const cash = kpis.find((k) => k.label === 'موجودی نقد');
-  assert.equal(cash.value, (1_000_000 + 100 * 60_000).toLocaleString('fa-IR'));
+  const cash = kpis.find((k) => k.label === 'موجودی کل');
+  assert.equal(cash.value, (1_000_000 + 250_000 + 30_000 + 100 * 60_000).toLocaleString('fa-IR'));
+  // The same figure as the dashboard's «موجودی کل».
+  assert.equal(cash.value, Math.round((await getDashboardFinancials()).totalBalance).toLocaleString('fa-IR'));
   assert.match(cash.note, /یورو/, 'the euro account, with no rate, is named as left out');
 });
 
@@ -130,9 +137,14 @@ test('the hub shows this month’s expenses from the journal, and each tile only
   await openAccount('melli', 5_000_000);
   const recorded = await recordExpense(undefined, form({ amount: '300000', currency: 'TOMAN', category: 'Rent', accountId: 'melli' }));
   assert.equal(recorded.success, true, recorded.message);
+  // Not operating expenses (src/lib/profit-rows.ts): a supplier payment is stock, a fixed asset an asset, the
+  // cost of goods sold is not an operating cost, and a shareholder's withdrawal is capital.
+  for (const category of ['Purchase Payment', 'خرید تجهیزات', 'COGS', 'Shareholder Withdrawal']) {
+    await prisma.transaction.create({ data: { type: 'EXPENSE', amount: 7_000_000, amountInToman: 7_000_000, currency: 'TOMAN', category, date: new Date() } });
+  }
 
   let page = await AccountingPage();
-  const expenses = allPropsOf(page, KpiCard).find((k) => k.label.startsWith('هزینه‌های'));
+  const expenses = allPropsOf(page, KpiCard).find((k) => k.label.startsWith('هزینه‌های عملیاتی'));
   assert.equal(expenses.value, (300_000).toLocaleString('fa-IR'));
   const admin = allPropsOf(page, AccountingHubTiles)[0].visible;
   assert.ok(admin.includes('/dashboard/accounting/reconciliation') && admin.includes('/dashboard/accounting/assets'));

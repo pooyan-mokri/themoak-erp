@@ -30,6 +30,21 @@ async function seedOrders() {
   await order({ totalAmount: 7_000_000, status: 'CANCELLED' });
 }
 
+test('the timeline counts what the customer pays, after the discount, as getSalesOverTime does', async () => {
+  const product = await prisma.product.create({ data: { name: 'SHESH', sku: 'SHESH-1', costPrice: 1, sellPrice: 2_000_000 } });
+  const at = new Date(Date.now() - 3_600_000);
+  const order = (data: Record<string, unknown>) =>
+    prisma.order.create({ data: { createdAt: at, items: { create: [{ productId: product.id, quantity: 1, price: 2_000_000 }] }, ...data } as any });
+  await order({ totalAmount: 2_000_000, discount: 300_000 });
+  // An old WooCommerce order stored its total after the discount (src/lib/order-balance.ts).
+  await order({ totalAmount: 1_700_000, discount: 300_000, wooId: 88 });
+  const rows = await getSalesTimeline(...lastDays());
+  assert.deepEqual(rows.map((row) => row.amount).sort(), [1_700_000, 1_700_000]);
+  const period = reportWindow('4w');
+  const daily = await getSalesOverTime(new Date(period.start), new Date(period.end), 'day');
+  assert.equal(summarizeSales(period, rows, []).totals.revenue, daily.reduce((sum, day) => sum + day.revenue, 0));
+});
+
 const lastDays = () => [new Date(Date.now() - 2 * DAY), new Date(Date.now() + DAY)] as const;
 
 test('the sales timeline needs sales.view, like the other sales reports', async () => {

@@ -113,7 +113,7 @@ export function InventoryReport({ report }: InventoryReportProps) {
           <CardContent>
             <div className="text-2xl font-bold">{formatNumber(report.summary.lowStockCount)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              محصول با موجودی کمتر از ۱۰ عدد
+              ردیف با موجودی ۱ تا ۳ عدد
             </p>
           </CardContent>
         </Card>
@@ -182,7 +182,7 @@ export function InventoryReport({ report }: InventoryReportProps) {
               محصولات با موجودی کم
             </CardTitle>
             <CardDescription>
-              محصولاتی که موجودی آن‌ها کمتر از ۱۰ عدد است
+              ردیف‌های انبار با موجودی ۱ تا ۳ عدد
             </CardDescription>
           </CardHeader>
           <CardContent>

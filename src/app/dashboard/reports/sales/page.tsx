@@ -5,6 +5,7 @@ import { PrintButton } from '@/components/reports/print-button';
 import { RangeSwitch } from '@/components/reports/range-switch';
 import { bucketDaily, jalaliFull, parseRange, reportWindow } from '@/components/reports/report-window';
 import { requireRouteAccess } from '@/lib/access';
+import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 
 export default async function SalesReportsPage({
   searchParams,
@@ -19,8 +20,12 @@ export default async function SalesReportsPage({
   const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 2, 1);
   const defaultTo = now;
 
-  const startDate = period ? new Date(period.start) : searchParams.from ? new Date(searchParams.from) : defaultFrom;
-  const endDate = period ? new Date(period.end) : searchParams.to ? new Date(searchParams.to) : defaultTo;
+  // A day asked for is Tehran's day, the last one included whole (src/lib/tehran-day.ts); the server runs in UTC.
+  const day = (value: string | undefined) => (value && isDay(value) ? value : undefined);
+  const from = day(searchParams.from);
+  const to = day(searchParams.to);
+  const startDate = period ? new Date(period.start) : from ? tehranDayStart(from) : defaultFrom;
+  const endDate = period ? new Date(period.end) : to ? tehranDayEnd(to) : defaultTo;
 
   const [salesByProduct, salesByCustomer, salesOverTime] = await Promise.all([
     getSalesByProduct(startDate, endDate),

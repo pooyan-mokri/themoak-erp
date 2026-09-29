@@ -138,7 +138,10 @@ test('an account picker gets every account without its balance; it needs account
 });
 
 test('the account list names each account type in Persian', () => {
-  const account = (type: string) => ({ id: type, name: `حساب ${type}`, type, currency: 'TOMAN', balance: 0 });
+  const account = (type: string) => ({
+    id: type, name: `حساب ${type}`, type, currency: 'TOMAN', balance: 0,
+    createdAt: new Date('2026-09-01'), history: null, historyGap: null, movements: [],
+  });
   const html = renderToStaticMarkup(
     React.createElement(AccountList, { accounts: ['BANK', 'CASH', 'PERSON', 'CRYPTO', 'EXPENSE'].map(account) as any, canManage: false }),
   );

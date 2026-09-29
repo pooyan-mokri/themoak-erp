@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { MONTH_NAMES, currentPeriod } from './payroll-periods';
+import { MONTH_NAMES } from './payroll-periods';
+import { jalaliYearMonth } from '@/lib/tehran-day';
 import { toLatinDigits } from '@/lib/digits';
 
 const initialState = {
@@ -80,7 +81,7 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
 
   // The current Jalali month and year. (Reading them from Intl's fa-IR parts gave Persian
   // digits that parseInt cannot read, so the form always opened on month 1 of 1403.)
-  const { year: currentYear, month: currentMonth } = currentPeriod();
+  const { year: currentYear, month: currentMonth } = jalaliYearMonth(new Date());
 
   const errors = state.errors as Record<string, string[] | undefined> | undefined;
   const FieldError = ({ name }: { name: string }) =>

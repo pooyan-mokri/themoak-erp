@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkPermission, hasPermission, requirePermission } from '@/lib/access';
 import { accountForViewer, creditBalance, creditBalances, productForViewer } from '@/lib/sales-records';
-import { customerBalance } from '@/lib/order-balance';
+import { customerBalance, orderNet } from '@/lib/order-balance';
 
 // const prisma = new PrismaClient();
 
@@ -523,14 +523,16 @@ export async function getCustomerOrderSummaries(): Promise<Record<string, Custom
   await requirePermission('sales.view');
   const orders = await prisma.order.findMany({
     where: { customerId: { not: null }, status: { not: 'CANCELLED' } },
-    select: { customerId: true, totalAmount: true, discount: true },
+    select: { customerId: true, totalAmount: true, discount: true, wooId: true, siteReference: true },
   });
   const summaries: Record<string, CustomerOrderSummary> = {};
   for (const order of orders) {
     const id = order.customerId as string;
     const summary = (summaries[id] ??= { orders: 0, lifetimeValue: 0 });
     summary.orders += 1;
-    summary.lifetimeValue += Math.max(0, Number(order.totalAmount) - Number(order.discount));
+    // What its customer pays for it, after the discount and never below 0 (src/lib/order-balance.ts),
+    // as the CRM ranking (getCRMDashboardStats) counts it.
+    summary.lifetimeValue += orderNet(order);
   }
   return summaries;
 }

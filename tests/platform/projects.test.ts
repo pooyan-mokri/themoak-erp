@@ -290,7 +290,12 @@ test('the task card and task list show the assignee name and a Persian priority,
   }
   const card = readFileSync(join(process.cwd(), 'src/components/projects/task-card.tsx'), 'utf8');
   assert.doesNotMatch(card, /\{task\.priority\}/);
-  assert.match(card, /PRIORITY_LABELS\[task\.priority\]/);
+  // The design card names the priority through project-labels, whose names are Persian.
+  assert.match(card, /taskPriority\(task\.priority\)/);
+  const labels = readFileSync(join(process.cwd(), 'src/components/projects/project-labels.ts'), 'utf8');
+  for (const [code, name] of [['LOW', 'پایین'], ['MEDIUM', 'متوسط'], ['HIGH', 'بالا'], ['URGENT', 'فوری']]) {
+    assert.match(labels, new RegExp(`${code}: \\{ label: '${name}'`), code);
+  }
 });
 
 test('a project budget is shown to and set by finance.view roles only; others leave it as it is', async () => {
@@ -328,12 +333,17 @@ test('a project budget is shown to and set by finance.view roles only; others le
 
 test('the project pages pass the budget only to finance.view roles', () => {
   const list = readFileSync(join(process.cwd(), 'src/app/dashboard/projects/page.tsx'), 'utf8');
-  assert.match(list, /const showBudget = await hasPermission\('finance\.view'\);/);
-  assert.match(list, /<ProjectList projects=\{projects\} showBudget=\{showBudget\} \/>/);
+  // The design list page reads finance.view with its other figures, and hands it to the form and the list.
+  assert.match(list, /\[projects, figures, myTasks, canManage, showBudget\] = await Promise\.all\(\[[^\]]*hasPermission\('finance\.view'\),\s*\]\)/);
+  assert.match(list, /<ProjectForm showBudget=\{showBudget\} \/>/);
+  assert.match(list, /<ProjectList projects=\{projects\} figures=\{figures\} showBudget=\{showBudget\} \/>/);
   assert.match(readFileSync(join(process.cwd(), 'src/app/dashboard/projects/new/page.tsx'), 'utf8'), /<ProjectForm showBudget=\{showBudget\} \/>/);
-  assert.match(readFileSync(join(process.cwd(), 'src/app/dashboard/projects/[id]/page.tsx'), 'utf8'), /showBudget=\{await hasPermission\('finance\.view'\)\}/);
+  const detail = readFileSync(join(process.cwd(), 'src/app/dashboard/projects/[id]/page.tsx'), 'utf8');
+  assert.match(detail, /const showBudget = await hasPermission\('finance\.view'\);/);
+  assert.match(detail, /<ProjectForm project=\{project\} showBudget=\{showBudget\}/);
   assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-form.tsx'), 'utf8'), /\{showBudget && \(/);
-  assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-list.tsx'), 'utf8'), /column\.key !== 'budget'/);
+  // The design cards show the budget and the spend only with showBudget.
+  assert.match(readFileSync(join(process.cwd(), 'src/components/projects/project-list.tsx'), 'utf8'), /\{showBudget && \(\s*<div className="mt-auto grid grid-cols-2 gap-3 border-t pt-3">\s*<div>\s*<p className="text-\[11\.5px\] text-muted-foreground">بودجه/);
 });
 
 test('a task is given only to an existing, active user; its current assignee stays through an edit after deactivation', async () => {
