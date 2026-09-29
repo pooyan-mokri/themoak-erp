@@ -437,8 +437,8 @@ export function POSInterface({
         </aside>
       </div>
 
-      {/* Mobile: Fixed bottom button to open cart */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card p-3 md:hidden">
+      {/* Mobile: the button that opens the cart, fixed just above the phone tab bar (h-16), which would cover it. */}
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t bg-card p-3 md:hidden">
         <Button className="h-12 w-full text-[14px]" disabled={cart.length === 0} onClick={() => setIsCartOpen(true)}>
           <ShoppingCart className="h-5 w-5" />
           {cart.length > 0 ? `سبد فروش · ${fa(units)} عدد · ${fa(totalAmount)} تومان` : 'سبد فروش خالی است'}
