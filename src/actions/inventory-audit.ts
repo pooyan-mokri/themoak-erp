@@ -68,6 +68,88 @@ async function writeWhileInProgress(auditId: string, write: (tx: any) => Promise
   );
 }
 
+type AuditMove = { productId: string; at: Date; delta: number };
+
+/**
+ * Every stock movement into (+) or out of (−) the audited warehouse after its freeze. Every other writer is
+ * refused while the audit is open (src/lib/audit-stock-lock.ts), so these are the website's sales and restocks,
+ * which Pooyan decided to accept during a count.
+ */
+async function movesSinceFreeze(tx: any, audit: { warehouseId: string; frozenAt: Date | null }): Promise<AuditMove[]> {
+  if (!audit.frozenAt) return [];
+  const rows = await tx.inventoryMovement.findMany({
+    where: {
+      createdAt: { gt: audit.frozenAt },
+      OR: [{ toWarehouseId: audit.warehouseId }, { fromWarehouseId: audit.warehouseId }],
+    },
+    select: { productId: true, createdAt: true, quantity: true, toWarehouseId: true },
+  });
+  return rows.map((m: any) => ({
+    productId: m.productId,
+    at: m.createdAt,
+    delta: m.toWarehouseId === audit.warehouseId ? m.quantity : -m.quantity,
+  }));
+}
+
+/**
+ * The stock correction an item's final number calls for: what issuing adds to (or takes from) the warehouse,
+ * and the item's discrepancy. A counted number is what was on the shelf when it was counted, so it is compared
+ * with the frozen number moved by what the website sold or restocked between the freeze and that count; a
+ * website sale after the count is already out of the record and off the shelf alike, so it creates no false
+ * discrepancy. An item nobody counted keeps its system number (no correction) unless it was set to another
+ * number (0 for "none there"), which it then becomes, whatever moved since the freeze.
+ */
+function correctionFor(
+  item: {
+    productId: string;
+    systemQuantity: number;
+    finalQuantity: number;
+    countedQuantity1?: number | null;
+    countedQuantity2?: number | null;
+    countedQuantity3?: number | null;
+    countedAt1?: Date | null;
+    countedAt2?: Date | null;
+    countedAt3?: Date | null;
+  },
+  moves: AuditMove[],
+): number {
+  const countTimes = [
+    item.countedQuantity1 != null ? item.countedAt1 : null,
+    item.countedQuantity2 != null ? item.countedAt2 : null,
+    item.countedQuantity3 != null ? item.countedAt3 : null,
+  ].filter((at): at is Date => !!at);
+  const counted = item.countedQuantity1 != null || item.countedQuantity2 != null || item.countedQuantity3 != null;
+  if (!counted && item.finalQuantity === item.systemQuantity) return 0;
+  const until = counted && countTimes.length > 0 ? Math.max(...countTimes.map((at) => new Date(at).getTime())) : null;
+  const moved = moves
+    .filter((m) => m.productId === item.productId && (until === null || new Date(m.at).getTime() <= until))
+    .reduce((sum, m) => sum + m.delta, 0);
+  return item.finalQuantity - (item.systemQuantity + moved);
+}
+
+/**
+ * Brings the discrepancy of every final item whose product moved since the freeze in line with correctionFor.
+ * The bulk finalising statements compare with the frozen number, which is right for every item the website did
+ * not touch; this corrects the rest, inside the same transaction.
+ */
+async function correctForMovesSinceFreeze(tx: any, auditId: string) {
+  const audit = await tx.inventoryAudit.findUnique({ where: { id: auditId }, select: { warehouseId: true, frozenAt: true } });
+  const moves = await movesSinceFreeze(tx, audit);
+  if (moves.length === 0) return;
+  const items = await tx.inventoryAuditItem.findMany({
+    where: { auditId, finalQuantity: { not: null }, productId: { in: [...new Set(moves.map((m) => m.productId))] } },
+    include: { product: { select: { costPrice: true } } },
+  });
+  for (const item of items) {
+    const discrepancy = correctionFor(item, moves);
+    if (discrepancy === item.discrepancy) continue;
+    await tx.inventoryAuditItem.update({
+      where: { id: item.id },
+      data: { discrepancy, discrepancyValue: discrepancy * Number(item.product.costPrice) },
+    });
+  }
+}
+
 // 1. Pre-Audit: Create Inventory Audit
 export async function createInventoryAudit(
   prevState: ActionState<{ auditId: string }>,
@@ -95,41 +177,48 @@ export async function createInventoryAudit(
       return { success: false, message: 'لطفاً انبار را انتخاب کنید.' };
     }
 
-    // Check if warehouse exists
-    const warehouse = await prisma.warehouse.findUnique({
-      where: { id: warehouseId },
+    // One transaction holding the warehouse row: two creates at once (a double click) cannot both find no
+    // active audit and each start one, which would later correct the same shortfall twice.
+    const outcome = await prisma.$transaction(async (tx: any) => {
+      // Check if warehouse exists
+      const [warehouse] = await tx.$queryRaw`SELECT id FROM "Warehouse" WHERE id = ${warehouseId} FOR UPDATE`;
+      if (!warehouse) return { refused: 'انبار یافت نشد.' };
+
+      // Check if there's an active audit for this warehouse
+      const activeAudit = await tx.inventoryAudit.findFirst({
+        where: {
+          warehouseId,
+          status: { in: ['PLANNED', 'IN_PROGRESS'] },
+        },
+      });
+
+      if (activeAudit) {
+        return { refused: `یک انبارگردانی فعال برای این انبار وجود دارد: ${activeAudit.auditNumber}` };
+      }
+
+      // The number is random within the year; on the rare clash with an earlier audit, draw another.
+      const taken = new Set(
+        (await tx.inventoryAudit.findMany({ select: { auditNumber: true } })).map((a: any) => a.auditNumber),
+      );
+      let auditNumber = generateAuditNumber();
+      while (taken.has(auditNumber)) auditNumber = generateAuditNumber();
+
+      const audit = await tx.inventoryAudit.create({
+        data: {
+          auditNumber,
+          warehouseId,
+          description: description || undefined,
+          status: 'PLANNED',
+          createdBy: session.user.id,
+        },
+      });
+      return { audit };
     });
 
-    if (!warehouse) {
-      return { success: false, message: 'انبار یافت نشد.' };
+    if (outcome.refused) {
+      return { success: false, message: outcome.refused };
     }
-
-    // Check if there's an active audit for this warehouse
-    const activeAudit = await prisma.inventoryAudit.findFirst({
-      where: {
-        warehouseId,
-        status: { in: ['PLANNED', 'IN_PROGRESS'] },
-      },
-    });
-
-    if (activeAudit) {
-      return {
-        success: false,
-        message: `یک انبارگردانی فعال برای این انبار وجود دارد: ${activeAudit.auditNumber}`,
-      };
-    }
-
-    const auditNumber = generateAuditNumber();
-
-    const audit = await prisma.inventoryAudit.create({
-      data: {
-        auditNumber,
-        warehouseId,
-        description: description || undefined,
-        status: 'PLANNED',
-        createdBy: session.user.id,
-      },
-    });
+    const audit = outcome.audit;
 
     revalidatePath('/dashboard/inventory/audits');
     console.log('=== createInventoryAudit SUCCESS ===', audit.id);
@@ -140,10 +229,9 @@ export async function createInventoryAudit(
     };
   } catch (error: unknown) {
     console.error('=== createInventoryAudit ERROR ===', error);
-    const message = error instanceof Error ? error.message : 'لطفاً دوباره تلاش کنید.';
     return {
       success: false,
-      message: `خطا در ایجاد انبارگردانی: ${message}`,
+      message: 'خطا در ایجاد انبارگردانی. لطفاً دوباره تلاش کنید.',
     };
   }
 }
@@ -171,63 +259,77 @@ export async function freezeInventory(auditId: string): Promise<ActionResult<{ s
       return { success: false, message: 'موجودی قبلاً فریز شده است.' };
     }
 
-    // Get all inventory items for this warehouse
-    const inventoryItems = await prisma.inventory.findMany({
-      where: { warehouseId: audit.warehouseId },
-      include: { product: true },
-    });
+    // Start the audit first, then read the stock, in one transaction. Starting it takes the audit row, so it
+    // waits for any stock write still holding that row (src/lib/audit-stock-lock.ts) and then reads what it
+    // wrote; a stock write that comes after finds the audit open and is refused. A second freeze finds it taken.
+    const snapshotCount = await prisma.$transaction(
+      async (tx: any) => {
+        const started = await tx.inventoryAudit.updateMany({
+          where: { id: auditId, isFrozen: false },
+          data: {
+            isFrozen: true,
+            frozenAt: new Date(),
+            status: 'IN_PROGRESS',
+            startDate: new Date(),
+          },
+        });
+        if (started.count !== 1) return null;
+        // The moment the freeze holds the audit, on the app's clock like every movement's createdAt: what the
+        // website sells from now on is a movement after the freeze (movesSinceFreeze).
+        await tx.inventoryAudit.update({ where: { id: auditId }, data: { frozenAt: new Date() } });
 
-    // Get ALL products in the system so they can be counted even if not yet in this warehouse
-    const allProducts = await prisma.product.findMany({
-      orderBy: { name: 'asc' },
-    });
+        // Get all inventory items for this warehouse
+        const inventoryItems = await tx.inventory.findMany({
+          where: { warehouseId: audit.warehouseId },
+          include: { product: true },
+        });
 
-    const inventoryMap = new Map<string, { quantity: number }>(inventoryItems.map((i: any) => [i.productId, i]));
+        // Get ALL products in the system so they can be counted even if not yet in this warehouse
+        const allProducts = await tx.product.findMany({
+          orderBy: { name: 'asc' },
+        });
 
-    // Snapshots only for products that actually have inventory in this warehouse
-    const snapshots = inventoryItems.map((item: any) => ({
-      auditId,
-      productId: item.productId,
-      warehouseId: item.warehouseId,
-      quantity: item.quantity,
-      costPrice: item.product.costPrice,
-    }));
+        const inventoryMap = new Map<string, { quantity: number }>(inventoryItems.map((i: any) => [i.productId, i]));
 
-    await prisma.$transaction(async (tx: any) => {
-      // Create snapshots
-      await tx.inventoryAuditSnapshot.createMany({
-        data: snapshots,
-      });
+        // Snapshots only for products that actually have inventory in this warehouse
+        const snapshots = inventoryItems.map((item: any) => ({
+          auditId,
+          productId: item.productId,
+          warehouseId: item.warehouseId,
+          quantity: item.quantity,
+          costPrice: item.product.costPrice,
+        }));
 
-      // Create audit items for ALL products (quantity 0 for those not in this warehouse)
-      const auditItems = allProducts.map((product: any) => ({
-        auditId,
-        productId: product.id,
-        systemQuantity: inventoryMap.get(product.id)?.quantity ?? 0,
-      }));
+        // Create snapshots
+        await tx.inventoryAuditSnapshot.createMany({
+          data: snapshots,
+        });
 
-      await tx.inventoryAuditItem.createMany({
-        data: auditItems,
-        skipDuplicates: true,
-      });
+        // Create audit items for ALL products (quantity 0 for those not in this warehouse)
+        const auditItems = allProducts.map((product: any) => ({
+          auditId,
+          productId: product.id,
+          systemQuantity: inventoryMap.get(product.id)?.quantity ?? 0,
+        }));
 
-      // Update audit status
-      await tx.inventoryAudit.update({
-        where: { id: auditId },
-        data: {
-          isFrozen: true,
-          frozenAt: new Date(),
-          status: 'IN_PROGRESS',
-          startDate: new Date(),
-        },
-      });
-    });
+        await tx.inventoryAuditItem.createMany({
+          data: auditItems,
+          skipDuplicates: true,
+        });
+        return snapshots.length;
+      },
+      { maxWait: 10_000, timeout: 60_000 },
+    );
+
+    if (snapshotCount === null) {
+      return { success: false, message: 'موجودی قبلاً فریز شده است.' };
+    }
 
     revalidatePath(`/dashboard/inventory/audits/${auditId}`);
     return {
       success: true,
       message: 'موجودی با موفقیت فریز شد.',
-      data: { snapshotCount: snapshots.length },
+      data: { snapshotCount },
     };
   } catch (error: unknown) {
     console.error('Error freezing inventory:', error);
@@ -420,19 +522,19 @@ export async function getInventoryAudit(auditId: string) {
         items: {
           include: {
             product: true,
-            countedBy1User: { select: { id: true, name: true, email: true } },
-            countedBy2User: { select: { id: true, name: true, email: true } },
-            countedBy3User: { select: { id: true, name: true, email: true } },
+            countedBy1User: { select: { id: true, name: true } },
+            countedBy2User: { select: { id: true, name: true } },
+            countedBy3User: { select: { id: true, name: true } },
           },
           orderBy: { product: { name: 'asc' } },
         },
         teams: {
           include: {
-            user: { select: { id: true, name: true, email: true, role: true } },
+            user: { select: { id: true, name: true } },
             assignedByUser: { select: { id: true, name: true } },
           },
         },
-        createdByUser: { select: { id: true, name: true, email: true } },
+        createdByUser: { select: { id: true, name: true } },
         _count: { select: { snapshots: true } },
       },
     });
@@ -485,7 +587,7 @@ export async function getInventoryAudits(warehouseId?: string) {
       where,
       include: {
         warehouse: true,
-        createdByUser: { select: { id: true, name: true, email: true } },
+        createdByUser: { select: { id: true, name: true } },
         _count: {
           select: {
             items: true,
@@ -778,10 +880,10 @@ export async function setFinalQuantity(
       return { success: false, message: 'آیتم انبارگردانی یافت نشد.' };
     }
 
-    const discrepancy = finalQuantity - auditItem.systemQuantity;
-    const discrepancyValue = discrepancy * Number(auditItem.product.costPrice);
-
     const inProgress = await writeWhileInProgress(auditId, async (tx) => {
+      const frozen = await tx.inventoryAudit.findUnique({ where: { id: auditId }, select: { warehouseId: true, frozenAt: true } });
+      const discrepancy = correctionFor({ ...auditItem, finalQuantity }, await movesSinceFreeze(tx, frozen));
+      const discrepancyValue = discrepancy * Number(auditItem.product.costPrice);
       await tx.inventoryAuditItem.update({
         where: {
           auditId_productId: {
@@ -855,6 +957,7 @@ export async function finalizeAllFromLastCount(auditId: string): Promise<ActionR
          WHERE p."id" = i."productId" AND a."id" = i."auditId" AND a."status" = 'IN_PROGRESS'
            AND i."auditId" = ${auditId} AND i."finalQuantity" IS NULL
            AND COALESCE(i."countedQuantity3", i."countedQuantity2", i."countedQuantity1") IS NOT NULL`;
+      await correctForMovesSinceFreeze(tx, auditId);
     });
 
     if (!inProgress) {
@@ -920,6 +1023,7 @@ export async function setZeroForUncounted(
            AND i."auditId" = ${auditId} AND i."productId" = ANY(${productIds})
            AND i."finalQuantity" IS NULL
            AND i."countedQuantity1" IS NULL AND i."countedQuantity2" IS NULL AND i."countedQuantity3" IS NULL`;
+      await correctForMovesSinceFreeze(tx, auditId);
     });
 
     if (!inProgress) {
@@ -1040,13 +1144,14 @@ export async function calculateDiscrepancies(auditId: string): Promise<ActionRes
       return { success: false, message: 'انبارگردانی در حال انجام نیست.' };
     }
 
-    // Calculate discrepancies for all items
+    // Calculate discrepancies for all items, website sales and restocks since the freeze included
+    const moves = await movesSinceFreeze(prisma, audit);
     const updates = audit.items.map((item: any) => {
       if (item.finalQuantity === null) {
         return undefined;
       }
 
-      const discrepancy = item.finalQuantity - item.systemQuantity;
+      const discrepancy = correctionFor(item, moves);
       const discrepancyValue = discrepancy * Number(item.product.costPrice);
 
       return prisma.inventoryAuditItem.update({
@@ -1199,10 +1304,13 @@ export async function issueAdjustmentDocuments(
         let adjustedCount = 0;
         let unitsUp = 0;
         let unitsDown = 0;
+        // What the website sold or restocked here since the freeze (it may, during a count; nothing else may).
+        const moves = await movesSinceFreeze(tx, audit);
         for (const item of audit.items) {
           if (item.finalQuantity === null) continue;
-          // Positive for excess, negative for shortage; from the final number, not the stored discrepancy
-          const adjustment = item.finalQuantity - item.systemQuantity;
+          // Positive for excess, negative for shortage; from the final number and the movements, not the stored
+          // discrepancy, which a later website sale may have made stale
+          const adjustment = correctionFor(item, moves);
           if (adjustment === 0) continue;
           await tx.inventory.upsert({
             where: { productId_warehouseId: { productId: item.productId, warehouseId: audit.warehouseId } },
@@ -1271,7 +1379,7 @@ export async function getPerformanceReport(auditId: string) {
         },
         teams: {
           include: {
-            user: { select: { id: true, name: true, email: true } },
+            user: { select: { id: true, name: true } },
           },
         },
         warehouse: true,

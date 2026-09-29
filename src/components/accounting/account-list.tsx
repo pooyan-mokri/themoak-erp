@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { AccountForm } from './account-form';
 import { Sparkline } from './sparkline';
 import { currencyName } from './amount-words';
+import { ACCOUNT_TYPE_LABELS } from '@/lib/account-label';
 
 export type AccountMovement = {
   id: string;
@@ -58,14 +59,12 @@ interface AccountListProps {
   canManage: boolean;
 }
 
-const TYPES: Record<string, { label: string; icon: LucideIcon }> = {
-  BANK: { label: 'بانک', icon: Landmark },
-  CASH: { label: 'صندوق', icon: Wallet },
-  PERSON: { label: 'شخص', icon: User },
-  CRYPTO: { label: 'کیف پول دیجیتال', icon: Coins },
-  EXPENSE: { label: 'حساب سیستمی', icon: Settings2 },
-};
-const typeOf = (type: string) => TYPES[type] ?? { label: type, icon: Wallet };
+// The type names are the ones every screen uses (src/lib/account-label.ts); the icon is this list's own.
+const ICONS: Record<string, LucideIcon> = { BANK: Landmark, CASH: Wallet, PERSON: User, CRYPTO: Coins, EXPENSE: Settings2 };
+const TYPES: Record<string, { label: string; icon: LucideIcon }> = Object.fromEntries(
+  Object.entries(ICONS).map(([type, icon]) => [type, { label: ACCOUNT_TYPE_LABELS[type] ?? type, icon }]),
+);
+const typeOf = (type: string) => TYPES[type] ?? { label: ACCOUNT_TYPE_LABELS[type] ?? type, icon: Wallet };
 
 const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
 /** A balance in the account's own currency: whole Toman, cents for a foreign one. */

@@ -12,6 +12,8 @@ import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { mayAttachReceipt } from '@/lib/receipt-ref';
 import { TransactionReceipt } from '@/components/accounting/transaction-receipt';
 import { WEBSITE_ORDER_LOCKED, formatShipTo, type SiteOrderData } from '@/lib/site-sale-data';
+import { exchangeSettlement, orderTotals } from '@/lib/order-balance';
+import { orderStatusLabel } from '@/lib/order-status';
 
 import { InvoiceGenerator } from './invoice-generator';
 import { ReturnItemDialog } from './return-item-dialog';
@@ -153,10 +155,31 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
   // A website order ships to the address sent with it, not necessarily the customer's latest one.
   const customerAddress = (order.siteReference && formatShipTo(order.siteData?.shipTo)) || order.customer?.address;
 
+  // The bill as the invoice shows it (src/lib/order-balance.ts).
+  const totals = orderTotals(order);
+  // What became of each exchange's difference. What went to the customer's credit account is on
+  // the exchange; an older exchange left it on the order, so of a cheaper one's difference that was
+  // not paid back, what the order still holds beyond its net is credit, and the rest lowered the debt.
+  let creditLeft = totals.credit;
+  const settlements = new Map(
+    exchanges.map((ex: any) => {
+      const difference = Number(ex.priceDifference);
+      const cash = ex.transaction ? Number(ex.transaction.amountInToman) : 0;
+      const cashIn = ex.transaction?.type === 'INCOME' ? cash : 0;
+      const cashOut = ex.transaction?.type === 'EXPENSE' ? cash : 0;
+      let toCredit = Number(ex.toCredit ?? 0);
+      if (!(toCredit > 0) && difference < 0) {
+        toCredit = Math.min(Math.max(0, -difference - cashOut), creditLeft);
+        creditLeft -= toCredit;
+      }
+      return [ex.id, exchangeSettlement({ difference, cashIn, cashOut, toCredit })] as const;
+    }),
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Link href="/dashboard/sales/history">
             <Button variant="ghost" size="icon">
               <ArrowRight className="h-4 w-4" />
@@ -164,7 +187,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
           </Link>
           <h1 className="text-3xl font-bold tracking-tight">سفارش #{order.number}</h1>
           <Badge variant={order.status === 'COMPLETED' ? 'default' : 'secondary'} className="mr-2">
-            {order.status === 'COMPLETED' ? 'تکمیل شده' : order.status}
+            {orderStatusLabel(order.status)}
           </Badge>
           {order.isConsignmentSale && (
             <Badge variant="outline" className="mr-2 border-amber-500 text-amber-700">
@@ -172,7 +195,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             </Badge>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {order.invoice ? (
             <Link href={`/dashboard/sales/invoices/${order.invoice.id}`}>
               <Button variant="outline">
@@ -200,8 +223,8 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             <CardContent>
               <div className="space-y-4">
                 {order.items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
-                    <div className="flex items-center gap-4 flex-1">
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-y-3 border-b pb-4 last:border-0 last:pb-0">
+                    <div className="flex items-center gap-4 flex-1 min-w-[12rem]">
                       <div className="h-12 w-12 bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground">
                         {item.product.image ? 'تصویر' : 'بدون تصویر'}
                       </div>
@@ -214,10 +237,10 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                       </div>
                     </div>
                     <div className="text-left ml-4">
-                      <div className="font-medium">{Number(item.price).toLocaleString()} تومان</div>
-                      <div className="text-sm text-muted-foreground">x {item.quantity}</div>
+                      <div className="font-medium">{Number(item.price).toLocaleString('fa-IR')} تومان</div>
+                      <div className="text-sm text-muted-foreground">x {item.quantity.toLocaleString('fa-IR')}</div>
                     </div>
-                    <div className="flex gap-2 mr-4 items-center">
+                    <div className="flex flex-wrap gap-2 mr-4 items-center">
                       {(item.status || 'PENDING') === 'RETURNED' && (
                         <Badge variant="destructive" className="ml-2">عودت شده</Badge>
                       )}
@@ -229,7 +252,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                       )}
                       {(item.remainingQuantity !== undefined && item.remainingQuantity < item.quantity) && (
                         <Badge variant="outline" className="ml-2">
-                          باقی‌مانده: {item.remainingQuantity} از {item.quantity}
+                          باقی‌مانده: {item.remainingQuantity.toLocaleString('fa-IR')} از {item.quantity.toLocaleString('fa-IR')}
                         </Badge>
                       )}
                       {order.siteReference ? (
@@ -271,9 +294,36 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                 ))}
               </div>
               <Separator className="my-4" />
-              <div className="flex justify-between items-center font-bold text-lg">
-                <span>جمع کل</span>
-                <span>{Number(order.totalAmount).toLocaleString()} تومان</span>
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <span>جمع کل</span>
+                  <span>{totals.gross.toLocaleString('fa-IR')} تومان</span>
+                </div>
+                {totals.discount > 0 && (
+                  <div className="flex justify-between items-center text-red-600">
+                    <span>تخفیف</span>
+                    <span>-{totals.discount.toLocaleString('fa-IR')} تومان</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center font-bold text-lg">
+                  <span>مبلغ قابل پرداخت</span>
+                  <span>{totals.net.toLocaleString('fa-IR')} تومان</span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>پرداخت‌شده</span>
+                  <span>{totals.paid.toLocaleString('fa-IR')} تومان</span>
+                </div>
+                {totals.credit > 0 ? (
+                  <div className="flex justify-between items-center font-medium text-green-600">
+                    <span>بستانکار</span>
+                    <span>{totals.credit.toLocaleString('fa-IR')} تومان</span>
+                  </div>
+                ) : (
+                  <div className={`flex justify-between items-center font-medium ${totals.remaining > 0 ? 'text-red-600' : ''}`}>
+                    <span>باقی‌مانده</span>
+                    <span>{totals.remaining.toLocaleString('fa-IR')} تومان</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -301,7 +351,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                         </div>
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>تعداد: {ret.quantity}</span>
-                          <span>مبلغ: {Number(ret.refundAmount).toLocaleString()} تومان</span>
+                          <span>وجه پس‌داده‌شده: {Number(ret.transaction?.amountInToman ?? 0).toLocaleString('fa-IR')} تومان</span>
                         </div>
                         {ret.reason && (
                           <div className="text-sm text-muted-foreground">دلیل: {ret.reason}</div>
@@ -318,16 +368,19 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                       <div key={ex.id} className="flex flex-col gap-1 border-b pb-2 last:border-0 last:pb-0">
                         <div className="flex justify-between">
                           <span className="font-medium">
-                            {ex.originalItem?.product?.name || '—'} ← {ex.exchangeItem?.product?.name || '—'}
+                            {ex.originalItem?.product?.name || '—'} × {ex.quantity} ← {ex.issuedNames || ex.exchangeItem?.product?.name || '—'}
                           </span>
                           <span className="text-sm">{formatJalaliDateTime(ex.createdAt)}</span>
                         </div>
                         <div className="flex justify-between text-sm text-muted-foreground">
-                          <span>تعداد: {ex.quantity}</span>
-                          <span>
-                            {ex.priceDifference > 0 && `مابه‌التفاوت دریافتی: ${Number(ex.priceDifference).toLocaleString()} تومان`}
-                            {ex.priceDifference < 0 && `مابه‌التفاوت پرداختی: ${Math.abs(Number(ex.priceDifference)).toLocaleString()} تومان`}
-                            {ex.priceDifference === 0 && 'بدون مابه‌التفاوت'}
+                          <span>تعداد پس‌داده‌شده: {ex.quantity}</span>
+                          <span className="flex flex-col items-end">
+                            {(settlements.get(ex.id) ?? []).length === 0 && 'بدون مابه‌التفاوت'}
+                            {(settlements.get(ex.id) ?? []).map((part) => (
+                              <span key={part.label}>
+                                {part.label}: {Math.round(part.amount).toLocaleString('fa-IR')} تومان
+                              </span>
+                            ))}
                           </span>
                         </div>
                       </div>
@@ -389,7 +442,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                   {order.received.map((row) => (
                     <div key={row.id} className="flex items-center justify-between gap-2 text-sm">
                       <span className="min-w-0 truncate">
-                        {formatJalaliDate(row.date)} · {row.amountInToman.toLocaleString()} تومان
+                        {formatJalaliDate(row.date)} · {row.amountInToman.toLocaleString('fa-IR')} تومان
                         {row.accountName ? ` · ${row.accountName}` : ''}
                       </span>
                       <TransactionReceipt
@@ -433,6 +486,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             open={exchangeDialogOpen}
             onOpenChange={setExchangeDialogOpen}
             orderId={order.id}
+            hasCustomer={!!order.customerId}
             originalItem={{
               id: selectedItem.id,
               product: {

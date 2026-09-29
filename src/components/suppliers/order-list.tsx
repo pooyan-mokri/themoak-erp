@@ -18,6 +18,7 @@ interface PurchaseOrder {
   totalAmount?: any;
   totalAmountInToman?: any;
   paidAmountInToman?: number;
+  unpaidInToman?: number;
   status: string;
   createdAt: Date;
   items: any[];

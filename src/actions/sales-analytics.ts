@@ -3,6 +3,10 @@
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { requirePermission } from '@/lib/access';
+import { SOLD_ORDER_STATUS } from '@/lib/order-status';
+import { orderNet } from '@/lib/order-balance';
+import { netLineSale } from '@/lib/product-sales';
+import { tehranDay } from '@/lib/tehran-day';
 
 interface DateRange {
   startDate?: Date;
@@ -22,12 +26,15 @@ export async function getSalesAnalytics(range?: DateRange) {
           gte: startDate,
           lte: endDate,
         },
-        status: { in: ['COMPLETED', 'DELIVERED'] },
+        status: SOLD_ORDER_STATUS,
       },
       include: {
         items: {
           include: {
             product: true,
+            // Units returned or exchanged away are not sold.
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
           },
         },
         customer: true,
@@ -35,8 +42,9 @@ export async function getSalesAnalytics(range?: DateRange) {
       orderBy: { createdAt: 'asc' },
     });
 
-    // Calculate key metrics
-    const totalRevenue = orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+    // Calculate key metrics. An order's revenue is what its customer pays for
+    // it, after the discount (src/lib/order-balance.ts).
+    const totalRevenue = orders.reduce((sum: any, order: any) => sum + orderNet(order), 0);
     const totalOrders = orders.length;
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -50,21 +58,21 @@ export async function getSalesAnalytics(range?: DateRange) {
           gte: previousStartDate,
           lt: startDate,
         },
-        status: { in: ['COMPLETED', 'DELIVERED'] },
+        status: SOLD_ORDER_STATUS,
       },
     });
 
-    const previousRevenue = previousOrders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+    const previousRevenue = previousOrders.reduce((sum: any, order: any) => sum + orderNet(order), 0);
     const revenueGrowth = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0;
     const ordersGrowth = previousOrders.length > 0 ? ((totalOrders - previousOrders.length) / previousOrders.length) * 100 : 0;
 
-    // Sales by day
+    // Sales by Tehran day
     const salesByDay = orders.reduce((acc: any, order: any) => {
-      const date = order.createdAt.toISOString().split('T')[0];
+      const date = tehranDay(order.createdAt);
       if (!acc[date]) {
         acc[date] = { date, revenue: 0, orders: 0 };
       }
-      acc[date].revenue += Number(order.totalAmount);
+      acc[date].revenue += orderNet(order);
       acc[date].orders += 1;
       return acc;
     }, {} as Record<string, { date: string; revenue: number; orders: number }>);
@@ -76,7 +84,11 @@ export async function getSalesAnalytics(range?: DateRange) {
       orders: day.orders,
     }));
 
-    // Top products by revenue
+    // Top products by revenue: units net of returns and exchanges, revenue net
+    // of the order's discount too (src/lib/product-sales.ts).
+    const sold = new Map<any, { units: number; revenue: number }>(
+      orders.flatMap((order: any) => order.items.map((item: any) => [item, netLineSale(item, order)])),
+    );
     const productSales = orders.flatMap((order: any) => order.items).reduce((acc: any, item: any) => {
       const productId = item.productId;
       if (!acc[productId]) {
@@ -87,8 +99,8 @@ export async function getSalesAnalytics(range?: DateRange) {
           revenue: 0,
         };
       }
-      acc[productId].quantity += item.quantity;
-      acc[productId].revenue += item.quantity * Number(item.price);
+      acc[productId].quantity += sold.get(item)!.units;
+      acc[productId].revenue += sold.get(item)!.revenue;
       return acc;
     }, {} as Record<string, { id: string; name: string; quantity: number; revenue: number }>);
 
@@ -109,7 +121,7 @@ export async function getSalesAnalytics(range?: DateRange) {
         };
       }
       acc[customerId].orders += 1;
-      acc[customerId].revenue += Number(order.totalAmount);
+      acc[customerId].revenue += orderNet(order);
       return acc;
     }, {} as Record<string, { id: string; name: string; orders: number; revenue: number }>);
 
@@ -123,8 +135,8 @@ export async function getSalesAnalytics(range?: DateRange) {
       if (!acc[type]) {
         acc[type] = { type, revenue: 0, quantity: 0 };
       }
-      acc[type].revenue += item.quantity * Number(item.price);
-      acc[type].quantity += item.quantity;
+      acc[type].revenue += sold.get(item)!.revenue;
+      acc[type].quantity += sold.get(item)!.units;
       return acc;
     }, {} as Record<string, { type: string; revenue: number; quantity: number }>);
 

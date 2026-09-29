@@ -12,6 +12,7 @@ import { formatJalaliDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { ProductForm } from './product-form';
 import { STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
+import { isLocalProductImage } from '@/lib/product-image';
 
 interface ProductHeaderProps {
   product: {
@@ -76,8 +77,8 @@ export function ProductHeader({
             </div>
           ) : product.image ? (
             <div className="relative h-24 w-24 overflow-hidden rounded-md border bg-secondary">
-              {product.image.startsWith('/uploads/') ? (
-                // Use regular img tag for local uploads
+              {isLocalProductImage(product.image) ? (
+                // A plain <img> for a photo on this ERP: it carries the session, which next/image's fetch would not
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
               ) : (

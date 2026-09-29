@@ -2,7 +2,7 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
-import { createUser, updateUser, updateUserRole, deleteUser, getUsers } from '@/actions/user';
+import { createUser, updateUser, updateUserRole, deleteUser, getUsers, getUserOptions } from '@/actions/user';
 
 beforeEach(async () => {
   setTestRole('ADMIN');
@@ -55,10 +55,16 @@ test('an admin can still create, promote, edit and delete users', async () => {
   assert.equal(await prisma.user.count(), 0);
 });
 
-test('the user list is served to any signed-in user, never to a stranger', async () => {
+test('the user list, with emails and phones, is served to an admin only; pickers get id and name', async () => {
   await staff();
-  setTestRole(null);
-  assert.deepEqual(await getUsers(), []);
+  for (const role of [null, 'WAREHOUSE', 'SALES']) {
+    setTestRole(role);
+    assert.deepEqual(await getUsers(), [], String(role));
+  }
   setTestRole('WAREHOUSE');
-  assert.equal((await getUsers()).length, 1);
+  assert.deepEqual(Object.keys((await getUserOptions())[0]).sort(), ['id', 'name']);
+  setTestRole(null);
+  assert.deepEqual(await getUserOptions(), []);
+  setTestRole('ADMIN');
+  assert.equal((await getUsers())[0].email, 'staff@example.com');
 });

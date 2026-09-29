@@ -3,11 +3,17 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { KpiCard, type KpiTone } from '@/components/dashboard/kpi-card';
 import { SectionCard } from '@/components/dashboard/section-card';
+import { tomanTick } from '@/lib/chart-format';
 import { cn } from '@/lib/utils';
 
 interface ProfitLossData {
   summary: {
     income: number;
+    /** Cost of goods sold. */
+    cogs?: number;
+    grossProfit?: number;
+    operatingExpenses?: number;
+    /** COGS + operating expenses. */
     expenses: number;
     netProfit: number;
     profitMargin: number;
@@ -152,6 +158,10 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
     trend ??
     data.monthlyTrend.map((m) => ({ label: m.month, income: m.income, expenses: m.expenses, profit: m.profit }));
   const marginChange = before && before.income > 0 && summary.income > 0 ? summary.profitMargin - before.profitMargin : null;
+  // Only the cost of goods sold is a cost of the sales; the rest are operating expenses (src/lib/profit-rows.ts).
+  const cogs = summary.cogs ?? 0;
+  const operating = summary.operatingExpenses ?? summary.expenses - cogs;
+  const grossProfit = summary.grossProfit ?? summary.income - cogs;
 
   return (
     <div className="space-y-4">
@@ -168,7 +178,8 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
           value={fa(summary.expenses)}
           unit="تومان"
           delta={tone(summary.expenses, before?.expenses, false)}
-          note={vsPrevious}
+          // P&L on a cost-of-goods-sold basis: revenue − cost of goods sold − operating expenses.
+          note={`بهای تمام‌شده ${fa(cogs)} · عملیاتی ${fa(operating)}`}
         />
         <KpiCard
           label={summary.netProfit < 0 ? 'زیان خالص' : 'سود خالص'}
@@ -219,6 +230,22 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
                 />
               ))}
               <Line label="جمع درآمد" now={summary.income} before={before?.income ?? 0} revenue={summary.income} hasPrevious={hasPrevious} level="total" />
+              <Line
+                label="بهای تمام‌شده کالای فروش‌رفته"
+                now={cogs}
+                before={before?.cogs ?? 0}
+                revenue={summary.income}
+                hasPrevious={hasPrevious}
+                cost
+              />
+              <Line
+                label="سود ناخالص"
+                now={grossProfit}
+                before={before ? before.grossProfit ?? before.income : 0}
+                revenue={summary.income}
+                hasPrevious={hasPrevious}
+                level="total"
+              />
               {expenseLines.map((line) => (
                 <Line
                   key={`out-${line.category}`}
@@ -231,9 +258,9 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
                 />
               ))}
               <Line
-                label="جمع هزینه‌ها"
-                now={summary.expenses}
-                before={before?.expenses ?? 0}
+                label="جمع هزینه‌های عملیاتی"
+                now={operating}
+                before={before ? before.operatingExpenses ?? before.expenses : 0}
                 revenue={summary.income}
                 hasPrevious={hasPrevious}
                 cost
@@ -258,22 +285,24 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
       </div>
 
       <SectionCard title="روند ماهانه" count={chart.length ? `${fa(chart.length)} ماه` : undefined} aside={<span className="text-muted-foreground">درآمد و هزینه به تفکیک ماه</span>}>
+        {/* Laid out left to right, so SVG axis labels anchor on the right side; the axis is reversed so the months still run right to left. */}
+        <div dir="ltr">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chart} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
             <CartesianGrid stroke="#E3E3E3" strokeDasharray="0" vertical={false} />
             <XAxis dataKey="label" reversed tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={false} tickLine={false} />
             <YAxis
               orientation="right"
-              tickFormatter={(value) => `${fa(value / 1_000_000)} م`}
+              tickFormatter={tomanTick}
               tick={{ fontSize: 11, fill: '#6B7280' }}
               axisLine={false}
               tickLine={false}
-              width={52}
+              width={80}
             />
             <Tooltip
               formatter={(value) => `${fa(Number(value))} تومان`}
               labelStyle={{ direction: 'rtl' }}
-              contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit' }}
+              contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="income" fill={INDIGO} name="درآمد" radius={[2, 2, 0, 0]} />
@@ -281,6 +310,7 @@ export function ProfitLossReport({ data, previous, periodLabel, previousLabel, t
             <Bar dataKey="profit" fill={INK} name="سود" radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+        </div>
       </SectionCard>
     </div>
   );

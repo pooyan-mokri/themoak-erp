@@ -2,18 +2,38 @@
 
 import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { headers } from 'next/headers';
 import { hashPassword } from '@/lib/auth-utils';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { prisma } from '@/lib/prisma';
+import { logActivity } from '@/lib/activity-log';
+import { mailSettings, sendMail } from '@/lib/mail';
+import { findUserByEmail } from '@/lib/user-email';
+
+const SENT_IF_REGISTERED = 'اگر این ایمیل در سیستم ثبت شده باشد، لینک بازیابی برای شما ارسال خواهد شد.';
+const MAIL_NOT_SET_UP = 'ارسال ایمیل بازیابی در این سامانه راه‌اندازی نشده است؛ برای تغییر رمز عبور با مدیر سیستم تماس بگیرید.';
+const MAIL_FAILED = 'ایمیل بازیابی ارسال نشد؛ کمی بعد دوباره تلاش کنید یا با مدیر سیستم تماس بگیرید.';
+
+/** The address the ERP was reached at, for the link in the email. */
+function appOrigin(): string {
+  try {
+    const request = headers();
+    const host = request.get('x-forwarded-host') ?? request.get('host');
+    if (host) return `${request.get('x-forwarded-proto') ?? 'https'}://${host}`;
+  } catch {
+    // Outside a request (tests): the configured address.
+  }
+  return new URL(process.env.AUTH_URL || 'http://localhost:3000').origin;
+}
 
 /**
  * Request password reset - generates token and sends email
  */
 export async function requestPasswordReset(prevState: any, formData: FormData) {
   const schema = z.object({
-    email: z.string().email('ایمیل نامعتبر است'),
+    email: z.string().trim().email('ایمیل نامعتبر است'),
   });
 
   const validatedFields = schema.safeParse({
@@ -30,17 +50,23 @@ export async function requestPasswordReset(prevState: any, formData: FormData) {
 
   const { email } = validatedFields.data;
 
+  // Checked before the address is looked up, so the answer never tells whether it is registered.
+  // Development without mail shows the link on the page instead.
+  const showLinkOnPage = !mailSettings() && process.env.NODE_ENV === 'development';
+  if (!mailSettings() && !showLinkOnPage) {
+    return { success: false, message: MAIL_NOT_SET_UP };
+  }
+
   try {
     // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await findUserByEmail(email);
 
-    // Always return success message for security (don't reveal if email exists)
-    if (!user) {
+    // Always return success message for security (don't reveal if email exists).
+    // A deactivated user gets no link: they could not sign in with it.
+    if (!user || !user.isActive) {
       return {
         success: true,
-        message: 'اگر این ایمیل در سیستم ثبت شده باشد، لینک بازیابی برای شما ارسال خواهد شد.',
+        message: SENT_IF_REGISTERED,
       };
     }
 
@@ -71,16 +97,29 @@ export async function requestPasswordReset(prevState: any, formData: FormData) {
       },
     });
 
-    // TODO: Send email with reset link
-    // For now, we'll log the token (in production, send via email)
-    console.log('Password reset token:', token);
-    console.log('Reset link:', `http://localhost:3000/reset-password/${token}`);
+    if (showLinkOnPage) {
+      return { success: true, message: SENT_IF_REGISTERED, token };
+    }
+
+    // The link is never logged: whoever reads the logs could take the account.
+    const link = `${appOrigin()}/reset-password/${token}`;
+    try {
+      await sendMail({
+        to: user.email,
+        subject: 'بازیابی رمز عبور TheMoak ERP',
+        text: `${user.name} عزیز،\n\nبرای تعیین رمز عبور جدید این لینک را باز کنید (تا ۲۴ ساعت معتبر است):\n${link}\n\nاگر این درخواست از طرف شما نبوده، این ایمیل را نادیده بگیرید؛ رمز فعلی شما تغییری نمی‌کند.`,
+        html: `<div dir="rtl" style="font-family:Tahoma,sans-serif;line-height:1.8"><p>${escapeHtml(user.name)} عزیز،</p><p>برای تعیین رمز عبور جدید این لینک را باز کنید (تا ۲۴ ساعت معتبر است):</p><p><a href="${link}">${link}</a></p><p>اگر این درخواست از طرف شما نبوده، این ایمیل را نادیده بگیرید؛ رمز فعلی شما تغییری نمی‌کند.</p></div>`,
+      });
+    } catch (error) {
+      console.error('[Password reset] the email was not sent:', error);
+      // Nobody received it, so it must not stay usable.
+      await prisma.passwordResetToken.update({ where: { token }, data: { used: true } });
+      return { success: false, message: MAIL_FAILED };
+    }
 
     return {
       success: true,
-      message: 'اگر این ایمیل در سیستم ثبت شده باشد، لینک بازیابی برای شما ارسال خواهد شد.',
-      // In development, include token for testing
-      ...(process.env.NODE_ENV === 'development' && { token }),
+      message: SENT_IF_REGISTERED,
     };
   } catch (error) {
     console.error('Error requesting password reset:', error);
@@ -151,33 +190,33 @@ export async function resetPassword(token: string, prevState: any, formData: For
   const { password } = validatedFields.data;
 
   try {
-    // Verify token
-    const resetToken = await prisma.passwordResetToken.findUnique({
-      where: { token },
-      include: { user: true },
+    // Hash new password
+    const hashedPassword = await hashPassword(password);
+
+    // Claim the token and change the password together: a link used twice at
+    // once, or one that expired meanwhile, changes nothing.
+    const userId = await prisma.$transaction(async (tx: any) => {
+      const { count } = await tx.passwordResetToken.updateMany({
+        where: { token, used: false, expiresAt: { gt: new Date() } },
+        data: { used: true },
+      });
+      if (count === 0) return null;
+      const resetToken = await tx.passwordResetToken.findUniqueOrThrow({ where: { token }, select: { userId: true } });
+      // Sessions signed in with the old password end.
+      await tx.user.update({
+        where: { id: resetToken.userId },
+        data: { password: hashedPassword, passwordChangedAt: new Date() },
+      });
+      return resetToken.userId as string;
     });
 
-    if (!resetToken || resetToken.used || new Date() > resetToken.expiresAt) {
+    if (!userId) {
       return {
         success: false,
         message: 'لینک بازیابی نامعتبر یا منقضی شده است.',
       };
     }
-
-    // Hash new password
-    const hashedPassword = await hashPassword(password);
-
-    // Update user password
-    await prisma.user.update({
-      where: { id: resetToken.userId },
-      data: { password: hashedPassword },
-    });
-
-    // Mark token as used
-    await prisma.passwordResetToken.update({
-      where: { token },
-      data: { used: true },
-    });
+    await logActivity(userId, 'RESET_PASSWORD', 'رمز عبور با لینک بازیابی تغییر یافت.');
 
     return {
       success: true,
@@ -190,4 +229,8 @@ export async function resetPassword(token: string, prevState: any, formData: For
       message: 'خطا در تغییر رمز عبور. لطفا دوباره تلاش کنید.',
     };
   }
+}
+
+function escapeHtml(text: string) {
+  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

@@ -10,6 +10,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { Calculator } from 'lucide-react';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -50,7 +51,7 @@ export function ShareholderProfitForm() {
                 name="periodStart"
                 defaultValue={periodStart ? new Date(periodStart) : undefined}
                 onChange={(selectedDate) => {
-                  setPeriodStart(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setPeriodStart(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="periodStart" value={periodStart} />
@@ -65,7 +66,7 @@ export function ShareholderProfitForm() {
                 name="periodEnd"
                 defaultValue={periodEnd ? new Date(periodEnd) : undefined}
                 onChange={(selectedDate) => {
-                  setPeriodEnd(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                  setPeriodEnd(selectedDate ? localDateString(selectedDate) : '');
                 }}
               />
               <input type="hidden" name="periodEnd" value={periodEnd} />

@@ -20,7 +20,6 @@ import { useDroppable } from '@dnd-kit/core';
 interface User {
   id: string;
   name: string;
-  email: string;
 }
 
 interface Task {

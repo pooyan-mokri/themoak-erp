@@ -4,11 +4,13 @@ import { PILL, fa } from './crm-labels';
 interface CustomerDebtCardProps {
   creditLimit: number;
   totalDebt: number;
+  /** What the customer has paid beyond their orders, and their credit balance («بستانکار»). */
+  totalCredit?: number;
   paymentTerms: number;
 }
 
-/** Current debt against the credit limit, and the payment terms. */
-export function CustomerDebtCard({ creditLimit, totalDebt, paymentTerms }: CustomerDebtCardProps) {
+/** Current debt against the credit limit, the customer's credit («بستانکار») and the payment terms. */
+export function CustomerDebtCard({ creditLimit, totalDebt, totalCredit = 0, paymentTerms }: CustomerDebtCardProps) {
   const creditUsage = creditLimit > 0 ? (totalDebt / creditLimit) * 100 : 0;
   const isOverLimit = totalDebt > creditLimit && creditLimit > 0;
 
@@ -24,6 +26,15 @@ export function CustomerDebtCard({ creditLimit, totalDebt, paymentTerms }: Custo
         {isOverLimit && <span className={cn(PILL, 'bg-danger-soft text-danger')}>بیش از حد اعتبار</span>}
       </div>
       <p className="text-xs text-muted-foreground">کل بدهی جاری</p>
+      {totalCredit > 0 && (
+        <div className="mt-3 flex items-baseline justify-between gap-2 text-[13px]">
+          <span className="text-muted-foreground">بستانکار (اعتبار مشتری)</span>
+          <span className="font-medium tabular-nums">
+            {fa(Math.round(totalCredit))}
+            <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+          </span>
+        </div>
+      )}
 
       {creditLimit > 0 && (
         <div className="mt-4 space-y-1">

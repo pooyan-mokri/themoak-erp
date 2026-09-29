@@ -26,14 +26,14 @@ export function PurchaseKpis({ figures }: { figures: ReturnType<typeof purchaseF
       />
       {figures.payable !== undefined ? (
         <KpiCard
-          label="بدهی به تامین‌کنندگان"
+          label="مانده پرداخت به تأمین‌کنندگان"
           icon={Wallet}
           value={fa(figures.payable)}
           unit="تومان"
-          note={figures.suppliersOwed > 0 ? `${fa(figures.suppliersOwed)} تامین‌کننده` : 'بدهی باز نیست'}
+          note={figures.suppliersOwed > 0 ? `${fa(figures.suppliersOwed)} تامین‌کننده` : 'مانده‌ای نیست'}
         />
       ) : (
-        <KpiCard label="بدهی به تامین‌کنندگان" icon={Wallet} value="—" note="با دسترسی مالی دیده می‌شود" />
+        <KpiCard label="مانده پرداخت به تأمین‌کنندگان" icon={Wallet} value="—" note="با دسترسی مالی دیده می‌شود" />
       )}
       <KpiCard
         label="میانگین زمان تامین"

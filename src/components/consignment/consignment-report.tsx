@@ -200,11 +200,12 @@ export function ConsignmentReport({ reportData }: ConsignmentReportProps) {
                       ) : null}
                     </CardTitle>
                     <CardDescription className="mt-2">
-                      <div className="flex gap-4 text-sm">
+                      {/* A span: CardDescription is a <p>, which may not hold a <div> (a hydration error). */}
+                      <span className="flex gap-4 text-sm">
                         <span>تعداد سفارشات: {formatNumber(partner.orderCount)}</span>
                         <span>تعداد محصولات: {formatNumber(partner.productCount)}</span>
                         <span>موجودی: {formatNumber(partner.inventoryQuantity)} واحد</span>
-                      </div>
+                      </span>
                     </CardDescription>
                   </div>
                   <div className="text-left">

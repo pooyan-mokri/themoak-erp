@@ -277,7 +277,7 @@ test('uploads take the permission of their use and write nothing otherwise; the 
     assert.match((await uploadReceipt(file('text/plain'))).error ?? '', /فقط عکس/, role);
   }
   setTestRole('WAREHOUSE');
-  assert.match((await uploadProductImage(file('text/plain'))).error ?? '', /Invalid file type/);
+  assert.match((await uploadProductImage(file('text/plain'))).error ?? '', /فقط عکس/);
 
   const ftp = readFileSync(join(process.cwd(), 'src/lib/ftp.ts'), 'utf8');
   assert.doesNotMatch(ftp, /^\s*['"]use server['"]/m);

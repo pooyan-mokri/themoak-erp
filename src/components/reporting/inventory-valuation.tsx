@@ -23,7 +23,7 @@ export function InventoryValuation({ data }: InventoryValuationProps) {
       <CardContent>
         <div className="mb-4">
           <div className="text-sm font-medium text-muted-foreground">ارزش کل موجودی</div>
-          <div className="text-2xl font-bold">{data.totalValue.toLocaleString()} تومان</div>
+          <div className="text-2xl font-bold">{data.totalValue.toLocaleString('fa-IR')} تومان</div>
         </div>
 
         <Table>
@@ -46,7 +46,7 @@ export function InventoryValuation({ data }: InventoryValuationProps) {
                 <TableRow key={index}>
                   <TableCell className="font-medium">{warehouse.name}</TableCell>
                   <TableCell className="text-center">{warehouse.itemCount}</TableCell>
-                  <TableCell>{warehouse.value.toLocaleString()}</TableCell>
+                  <TableCell>{warehouse.value.toLocaleString('fa-IR')}</TableCell>
                 </TableRow>
               ))
             )}

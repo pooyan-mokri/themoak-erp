@@ -9,9 +9,7 @@ import {
   Plus,
   Receipt,
   ShoppingCart,
-  Wallet,
   Zap,
-  Landmark,
 } from 'lucide-react';
 import {
   getDashboardFinancials,
@@ -22,6 +20,7 @@ import {
 } from '@/actions/dashboard';
 import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/dashboard/kpi-card';
+import { FinancialCards } from '@/components/dashboard/financial-cards';
 import { QuickActions, type QuickAction } from '@/components/dashboard/quick-actions';
 import { SalesChart } from '@/components/dashboard/sales-chart';
 import { TopProducts } from '@/components/dashboard/top-products';
@@ -92,15 +91,7 @@ export default async function DashboardPage() {
 
       {financials && sales && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-          <KpiCard label="موجودی کل" icon={Wallet} value={fa(financials.totalBalance)} unit="تومان" note="بانک‌ها و صندوق" />
-          <KpiCard label="مطالبات" icon={ArrowDownLeft} value={fa(financials.totalReceivables)} unit="تومان" note="طلب از مشتریان" />
-          <KpiCard
-            label="بدهی‌ها"
-            icon={Landmark}
-            value={financials.totalPayables ? fa(financials.totalPayables) : '—'}
-            unit={financials.totalPayables ? 'تومان' : undefined}
-            note={financials.totalPayables ? 'به تأمین‌کنندگان' : 'بدون بدهی'}
-          />
+          <FinancialCards financials={financials} />
           <KpiCard
             label="فروش امروز"
             icon={Zap}

@@ -8,7 +8,7 @@ import { setTestRole } from '../stubs/auth';
 import { seedShop, PRICE } from '../orders/seed';
 import { deleteReceipt, uploadReceipt } from '@/actions/upload';
 import { attachReceipt, removeReceipt } from '@/actions/receipts';
-import { recordDeposit } from '@/actions/accounting';
+import { recordDeposit, recordExpense, recordInternalTransfer, recordWithdrawal } from '@/actions/accounting';
 import { createOrder, getOrder, recordOrderPayment } from '@/actions/sales';
 import { paySettlement } from '@/actions/consignment';
 import { GET } from '@/app/api/receipts/route';
@@ -102,7 +102,8 @@ test('a deposit, a POS sale, an order payment and a settlement each keep the rec
   assert.deepEqual(received.map((row: { amountInToman: number; receiptUrl?: string }) => [row.amountInToman, !!row.receiptUrl]), [[PRICE / 2, true], [PRICE / 2, true]]);
 
   const partner = await prisma.customer.create({ data: { name: 'همکار', commissionRate: 10 } });
-  await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  const atPartner = await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  // Sold out of the partner's consignment stock, as a consignment report books it.
   const consigned = await prisma.order.create({
     data: {
       customerId: partner.id,
@@ -110,7 +111,7 @@ test('a deposit, a POS sale, an order payment and a settlement each keep the rec
       paymentStatus: 'UNPAID',
       totalAmount: 900_000,
       paidAmount: 0,
-      items: { create: [{ productId: shop.product.id, warehouseId: shop.warehouse.id, quantity: 1, price: 1_000_000 }] },
+      items: { create: [{ productId: shop.product.id, warehouseId: atPartner.id, quantity: 1, price: 1_000_000 }] },
       commissions: { create: [{ customerId: partner.id, commissionRate: 10, orderAmount: 1_000_000, commissionAmount: 100_000, isPaid: true }] },
     },
   });
@@ -139,6 +140,32 @@ test('a receipt that is not an uploaded file is refused and nothing is booked', 
   });
   assert.equal(order.message, INVALID_RECEIPT_MESSAGE);
   assert.equal(await prisma.order.count(), 0);
+});
+
+test('an expense, a payment and a transfer keep an uploaded receipt and refuse anything else, booking nothing', async () => {
+  for (const id of ['bank', 'saman']) {
+    await prisma.account.create({ data: { id, name: id, type: 'BANK', currency: 'TOMAN', balance: 10_000_000 } });
+  }
+  const book = (receiptUrl: string) => [
+    recordExpense(undefined, form({ amount: '1000', currency: 'TOMAN', category: 'اداری', accountId: 'bank', receiptUrl })),
+    recordWithdrawal(undefined, form({ amount: '1000', currency: 'TOMAN', accountId: 'bank', payee: 'علی', receiptUrl })),
+    recordInternalTransfer(undefined, form({ amount: '1000', fromAccountId: 'bank', toAccountId: 'saman', receiptUrl })),
+  ];
+  for (const junk of ['javascript:alert(1)', 'https://evil.example/x.png', 'ftp:/uploads/receipts/x.png']) {
+    for (const result of await Promise.all(book(junk))) assert.equal(result.message, INVALID_RECEIPT_MESSAGE, junk);
+  }
+  assert.equal(await prisma.transaction.count(), 0);
+
+  const receipts = [await upload(PNG), await upload(PNG), await upload(PDF)];
+  const [expense, payment, transfer] = book('');
+  assert.equal((await expense).success, true, 'no receipt is fine');
+  const kept = [
+    await recordExpense(undefined, form({ amount: '1000', currency: 'TOMAN', category: 'اداری', accountId: 'bank', receiptUrl: receipts[0] })),
+    await recordWithdrawal(undefined, form({ amount: '1000', currency: 'TOMAN', accountId: 'bank', payee: 'علی', receiptUrl: receipts[1] })),
+    await recordInternalTransfer(undefined, form({ amount: '1000', fromAccountId: 'bank', toAccountId: 'saman', receiptUrl: receipts[2] })),
+  ];
+  for (const result of [...kept, await payment, await transfer]) assert.equal(result.success, true, result.message);
+  for (const ref of receipts) assert.ok(await prisma.transaction.findFirst({ where: { receiptUrl: ref } }), ref);
 });
 
 test('a receipt is attached afterwards by whoever may record that money; only an admin replaces one', async () => {

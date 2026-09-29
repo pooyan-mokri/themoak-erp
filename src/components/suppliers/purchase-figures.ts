@@ -29,6 +29,8 @@ type Order = {
   totalAmount?: number;
   totalAmountInToman?: number;
   paidAmountInToman?: number;
+  /** What is still owed on the order (src/lib/money-totals.ts unpaidOnPurchaseOrder); finance.view only. */
+  unpaidInToman?: number;
   items: Array<{ receivedDate?: Date | string | null }>;
 };
 
@@ -42,14 +44,15 @@ export const isInTransit = (o: Pick<Order, 'status'>) => o.status === 'IN_PRODUC
 export const awaitsReceipt = (o: Pick<Order, 'status'>) => o.status === 'ARRIVED' || o.status === 'PARTIALLY_RECEIVED';
 
 /**
- * What is still owed to the supplier on an order (Toman): its total less its payments,
- * once it has left draft; nothing on a cancelled order. Undefined without finance.view.
+ * What is still owed to the supplier on an order (Toman), as the dashboard's «مانده پرداخت به تأمین‌کنندگان»
+ * counts it (unpaidOnPurchaseOrder in src/lib/money-totals.ts, which getPurchaseOrders sends): its total less
+ * its payments, only for the units that came on an order closed short; nothing on a draft or a cancelled order.
+ * Undefined without finance.view.
  */
 export function payableOf(o: Order): number | undefined {
-  if (o.totalAmountInToman === undefined && o.totalAmount === undefined) return undefined;
+  if (o.unpaidInToman === undefined) return undefined;
   if (o.status === 'DRAFT' || o.status === 'CANCELLED') return 0;
-  const total = Number(o.totalAmountInToman ?? o.totalAmount ?? 0);
-  return Math.max(0, total - Number(o.paidAmountInToman ?? 0));
+  return o.unpaidInToman;
 }
 
 /** Days from the order's creation to the last receipt, for an order received in full. */
@@ -69,7 +72,8 @@ export function purchaseFigures(orders: Order[]) {
   const owing = orders.filter((o) => (payableOf(o) ?? 0) > 0);
   return {
     open: open.length,
-    openValue: open.reduce((sum, o) => sum + Number(o.totalAmountInToman ?? o.totalAmount ?? 0), 0),
+    // In Toman: totalAmount is in the order's first currency and is never added up (src/lib/money-totals.ts).
+    openValue: open.reduce((sum, o) => sum + Number(o.totalAmountInToman ?? 0), 0),
     inTransit: orders.filter(isInTransit).length,
     awaitingReceipt: orders.filter(awaitsReceipt).length,
     payable: seesMoney ? payables.reduce<number>((sum, p) => sum + (p ?? 0), 0) : undefined,

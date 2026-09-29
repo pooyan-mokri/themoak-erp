@@ -107,6 +107,7 @@ test('the baseline records the historical difference once, as one row, and leave
 });
 
 test('the baseline leaves exactly 0 where a floating-point sum would leave a remainder', async () => {
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20') } });
   // 0.1 + 0.2 is 0.30000000000000004 in floating point.
   await prisma.account.create({ data: { id: 'usd', name: 'حساب دلاری', type: 'BANK', currency: 'USD', balance: 1 } });
   for (const amount of [0.1, 0.2]) {
@@ -120,6 +121,7 @@ test('the baseline leaves exactly 0 where a floating-point sum would leave a rem
   assert.equal(result.success, true, result.message);
   const baseline = (await rowsOf('usd')).find((r: any) => r.type === 'ADJUSTMENT')!;
   assert.equal(baseline.amount.toString(), '0.7');
+  assert.deepEqual([Number(baseline.rateSnapshot), Number(baseline.amountInToman)], [100_000, 70_000], 'its Toman equivalent at the latest rate');
   assert.equal((await rowOf('usd')).difference, 0);
   assert.equal(await balanceOf('usd'), 1);
 });
@@ -173,6 +175,7 @@ test('an adjustment moves the balance to the bank figure, keeps the difference, 
 });
 
 test('a dollar account is corrected by cents too; only a Toman fraction under 0.5 counts as already right', async () => {
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20') } });
   await prisma.account.create({ data: { id: 'usd', name: 'حساب ذخیره دلاری', type: 'BANK', currency: 'USD', balance: 11_210.4 } });
   await prisma.transaction.create({
     data: { type: 'INCOME', amount: 11_210.4, amountInToman: 1_121_040_000, currency: 'USD', accountId: 'usd' },
@@ -184,6 +187,7 @@ test('a dollar account is corrected by cents too; only a Toman fraction under 0.
   assert.equal(await balanceOf('usd'), 11_210);
   const correction = (await rowsOf('usd')).find((r: any) => r.category === 'اصلاح موجودی')!;
   assert.equal(correction.amount.toString(), '-0.4');
+  assert.deepEqual([Number(correction.rateSnapshot), Number(correction.amountInToman)], [100_000, -40_000]);
   assert.equal((await rowOf('usd')).difference, 0);
 
   // On a Toman account the rounded figure the page shows is accepted as it is.
@@ -191,6 +195,31 @@ test('a dollar account is corrected by cents too; only a Toman fraction under 0.
   const same = await adjustAccountBalance({ accountId: 'saman', targetBalance: 55_268_772 });
   assert.equal(same.success, true, same.message);
   assert.equal(await balanceOf('saman'), 55_268_771.9);
+});
+
+test('a dollar opening balance, correction or baseline keeps its Toman equivalent; with no rate recorded it is refused', async () => {
+  const opened = await createAccount(undefined, form({ name: 'دلاری', type: 'BANK', currency: 'USD', initialBalance: '500' }));
+  assert.match(opened.message!, /نرخ تبدیل برای ارز USD یافت نشد/);
+  assert.equal(await prisma.account.count(), 0);
+  await prisma.account.create({ data: { id: 'usd', name: 'دلاری قدیمی', type: 'BANK', currency: 'USD', balance: 100 } });
+  assert.match((await adjustAccountBalance({ accountId: 'usd', targetBalance: 90 })).message!, /نرخ تبدیل/);
+  assert.match((await recordBalanceBaseline('usd')).message!, /نرخ تبدیل/);
+  assert.equal(await balanceOf('usd'), 100);
+  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal(await prisma.bankCheck.count(), 0, 'the check made with a refused correction is not kept');
+
+  await prisma.exchangeRate.create({ data: { currency: 'USD', rateToToman: 100_000, date: new Date('2026-09-20') } });
+  const again = await createAccount(undefined, form({ name: 'دلاری', type: 'BANK', currency: 'USD', initialBalance: '500.25' }));
+  assert.equal(again.success, true, again.message);
+  const opening = await prisma.transaction.findFirstOrThrow({ where: { category: 'موجودی اولیه' } });
+  assert.deepEqual(
+    [Number(opening.amount), opening.currency, Number(opening.rateSnapshot), Number(opening.amountInToman)],
+    [500.25, 'USD', 100_000, 50_025_000],
+  );
+  // A Toman opening balance needs no rate and keeps rate 1.
+  assert.equal((await createAccount(undefined, form({ name: 'ملت', type: 'BANK', currency: 'TOMAN', initialBalance: '1000' }))).success, true);
+  const toman = await prisma.transaction.findFirstOrThrow({ where: { category: 'موجودی اولیه', currency: 'TOMAN' } });
+  assert.deepEqual([Number(toman.rateSnapshot), Number(toman.amountInToman)], [1, 1000]);
 });
 
 test('a sale booked while an adjustment runs keeps its increment', async () => {

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
+import { holdsStock, stockLevel } from '@/lib/stock-levels';
 
 // Older purchase receipts wrote the landed cost into the movement note.
 const LANDED_COST_NOTE = / - قیمت تمام‌شده هر واحد: .*$/;
@@ -43,15 +44,15 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     // Calculate statistics
     const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
+    // Stock value counts the stock product types only (src/lib/stock-levels.ts).
     const totalValue = canSeeCost
-      ? inventory.reduce(
-          (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
-          0
-        )
+      ? inventory
+          .filter((item: any) => holdsStock(item.product.productType))
+          .reduce((sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice), 0)
       : null;
     const uniqueProducts = inventory.length;
     const itemsWithStock = inventory.filter((item: any) => item.quantity > 0).length;
-    const itemsOutOfStock = inventory.filter((item: any) => item.quantity === 0).length;
+    const itemsOutOfStock = inventory.filter((item: any) => stockLevel(item.quantity) === 'OUT').length;
 
     // Get recent order items (sales)
     type OrderItemWithRelations = Prisma.OrderItemGetPayload<{
@@ -92,51 +93,24 @@ export async function getWarehouseDetail(warehouseId: string) {
 
     const relevantOrderItems = recentOrderItems;
 
-    // Get recent purchase order items (purchases)
-    type PurchaseOrderItemWithRelations = Prisma.PurchaseOrderItemGetPayload<{
-      include: {
-        product: true;
-        purchaseOrder: {
-          include: {
-            supplier: true;
-          };
-        };
-      };
-    }>;
-    
-    let recentPurchaseItems: PurchaseOrderItemWithRelations[] = [];
+    // Recent purchases received into THIS warehouse: its PURCHASE movements, each with its order line.
+    let receipts: any[] = [];
+    let receiptLines: any[] = [];
     try {
-      recentPurchaseItems = await prisma.purchaseOrderItem.findMany({
-        where: {
-          purchaseOrder: {
-            status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] },
-          },
-        },
-        include: {
-          product: true,
-          purchaseOrder: {
-            include: {
-              supplier: true,
-            },
-          },
-        },
-        take: 50,
+      receipts = await prisma.inventoryMovement.findMany({
+        where: { type: 'PURCHASE', toWarehouseId: warehouseId },
+        include: { product: true },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
       });
-      // Sort manually by purchaseOrder createdAt
-      recentPurchaseItems.sort((a: any, b: any) => 
-        new Date(b.purchaseOrder.createdAt).getTime() - new Date(a.purchaseOrder.createdAt).getTime()
-      );
+      const orderIds = [...new Set(receipts.map((m: any) => m.referenceId).filter(Boolean))] as string[];
+      receiptLines = await prisma.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: { in: orderIds } },
+        include: { purchaseOrder: { include: { supplier: true } } },
+      });
     } catch (err: any) {
-      console.error('Error fetching purchase items:', err);
-      recentPurchaseItems = [];
+      console.error('Error fetching purchase receipts:', err);
     }
-
-    // Filter purchase items that might be to this warehouse
-    const relevantPurchaseItems = recentPurchaseItems
-      .filter((item: any) => {
-        return inventory.some((inv: any) => inv.productId === item.productId);
-      })
-      .slice(0, 20);
 
     // Get recent audits for this warehouse
     const recentAudits = await prisma.inventoryAudit.findMany({
@@ -204,29 +178,32 @@ export async function getWarehouseDetail(warehouseId: string) {
       })
       .filter((item: any): item is NonNullable<typeof item> => item !== null);
 
-    const formattedPurchaseItems = relevantPurchaseItems
-      .map((item: any) => {
-        try {
-          if (!item.product || !item.purchaseOrder) {
-            return undefined;
-          }
-          return {
-            id: item.id,
-            productName: item.product.name,
-            quantity: item.quantity,
-            price: canSeeCost ? Number(item.unitCost) : null,
-            total: canSeeCost ? item.quantity * Number(item.unitCost) : null,
-            orderNumber: item.purchaseOrder.number,
-            supplierName: item.purchaseOrder.supplier?.name || 'نامشخص',
-            orderDate: formatJalaliDateTime(item.purchaseOrder.createdAt),
-            orderDateRaw: item.purchaseOrder.createdAt,
-          };
-        } catch (err: any) {
-          console.error('Error formatting purchase item:', err, item);
-          return undefined;
-        }
+    // The quantity received here, priced in Toman: an order in dollars keeps its Toman snapshot per unit.
+    const tomanUnitCost = (line: any): number | null => {
+      if (line.unitCostInToman != null) return Number(line.unitCostInToman);
+      if ((line.currency ?? 'TOMAN') === 'TOMAN') return Number(line.unitCost);
+      return line.exchangeRateSnapshot != null ? Number(line.unitCost) * Number(line.exchangeRateSnapshot) : null;
+    };
+    const formattedPurchaseItems = receipts
+      .map((movement: any) => {
+        const item = receiptLines.find(
+          (line: any) => line.purchaseOrderId === movement.referenceId && line.productId === movement.productId,
+        );
+        if (!item) return undefined;
+        const unit = tomanUnitCost(item);
+        return {
+          id: movement.id,
+          productName: movement.product.name,
+          quantity: movement.quantity,
+          price: canSeeCost ? unit : null,
+          total: canSeeCost && unit !== null ? movement.quantity * unit : null,
+          orderNumber: item.purchaseOrder.number,
+          supplierName: item.purchaseOrder.supplier?.name || 'نامشخص',
+          orderDate: formatJalaliDateTime(item.purchaseOrder.createdAt),
+          orderDateRaw: item.purchaseOrder.createdAt,
+        };
       })
-      .filter((item: any): item is NonNullable<typeof item> => item !== null);
+      .filter((item: any): item is NonNullable<typeof item> => item !== undefined);
 
     const formattedAudits = recentAudits
       .map((audit: any) => {
@@ -289,14 +266,12 @@ export async function getWarehouseDetail(warehouseId: string) {
     });
 
     // Get low stock items
-    const lowStockItems = formattedInventory.filter((item: any) => {
-      // Items with quantity less than 10 or items that have been in stock for a while
-      return item.quantity < 10 && item.quantity > 0;
-    });
+    const lowStockItems = formattedInventory.filter((item: any) => stockLevel(item.quantity) === 'LOW');
 
     // Get top products by value (a ranking by cost, so none without cost.view)
     const topProductsByValue = canSeeCost
-      ? [...formattedInventory]
+      ? formattedInventory
+          .filter((item: any) => holdsStock(item.productType))
           .sort((a: any, b: any) => b.totalValue - a.totalValue)
           .slice(0, 10)
       : [];

@@ -11,6 +11,7 @@ import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -123,7 +124,7 @@ export function EmployeeForm({ initialData, onSuccess }: EmployeeFormProps) {
             name="hireDate"
             defaultValue={initialData?.hireDate ? new Date(initialData.hireDate) : undefined}
             onChange={(selectedDate) => {
-              setHireDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+              setHireDate(selectedDate ? localDateString(selectedDate) : '');
             }}
           />
           <input type="hidden" name="hireDate" value={hireDate} />

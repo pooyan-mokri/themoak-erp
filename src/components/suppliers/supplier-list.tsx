@@ -22,6 +22,8 @@ interface Supplier {
   _count?: {
     orders: number;
   };
+  /** What the supplier owes us back («طلب از تأمین‌کننده»), in Toman; only for finance viewers. */
+  creditBalance?: number;
 }
 
 interface SupplierListProps {
@@ -38,6 +40,8 @@ const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits
 
 export function SupplierList({ suppliers, openOrders = {}, balances }: SupplierListProps) {
   const [query, setQuery] = useState('');
+  // What a supplier owes us back («طلب از تأمین‌کننده»): sent to finance viewers only.
+  const showCredit = suppliers.some((supplier) => supplier.creditBalance !== undefined);
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q
@@ -66,13 +70,14 @@ export function SupplierList({ suppliers, openOrders = {}, balances }: SupplierL
               <TableHead>آدرس</TableHead>
               <TableHead className="text-end">سفارش‌ها</TableHead>
               <TableHead className="text-end">باز</TableHead>
-              {balances && <TableHead className="text-end">مانده بدهی (تومان)</TableHead>}
+              {balances && <TableHead className="text-end">مانده پرداخت (تومان)</TableHead>}
+              {showCredit && <TableHead className="text-end">طلب از تأمین‌کننده (تومان)</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={6 + (balances ? 1 : 0) + (showCredit ? 1 : 0)} className="h-24 text-center text-muted-foreground">
                   {suppliers.length === 0
                     ? 'هنوز تامین‌کننده‌ای ثبت نشده است. برای ثبت سفارش خرید، اول تامین‌کننده را تعریف کنید.'
                     : 'تامین‌کننده‌ای با این جستجو پیدا نشد.'}
@@ -99,6 +104,9 @@ export function SupplierList({ suppliers, openOrders = {}, balances }: SupplierL
                           <span className={cn('rounded-full bg-success-soft px-2 py-0.5 text-[11.5px] text-success')}>تسویه</span>
                         )}
                       </TableCell>
+                    )}
+                    {showCredit && (
+                      <TableCell className="text-end tabular-nums">{supplier.creditBalance ? fa(supplier.creditBalance) : '—'}</TableCell>
                     )}
                   </TableRow>
                 );

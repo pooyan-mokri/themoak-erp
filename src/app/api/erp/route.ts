@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
-import { consignmentAmounts } from '@/lib/return-math';
+import { effectiveQuantity } from '@/lib/return-math';
+import { CONSIGNMENT_ORDER, settlementAmounts } from '@/lib/consignment-amounts';
+import { cashPosition, latestRates } from '@/lib/money-totals';
+import { profitEntry } from '@/lib/profit-rows';
+import { LOW_STOCK_MAX, STOCK_TYPES } from '@/lib/stock-levels';
 import { createSale, setSaleStatus } from '@/lib/site-sale';
 import { kickSiteHook } from '@/lib/site-hook';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
@@ -59,6 +63,12 @@ const GET_ACTIONS = [
   'productSales',
 ];
 
+/** A list size from the query: a whole number from 1 to max; anything else is the default. */
+function listLimit(raw: string | null, fallback: number, max: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, max) : fallback;
+}
+
 // The site reads 404 as "the ERP does not have this action yet".
 function unknownGetAction() {
   return NextResponse.json({ error: 'Unknown action', availableActions: GET_ACTIONS }, { status: 404 });
@@ -78,32 +88,44 @@ export async function GET(req: NextRequest) {
     switch (action) {
       // ── خلاصه مالی ─────────────────────────────────────────────────────────
       case 'summary': {
-        // EXPENSE-type accounts are P&L buckets, not money — see reporting.ts.
+        // EXPENSE-type accounts are P&L buckets, not money. «موجودی کل» of the
+        // dashboard (src/lib/money-totals.ts): a dollar balance is dollars, in
+        // toman at the latest rate; a currency with no rate stays out and is named.
         const accounts = await prisma.account.findMany({ where: { type: { not: 'EXPENSE' } } });
-        const totalToman = accounts.reduce(
-          (s: number, a: any) => s + Number(a.balance),
-          0,
-        );
+        const cash = cashPosition(accounts, await latestRates(prisma));
+        const totalToman = cash.total;
+        const missingRates = cash.unpriced.map((row) => row.currency);
         const lastMonth = new Date();
         lastMonth.setMonth(lastMonth.getMonth() - 1);
-        const income = await prisma.transaction.aggregate({
-          where: { type: 'INCOME', date: { gte: lastMonth } },
-          _sum: { amountInToman: true },
+        // Profit and loss's rule (src/lib/profit-rows.ts): capital, loans,
+        // exchanges and transfers left out; goods at their cost of goods sold.
+        const rows = await prisma.transaction.findMany({
+          where: { type: { in: ['INCOME', 'EXPENSE'] }, date: { gte: lastMonth } },
+          select: {
+            type: true, amountInToman: true, amount: true, currency: true, category: true,
+            exchangeGroupId: true, transferGroupId: true, LoanPayment: { select: { interest: true } },
+          },
         });
-        const expense = await prisma.transaction.aggregate({
-          where: { type: 'EXPENSE', date: { gte: lastMonth } },
-          _sum: { amountInToman: true },
-        });
+        let revenue = 0;
+        let costs = 0;
+        for (const row of rows) {
+          const entry = profitEntry(row as any);
+          if (!entry) continue;
+          if (entry.line === 'revenue') revenue += entry.amount;
+          else costs += entry.amount;
+        }
+
         const pendingOrders = await prisma.order.count({
           where: { paymentStatus: { in: ['UNPAID', 'PARTIAL'] }, status: { not: 'CANCELLED' } },
         });
         return NextResponse.json({
           totalBalanceToman: totalToman,
+          ...(missingRates.length > 0 && { missingRates }),
           accounts: await prisma.account.count(),
           last30Days: {
-            income: Number(income._sum.amountInToman ?? 0),
-            expense: Number(expense._sum.amountInToman ?? 0),
-            profit: Number(income._sum.amountInToman ?? 0) - Number(expense._sum.amountInToman ?? 0),
+            income: revenue,
+            expense: costs,
+            profit: revenue - costs,
           },
           pendingSettlements: pendingOrders,
         });
@@ -127,8 +149,11 @@ export async function GET(req: NextRequest) {
 
       // ── تراکنش‌های اخیر ──────────────────────────────────────────────────────
       case 'transactions': {
-        const limit = Math.min(Number(searchParams.get('limit') ?? 50), 200);
+        const limit = listLimit(searchParams.get('limit'), 50, 200);
         const type = searchParams.get('type'); // INCOME | EXPENSE | TRANSFER
+        if (type && !['INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT'].includes(type)) {
+          return NextResponse.json({ error: 'type باید INCOME، EXPENSE، TRANSFER یا ADJUSTMENT باشد.' }, { status: 422 });
+        }
         const txs = await prisma.transaction.findMany({
           where: type ? { type } : undefined,
           include: { account: { select: { name: true } } },
@@ -154,7 +179,7 @@ export async function GET(req: NextRequest) {
 
       // ── سفارش‌های اخیر ──────────────────────────────────────────────────────
       case 'orders': {
-        const limit = Math.min(Number(searchParams.get('limit') ?? 30), 100);
+        const limit = listLimit(searchParams.get('limit'), 30, 100);
         const orders = await prisma.order.findMany({
           include: {
             customer: { select: { name: true } },
@@ -170,7 +195,9 @@ export async function GET(req: NextRequest) {
             customer: o.customer?.name ?? null,
             status: o.status,
             paymentStatus: o.paymentStatus,
+            // Gross, before the discount: what the customer owes is totalAmount - discount.
             totalAmount: Number(o.totalAmount),
+            discount: Number(o.discount),
             paidAmount: Number(o.paidAmount),
             createdAt: o.createdAt,
             items: o.items.map((i: any) => ({
@@ -190,6 +217,8 @@ export async function GET(req: NextRequest) {
             status: { not: 'CANCELLED' },
             customer: { warehouses: { some: { isVirtual: true } } },
             siteReference: null, // website orders are settled on the website, never with a partner
+            // A POS sale to a partner is an ordinary receivable, not a settlement (src/lib/consignment-amounts.ts).
+            ...CONSIGNMENT_ORDER,
           },
           include: {
             customer: { select: { name: true } },
@@ -202,8 +231,9 @@ export async function GET(req: NextRequest) {
         });
         return NextResponse.json(
           orders.map((o: any) => {
-            // The same arithmetic as the settlement page (src/actions/consignment.ts).
-            const amounts = consignmentAmounts(o);
+            // The same arithmetic as the settlement page (src/actions/consignment.ts):
+            // the commission taken after the discount.
+            const amounts = settlementAmounts(o);
             return {
               id: o.id,
               number: o.number,
@@ -353,7 +383,8 @@ export async function GET(req: NextRequest) {
       // Unlike `stock`, this is the owner's view: every warehouse (consignment
       // included) and every product, whether or not the website knows it.
       case 'inventory': {
-        const low = Math.max(0, Number(searchParams.get('low') ?? 5) || 0);
+        // Low stock is 3 units or fewer unless asked otherwise (src/lib/stock-levels.ts).
+        const low = Math.max(0, Number(searchParams.get('low') ?? LOW_STOCK_MAX) || 0);
         const filter = searchParams.get('filter') ?? 'all'; // all | low | zero | negative
         const wantSku = (searchParams.get('sku') ?? '').trim().toUpperCase();
         const includeArchived = searchParams.get('includeArchived') === 'true';
@@ -368,9 +399,10 @@ export async function GET(req: NextRequest) {
           warehouses.map((w: any) => [w.id as string, w as WhRow]),
         );
 
+        // The stock product types (src/lib/stock-levels.ts), as every stock screen values them.
         const products = await prisma.product.findMany({
           where: {
-            productType: 'SALEABLE',
+            productType: { in: [...STOCK_TYPES] },
             ...(wantSku && { sku: { contains: wantSku, mode: 'insensitive' } }),
           },
           select: {
@@ -445,22 +477,24 @@ export async function GET(req: NextRequest) {
         const since = new Date(Date.now() - days * 86400000);
 
         const [items, products] = await Promise.all([
-          prisma.orderItem.groupBy({
-            by: ['productId'],
+          // Units still sold: returned or exchanged-away units came back (an
+          // exchange's new frame is a line of its own).
+          prisma.orderItem.findMany({
             where: { order: { createdAt: { gte: since }, status: { not: 'CANCELLED' } } },
-            _sum: { quantity: true },
+            select: { productId: true, quantity: true, returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } },
           }),
           prisma.product.findMany({
-            where: { productType: 'SALEABLE' },
+            where: { productType: { in: [...STOCK_TYPES] } },
             select: {
               id: true, sku: true, name: true, costPrice: true,
               inventory: { where: { warehouse: { isArchived: false } }, select: { quantity: true } },
             },
           }),
         ]);
-        const soldById = new Map<string, number>(
-          items.map((i: any) => [i.productId as string, Number(i._sum.quantity ?? 0)]),
-        );
+        const soldById = new Map<string, number>();
+        for (const item of items) {
+          soldById.set(item.productId, (soldById.get(item.productId) ?? 0) + effectiveQuantity(item));
+        }
 
         const rows = products.map((p: any) => {
           const available = p.inventory.reduce((s: number, i: any) => s + Math.max(0, i.quantity), 0);

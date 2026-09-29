@@ -23,7 +23,7 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">{activity.user?.name || 'سیستم'}</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(activity.createdAt).toLocaleString('fa-IR')}
+                      {new Date(activity.createdAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran' })}
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">{activity.details}</p>

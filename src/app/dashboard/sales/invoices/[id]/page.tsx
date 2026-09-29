@@ -1,20 +1,25 @@
-import { getInvoiceById } from '@/actions/invoice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Printer, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { InvoiceTable } from '@/components/sales/invoice-document';
+import { invoiceOrderId, loadInvoiceData } from '@/lib/invoice-data';
+import { invoiceStatusLabel } from '@/lib/invoice-lines';
 
 import { formatJalaliDate } from '@/lib/date-utils';
 import { requireRouteAccess } from '@/lib/access';
 export default async function InvoiceDetailsPage({ params }: { params: { id: string } }) {
   await requireRouteAccess('/dashboard/sales');
-  const invoice = await getInvoiceById(params.id);
+  const orderId = await invoiceOrderId(params.id);
+  const data = orderId ? await loadInvoiceData(orderId) : null;
 
-  if (!invoice) {
+  if (!data || !data.invoice) {
     notFound();
   }
+  const invoice = data.invoice;
+  const toman = (amount: number) => Math.round(amount).toLocaleString('fa-IR');
 
   return (
     <div className="space-y-6">
@@ -27,7 +32,7 @@ export default async function InvoiceDetailsPage({ params }: { params: { id: str
           </Link>
           <h1 className="text-3xl font-bold tracking-tight">فاکتور {invoice.invoiceNumber}</h1>
           <Badge variant={invoice.status === 'PAID' ? 'default' : 'secondary'} className="mr-2">
-            {invoice.status === 'PAID' ? 'پرداخت شده' : invoice.status}
+            {invoiceStatusLabel(invoice.status)}
           </Badge>
         </div>
         <Link href={`/dashboard/sales/invoices/${invoice.id}/print`} target="_blank">
@@ -45,6 +50,12 @@ export default async function InvoiceDetailsPage({ params }: { params: { id: str
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between">
+              <span className="text-muted-foreground">سفارش:</span>
+              <Link href={`/dashboard/sales/history/${data.orderId}`} className="hover:underline">
+                #{data.orderNumber}
+              </Link>
+            </div>
+            <div className="flex justify-between">
               <span className="text-muted-foreground">تاریخ صدور:</span>
               <span>{formatJalaliDate(invoice.issueDate)}</span>
             </div>
@@ -53,13 +64,24 @@ export default async function InvoiceDetailsPage({ params }: { params: { id: str
               <span>{formatJalaliDate(invoice.dueDate)}</span>
             </div>
             <div className="flex justify-between font-bold text-lg mt-4">
-              <span>مبلغ کل:</span>
-              <span>{new Intl.NumberFormat('fa-IR').format(Number(invoice.total))} تومان</span>
+              <span>مبلغ قابل پرداخت:</span>
+              <span>{toman(data.bill.net)} تومان</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>پرداخت شده:</span>
-              <span>{new Intl.NumberFormat('fa-IR').format(Number(invoice.paidAmount))} تومان</span>
+              <span>{toman(data.bill.paid)} تومان</span>
             </div>
+            {data.bill.credit > 0 ? (
+              <div className="flex justify-between text-green-700">
+                <span>بستانکار:</span>
+                <span>{toman(data.bill.credit)} تومان</span>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <span>باقی‌مانده:</span>
+                <span>{toman(data.bill.remaining)} تومان</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -70,19 +92,28 @@ export default async function InvoiceDetailsPage({ params }: { params: { id: str
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">نام:</span>
-              <span>{invoice.customer.name}</span>
+              <span>{data.customer?.name || 'مشتری عمومی'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">تلفن:</span>
-              <span>{invoice.customer.phone || '-'}</span>
+              <span>{data.customer?.phone || '-'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">آدرس:</span>
-              <span className="max-w-[200px] truncate">{invoice.customer.address || '-'}</span>
+              <span className="max-w-[200px] truncate">{data.buyerAddress}</span>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>اقلام فاکتور</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <InvoiceTable bill={data.bill} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

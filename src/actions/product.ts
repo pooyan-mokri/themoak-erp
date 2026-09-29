@@ -13,6 +13,7 @@ import { ActionState, ActionResult } from '@/lib/types';
 import { parseWebId, webIdConflictMessage, isWebIdUniqueViolation } from '@/lib/web-id';
 import { SITE_UNKNOWN_SKU } from '@/lib/site-sale-data';
 import { kickSiteHook } from '@/lib/site-hook';
+import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 
 const ProductSchema = z.object({
   name: z.string().min(1, 'نام کالا الزامی است'),
@@ -134,35 +135,45 @@ export async function getProducts() {
   }
 }
 
+// A refusal found inside a transaction: thrown so everything rolls back, then shown to the user as it is.
+class GiftRefusal extends Error {}
+
 export async function giftProduct(productId: string, quantity: number, recipient: string, note?: string) {
   // A gift takes stock and books its cost as an expense: it needs both.
   const denied = (await checkPermission('stock.manage')) ?? (await checkPermission('finance.manage'));
   if (denied) return denied;
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return { success: false, error: 'تعداد هدیه باید عدد صحیح و بزرگ‌تر از صفر باشد.' };
+  }
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       // 1. Find product to get cost price
       const product = await tx.product.findUnique({ where: { id: productId } });
-      if (!product) throw new Error('Product not found');
+      if (!product) throw new GiftRefusal('کالا یافت نشد.');
 
-      // 2. Find stock (simplification: take from first warehouse with enough stock)
+      // 2. Take the stock from the live, physical warehouse holding the most of it: never a consignment
+      //    partner's goods. The decrement is conditional, so two gifts at once cannot take the same units.
+      // A warehouse being counted is skipped; if it is the only one holding enough, the audit is the reason.
+      const live = { isVirtual: false, isArchived: false };
       const inventory = await tx.inventory.findFirst({
-        where: { productId, quantity: { gte: quantity } },
+        where: { productId, quantity: { gte: quantity }, warehouse: { ...live, audits: { none: { status: 'IN_PROGRESS' } } } },
+        orderBy: { quantity: 'desc' },
       });
+      if (!inventory) {
+        const counted = await tx.inventory.findFirst({ where: { productId, quantity: { gte: quantity }, warehouse: live } });
+        if (counted) await assertNoOpenAudit(tx, [counted.warehouseId]);
+      } else {
+        await assertNoOpenAudit(tx, [inventory.warehouseId]);
+      }
+      const { count } = inventory
+        ? await tx.inventory.updateMany({
+            where: { productId, warehouseId: inventory.warehouseId, quantity: { gte: quantity } },
+            data: { quantity: { decrement: quantity } },
+          })
+        : { count: 0 };
+      if (count !== 1) throw new GiftRefusal('موجودی کافی برای این هدیه در هیچ انباری نیست.');
 
-      if (!inventory) throw new Error('Insufficient stock');
-
-      // 3. Decrement stock
-      await tx.inventory.update({
-        where: {
-            productId_warehouseId: {
-                productId,
-                warehouseId: inventory.warehouseId
-            }
-        },
-        data: { quantity: { decrement: quantity } }
-      });
-
-      // 4. Find/Create Expense Account
+      // 3. Find/Create Expense Account
       let expenseAccount = await tx.account.findFirst({ where: { name: 'Marketing Expenses' } });
       if (!expenseAccount) {
         expenseAccount = await tx.account.create({
@@ -170,28 +181,40 @@ export async function giftProduct(productId: string, quantity: number, recipient
         });
       }
 
-      // 5. Create Expense Transaction
+      // 4. Create Expense Transaction
       const totalCost = Number(product.costPrice) * quantity;
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           type: 'EXPENSE',
           amount: totalCost,
           amountInToman: totalCost,
           currency: 'TOMAN',
           category: 'Marketing/Gift',
-          description: `Gift to ${recipient}: ${note || ''}`,
+          description: `هدیه به ${recipient}${note ? `: ${note}` : ''}`,
           accountId: expenseAccount.id,
           date: new Date(),
         }
       });
 
-      // 6. Update Account Balance
+      // 5. Update Account Balance
       await tx.account.update({
         where: { id: expenseAccount.id },
         data: { balance: { decrement: totalCost } }
       });
 
-      return { success: true, message: 'Gift processed successfully' };
+      // 6. The stock leaving, as a movement like every other stock change.
+      await tx.inventoryMovement.create({
+        data: {
+          productId,
+          fromWarehouseId: inventory.warehouseId,
+          quantity,
+          type: 'ADJUSTMENT',
+          referenceId: transaction.id,
+          note: `هدیه به ${recipient}`,
+        },
+      });
+
+      return { success: true, message: 'هدیه با موفقیت ثبت شد.' };
     });
     kickSiteHook();
 
@@ -203,9 +226,25 @@ export async function giftProduct(productId: string, quantity: number, recipient
     }
     return result;
   } catch (error: unknown) {
+    if (error instanceof GiftRefusal || error instanceof WarehouseUnderAudit) return { success: false, error: error.message };
     console.error('Error gifting product:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to gift product' };
+    return { success: false, error: 'خطا در ثبت هدیه.' };
   }
+}
+
+/**
+ * A price cell from an imported sheet: a number, or text in Latin, Persian or Arabic digits with thousands
+ * separators. undefined for an empty or missing cell, NaN for anything else.
+ */
+function importedPrice(cell: unknown): number | undefined {
+  if (cell === undefined || cell === null) return undefined;
+  if (typeof cell === 'number') return cell;
+  const text = String(cell)
+    .trim()
+    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[,\u066C\u060C]/g, '');
+  return text === '' ? undefined : Number(text);
 }
 
 export async function importProducts(products: Array<Record<string, unknown>>) {
@@ -223,6 +262,14 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
         continue;
       }
 
+      // A missing cell keeps the stored price; a cell that is not a price is an error for the row.
+      const costPrice = importedPrice(p.costPrice);
+      const sellPrice = importedPrice(p.sellPrice);
+      if ([costPrice, sellPrice].some((price) => price !== undefined && !(Number.isFinite(price) && price >= 0))) {
+        errorCount++;
+        continue;
+      }
+
       const existing = await prisma.product.findUnique({
         where: { sku: String(p.sku) },
       });
@@ -233,9 +280,9 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
           where: { sku: String(p.sku) },
           data: {
             name: String(p.name),
-            // A price the importer may not set keeps its stored value.
-            ...(canEditCost ? { costPrice: Number(p.costPrice) || 0 } : {}),
-            ...(canSeeSellPrice ? { sellPrice: Number(p.sellPrice) || 0 } : {}),
+            // A price the importer may not set, or a column the sheet does not have, keeps its stored value.
+            ...(canEditCost && costPrice !== undefined ? { costPrice } : {}),
+            ...(canSeeSellPrice && sellPrice !== undefined ? { sellPrice } : {}),
             image: typeof p.image === 'string' ? p.image : undefined,
             // Don't update barcode if it exists
           },
@@ -249,8 +296,8 @@ export async function importProducts(products: Array<Record<string, unknown>>) {
             name: String(p.name),
             sku: String(p.sku),
             barcode,
-            costPrice: canEditCost ? Number(p.costPrice) || 0 : 0,
-            sellPrice: canSeeSellPrice ? Number(p.sellPrice) || 0 : 0,
+            costPrice: canEditCost ? costPrice ?? 0 : 0,
+            sellPrice: canSeeSellPrice ? sellPrice ?? 0 : 0,
             image: typeof p.image === 'string' ? p.image : undefined,
           },
         });

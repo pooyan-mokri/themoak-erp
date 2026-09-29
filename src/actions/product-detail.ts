@@ -5,6 +5,8 @@ import { PrismaClient } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { hasPermission, requirePermission } from '@/lib/access';
+import { holdsStock, stockLevel } from '@/lib/stock-levels';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
 
 // const prisma = new PrismaClient();
 
@@ -64,7 +66,8 @@ export async function getProductDetail(productId: string) {
       ...(canSeeSellPrice ? { sellPrice: Number(product.sellPrice) } : {}),
       totalStock,
       availableStock,
-      ...(canSeeCost ? { stockValue: totalStock * Number(product.costPrice) } : {}),
+      // Only a stock product type has stock value (src/lib/stock-levels.ts).
+      ...(canSeeCost ? { stockValue: holdsStock(product.productType) ? totalStock * Number(product.costPrice) : 0 } : {}),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     };
@@ -92,7 +95,7 @@ export async function getProductStockBreakdown(productId: string) {
       warehouseName: inv.warehouse.name,
       isVirtual: inv.warehouse.isVirtual,
       quantity: inv.quantity,
-      status: inv.quantity < 10 ? 'LOW' : 'OK'
+      status: stockLevel(inv.quantity)
     }));
   } catch (error) {
     console.error('Error fetching stock breakdown:', error);
@@ -118,18 +121,22 @@ export async function getProductSalesAnalytics(productId: string) {
         }
       },
       include: {
+        ...SALE_LINE_INCLUDE,
         order: {
           select: {
             createdAt: true,
-            status: true
+            status: true,
+            discount: true,
+            items: { include: SALE_LINE_INCLUDE },
           }
         }
       }
     });
 
-    // Calculate metrics
-    const totalUnitsSold = orderItems.reduce((sum: any, item: any) => sum + item.quantity, 0);
-    const totalRevenue = orderItems.reduce((sum: any, item: any) => sum + (item.quantity * Number(item.price)), 0);
+    // Calculate metrics: units net of returns and exchanges, revenue net of the order's discount too.
+    const sold: Array<{ units: number; revenue: number }> = orderItems.map((item: any) => netLineSale(item, item.order));
+    const totalUnitsSold = sold.reduce((sum, line) => sum + line.units, 0);
+    const totalRevenue = sold.reduce((sum, line) => sum + line.revenue, 0);
     const avgSellingPrice = totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : 0;
 
     // Calculate velocity (items per time period)
@@ -224,7 +231,7 @@ export async function getProductMovementHistory(productId: string, limit: number
         dateFormatted: formatJalaliDate(item.order.createdAt, 'jYYYY/jMM/jDD HH:mm'),
         type: 'SALE' as const,
         quantity: -item.quantity,
-        reference: item.order.customer?.name || 'Walk-in',
+        reference: item.order.customer?.name || 'مشتری عمومی',
         status: item.order.status
       })),
       ...purchases.map((item: any) => ({
@@ -247,6 +254,12 @@ export async function getProductMovementHistory(productId: string, limit: number
     return [];
   }
 }
+
+const JALALI_MONTH = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', {
+  timeZone: 'Asia/Tehran',
+  year: 'numeric',
+  month: '2-digit',
+});
 
 /**
  * Get sales history for chart (last N months)
@@ -272,24 +285,29 @@ export async function getProductSalesHistory(productId: string, months: number =
         }
       },
       include: {
+        ...SALE_LINE_INCLUDE,
         order: {
           select: {
-            createdAt: true
+            createdAt: true,
+            discount: true,
+            items: { include: SALE_LINE_INCLUDE },
           }
         }
       }
     });
 
-    // Group by month
+    // Group by Jalali month in Tehran time: the chart names each key by its Jalali month (07 is مهر).
     const monthlyData = new Map<string, { units: number; revenue: number }>();
     
     orderItems.forEach((item: any) => {
-      const date = new Date(item.order.createdAt);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const parts = JALALI_MONTH.formatToParts(new Date(item.order.createdAt));
+      const monthKey = `${parts.find((p) => p.type === 'year')!.value}-${parts.find((p) => p.type === 'month')!.value}`;
       
+      // Net of returns, exchanges and the order's discount, as on the sales cards above the chart.
+      const sold = netLineSale(item, item.order);
       const existing = monthlyData.get(monthKey) || { units: 0, revenue: 0 };
-      existing.units += item.quantity;
-      existing.revenue += item.quantity * Number(item.price);
+      existing.units += sold.units;
+      existing.revenue += sold.revenue;
       monthlyData.set(monthKey, existing);
     });
 

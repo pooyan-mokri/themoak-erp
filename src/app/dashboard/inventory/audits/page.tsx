@@ -96,7 +96,7 @@ export default async function InventoryAuditsPage() {
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">تاریخ ایجاد:</span>
                     <span className="font-medium">
-                      {new Date(audit.createdAt).toLocaleDateString('fa-IR')}
+                      {new Date(audit.createdAt).toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' })}
                     </span>
                   </div>
                 </div>

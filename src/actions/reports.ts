@@ -3,17 +3,26 @@
 import { prisma } from '@/lib/prisma';
 import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
+import { orderNet } from '@/lib/order-balance';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
+import { cashPosition, customerReceivables, latestRates, supplierPositions } from '@/lib/money-totals';
+import { profitEntry } from '@/lib/profit-rows';
+import { tehranDay } from '@/lib/tehran-day';
+import { STOCK_TYPES } from '@/lib/stock-levels';
 
 // Financial Reports
 
 /**
  * Profit & Loss Report
- * Shows Income vs Expenses over a period
+ * Revenue − cost of goods sold − operating expenses, over a period
+ * (src/lib/profit-rows.ts). Money turned into stock (supplier payments,
+ * arrival costs) is not a cost until the goods are sold: it reaches the P&L as
+ * their COGS rows.
  */
 export async function getProfitLossReport(startDate: Date, endDate: Date) {
   await requirePermission('profit.view');
   try {
-    const transactions = await prisma.transaction.findMany({
+    const rows = await prisma.transaction.findMany({
       where: {
         date: {
           gte: startDate,
@@ -23,57 +32,58 @@ export async function getProfitLossReport(startDate: Date, endDate: Date) {
       select: {
         type: true,
         amountInToman: true,
+        amount: true,
+        currency: true,
         category: true,
         date: true,
+        exchangeGroupId: true,
+        transferGroupId: true,
+        LoanPayment: { select: { interest: true } },
       },
     });
 
-    const income = transactions
-      .filter((t: any) => t.type === 'INCOME')
-      .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
-
-    const expenses = transactions
-      .filter((t: any) => t.type === 'EXPENSE')
-      .reduce((sum: any, t: any) => sum + Number(t.amountInToman), 0);
-
-    const netProfit = income - expenses;
-
-    // Group by category
+    let income = 0;
+    let cogs = 0;
+    let operatingExpenses = 0;
     const incomeByCategory: Record<string, number> = {};
     const expensesByCategory: Record<string, number> = {};
+    const monthlyData: Record<string, { income: number; cogs: number; expenses: number; profit: number }> = {};
 
-    transactions.forEach((t: any) => {
-      const category = t.category || 'سایر';
-      const amount = Number(t.amountInToman);
+    for (const t of rows as any[]) {
+      const entry = profitEntry(t);
+      if (!entry) continue;
+      const { line, amount, category } = entry;
+      const monthKey = tehranDay(t.date).substring(0, 7); // YYYY-MM, in Tehran
+      const month = (monthlyData[monthKey] ??= { income: 0, cogs: 0, expenses: 0, profit: 0 });
 
-      if (t.type === 'INCOME') {
+      if (line === 'revenue') {
+        income += amount;
         incomeByCategory[category] = (incomeByCategory[category] || 0) + amount;
-      } else if (t.type === 'EXPENSE') {
-        expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
+        month.income += amount;
+      } else {
+        if (line === 'cogs') {
+          cogs += amount;
+          month.cogs += amount;
+        } else {
+          operatingExpenses += amount;
+          expensesByCategory[category] = (expensesByCategory[category] || 0) + amount;
+        }
+        // The month's costs: what was sold at cost, and everything spent.
+        month.expenses += amount;
       }
-    });
+      month.profit = month.income - month.expenses;
+    }
 
-    // Monthly breakdown
-    const monthlyData: Record<string, { income: number; expenses: number; profit: number }> = {};
-    
-    transactions.forEach((t: any) => {
-      const monthKey = t.date.toISOString().substring(0, 7); // YYYY-MM
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { income: 0, expenses: 0, profit: 0 };
-      }
-
-      const amount = Number(t.amountInToman);
-      if (t.type === 'INCOME') {
-        monthlyData[monthKey].income += amount;
-      } else if (t.type === 'EXPENSE') {
-        monthlyData[monthKey].expenses += amount;
-      }
-      monthlyData[monthKey].profit = monthlyData[monthKey].income - monthlyData[monthKey].expenses;
-    });
+    const grossProfit = income - cogs;
+    const expenses = cogs + operatingExpenses;
+    const netProfit = income - expenses;
 
     return {
       summary: {
         income,
+        cogs,
+        grossProfit,
+        operatingExpenses,
         expenses,
         netProfit,
         profitMargin: income > 0 ? (netProfit / income) * 100 : 0,
@@ -99,19 +109,32 @@ export async function getBalanceSheet(date: Date) {
   await requirePermission('profit.view');
   try {
     // Assets
+    // Every account that holds money, foreign ones at the latest rate, as the
+    // dashboard's «موجودی کل» (src/lib/money-totals.ts).
     const cashAccounts = await prisma.account.findMany({
       where: {
-        type: { in: ['CASH', 'BANK'] },
+        type: { not: 'EXPENSE' },
       },
       select: {
+        type: true,
         balance: true,
+        currency: true,
       },
     });
 
-    const totalCash = cashAccounts.reduce((sum: any, acc: any) => sum + Number(acc.balance), 0);
+    const rates = await latestRates(prisma);
+    const balances = cashPosition(cashAccounts, rates);
+    const totalCash = balances.total;
 
-    // Inventory Value (cost price * quantity) — split own vs. consignment
+    // Purchase orders: owed for goods received and not yet paid, and paid for
+    // goods not yet received (src/lib/money-totals.ts). An order only placed
+    // is a commitment and is on neither side.
+    const suppliers = await supplierPositions(prisma, rates);
+
+    // Inventory Value (cost price * quantity) of the stock product types
+    // (src/lib/stock-levels.ts, as on every stock screen) — split own vs. consignment
     const inventory = await prisma.inventory.findMany({
+      where: { product: { productType: { in: [...STOCK_TYPES] } } },
       include: {
         product: { select: { costPrice: true } },
         warehouse: { select: { isVirtual: true } },
@@ -126,27 +149,15 @@ export async function getBalanceSheet(date: Date) {
       else inventoryValue += v;
     });
 
-    // Accounts Receivable (unpaid invoices)
-    const unpaidInvoices = await prisma.invoice.findMany({
-      where: {
-        status: { in: ['UNPAID', 'PARTIAL'] },
-      },
-      select: {
-        total: true,
-        paidAmount: true,
-      },
-    });
-
-    const accountsReceivable = unpaidInvoices.reduce(
-  (sum: any, inv: any) => sum + (Number(inv.total) - Number(inv.paidAmount)),
-      0
-    );
+    // Accounts Receivable: what customers still owe on their orders, invoiced
+    // or not, the dashboard's «مطالبات» (src/lib/money-totals.ts).
+    const accountsReceivable = await customerReceivables(prisma);
 
     const totalAssets =
-      totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable;
+      totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable + suppliers.prepaid;
 
-    // Liabilities (for now, simplified - we don't track AP yet)
-    const accountsPayable = 0; // TODO: implement when we add bills/payables
+    // Liabilities: what is still owed to suppliers
+    const accountsPayable = suppliers.payables;
 
     const totalLiabilities = accountsPayable;
 
@@ -156,9 +167,13 @@ export async function getBalanceSheet(date: Date) {
     return {
       assets: {
         cash: totalCash,
+        cashByType: balances.byType,
+        foreignCash: balances.foreign,
+        unpricedCash: balances.unpriced,
         inventory: inventoryValue,
         consignmentInventory: consignmentInventoryValue,
         accountsReceivable,
+        prepaidPurchases: suppliers.prepaid,
         total: totalAssets,
       },
       liabilities: {
@@ -182,29 +197,25 @@ export async function getBalanceSheet(date: Date) {
 export async function getSalesByProduct(startDate: Date, endDate: Date) {
   await requirePermission('sales.view');
   try {
-    const orderItems = await prisma.orderItem.findMany({
+    // Units net of returns and exchanges, revenue net of the order's discount
+    // too (src/lib/product-sales.ts), as on the product pages.
+    const orders = await prisma.order.findMany({
       where: {
-        order: {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-          status: { not: 'CANCELLED' },
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
         },
+        status: { not: 'CANCELLED' },
       },
-      include: {
-        product: {
-          select: {
-            name: true,
-            sku: true,
-          },
-        },
+      select: {
+        discount: true,
+        items: { include: { product: { select: { name: true, sku: true } }, ...SALE_LINE_INCLUDE } },
       },
     });
 
     const productSales: Record<string, { name: string; quantity: number; revenue: number }> = {};
 
-    orderItems.forEach((item: any) => {
+    orders.forEach((order: any) => order.items.forEach((item: any) => {
       const key = item.productId;
       if (!productSales[key]) {
         productSales[key] = {
@@ -213,9 +224,10 @@ export async function getSalesByProduct(startDate: Date, endDate: Date) {
           revenue: 0,
         };
       }
-      productSales[key].quantity += item.quantity;
-      productSales[key].revenue += item.quantity * Number(item.price);
-    });
+      const sold = netLineSale(item, order);
+      productSales[key].quantity += sold.units;
+      productSales[key].revenue += sold.revenue;
+    }));
 
     return Object.values(productSales).sort((a: any, b: any) => b.revenue - a.revenue);
   } catch (error) {
@@ -258,7 +270,8 @@ export async function getSalesByCustomer(startDate: Date, endDate: Date) {
         };
       }
       customerSales[key].orderCount += 1;
-      customerSales[key].revenue += Number(order.totalAmount);
+      // What the customer pays for it, after the discount (src/lib/order-balance.ts).
+      customerSales[key].revenue += orderNet(order);
     });
 
     return Object.values(customerSales).sort((a: any, b: any) => b.revenue - a.revenue);
@@ -286,6 +299,9 @@ export async function getSalesOverTime(
       select: {
         createdAt: true,
         totalAmount: true,
+        discount: true,
+        wooId: true,
+        siteReference: true,
       },
     });
 
@@ -295,7 +311,7 @@ export async function getSalesOverTime(
       let periodKey: string;
       
       if (interval === 'day') {
-        periodKey = order.createdAt.toISOString().substring(0, 10); // YYYY-MM-DD
+        periodKey = tehranDay(order.createdAt); // YYYY-MM-DD, in Tehran
       } else if (interval === 'week') {
         // Simple week grouping by ISO week
         const date = order.createdAt;
@@ -303,13 +319,13 @@ export async function getSalesOverTime(
         const week = Math.ceil(((date.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
         periodKey = `${date.getFullYear()}-W${week.toString().padStart(2, '0')}`;
       } else {
-        periodKey = order.createdAt.toISOString().substring(0, 7); // YYYY-MM
+        periodKey = tehranDay(order.createdAt).substring(0, 7); // YYYY-MM, in Tehran
       }
 
       if (!salesByPeriod[periodKey]) {
         salesByPeriod[periodKey] = {revenue: 0, orders: 0 };
       }
-      salesByPeriod[periodKey].revenue += Number(order.totalAmount);
+      salesByPeriod[periodKey].revenue += orderNet(order);
       salesByPeriod[periodKey].orders += 1;
     });
 

@@ -27,7 +27,7 @@ export function SalesChart({ data }: SalesChartProps) {
                 <div className="w-full space-y-1">
                   <div className="flex justify-between text-sm font-medium">
                     <span>{product.name}</span>
-                    <span>{product.total.toLocaleString()}</span>
+                    <span>{product.total.toLocaleString('fa-IR')}</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-secondary">
                     <div

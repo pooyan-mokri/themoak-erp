@@ -99,7 +99,9 @@ export function AssetForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="purchasePrice">قیمت خرید (تومان) *</Label>
+            <Label htmlFor="purchasePrice">
+              {assetType === AssetType.CONSUMABLE ? 'قیمت خرید هر واحد (تومان) *' : 'قیمت خرید (تومان) *'}
+            </Label>
             <Input
               id="purchasePrice"
               name="purchasePrice"

@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
-import { Edit, Trash2, UserPlus } from 'lucide-react';
+import { Edit, KeyRound, Trash2, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { UserForm } from './user-form';
-import { deleteUser } from '@/actions/user';
+import { SetPasswordDialog } from './set-password-dialog';
+import { deleteUser, setUserActive } from '@/actions/user';
 import { toast } from 'sonner';
 import { Role } from '@/lib/types';
 import { ROLES, ROLE_LABELS, describeRole } from '@/lib/permissions';
@@ -33,6 +34,7 @@ const fa = (n: number) => n.toLocaleString('fa-IR');
 export function UserList({ users }: UserListProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(undefined);
+  const [passwordUser, setPasswordUser] = useState<{ id: string; name: string } | undefined>(undefined);
 
   const handleEdit = (user: any) => {
     setSelectedUser(user);
@@ -53,6 +55,18 @@ export function UserList({ users }: UserListProps) {
       } else {
         toast.error(result.message);
       }
+    }
+  };
+
+  // A deactivated user cannot sign in; their records keep their name (setUserActive, admin only).
+  const handleActive = async (user: { id: string; name: string; isActive: boolean }) => {
+    if (user.isActive && !confirm(`${user.name} غیرفعال شود؟ دیگر نمی‌تواند وارد شود، ولی سوابقش می‌ماند.`)) return;
+    const result = await setUserActive(user.id, !user.isActive);
+    if (result.success) {
+      toast.success(result.message);
+      window.location.reload(); // Refresh to update the list
+    } else {
+      toast.error(result.message);
     }
   };
 
@@ -118,6 +132,13 @@ export function UserList({ users }: UserListProps) {
               render: (user) => getRoleBadge(user.role as Role),
             },
             {
+              key: 'isActive',
+              label: 'وضعیت',
+              sortable: true,
+              render: (user) =>
+                user.isActive ? <Badge variant="success">فعال</Badge> : <Badge variant="secondary">غیرفعال</Badge>,
+            },
+            {
               key: 'createdAt',
               label: 'تاریخ عضویت',
               sortable: true,
@@ -132,6 +153,24 @@ export function UserList({ users }: UserListProps) {
                 <div className="flex items-center justify-end gap-1">
                   <Button variant="ghost" size="icon" onClick={() => handleEdit(user)} title="ویرایش" aria-label={`ویرایش ${user.name}`}>
                     <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPasswordUser(user)}
+                    title="تغییر رمز عبور"
+                    aria-label={`تغییر رمز عبور ${user.name}`}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleActive(user)}
+                    title={user.isActive ? 'غیرفعال کردن' : 'فعال کردن'}
+                    aria-label={`${user.isActive ? 'غیرفعال کردن' : 'فعال کردن'} ${user.name}`}
+                  >
+                    {user.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                   </Button>
                   <Button
                     variant="destructive"
@@ -193,6 +232,7 @@ export function UserList({ users }: UserListProps) {
         onOpenChange={setIsFormOpen} 
         user={selectedUser} 
       />
+      <SetPasswordDialog user={passwordUser} onOpenChange={(open) => !open && setPasswordUser(undefined)} />
     </>
   );
 }

@@ -43,7 +43,8 @@ export default async function ReturnsHistoryPage() {
                       <TableHead>مشتری</TableHead>
                       <TableHead>کالا</TableHead>
                       <TableHead>تعداد</TableHead>
-                      <TableHead>مبلغ بازگشتی</TableHead>
+                      <TableHead>ارزش کالا</TableHead>
+                      <TableHead>وجه پس‌داده‌شده</TableHead>
                       <TableHead>حساب</TableHead>
                       <TableHead>دلیل</TableHead>
                     </TableRow>
@@ -60,7 +61,8 @@ export default async function ReturnsHistoryPage() {
                         <TableCell>{ret.customerName}</TableCell>
                         <TableCell>{ret.productName}</TableCell>
                         <TableCell>{ret.quantity}</TableCell>
-                        <TableCell>{ret.refundAmount.toLocaleString()} تومان</TableCell>
+                        <TableCell>{ret.refundAmount.toLocaleString('fa-IR')} تومان</TableCell>
+                        <TableCell>{ret.cashRefund.toLocaleString('fa-IR')} تومان</TableCell>
                         <TableCell>{ret.accountName}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{ret.reason || '—'}</TableCell>
                       </TableRow>
@@ -109,10 +111,10 @@ export default async function ReturnsHistoryPage() {
                         <TableCell>{ex.quantity}</TableCell>
                         <TableCell>
                           {ex.priceDifference > 0 && (
-                            <span className="text-green-600">+{ex.priceDifference.toLocaleString()}</span>
+                            <span className="text-green-600">+{ex.priceDifference.toLocaleString('fa-IR')}</span>
                           )}
                           {ex.priceDifference < 0 && (
-                            <span className="text-red-600">{ex.priceDifference.toLocaleString()}</span>
+                            <span className="text-red-600">{ex.priceDifference.toLocaleString('fa-IR')}</span>
                           )}
                           {ex.priceDifference === 0 && '—'}
                         </TableCell>

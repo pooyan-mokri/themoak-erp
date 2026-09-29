@@ -133,9 +133,14 @@ test('a missing or wrong token is 401, even for a real action', async () => {
 
 test('settlements never lists a website order, even for a consignment partner', async () => {
   const partner = await prisma.customer.create({ data: { name: 'Partner', phone: '09120000000' } });
-  await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  const atPartner = await prisma.warehouse.create({ data: { name: 'امانی', isVirtual: true, customerId: partner.id } });
+  const frame = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ', costPrice: 1, sellPrice: 1000 } });
+  // Sold out of the partner's consignment stock: a settlement (a POS sale to the partner is not one).
   const consignment = await prisma.order.create({
-    data: { customerId: partner.id, totalAmount: 1000, paidAmount: 0, paymentStatus: 'UNPAID' },
+    data: {
+      customerId: partner.id, totalAmount: 1000, paidAmount: 0, paymentStatus: 'UNPAID',
+      items: { create: [{ productId: frame.id, quantity: 1, price: 1000, warehouseId: atPartner.id }] },
+    },
   });
   await prisma.order.create({
     data: { customerId: partner.id, totalAmount: 2000, paidAmount: 0, paymentStatus: 'UNPAID', siteReference: 'M-PARTNER' },

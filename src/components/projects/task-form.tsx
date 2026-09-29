@@ -61,7 +61,7 @@ interface TaskFormProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  users?: Array<{ id: string; name: string; email: string }>;
+  users?: Array<{ id: string; name: string }>;
 }
 
 export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpenChange, users = [] }: TaskFormProps) {
@@ -320,7 +320,7 @@ export function TaskForm({ projectId, task, trigger, open: controlledOpen, onOpe
                 <SelectContent>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.name} ({user.email})
+                      {user.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

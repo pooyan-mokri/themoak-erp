@@ -14,6 +14,10 @@ const TOKEN = 'website-money-test-token';
 const OPENING = 1_000_000;
 const TOTAL = 5_200_000;
 
+/** Money rows only: a sale's cost of goods is a COGS row on the order, not money (src/lib/cogs.ts). */
+const isMoney = (row: { category?: string | null }) => row.category !== 'COGS';
+const moneyRows = async (where: Record<string, unknown> = {}) => (await prisma.transaction.findMany({ where, orderBy: { createdAt: 'asc' } })).filter(isMoney);
+
 let world: { account: { id: string }; warehouse: { id: string } };
 
 beforeEach(async () => {
@@ -71,7 +75,9 @@ const REAL = { gateway: 'zibal', trackId: '3312001', refNumber: '98001', paidAt:
 const BY_HAND = { gateway: 'zibal', trackId: null, refNumber: null, paidAt: null, amount: TOTAL };
 
 const orderOf = (reference: string) =>
-  prisma.order.findUniqueOrThrow({ where: { siteReference: reference }, include: { moneyRows: true } });
+  prisma.order
+    .findUniqueOrThrow({ where: { siteReference: reference }, include: { moneyRows: true } })
+    .then((order: any) => ({ ...order, moneyRows: order.moneyRows.filter(isMoney) }));
 
 async function balance() {
   return Number((await prisma.account.findUniqueOrThrow({ where: { id: world.account.id } })).balance);
@@ -110,7 +116,7 @@ test('a sandbox payment books no income: the sale is recorded unpaid, stock stil
     // What the site said is kept, for the review page.
     assert.equal(data?.payment.amount, TOTAL);
   }
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal((await moneyRows()).length, 0);
   assert.equal(await balance(), OPENING);
   const stock = await prisma.inventory.findFirstOrThrow();
   assert.equal(stock.quantity, 5 - 3);
@@ -122,7 +128,7 @@ test('a payment with no gateway trace (marked paid by hand on the site) books no
   const order = await orderOf(body.reference);
   assert.equal(order.paymentStatus, 'UNPAID');
   assert.equal(Number(order.paidAmount), 0);
-  assert.equal(await prisma.transaction.count(), 0);
+  assert.equal((await moneyRows()).length, 0);
   assert.equal(await balance(), OPENING);
   const review = readSiteOrderData(order.siteData)?.review ?? [];
   assert.ok(review.some((reason) => reason.includes('trackId')), JSON.stringify(review));
@@ -156,7 +162,7 @@ test('refunding a sale that was recorded unpaid moves no money, and says so', as
   });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   const order = await prisma.order.findUniqueOrThrow({ where: { siteReference: body.reference }, include: { siteRefunds: true } });
-  assert.equal(await prisma.transaction.count(), 0, 'no refund leaves an account that never received the money');
+  assert.equal((await moneyRows()).length, 0, 'no refund leaves an account that never received the money');
   assert.equal(await balance(), OPENING);
   assert.equal(order.status, 'CANCELLED');
   assert.equal(Number(order.totalAmount) - Number(order.discount) - Number(order.paidAmount), 0);

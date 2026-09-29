@@ -68,6 +68,27 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'labels': 'چاپ گروهی برچسب',
     'print': 'چاپ',
     'no-access': 'عدم دسترسی',
+    'admin': 'مدیریت',
+    'ar-aging': 'گزارش سنی مطالبات',
+    'archived': 'آرشیو',
+    'assets': 'دارایی‌های ثابت',
+    'backup': 'پشتیبان‌گیری',
+    'employee-debts': 'بدهی کارمندان',
+    'exchange-rates': 'نرخ ارز',
+    'financial': 'مالی',
+    'lost-stock': 'موجودی بازنگشته',
+    'management': 'مدیریت',
+    'pos': 'صندوق فروش',
+    'profile': 'پروفایل',
+    'promotions': 'کمپین‌های تخفیف',
+    'reconciliation': 'مغایرت‌گیری',
+    'reporting': 'گزارشات مالی',
+    'return': 'برگشت کالا',
+    'returns': 'عودت‌ها و تعویض‌ها',
+    'search': 'جستجو',
+    'site': 'سایت',
+    'statement': 'کارت حساب',
+    'transactions': 'دفتر روزنامه',
     'site-review': 'پرداخت‌های سایت برای بررسی',
   };
   
@@ -78,9 +99,11 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     const segment = segments[i];
     const isLast = i === segments.length - 1;
     
-    // Skip numeric IDs (like project IDs, order IDs, etc.) - they will be replaced by customLabel
-    if (/^[a-zA-Z0-9]{20,}$/.test(segment)) {
-      // This looks like a CUID (long alphanumeric ID)
+    // Skip record ids (a cuid, or a POS sale's order id pos-<requestId> from
+    // src/actions/sales.ts): they will be replaced by customLabel. The path
+    // still goes through them, so a later crumb (/print) links to its record.
+    if (/^[a-zA-Z0-9]{20,}$/.test(segment) || /^pos-[A-Za-z0-9_-]{8,64}$/.test(segment)) {
+      currentPath += `/${segment}`;
       continue;
     }
     

@@ -77,7 +77,7 @@ export default async function SuppliersDashboard() {
         {balances && (
           <SectionCard title="مانده تامین‌کنندگان" link={{ href: '/dashboard/suppliers/management', label: 'همه تامین‌کنندگان' }}>
             {owed.length === 0 ? (
-              <p className="py-6 text-center text-[13px] text-muted-foreground">به هیچ تامین‌کننده‌ای بدهی باز نداریم.</p>
+              <p className="py-6 text-center text-[13px] text-muted-foreground">مانده پرداختی به هیچ تامین‌کننده‌ای نیست.</p>
             ) : (
               <ul className="divide-y">
                 {owed.slice(0, 8).map((supplier: any) => (

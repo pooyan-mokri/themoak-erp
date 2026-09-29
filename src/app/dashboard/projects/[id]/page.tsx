@@ -6,7 +6,7 @@ import { TaskForm } from '@/components/projects/task-form';
 import { ProjectCalendarView } from '@/components/projects/project-calendar-view';
 import { Button } from '@/components/ui/button';
 import { notFound } from 'next/navigation';
-import { getUsers } from '@/actions/user';
+import { getUserOptions } from '@/actions/user';
 import { DashboardBreadcrumb } from '@/components/layout/dashboard-breadcrumb';
 import { ViewToggle } from '@/components/projects/view-toggle';
 import { serializeDate } from '@/lib/serialize';
@@ -23,7 +23,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
 
   try {
     project = await getProjectById(params.id);
-    users = await getUsers();
+    users = await getUserOptions();
     
     // Debug: Log task count
     if (project) {
@@ -40,6 +40,8 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
 
   const f = figures[project.id];
   const budget = Number(project.budget || 0);
+  // The budget is finance data: shown to, and set by, finance.view only (getProjectById sends it to them alone).
+  const showBudget = await hasPermission('finance.view');
   const facts = [
     project.startDate && { label: 'شروع', value: formatJalaliDate(project.startDate) },
     project.endDate && { label: 'پایان', value: formatJalaliDate(project.endDate) },
@@ -66,7 +68,7 @@ export default async function ProjectDetailsPage({ params }: { params: { id: str
         actions={
           canManage && (
             <>
-              <ProjectForm project={project} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
+              <ProjectForm project={project} showBudget={showBudget} trigger={<Button variant="outline">ویرایش پروژه</Button>} />
               <TaskForm projectId={project.id} users={users} />
             </>
           )

@@ -44,7 +44,7 @@ import { foldSearchText } from './audit-count-view';
 import { GiftProductDialog } from './gift-product-dialog';
 import { ProductForm } from './product-form';
 import { ProductActions as ExcelActions } from './product-actions';
-import { LOW_STOCK_BELOW, PRODUCT_TYPE_LABELS, STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
+import { LOW_STOCK_MAX, PRODUCT_TYPE_LABELS, STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
 
 interface Product {
   id: string;
@@ -290,7 +290,7 @@ export function ProductTable({ products, stock, canSeeCost, canSeeSellPrice, can
         />
         {stock && (
           <>
-            <KpiCard label="موجودی کم" icon={TriangleAlert} value={fa(counts.low)} note={`کمتر از ${fa(LOW_STOCK_BELOW)} عدد`} />
+            <KpiCard label="موجودی کم" icon={TriangleAlert} value={fa(counts.low)} note={`${fa(LOW_STOCK_MAX)} عدد یا کمتر`} />
             <KpiCard label="ناموجود" icon={PackageX} value={fa(counts.out)} note="موجودی صفر یا کمتر" />
             {canSeeCost ? (
               <KpiCard label="ارزش موجودی" icon={Wallet} value={fa(stockValue)} unit="تومان" note="به قیمت خرید" />

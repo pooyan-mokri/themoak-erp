@@ -2,7 +2,6 @@
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { SectionCard } from '@/components/dashboard/section-card';
-import { formatJalaliDate } from '@/lib/date-utils';
 
 interface ProductSalesChartProps {
   salesHistory: Array<{
@@ -17,17 +16,16 @@ const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits
 const INDIGO = '#353DB2';
 const INDIGO_LIGHT = '#A9AEDE';
 
-/**
- * The months are calendar (Gregorian) months, "YYYY-MM". Each is named after the Jalali month holding most of it,
- * its middle day; the tooltip gives its exact Jalali dates.
- */
+const JALALI_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+
+/** The months are Jalali months in Tehran, "YYYY-MM" in Latin digits (getProductSalesHistory): 1405-07 is مهر ۱۴۰۵. */
 const monthLabel = (key: string) => {
-  const [year, month] = key.split('-').map(Number);
-  return formatJalaliDate(new Date(year, month - 1, 15), 'jMMMM');
+  const month = Number(key.split('-')[1]);
+  return JALALI_MONTHS[month - 1] ?? key;
 };
 const monthRange = (key: string) => {
-  const [year, month] = key.split('-').map(Number);
-  return `${formatJalaliDate(new Date(year, month - 1, 1), 'jD jMMMM')} تا ${formatJalaliDate(new Date(year, month, 0), 'jD jMMMM jYYYY')}`;
+  const year = Number(key.split('-')[0]);
+  return `${monthLabel(key)} ${new Intl.NumberFormat('fa-IR', { useGrouping: false }).format(year)}`;
 };
 
 /** Units sold per month over the last 12 months, and the money for sales viewers: indigo bars on hairline gridlines. */
@@ -54,6 +52,8 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
         </span>
       }
     >
+      {/* Laid out left to right, so SVG axis labels anchor on the right side; the axis is reversed so the months still run right to left. */}
+      <div dir="ltr">
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={salesHistory} margin={{ top: 8, right: 4, left: 4, bottom: 0 }} barGap={2}>
           <CartesianGrid stroke="#E3E3E3" strokeDasharray="0" vertical={false} />
@@ -94,7 +94,7 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
               return [value, name];
             }}
             labelFormatter={(label) => monthRange(String(label))}
-            contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit' }}
+            contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
           />
           <Bar yAxisId="units" dataKey="units" name="units" fill={INDIGO} radius={[2, 2, 0, 0]} maxBarSize={28} isAnimationActive={false} />
           {showRevenue && (
@@ -102,6 +102,7 @@ export function ProductSalesChart({ salesHistory }: ProductSalesChartProps) {
           )}
         </BarChart>
       </ResponsiveContainer>
+      </div>
     </SectionCard>
   );
 }

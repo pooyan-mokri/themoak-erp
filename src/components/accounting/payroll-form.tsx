@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { MONTH_NAMES, currentPeriod } from './payroll-periods';
+import { toLatinDigits } from '@/lib/digits';
 
 const initialState = {
   message: '',
@@ -72,9 +73,9 @@ export function PayrollForm({ employees, onSuccess }: PayrollFormProps) {
   }, [selectedEmployeeId, employees, amount]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  const amountNum = Number(amount) || 0;
-  const bonusesNum = Number(bonuses) || 0;
-  const deductionsNum = Number(deductions) || 0;
+  const amountNum = Number(toLatinDigits(amount)) || 0;
+  const bonusesNum = Number(toLatinDigits(bonuses)) || 0;
+  const deductionsNum = Number(toLatinDigits(deductions)) || 0;
   const netAmount = amountNum + bonusesNum - deductionsNum;
 
   // The current Jalali month and year. (Reading them from Intl's fa-IR parts gave Persian

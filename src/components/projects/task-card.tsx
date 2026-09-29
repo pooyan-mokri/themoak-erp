@@ -5,12 +5,13 @@ import { TaskForm } from './task-form';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatJalaliDate } from '@/lib/date-utils';
+import { assigneeName } from '@/lib/task-assignee';
 import { PILL, taskPriority } from './project-labels';
 
 interface TaskCardProps {
   task: any;
   projectId: string;
-  users?: Array<{ id: string; name: string; email: string }>;
+  users?: Array<{ id: string; name: string }>;
   /** May move and edit tasks (projects.manage); the server checks it again. */
   canManage?: boolean;
 }
@@ -40,10 +41,8 @@ export function TaskCard({ task, projectId, users = [], canManage = true }: Task
   };
 
   const priority = taskPriority(task.priority);
-  // assignedTo holds the user's id: show their name (the server sends assignedToUser; the users list is the fallback).
-  const assignee = task.assignedTo
-    ? task.assignedToUser?.name ?? users.find((u) => u.id === task.assignedTo)?.name
-    : undefined;
+  // assignedTo holds the user's id: show their name, never the id (src/lib/task-assignee.ts).
+  const assignee = assigneeName(task, users);
 
   return (
     <>

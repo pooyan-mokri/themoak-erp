@@ -80,11 +80,11 @@ const orderNow = async (s: Sale) => {
   return { total: Number(o.totalAmount), paid: Number(o.paidAmount), status: o.paymentStatus };
 };
 const balance = async (id: string) => Number((await prisma.account.findUniqueOrThrow({ where: { id } })).balance);
-/** Every money row except the sale's own checkout row. */
+/** Every money row except the sale's own checkout row (a COGS row is cost, not money: src/lib/cogs.ts). */
 const newRows = async (s: Sale) =>
-  (await prisma.transaction.findMany({ where: { id: { not: s.order.transactionId ?? '' } }, orderBy: { createdAt: 'asc' } })).map(
-    (t: any) => ({ type: t.type, amount: Number(t.amount), accountId: t.accountId, orderId: t.orderId }),
-  );
+  (await prisma.transaction.findMany({ where: { id: { not: s.order.transactionId ?? '' } }, orderBy: { createdAt: 'asc' } }))
+    .filter((t: any) => t.category !== 'COGS')
+    .map((t: any) => ({ type: t.type, amount: Number(t.amount), accountId: t.accountId, orderId: t.orderId }));
 
 test('an exchange to a pricier item on an unpaid order books no income and raises the debt', async () => {
   const s = await sale(0);
@@ -144,7 +144,7 @@ test('a pricier exchange on an order holding the customer\'s credit takes the cr
 
   // The other frame for the dearer one: 600,000 more, of which the credit covers 300,000.
   // The dialog caps what it collects at the same figure.
-  assert.equal(receivableNow((await getOrderMoney(s.order.id))!, PRICIER - PRICE), 300_000);
+  assert.equal(receivableNow((await getOrderMoney(s.order.id))!, PRICE, PRICIER), 300_000);
   const tooMuch = await swap(s, s.pricier.id, { receivedNow: String(PRICIER - PRICE), accountId: s.bank.id });
   assert.equal(tooMuch.success, false);
   assert.equal(await prisma.orderExchange.count(), 1);

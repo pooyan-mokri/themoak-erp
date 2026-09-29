@@ -2,15 +2,21 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
-import { AccessDenied } from '@/lib/access';
-import { getCustomerOrderSummaries } from '@/actions/customer';
+import { cancelOrder, createOrder } from '@/actions/sales';
+import { calculateCustomerDebt, getCustomerById, getCustomerStats, getCustomersWithDebt } from '@/actions/customer';
+import { getCRMDashboardStats } from '@/actions/crm';
 import { returnOrderItem } from '@/actions/order-return';
-import { cancelOrder } from '@/actions/sales';
+import { openAccount, stockIn } from '../sales/world';
 
-// The actions log refusals on purpose.
+/**
+ * What a customer owes and has bought, as src/actions/customer.ts computes it:
+ * over the orders that stand, after the discount (src/lib/order-balance.ts).
+ */
+
+// The actions log every refusal these tests provoke on purpose.
 console.error = () => {};
 
-const PRICE = 1_000_000;
+const PRICE = 10_000_000;
 
 beforeEach(async () => {
   setTestRole('ADMIN');
@@ -18,76 +24,84 @@ beforeEach(async () => {
 });
 after(() => prisma.$disconnect());
 
-/** Sara bought 2 × PRICE (discount 100,000, paid in full) and, in a second order, 1 × PRICE unpaid. */
-async function seed({ second = true } = {}) {
-  const warehouse = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+/** سارا: one credit sale of 10,000,000 (1,000,000 off) still owed, and one of 20,000,000 cancelled. */
+async function sara() {
+  const store = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
   const frame = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ', costPrice: 1, sellPrice: PRICE } });
-  await prisma.inventory.create({ data: { productId: frame.id, warehouseId: warehouse.id, quantity: 10 } });
-  const till = await prisma.account.create({ data: { name: 'صندوق', type: 'CASH', currency: 'TOMAN', balance: 1_900_000 } });
-  const sara = await prisma.customer.create({ data: { name: 'سارا', segment: 'VIP' } });
-  const walkIn = await prisma.customer.create({ data: { name: 'رهگذر' } });
-  const paid = await prisma.order.create({
-    data: {
-      customerId: sara.id,
-      totalAmount: PRICE * 2,
-      discount: 100_000,
-      paidAmount: PRICE * 2 - 100_000,
-      paymentStatus: 'PAID',
-      items: { create: [{ productId: frame.id, quantity: 2, price: PRICE, warehouseId: warehouse.id }] },
-    },
-    include: { items: true },
-  });
-  const unpaid = !second ? null : await prisma.order.create({
-    data: {
-      customerId: sara.id,
-      totalAmount: PRICE,
+  await stockIn(frame.id, store.id, 10);
+  await openAccount('بانک');
+  const customer = await prisma.customer.create({ data: { name: 'سارا' } });
+  const sell = async (quantity: number, discount: number) => {
+    const result = await createOrder({
+      customerId: customer.id,
+      items: [{ productId: frame.id, quantity, price: PRICE }],
+      paymentMethod: 'CASH',
+      accountId: '',
+      totalAmount: PRICE * quantity,
+      discount,
       paidAmount: 0,
-      paymentStatus: 'UNPAID',
-      items: { create: [{ productId: frame.id, quantity: 1, price: PRICE, warehouseId: warehouse.id }] },
-    },
-  });
-  return { warehouse, till, sara, walkIn, paid, unpaid };
+      warehouseId: store.id,
+    });
+    assert.equal(result.success, true, result.message);
+    return prisma.order.findFirstOrThrow({ orderBy: { number: 'desc' } });
+  };
+  await sell(1, 1_000_000);
+  const cancelled = await sell(2, 0);
+  assert.equal((await cancelOrder(cancelled.id)).success, true);
+  return customer;
 }
 
-test('a customer is worth the orders not cancelled, net of discount, with a return taken off once', async () => {
-  const { warehouse, till, sara, walkIn, paid, unpaid } = await seed();
-  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 2, lifetimeValue: PRICE * 3 - 100_000 });
-
-  // One frame of the paid order comes back: the order's total drops by its price, once.
-  const back = await returnOrderItem(
-    {},
-    form({ orderId: paid.id, orderItemId: paid.items[0].id, quantity: '1', accountId: till.id, warehouseId: warehouse.id }),
-  );
-  assert.equal(back.success, true, back.message);
-  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 2, lifetimeValue: PRICE * 2 - 100_000 });
-
-  // A cancelled order counts neither as an order nor as value.
-  const cancelled = await cancelOrder(unpaid!.id);
-  assert.equal(cancelled.success, true, cancelled.message);
-  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 1, lifetimeValue: PRICE - 100_000 });
-
-  // A customer with no orders has no entry.
-  assert.equal((await getCustomerOrderSummaries())[walkIn.id], undefined);
+test('the CRM ranking counts only the sale that stands, after its discount', async () => {
+  const customer = await sara();
+  const [top] = (await getCRMDashboardStats()).topCustomers as any[];
+  assert.deepEqual([top.id, top.totalRevenue], [customer.id, 9_000_000]);
 });
 
-test('a fully returned order with a discount is worth nothing, not less than nothing', async () => {
-  const { warehouse, till, sara, paid } = await seed({ second: false });
-  const back = await returnOrderItem(
-    {},
-    form({ orderId: paid.id, orderItemId: paid.items[0].id, quantity: '2', accountId: till.id, warehouseId: warehouse.id }),
-  );
+test('an order returned in full after a discount is worth nothing to the ranking, not less than nothing', async () => {
+  const store = await prisma.warehouse.create({ data: { name: 'مشاهیر' } });
+  const frame = await prisma.product.create({ data: { name: 'PANJ', sku: 'PANJ', costPrice: 1, sellPrice: PRICE } });
+  await stockIn(frame.id, store.id, 10);
+  const bank = await openAccount('بانک');
+  const customer = await prisma.customer.create({ data: { name: 'مینا' } });
+  const sell = async (discount: number, paid: number) => {
+    const result = await createOrder({
+      customerId: customer.id,
+      items: [{ productId: frame.id, quantity: 1, price: PRICE }],
+      paymentMethod: 'CASH',
+      accountId: paid ? bank.id : '',
+      totalAmount: PRICE,
+      discount,
+      paidAmount: paid,
+      warehouseId: store.id,
+    });
+    assert.equal(result.success, true, result.message);
+    return prisma.order.findFirstOrThrow({ orderBy: { number: 'desc' }, include: { items: true } });
+  };
+  const returned = await sell(2_000_000, 8_000_000);
+  const back = await returnOrderItem({}, form({ orderId: returned.id, orderItemId: returned.items[0].id, quantity: '1', accountId: bank.id, warehouseId: store.id }));
   assert.equal(back.success, true, back.message);
-  assert.deepEqual((await getCustomerOrderSummaries())[sara.id], { orders: 1, lifetimeValue: 0 });
+  // The return left the order at 0; its discount went back with the goods.
+  const after = await prisma.order.findUniqueOrThrow({ where: { id: returned.id } });
+  assert.deepEqual([Number(after.totalAmount), Number(after.discount)], [0, 0]);
+  await sell(0, 0);
+
+  const [top] = (await getCRMDashboardStats()).topCustomers as any[];
+  assert.deepEqual([top.name, top.totalRevenue], ['مینا', PRICE]);
 });
 
-test('the summaries need sales.view', async () => {
-  await seed();
-  for (const role of ['WAREHOUSE', 'PROJECT_MANAGER', 'USER', null]) {
-    setTestRole(role);
-    await assert.rejects(getCustomerOrderSummaries(), (error: unknown) => error instanceof AccessDenied, String(role));
-  }
-  for (const role of ['SALES', 'AUDITOR', 'ACCOUNTANT']) {
-    setTestRole(role);
-    assert.equal(Object.keys(await getCustomerOrderSummaries()).length, 1, role);
-  }
+test('a customer\'s debt leaves a cancelled order out, on every screen that shows it', async () => {
+  const customer = await sara();
+  assert.equal(await calculateCustomerDebt(customer.id), 9_000_000);
+  assert.equal((await getCustomerStats(customer.id))!.totalDebt, 9_000_000);
+  assert.equal((await getCustomerById(customer.id))!.stats.totalDebt, 9_000_000);
+  assert.equal((await getCustomersWithDebt()).find((c: any) => c.id === customer.id)!.totalDebt, 9_000_000);
+});
+
+test('a customer\'s order count and average leave a cancelled order out', async () => {
+  const customer = await sara();
+  const stats = (await getCustomerStats(customer.id))!;
+  const profile = (await getCustomerById(customer.id))!.stats;
+  assert.deepEqual([stats.totalOrders, profile.totalOrders], [1, 1]);
+  // Nothing was paid on the one that stands.
+  assert.deepEqual([stats.averageOrderValue, profile.averageOrderValue], [0, 0]);
 });

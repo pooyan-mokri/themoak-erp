@@ -6,6 +6,7 @@ import { TaskForm } from './task-form';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { deleteTask } from '@/actions/project';
+import { assigneeName } from '@/lib/task-assignee';
 
 type Task = {
   id: string;
@@ -14,6 +15,7 @@ type Task = {
   status: string;
   projectId: string;
   assignedTo?: string;
+  assignedToUser?: { name: string };
   dueDate?: Date;
   startDate?: Date;
   endDate?: Date;
@@ -47,9 +49,9 @@ export function TaskList({ projectId, tasks }: TaskListProps) {
           trigger={<Button variant="ghost" size="sm" className="h-6 text-xs">ویرایش</Button>} 
         />
       </div>
-      {task.assignedTo && (
+      {assigneeName(task) && (
         <Badge variant="outline" className="text-xs">
-          {task.assignedTo}
+          {assigneeName(task)}
         </Badge>
       )}
        <Button 

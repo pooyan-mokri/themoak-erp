@@ -14,6 +14,8 @@ import { Currency } from '@/lib/types';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -65,6 +67,12 @@ export function ShareholderWithdrawalForm({
   onSuccess,
 }: ShareholderWithdrawalFormProps) {
   const [state, dispatch] = useFormState(withdrawalActionFor(profit), initialState);
+  // One id per submission, so a retry or a double click books once (src/lib/request-id.ts);
+  // a new one once this is booked, so the next entry is a new submission.
+  const [requestId, renewRequestId] = useRequestId();
+  useEffect(() => {
+    if (state.success) renewRequestId();
+  }, [state, renewRequestId]);
   const [shareholderId, setShareholderId] = useState<string>(profit?.shareholder.id || '');
   const [accountId, setAccountId] = useState<string>('');
   const [currency, setCurrency] = useState<string>('TOMAN');
@@ -118,6 +126,7 @@ export function ShareholderWithdrawalForm({
         </p>
       </CardHeader>
       <form action={dispatch}>
+        <RequestIdField value={requestId} />
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="shareholderId">صاحب سهام *</Label>
@@ -219,7 +228,7 @@ export function ShareholderWithdrawalForm({
               name="date"
               defaultValue={date ? new Date(date) : undefined}
               onChange={(selectedDate) => {
-                setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+                setDate(selectedDate ? localDateString(selectedDate) : '');
               }}
             />
             <input type="hidden" name="date" value={date} />

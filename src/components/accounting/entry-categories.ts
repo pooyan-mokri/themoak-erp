@@ -10,6 +10,8 @@ export const EXPENSE_CATEGORIES = [
   { value: 'Marketing', label: 'مارکتینگ' },
   { value: 'Office', label: 'اداری' },
   { value: 'Transport', label: 'حمل و نقل' },
+  // A fixed asset bought is an asset, not an expense (src/lib/profit-rows.ts).
+  { value: 'خرید تجهیزات', label: 'خرید تجهیزات (دارایی ثابت)' },
   { value: 'Other', label: 'سایر' },
 ];
 

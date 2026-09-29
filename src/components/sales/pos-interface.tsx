@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, ShoppingCart, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,6 +8,8 @@ import { ProductGrid } from './product-grid';
 import { CartSummary, CartTotals } from './cart-summary';
 import { Button } from '@/components/ui/button';
 import { createOrder } from '@/actions/sales';
+import { getCustomerCredit } from '@/actions/customer-credit';
+import { creditUsable } from '@/lib/return-math';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -109,6 +111,18 @@ export function POSInterface({
   const [invoiceAccountId, setInvoiceAccountId] = useState<string>('');
   const [receiptUrl, setReceiptUrl] = useState('');
   const [requestId, renewRequestId] = useRequestId();
+  // The selected customer's credit account, which can pay part of the sale without cash.
+  const [customerCredit, setCustomerCredit] = useState(0);
+  const [creditUsed, setCreditUsed] = useState<string>('0');
+
+  useEffect(() => {
+    setCustomerCredit(0);
+    setCreditUsed('0');
+    if (!selectedCustomer) return;
+    getCustomerCredit(selectedCustomer)
+      .then(setCustomerCredit)
+      .catch(() => setCustomerCredit(0));
+  }, [selectedCustomer]);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -148,6 +162,9 @@ export function POSInterface({
 
   // Calculate final amount based on discount
   const finalAmount = totalAmount - (Number(discount) || 0);
+  const creditVal = Math.max(0, Number(creditUsed) || 0);
+  const creditMax = creditUsable(customerCredit, finalAmount);
+  const creditTooMuch = creditVal > creditMax + 0.01;
 
   const customer = customers.find((c) => c.id === selectedCustomer);
   const warehouse = warehouses.find((w) => w.id === selectedWarehouse);
@@ -172,7 +189,16 @@ export function POSInterface({
     setInvoiceAccountId('');
     setReceiptUrl('');
     setIsCartOpen(false);
+    setCreditUsed('0');
     setIsCheckoutOpen(true);
+  };
+
+  // Credit spent lowers what is paid in cash, unless the cashier typed that.
+  const handleCreditChange = (value: string) => {
+    setCreditUsed(value);
+    if (!isCreditSale && !paidEdited) {
+      setPaidAmount(Math.max(0, finalAmount - (Number(value) || 0)).toString());
+    }
   };
 
   // Update paidAmount when discount changes
@@ -183,7 +209,7 @@ export function POSInterface({
       const newFinalAmount = totalAmount - discountVal;
       // Auto-update paidAmount to match the new final amount after discount
       // This ensures the paid amount reflects the discount
-      setPaidAmount(newFinalAmount.toString());
+      setPaidAmount(Math.max(0, newFinalAmount - creditVal).toString());
     }
   };
 
@@ -205,7 +231,7 @@ export function POSInterface({
       setPaidAmount('0');
     } else {
       // Regular sale: full payment
-      setPaidAmount(finalAmount.toString());
+      setPaidAmount(Math.max(0, finalAmount - creditVal).toString());
     }
   };
 
@@ -216,7 +242,12 @@ export function POSInterface({
     }
 
     const discountVal = Number(discount) || 0;
-    const paidVal = paidAmount === '' ? (totalAmount - discountVal) : Number(paidAmount);
+    const paidVal = paidAmount === '' ? (totalAmount - discountVal - creditVal) : Number(paidAmount);
+
+    if (creditTooMuch) {
+      toast.error(`از اعتبار مشتری حداکثر ${fa(creditMax)} تومان قابل استفاده است.`);
+      return;
+    }
 
     // For credit sales or unpaid orders, account is optional
     // For sales with payment, account is required
@@ -248,6 +279,7 @@ export function POSInterface({
       tags: orderTags,
       invoiceAccountId: invoiceAccountId || undefined,
       requestId,
+      creditUsed: creditVal,
       // A sale with nothing paid has no money row to carry a receipt.
       receiptUrl: paidVal > 0 && receiptUrl ? receiptUrl : undefined,
     });
@@ -266,7 +298,7 @@ export function POSInterface({
     }
   };
 
-  const debt = finalAmount - (paidAmount === '' ? finalAmount : Number(paidAmount));
+  const debt = finalAmount - creditVal - (paidAmount === '' ? finalAmount - creditVal : Number(paidAmount));
 
   // On a phone the cart is a sheet: open it when the first item goes in.
   const handleAddToCart = (product: Product) => {
@@ -308,7 +340,14 @@ export function POSInterface({
             </button>
           )}
         </div>
-        <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+        <Select
+          value={selectedCustomer}
+          onValueChange={(id) => {
+            // Another customer's credit: nothing of it is spent yet.
+            handleCreditChange('0');
+            setSelectedCustomer(id);
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder="انتخاب مشتری" />
           </SelectTrigger>
@@ -554,6 +593,37 @@ export function POSInterface({
               </div>
             </div>
 
+            {/* The customer's credit («بستانکار») can pay part of the sale without cash. */}
+            {customerCredit > 0 && (
+              <div className="space-y-2 rounded-md border p-3">
+                <div className="flex items-baseline justify-between text-[13px]">
+                  <span className="text-muted-foreground">اعتبار مشتری</span>
+                  <span className="font-medium tabular-nums">
+                    {fa(customerCredit)}
+                    <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
+                  </span>
+                </div>
+                <Label htmlFor="creditUsed">استفاده از اعتبار (تومان)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="creditUsed"
+                    type="number"
+                    min="0"
+                    max={creditMax}
+                    value={creditUsed}
+                    onChange={(e) => handleCreditChange(e.target.value)}
+                    className="min-w-0 flex-1"
+                  />
+                  <Button type="button" variant="outline" onClick={() => handleCreditChange(String(creditMax))}>
+                    همهٔ اعتبار
+                  </Button>
+                </div>
+                {creditTooMuch && (
+                  <p className="text-[12.5px] text-danger">حداکثر {fa(creditMax)} تومان قابل استفاده است.</p>
+                )}
+              </div>
+            )}
+
             <TagInput
               label="تگ‌ها (اختیاری)"
               placeholder="مثلا: عمده، تخفیف ویژه..."
@@ -577,6 +647,12 @@ export function POSInterface({
                   <small className="ms-1 text-[11px] font-normal text-muted-foreground">تومان</small>
                 </dd>
               </div>
+              {creditVal > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">از اعتبار مشتری</dt>
+                  <dd className="tabular-nums">− {fa(creditVal)}</dd>
+                </div>
+              )}
               {debt > 0 && (
                 <div className="flex justify-between rounded-md bg-warning-soft px-3 py-2 text-warning">
                   <dt>مانده حساب (بدهی)</dt>

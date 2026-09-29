@@ -11,6 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { JalaliDatePicker } from '@/components/ui/jalali-date-picker';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
+import { RequestIdField, useRequestId } from '@/components/ui/request-id';
+import { localDateString } from '@/lib/date-utils';
 
 const initialState = {
   message: '',
@@ -48,6 +50,12 @@ export function PayrollPaymentForm({
   onSuccess,
 }: PayrollPaymentFormProps) {
   const [state, dispatch] = useFormState(recordPayrollPayment, initialState);
+  // One id per submission, so a retry or a double click books once (src/lib/request-id.ts);
+  // a new one once this is booked, so the next entry is a new submission.
+  const [requestId, renewRequestId] = useRequestId();
+  useEffect(() => {
+    if (state.success) renewRequestId();
+  }, [state, renewRequestId]);
   const [accountId, setAccountId] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
   const [date, setDate] = useState<string>('');
@@ -75,6 +83,7 @@ export function PayrollPaymentForm({
 
   return (
     <form action={dispatch} className="space-y-4">
+      <RequestIdField value={requestId} />
       <input type="hidden" name="payrollId" value={payroll.id} />
 
       <dl className="space-y-1.5 rounded-md bg-secondary p-3 text-[13px]">
@@ -139,7 +148,7 @@ export function PayrollPaymentForm({
           name="date"
           defaultValue={date ? new Date(date) : undefined}
           onChange={(selectedDate) => {
-            setDate(selectedDate ? selectedDate.toISOString().split('T')[0] : '');
+            setDate(selectedDate ? localDateString(selectedDate) : '');
           }}
         />
         <input type="hidden" name="date" value={date} />

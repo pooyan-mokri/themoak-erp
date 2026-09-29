@@ -20,7 +20,7 @@ import {
 import { DENIED, exposed } from './stock-helpers';
 
 const UNIT_COST_KEYS = ['unitCost', 'unitCostInToman', 'totalCostInToman', 'additionalCost', 'additionalCostInToman', 'costPrice', 'sellPrice'];
-const FINANCE_KEYS = ['totalAmount', 'totalAmountInToman', 'payments', 'paidAmountInToman', 'paymentTransaction', 'transaction', 'transactionId', 'paymentAccountId', 'arrivalAccountId'];
+const FINANCE_KEYS = ['totalAmount', 'totalAmountInToman', 'payments', 'paidAmountInToman', 'paymentTransaction', 'transaction', 'transactionId', 'paymentAccountId', 'arrivalAccountId', 'supplierCreditBalance', 'creditBalance'];
 const EXTRA_COST_KEYS = ['amount', 'amountInToman'];
 const BALANCE = 10_000_000;
 
@@ -93,6 +93,7 @@ test('WAREHOUSE sees suppliers, items, quantities and status, but no price, cost
 
   const suppliers: any = await getSuppliers();
   assert.equal(suppliers.data[0].email, 'sales@mazz.test');
+  assert.deepEqual(exposed(suppliers.data, FINANCE_KEYS), []);
 });
 
 test('ACCOUNTANT sees totals, payments and additional costs but no unit price or landed cost; AUDITOR sees all', async () => {
@@ -176,7 +177,7 @@ test('receiving takes stock.manage, and the movement note carries no landed cost
   assert.equal(Number((await prisma.product.findUniqueOrThrow({ where: { id: s.product.id } })).costPrice), 120_000);
 });
 
-test('payments take finance.manage, arrival costs take cost.edit and finance.manage, and only finance marks an order paid', async () => {
+test('payments take finance.manage, arrival costs take cost.edit and finance.manage, and no status move marks an order paid', async () => {
   const s = await seed();
   const pending = await s.order2('PENDING_PAYMENT');
   const producing = await s.order2('IN_PRODUCTION');
@@ -190,7 +191,8 @@ test('payments take finance.manage, arrival costs take cost.edit and finance.man
     setTestRole(role);
     assert.equal((await pay()).message, DENIED, role);
     assert.equal((await recordPurchasePayment(pending.id, s.account.id)).message, DENIED, role);
-    assert.equal((await updatePurchaseOrderStatus(pending.id, 'PAID')).message, DENIED, role);
+    // Nobody marks an order paid by hand: only a recorded payment does.
+    assert.equal((await updatePurchaseOrderStatus(pending.id, 'PAID')).success, false, role);
   }
   for (const role of ['ACCOUNTANT', 'WAREHOUSE', 'AUDITOR']) {
     setTestRole(role);

@@ -2,11 +2,16 @@
 'use server';
 
 import { PrismaClient } from '@prisma/client';
-import { TransactionType, Currency } from '@/lib/types';
+import { Currency } from '@/lib/types';
 
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/access';
-import { consignmentAmounts } from '@/lib/return-math';
+import { SOLD_ORDER_STATUS } from '@/lib/order-status';
+import { profitEntry } from '@/lib/profit-rows';
+import { orderNet } from '@/lib/order-balance';
+import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
+import { holdsStock } from '@/lib/stock-levels';
+import { getBalanceSheet as getFinancialBalanceSheet } from '@/actions/reports';
 
 // const prisma = new PrismaClient();
 
@@ -21,20 +26,31 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
       };
     }
 
+    // The same rows and rule as the financial reports' P&L (src/lib/profit-rows.ts):
+    // in Toman, capital, loans, exchanges and transfers left out, goods at their
+    // cost of goods sold (stock bought is not an expense).
     const transactions = await prisma.transaction.findMany({
       where: whereClause,
+      select: {
+        type: true,
+        amountInToman: true,
+        amount: true,
+        currency: true,
+        category: true,
+        exchangeGroupId: true,
+        transferGroupId: true,
+        LoanPayment: { select: { interest: true } },
+      },
     });
 
     let totalIncome = 0;
     let totalExpense = 0;
 
     transactions.forEach((tx: any) => {
-      const amount = Number(tx.amountInToman || tx.amount); // Fallback if amountInToman is missing
-      if (tx.type === TransactionType.INCOME) {
-        totalIncome += amount;
-      } else if (tx.type === TransactionType.EXPENSE) {
-        totalExpense += amount;
-      }
+      const entry = profitEntry(tx);
+      if (!entry) return;
+      if (entry.line === 'revenue') totalIncome += entry.amount;
+      else totalExpense += entry.amount;
     });
 
     return {
@@ -48,79 +64,38 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
   }
 }
 
+/**
+ * The financial reports' balance sheet (src/actions/reports.ts), in this
+ * card's shape, so both pages show the same figures: every account in Toman,
+ * stock of the stock product types at cost, what customers owe, prepaid
+ * purchases, and what is owed to suppliers.
+ */
 export async function getBalanceSheet() {
   await requirePermission('profit.view');
   try {
-    // 1. Cash & Bank Balances
-    // EXPENSE-type accounts (Marketing Expenses, COGS, commission) are P&L
-    // buckets, not money — summing their negative balances here understated
-    // cash by the whole marketing spend.
-    const accounts = await prisma.account.findMany({ where: { type: { not: 'EXPENSE' } } });
-    let totalCashBank = 0;
-    accounts.forEach((acc: any) => {
-        // Simplified: Assuming all balances are normalized to TOMAN or we just sum them for now.
-        // Ideally we should convert based on current rate.
-        // For MVP, let's assume the balance is what it is (mixed currencies sum is bad, but acceptable for MVP if user sticks to one).
-        // BETTER: We should probably store a 'balanceInToman' or convert on the fly.
-        // Let's assume 1:1 for now or that the user mainly uses TOMAN.
-        totalCashBank += Number(acc.balance);
-    });
-
-    // 2. Inventory Value — split own warehouses vs. consignment (virtual)
-    const inventory = await prisma.inventory.findMany({
-      include: { product: true, warehouse: true }
-    });
-    let inventoryValue = 0;          // goods in our own warehouses
-    let consignmentInventoryValue = 0; // goods at partners (still our asset)
-    inventory.forEach((item: any) => {
-      const value = item.quantity * Number(item.product.costPrice);
-      if (item.warehouse?.isVirtual) {
-        consignmentInventoryValue += value;
-      } else {
-        inventoryValue += value;
-      }
-    });
-
-    // 3. Accounts Receivable (unpaid settlements) — NET of partner commission.
-    // Derived from items & commission so legacy gross-stored orders are correct.
-    const pendingOrders = await prisma.order.findMany({
-      where: {
-        paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
-        // Cancelled orders keep paymentStatus UNPAID but are not receivable.
-        status: { not: 'CANCELLED' },
-        customer: { warehouses: { some: { isVirtual: true } } },
-      },
-      // Returned and exchanged units are not owed (the settlement page's arithmetic).
-      include: { items: { include: { returns: { select: { quantity: true } }, exchanges: { select: { quantity: true } } } }, commissions: true },
-    });
-    let accountsReceivable = 0;
-    pendingOrders.forEach((order: any) => {
-      accountsReceivable += Math.max(consignmentAmounts(order).remainingAmount, 0);
-    });
-
-    const totalAssets =
-      totalCashBank + inventoryValue + consignmentInventoryValue + accountsReceivable;
-
+    const sheet = await getFinancialBalanceSheet(new Date());
     return {
       assets: {
-        cashAndBank: totalCashBank,
-        inventory: inventoryValue,
-        consignmentInventory: consignmentInventoryValue,
-        accountsReceivable: accountsReceivable,
-        total: totalAssets
+        cashAndBank: sheet.assets.cash,
+        inventory: sheet.assets.inventory,
+        consignmentInventory: sheet.assets.consignmentInventory,
+        accountsReceivable: sheet.assets.accountsReceivable,
+        prepaidPurchases: sheet.assets.prepaidPurchases,
+        total: sheet.assets.total,
       },
       liabilities: {
-        total: 0 // We don't track Accounts Payable yet
+        accountsPayable: sheet.liabilities.accountsPayable,
+        total: sheet.liabilities.total,
       },
       equity: {
-        total: totalAssets // Assets - Liabilities
-      }
+        total: sheet.equity.total,
+      },
     };
   } catch (error) {
     console.error('Error calculating Balance Sheet:', error);
     return {
-      assets: { cashAndBank: 0, inventory: 0, consignmentInventory: 0, accountsReceivable: 0, total: 0 },
-      liabilities: { total: 0 },
+      assets: { cashAndBank: 0, inventory: 0, consignmentInventory: 0, accountsReceivable: 0, prepaidPurchases: 0, total: 0 },
+      liabilities: { accountsPayable: 0, total: 0 },
       equity: { total: 0 }
     };
   }
@@ -129,28 +104,28 @@ export async function getBalanceSheet() {
 export async function getSalesPerformance() {
   await requirePermission('sales.view');
   try {
-    // Top Selling Products
-    const orderItems = await prisma.orderItem.findMany({
-      include: { product: true, order: true },
-      where: {
-        order: {
-          status: 'COMPLETED'
-        }
-      }
+    // Top Selling Products: units net of returns and exchanges, revenue net of
+    // the order's discount too (src/lib/product-sales.ts), as on the product pages.
+    const orders = await prisma.order.findMany({
+      where: { status: SOLD_ORDER_STATUS },
+      select: { discount: true, items: { include: { product: true, ...SALE_LINE_INCLUDE } } },
     });
 
     const productSales: Record<string, { name: string, quantity: number, total: number }> = {};
 
-    orderItems.forEach((item: any) => {
-      if (!productSales[item.productId]) {
-        productSales[item.productId] = {
-          name: item.product.name,
-          quantity: 0,
-          total: 0
-        };
-      }
-      productSales[item.productId].quantity += item.quantity;
-      productSales[item.productId].total += item.quantity * Number(item.price);
+    orders.forEach((order: any) => {
+      order.items.forEach((item: any) => {
+        if (!productSales[item.productId]) {
+          productSales[item.productId] = {
+            name: item.product.name,
+            quantity: 0,
+            total: 0
+          };
+        }
+        const sold = netLineSale(item, order);
+        productSales[item.productId].quantity += sold.units;
+        productSales[item.productId].total += sold.revenue;
+      });
     });
 
     const topProducts = Object.values(productSales)
@@ -170,7 +145,7 @@ export async function getSalesByCustomer() {
   await requirePermission('sales.view');
   try {
     const orders = await prisma.order.findMany({
-      where: { status: 'COMPLETED' },
+      where: { status: SOLD_ORDER_STATUS },
       include: { customer: true }
     });
 
@@ -188,7 +163,8 @@ export async function getSalesByCustomer() {
         };
       }
       customerSales[customerId].count += 1;
-      customerSales[customerId].total += Number(order.totalAmount);
+      // What the customer pays for it, after the discount (src/lib/order-balance.ts).
+      customerSales[customerId].total += orderNet(order);
     });
 
     const topCustomers = Object.values(customerSales)
@@ -217,7 +193,8 @@ export async function getInventoryValuation() {
     let consignmentValue = 0;
     const warehouseValuation: Record<string, { name: string, value: number, itemCount: number, isVirtual: boolean }> = {};
 
-    inventory.forEach((item: any) => {
+    // Stock value counts the stock product types only (src/lib/stock-levels.ts).
+    inventory.filter((item: any) => holdsStock(item.product.productType)).forEach((item: any) => {
       const itemValue = item.quantity * Number(item.product.costPrice);
       totalValue += itemValue;
       if (item.warehouse?.isVirtual) {

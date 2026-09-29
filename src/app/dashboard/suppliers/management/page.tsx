@@ -32,7 +32,7 @@ export default async function SuppliersManagementPage() {
         title="تامین‌کنندگان"
         description={
           `${(suppliers || []).length.toLocaleString('fa-IR')} تامین‌کننده` +
-          (balances ? ` · مانده بدهی ${Math.round(owed).toLocaleString('fa-IR')} تومان` : '')
+          (balances ? ` · مانده پرداخت ${Math.round(owed).toLocaleString('fa-IR')} تومان` : '')
         }
         actions={
           canCreate && (

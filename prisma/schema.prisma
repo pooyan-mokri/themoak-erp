@@ -17,6 +17,10 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   phone               String?
+  /// When the password last changed (own change, reset link, admin): sessions from before it end.
+  passwordChangedAt   DateTime?
+  /// An inactive user cannot sign in and is not offered in pickers, but stays named in history.
+  isActive            Boolean              @default(true)
   aiConversations     AIConversation[]
   activityLogs        ActivityLog[]
   employee            Employee?
@@ -439,6 +443,7 @@ model Customer {
   tickets        SupportTicket[]
   transactions   Transaction[]
   warehouses     Warehouse[]
+  credits        CustomerCredit[]
 }
 
 model Order {
@@ -473,6 +478,7 @@ model Order {
   siteRefunds          SiteRefund[]
   moneyRows            Transaction[]           @relation("OrderMoney")
   consignmentChannel   ConsignmentChannel?     @relation(fields: [consignmentChannelId], references: [id])
+  customerCredits      CustomerCredit[]
 }
 
 model OrderItem {
@@ -483,12 +489,18 @@ model OrderItem {
   quantity      Int
   price         Decimal
   status        String          @default("PENDING")
+  /// The exchange that issued this line in place of goods given back; null for a line sold at checkout.
+  /// Created, with its index and foreign key, by prisma/sql/pre-push-unique-columns.sql before db push.
+  exchangeId    String?
   exchangeItems OrderExchange[] @relation("ExchangeItem")
   exchanges     OrderExchange[] @relation("OriginalItem")
+  issuedBy      OrderExchange?  @relation("IssuedItems", fields: [exchangeId], references: [id])
   order         Order           @relation(fields: [orderId], references: [id])
   product       Product         @relation(fields: [productId], references: [id])
   warehouse     Warehouse?      @relation(fields: [warehouseId], references: [id])
   returns       OrderReturn[]
+
+  @@index([exchangeId])
 }
 
 model OrderReturn {
@@ -555,26 +567,64 @@ model SiteHookState {
   skipAt   DateTime?
 }
 
+/// One exchange: `quantity` units of the original line come back, and one or
+/// more new lines (OrderItem.exchangeId) go out in their place.
 model OrderExchange {
-  id              String       @id @default(cuid())
+  id              String           @id @default(cuid())
   orderId         String
   originalItemId  String
+  /// The first line the exchange issued (every one of them carries exchangeId).
   exchangeItemId  String
+  /// Units of the original line given back.
   quantity        Int
+  /// What the exchange added to (+) or took off (−) the customer's bill.
   priceDifference Decimal
   accountId       String
-  transactionId   String?      @unique
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  account         Account      @relation(fields: [accountId], references: [id])
-  exchangeItem    OrderItem    @relation("ExchangeItem", fields: [exchangeItemId], references: [id])
-  order           Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  originalItem    OrderItem    @relation("OriginalItem", fields: [originalItemId], references: [id])
-  transaction     Transaction? @relation(fields: [transactionId], references: [id])
+  transactionId   String?          @unique
+  /// A per-form id: an exchange submitted twice is booked once (src/lib/request-id.ts).
+  /// Created by prisma/sql/pre-push-unique-columns.sql before db push.
+  clientRequestId String?          @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  account         Account          @relation(fields: [accountId], references: [id])
+  exchangeItem    OrderItem        @relation("ExchangeItem", fields: [exchangeItemId], references: [id])
+  order           Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  originalItem    OrderItem        @relation("OriginalItem", fields: [originalItemId], references: [id])
+  transaction     Transaction?     @relation(fields: [transactionId], references: [id])
+  issuedItems     OrderItem[]      @relation("IssuedItems")
+  credits         CustomerCredit[]
 
   @@index([orderId])
   @@index([originalItemId])
   @@index([exchangeItemId])
+}
+
+/// A customer's credit account («اعتبار», «بستانکار»): + what they left with
+/// the shop (an exchange's difference they did not take back), − what they
+/// used on a purchase. The balance is the sum of the rows.
+/// Created by prisma/sql/pre-push-unique-columns.sql before db push.
+model CustomerCredit {
+  id              String         @id @default(cuid())
+  customerId      String
+  amount          Decimal
+  /// The order it came from or was spent on.
+  orderId         String?
+  /// The exchange whose difference it holds.
+  exchangeId      String?
+  /// EXCHANGE (credited), PAYMENT (used on an order), CANCEL (a cancelled order's use given back).
+  reason          String
+  /// Who booked it (the session's user id).
+  userId          String?
+  /// A per-form id: a submission processed twice stores one row (src/lib/request-id.ts).
+  clientRequestId String?        @unique
+  createdAt       DateTime       @default(now())
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  order           Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  exchange        OrderExchange? @relation(fields: [exchangeId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([exchangeId])
 }
 
 model ActivityLog {
@@ -587,14 +637,35 @@ model ActivityLog {
 }
 
 model Supplier {
-  id        String          @id @default(cuid())
+  id        String           @id @default(cuid())
   name      String
   phone     String?
   email     String?
   address   String?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
   orders    PurchaseOrder[]
+  credits   SupplierCredit[]
+}
+
+/// What a supplier owes us back («طلب از تأمین‌کننده»), in Toman. One row per change, signed: + when a paid
+/// purchase order is cancelled (what was paid on it), − when the credit pays a later order of the same supplier.
+/// The balance is the sum. Created by prisma/sql/pre-push-unique-columns.sql.
+model SupplierCredit {
+  id              String         @id @default(cuid())
+  supplierId      String
+  amount          Decimal
+  purchaseOrderId String?
+  reason          String
+  userId          String?
+  /// A cancel's credit carries "po-cancel:<order id>"; a use carries the payment form's request id.
+  clientRequestId String?        @unique
+  createdAt       DateTime       @default(now())
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  @@index([supplierId])
+  @@index([purchaseOrderId])
 }
 
 model PurchaseOrder {
@@ -616,19 +687,21 @@ model PurchaseOrder {
   arrivalAdditionalCosts PurchaseOrderArrivalCost[]
   items                  PurchaseOrderItem[]
   payments               PurchaseOrderPayment[]
+  supplierCredits        SupplierCredit[]
 }
 
 model PurchaseOrderPayment {
   id              String        @id @default(cuid())
   purchaseOrderId String
   amount          Decimal // amount paid, in Toman
-  accountId       String
+  /// null for a payment from the supplier's credit, which moves no account (then transactionId is null too).
+  accountId       String?
   transactionId   String?       @unique
   description     String?
   date            DateTime      @default(now())
   createdAt       DateTime      @default(now())
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  account         Account       @relation(fields: [accountId], references: [id])
+  account         Account?      @relation(fields: [accountId], references: [id], onDelete: Restrict)
   transaction     Transaction?  @relation("PurchaseOrderPaymentTxn", fields: [transactionId], references: [id])
 
   @@index([purchaseOrderId])
@@ -858,6 +931,8 @@ model ShareholderProfit {
   shareholderId String
   amount        Decimal
   withdrawn     Decimal                 @default(0)
+  /// The company's net profit for the whole period; what no share covers stays undistributed. Null on periods calculated before it was kept.
+  periodNetProfit Decimal?
   description   String?
   periodStart   DateTime
   periodEnd     DateTime

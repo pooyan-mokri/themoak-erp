@@ -25,7 +25,8 @@ export default function DashboardLayout({
           <div className="sticky top-0 z-40 print:hidden">
             <Header />
           </div>
-          <div className="erp-page p-4 pb-24 md:p-6 print:p-0">
+          {/* A grid item may shrink below its content, so a wide table scrolls in its own box instead of widening the page on a phone. */}
+          <div className="erp-page p-4 pb-24 md:p-6 print:p-0 [&_.grid>*]:min-w-0">
             {/* Stock push alerts for admins - hidden when printing */}
             <SiteHookAlerts />
             {children}

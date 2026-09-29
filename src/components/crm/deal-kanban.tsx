@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -45,9 +45,17 @@ interface DealKanbanProps {
 /** The five stages, LOST included; status colour only on each column's pill. */
 const STAGES = DEAL_STAGES.map((stage) => ({ ...stage, tone: dealStage(stage.id).tone }));
 
+/** A click that ends a drag leaves the card on the board; any other click opens the deal. */
+export function stopClickAfterDrag(event: { preventDefault(): void }, justDragged: boolean) {
+  if (justDragged) event.preventDefault();
+}
+
 export function DealKanban({ deals: initialDeals, canManage = true }: DealKanbanProps) {
   const [deals, setDeals] = useState(initialDeals);
   const [activeId, setActiveId] = useState<string | undefined>(undefined);
+  // Set while a card is dragged, and until the click its drop fires has passed.
+  const justDragged = useRef(false);
+  const onCardClick = (event: { preventDefault(): void }) => stopClickAfterDrag(event, justDragged.current);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -58,10 +66,14 @@ export function DealKanban({ deals: initialDeals, canManage = true }: DealKanban
   );
 
   const handleDragStart = (event: DragStartEvent) => {
+    justDragged.current = true;
     setActiveId(event.active.id as string);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    setTimeout(() => {
+      justDragged.current = false;
+    }, 0);
     const { active, over } = event;
 
     if (!over) {
@@ -111,6 +123,10 @@ export function DealKanban({ deals: initialDeals, canManage = true }: DealKanban
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        justDragged.current = false;
+        setActiveId(undefined);
+      }}
     >
       <div className="grid grid-cols-1 gap-3 overflow-x-auto md:grid-cols-5">
         {STAGES.map(stage => {
@@ -121,6 +137,7 @@ export function DealKanban({ deals: initialDeals, canManage = true }: DealKanban
               stage={stage}
               deals={stageDeals}
               canManage={canManage}
+              onCardClick={onCardClick}
             />
           );
         })}
@@ -137,10 +154,12 @@ function DealColumn({
   stage,
   deals,
   canManage,
+  onCardClick,
 }: {
   stage: { id: string; label: string; tone: string };
   deals: Deal[];
   canManage: boolean;
+  onCardClick: (event: { preventDefault(): void }) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
@@ -171,7 +190,7 @@ function DealColumn({
       >
         <SortableContext items={deals.map(d => d.id)} strategy={verticalListSortingStrategy}>
           {deals.map(deal => (
-            <SortableDealCard key={deal.id} deal={deal} canManage={canManage} />
+            <SortableDealCard key={deal.id} deal={deal} canManage={canManage} onCardClick={onCardClick} />
           ))}
         </SortableContext>
         {deals.length === 0 && (
@@ -184,7 +203,15 @@ function DealColumn({
   );
 }
 
-function SortableDealCard({ deal, canManage }: { deal: Deal; canManage: boolean }) {
+function SortableDealCard({
+  deal,
+  canManage,
+  onCardClick,
+}: {
+  deal: Deal;
+  canManage: boolean;
+  onCardClick: (event: { preventDefault(): void }) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -202,32 +229,42 @@ function SortableDealCard({ deal, canManage }: { deal: Deal; canManage: boolean 
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <DealCard deal={deal} />
+      <DealCard deal={deal} onCardClick={onCardClick} />
     </div>
   );
 }
 
-function DealCard({ deal, isOverlay }: { deal: Deal; isOverlay?: boolean }) {
-  return (
+function DealCard({
+  deal,
+  isOverlay,
+  onCardClick,
+}: {
+  deal: Deal;
+  isOverlay?: boolean;
+  onCardClick?: (event: { preventDefault(): void }) => void;
+}) {
+  const content = (
     <div
       className={cn(
         'rounded-md border bg-card p-3 transition-colors duration-150',
         isOverlay ? 'border-brand' : 'cursor-grab hover:border-input active:cursor-grabbing',
       )}
     >
-      {/* The title opens the deal; a drag starts only after the pointer moves 8px. */}
-      {isOverlay ? (
-        <p className="text-[13px] font-medium">{deal.title}</p>
-      ) : (
-        <Link href={`/dashboard/crm/deals/${deal.id}`} className="block text-[13px] font-medium hover:text-brand">
-          {deal.title}
-        </Link>
-      )}
+      <p className="text-[13px] font-medium">{deal.title}</p>
       <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{deal.customer?.name}</p>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-[13px] font-medium tabular-nums">{fa(Number(deal.value))}</span>
         <span className="font-mono text-[11px] text-muted-foreground">{fa(deal.probability)}٪</span>
       </div>
     </div>
+  );
+
+  if (isOverlay) return content;
+
+  // The whole card opens the deal; a drag starts only after the pointer moves 8px, and the click its drop fires is held back.
+  return (
+    <Link href={`/dashboard/crm/deals/${deal.id}`} className="block hover:[&_p:first-child]:text-brand" onClick={onCardClick}>
+      {content}
+    </Link>
   );
 }

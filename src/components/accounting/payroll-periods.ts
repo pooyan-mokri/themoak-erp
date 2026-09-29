@@ -1,5 +1,5 @@
-import moment from 'moment-jalaali';
 import { toPersianDigits } from '@/lib/date-utils';
+import { jalaliYearMonth } from '@/lib/tehran-day';
 
 export const MONTH_NAMES = [
   'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
@@ -11,10 +11,9 @@ export const periodLabel = (year: number, month: number) => `${MONTH_NAMES[month
 
 export const periodKey = (year: number, month: number) => `${year}-${month}`;
 
-/** Today's Jalali year and month (1–12). */
+/** Today's Jalali year and month (1–12), in Tehran whatever zone this runs in (src/lib/tehran-day.ts). */
 export function currentPeriod(today: Date = new Date()): { year: number; month: number } {
-  const now = moment(today);
-  return { year: now.jYear(), month: now.jMonth() + 1 };
+  return jalaliYearMonth(today);
 }
 
 /** A payslip's status as a colour and a word (design system §12). */

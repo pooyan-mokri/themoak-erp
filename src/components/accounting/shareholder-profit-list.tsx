@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ShareholderWithdrawalForm } from './shareholder-withdrawal-form';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { DollarSign } from 'lucide-react';
+import { profitPeriods } from '@/lib/profit-periods';
 
 interface ShareholderProfit {
   id: string;
@@ -27,6 +28,8 @@ interface ShareholderProfit {
   amount: number;
   withdrawn: number;
   available: number;
+  /** The company's net profit for the whole period; null on periods calculated before it was kept. */
+  periodNetProfit?: number | null;
   description?: string;
   periodStart: Date;
   periodEnd: Date;
@@ -113,6 +116,33 @@ export function ShareholderProfitList({ profits: initialProfits, accounts }: Sha
               </TableBody>
             </Table>
           </div>
+          {/* Each shareholder gets exactly their share; what the shares do not cover stays with the company. */}
+          {profits.length > 0 && (
+            <div className="overflow-x-auto mt-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>دوره</TableHead>
+                    <TableHead>سود خالص دوره</TableHead>
+                    <TableHead>تقسیم‌شده</TableHead>
+                    <TableHead>تقسیم‌نشده</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {profitPeriods(profits).map((period) => (
+                    <TableRow key={`${String(period.periodStart)}-${String(period.periodEnd)}`}>
+                      <TableCell>
+                        {formatJalaliDate(period.periodStart)} - {formatJalaliDate(period.periodEnd)}
+                      </TableCell>
+                      <TableCell>{formatCurrency(period.netProfit)}</TableCell>
+                      <TableCell>{formatCurrency(period.distributed)}</TableCell>
+                      <TableCell>{formatCurrency(period.undistributed)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

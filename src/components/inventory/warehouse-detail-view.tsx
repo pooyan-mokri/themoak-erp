@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Package, ShoppingCart, ShoppingBag, ClipboardCheck, FileSpreadsheet, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
+import { stockLevel } from '@/lib/stock-levels';
 
 interface InventoryItem {
   id: string;
@@ -234,12 +235,12 @@ export function WarehouseDetailView({
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{item.quantity.toLocaleString('fa-IR')}</span>
-                            {item.quantity === 0 && (
+                            {stockLevel(item.quantity) === 'OUT' && (
                               <Badge variant="destructive" className="text-xs">
                                 ناموجود
                               </Badge>
                             )}
-                            {item.quantity > 0 && item.quantity < 10 && (
+                            {stockLevel(item.quantity) === 'LOW' && (
                               <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
                                 کم
                               </Badge>

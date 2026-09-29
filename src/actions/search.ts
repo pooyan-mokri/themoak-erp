@@ -19,9 +19,15 @@ function isCostRow(t: { category?: string | null; marketingGift?: unknown }): bo
   return ['COGS', 'Marketing - Gift', 'Marketing/Gift'].includes(t.category ?? '') || !!t.marketingGift;
 }
 
+/** Persian and Arabic digits as ASCII: order numbers, phones and SKUs are typed on a Persian keyboard. */
+function latinDigits(text: string) {
+  return text.replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0)).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
 export async function globalSearch(query: string): Promise<SearchResult[]> {
   if (!query || query.trim().length < 2) return [];
   const q = query.trim();
+  const digits = latinDigits(q);
 
   const results: SearchResult[] = [];
 
@@ -41,6 +47,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { phone: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: digits, mode: 'insensitive' } },
           { email: { contains: q, mode: 'insensitive' } },
         ],
       },
@@ -52,7 +59,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
       where: {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
-          { sku: { contains: q, mode: 'insensitive' } },
+          { sku: { contains: digits, mode: 'insensitive' } },
         ],
       },
       take: 5,
@@ -62,7 +69,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
     !canSeeSales ? [] : prisma.order.findMany({
       where: {
         OR: [
-          ...(isNaN(Number(q)) ? [] : [{ number: { equals: Number(q) } }]),
+          ...(/^\d{1,9}$/.test(digits) ? [{ number: { equals: Number(digits) } }] : []),
           { customer: { name: { contains: q, mode: 'insensitive' } } },
           { tags: { has: q } },
         ],
@@ -132,7 +139,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
       title: `فاکتور #${o.number}`,
       subtitle: o.customer?.name || '',
       amount: Number(o.totalAmount || 0),
-      href: `/dashboard/sales/orders/${o.id}`,
+      href: `/dashboard/sales/history/${o.id}`,
       date: o.createdAt,
     });
   });
@@ -143,9 +150,8 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
       id: t.id,
       title: t.description || t.category || 'تراکنش',
       subtitle: t.account?.name || '',
-      // COGS and gift rows are valued at cost.
+      // COGS and gift rows are valued at cost. In toman: the page labels an amount without a currency تومان.
       amount: !canSeeCost && isCostRow(t) ? undefined : Number(t.amountInToman),
-      currency: t.currency,
       href: `/dashboard/accounting/transactions`,
       date: t.date,
     });
@@ -157,9 +163,9 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
       id: p.id,
       title: `سفارش خرید - ${p.supplier?.name || ''}`,
       subtitle: p.notes || '',
-      // Purchase order totals are finance data.
-      amount: canSeeFinance ? Number(p.totalAmount || 0) : undefined,
-      href: `/dashboard/purchasing/${p.id}`,
+      // Purchase order totals are finance data; totalAmount is in the order's own currency.
+      amount: canSeeFinance ? Number(p.totalAmountInToman ?? p.totalAmount ?? 0) : undefined,
+      href: `/dashboard/suppliers/orders/${p.id}`,
       date: p.createdAt,
     });
   });

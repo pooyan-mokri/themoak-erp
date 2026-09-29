@@ -2,9 +2,10 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma, resetDatabase, form } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
-import { createOrder } from '@/actions/sales';
+import { createOrder, recordOrderPayment } from '@/actions/sales';
 import { paySettlement } from '@/actions/consignment';
 import { returnOrderItem } from '@/actions/order-return';
+import { NOT_CONSIGNMENT_MESSAGE } from '@/lib/consignment-amounts';
 
 // The actions log every refusal these tests provoke on purpose.
 console.error = () => {};
@@ -62,16 +63,22 @@ test('a POS sale to a partner is stored gross: a full return refunds the full pr
   assert.equal(Number(after.paidAmount), 0);
 });
 
-test('once a settlement stores it net, a return is worth the net of the unit', async () => {
+test('a POS sale to a partner is paid in full through «ثبت پرداخت», never settled at a net', async () => {
   const s = await shop();
   const order = await sell(s, 2, 0);
-  // The partner settles the net: 2 × 1,000,000 − 10% = 1,800,000.
-  const paid = await paySettlement(undefined, form({ orderId: order.id, accountId: s.bank.id, amount: '1800000' }));
-  assert.equal(paid.success, true, paid.message);
-  assert.equal(Number((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).totalAmount), 1_800_000);
+  assert.deepEqual(await prisma.consignmentCommission.findMany({ where: { orderId: order.id } }), []);
 
+  // Not a consignment invoice: the settlement modal refuses it, and nothing moves.
+  const refused = await paySettlement(undefined, form({ orderId: order.id, accountId: s.bank.id, amount: '1800000' }));
+  assert.equal(refused.message, NOT_CONSIGNMENT_MESSAGE);
+  assert.equal(await balance(s.bank.id), 0);
+
+  // The partner owes the full 2,000,000, like any customer.
+  assert.equal((await recordOrderPayment(order.id, s.bank.id, 2_000_000)).success, true);
+  const paid = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+  assert.deepEqual([Number(paid.totalAmount), Number(paid.paidAmount), paid.paymentStatus], [2_000_000, 2_000_000, 'PAID']);
+
+  // A frame comes back: its full price is refunded.
   await returnOne(s, order.id, order.items[0].id);
-
-  // One unit comes back: its net, 900,000, is refunded, not its gross.
-  assert.equal(await balance(s.bank.id), 900_000);
+  assert.equal(await balance(s.bank.id), 1_000_000);
 });

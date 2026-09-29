@@ -23,7 +23,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { accountLabel } from '@/lib/account-label';
-import { lineValue, returnChange, type OrderMoney } from '@/lib/return-math';
+import { discountShare, lineValue, returnChange, type OrderMoney } from '@/lib/return-math';
 import { RequestIdField, useRequestId } from '@/components/ui/request-id';
 
 const initialState = {
@@ -93,6 +93,8 @@ export function ReturnItemDialog({
 
   // Same arithmetic as the server (src/lib/return-math.ts).
   const refundAmount = money ? lineValue(money, Number(orderItem.price), Number(quantity) || 0) : 0;
+  // The returned goods take their share of the order discount with them.
+  const share = money ? discountShare(money, refundAmount) : 0;
   const cashRefund = money ? returnChange(money, refundAmount).cashOut : 0;
   // The server needs an account on every return; with no cash moving, none is shown or charged.
   const postedAccountId = accountId || money?.saleAccountId || accounts[0]?.id || '';
@@ -226,6 +228,12 @@ export function ReturnItemDialog({
                     </span>
                     <span className="text-sm font-medium">{refundAmount.toLocaleString('fa-IR')} تومان</span>
                   </div>
+                  {share > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">سهم این کالا از تخفیف سفارش:</span>
+                      <span className="text-sm font-medium text-red-600">-{share.toLocaleString('fa-IR')} تومان</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center border-t pt-2">
                     <span className="text-sm font-medium">پرداخت نقدی به مشتری:</span>
                     <span className="text-lg font-bold text-green-600">

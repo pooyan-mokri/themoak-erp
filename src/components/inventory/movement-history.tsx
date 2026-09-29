@@ -49,6 +49,7 @@ const STATUSES: Record<string, { label: string; tone: string }> = {
   DELIVERED: { label: 'تحویل داده شده', tone: 'bg-success-soft text-success' },
   RECEIVED: { label: 'دریافت شده', tone: 'bg-success-soft text-success' },
   CONFIRMED: { label: 'تأیید شده', tone: 'bg-brand-soft text-brand' },
+  PENDING: { label: 'در انتظار', tone: 'bg-warning-soft text-warning' },
   DRAFT: { label: 'پیش‌نویس', tone: 'bg-brand-soft text-brand' },
   PENDING_PAYMENT: { label: 'منتظر پرداخت', tone: 'bg-warning-soft text-warning' },
   PARTIALLY_PAID: { label: 'پرداخت جزئی', tone: 'bg-brand-soft text-brand' },

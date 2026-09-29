@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { hasPermission, requirePermission } from '@/lib/access';
 import { channelSummary, DEFAULT_CHANNEL_NAME } from '@/lib/consignment-channels';
+import { CONSIGNMENT_ORDER, settlementAmounts } from '@/lib/consignment-amounts';
+import { holdsStock } from '@/lib/stock-levels';
 
 /** Amounts at sell price and commissions for sales.view; inventory value at cost only with cost.view. */
 export async function getConsignmentReport() {
@@ -23,9 +25,15 @@ export async function getConsignmentReport() {
       },
     });
 
-    // Get all orders from consignment partners
+    // Get all orders from consignment partners. A cancelled order is no sale
+    // and owes nothing; a website order is settled on the website, and a POS
+    // sale to a partner is an ordinary sale (as in the settlement list and
+    // the outstanding report).
     const consignmentOrders = await prisma.order.findMany({
       where: {
+        status: { not: 'CANCELLED' },
+        siteReference: null,
+        ...CONSIGNMENT_ORDER,
         customer: {
           warehouses: {
             some: {
@@ -39,6 +47,8 @@ export async function getConsignmentReport() {
         items: {
           include: {
             product: true,
+            returns: { select: { quantity: true } },
+            exchanges: { select: { quantity: true } },
           },
         },
         commissions: true,
@@ -59,9 +69,11 @@ export async function getConsignmentReport() {
   (order: any) => order.customerId === customerId
       );
 
-      // Calculate totals
+      // Calculate totals: our share of each sale, over the units still sold and
+      // net of the partner's commission, whether the order stored it gross or net
+      // (the same arithmetic as the settlement list and the partner statement).
       const totalSales = partnerOrders.reduce(
-  (sum: any, order: any) => sum + Number(order.totalAmount) - Number(order.discount || 0),
+  (sum: any, order: any) => sum + settlementAmounts(order).netAmount,
         0
       );
 
@@ -120,14 +132,8 @@ export async function getConsignmentReport() {
       for (const order of partnerOrders as any[]) {
         const name =
           order.consignmentChannel?.name ?? order.commissions?.[0]?.channelName ?? DEFAULT_CHANNEL_NAME;
-        const netSales = Number(order.totalAmount) - Number(order.discount || 0);
-        const commission = (order.commissions || []).reduce(
-          (s: any, c: any) => s + Number(c.commissionAmount),
-          0,
-        );
-        // The commission row carries the gross it was taken from; an order
-        // without one (a plain sale to the partner) is its own gross.
-        const gross = order.commissions?.[0] ? Number(order.commissions[0].orderAmount) : netSales;
+        // Over the units still sold, as the totals above.
+        const { grossAmount: gross, commissionAmount: commission, netAmount: netSales } = settlementAmounts(order);
         const row = byChannel.get(name) ?? {
           channel: name,
           // The channel's rate today; for a channel that is gone, the rate the order was booked at.
@@ -155,9 +161,9 @@ export async function getConsignmentReport() {
           a.channel.localeCompare(b.channel, 'fa'),
       );
 
-      // Calculate inventory value (at cost)
+      // Calculate inventory value (at cost), of the stock product types (src/lib/stock-levels.ts)
       const inventoryValue = canSeeCost
-        ? partner.inventory.reduce((sum: any, inv: any) => {
+        ? partner.inventory.filter((inv: any) => holdsStock(inv.product.productType)).reduce((sum: any, inv: any) => {
             const costPrice = Number(inv.product.costPrice || 0);
             return sum + inv.quantity * costPrice;
           }, 0)

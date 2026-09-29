@@ -5,6 +5,11 @@ import { Prisma } from '@prisma/client';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { ACCESS_DENIED_MESSAGE, hasPermission } from '@/lib/access';
 import type { Permission } from '@/lib/permissions';
+import { SOLD_ORDER_STATUS } from '@/lib/order-status';
+import { customerBalance, orderNet } from '@/lib/order-balance';
+import { cashPosition, latestRates } from '@/lib/money-totals';
+import { profitEntry } from '@/lib/profit-rows';
+import { holdsStock, stockLevel } from '@/lib/stock-levels';
 
 export interface AgentTool {
   name: string;
@@ -13,6 +18,11 @@ export interface AgentTool {
   permission: Permission | readonly Permission[];
   parameters: Record<string, any>;
   execute: (params: any) => Promise<any>;
+}
+
+/** COGS and gift rows carry cost amounts (the rule of the journal in src/actions/accounting.ts). */
+function isCostRow(t: { category?: string | null; marketingGift?: unknown }): boolean {
+  return ['COGS', 'Marketing - Gift', 'Marketing/Gift'].includes(t.category ?? '') || !!t.marketingGift;
 }
 
 // Define available tools for the AI agent
@@ -34,11 +44,11 @@ const tools: AgentTool[] = [
         });
 
         const totalItems = inventory.reduce((sum: any, item: any) => sum + item.quantity, 0);
-        const totalValue = inventory.reduce(
-  (sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice),
-          0
-        );
-        const lowStockItems = inventory.filter((item: any) => item.quantity < 10 && item.quantity > 0);
+        // Stock value counts the stock product types only, and low stock is 1 to 3 units, as on every stock screen (src/lib/stock-levels.ts).
+        const totalValue = inventory
+          .filter((item: any) => holdsStock(item.product.productType))
+          .reduce((sum: any, item: any) => sum + item.quantity * Number(item.product.costPrice), 0);
+        const lowStockItems = inventory.filter((item: any) => stockLevel(item.quantity) === 'LOW');
 
         return {
           success: true,
@@ -76,7 +86,7 @@ const tools: AgentTool[] = [
       const orders = await prisma.order.findMany({
         where: {
           createdAt: { gte: startDate },
-          status: { in: ['COMPLETED', 'DELIVERED'] },
+          status: SOLD_ORDER_STATUS,
         },
         include: {
           items: { include: { product: true } },
@@ -84,7 +94,8 @@ const tools: AgentTool[] = [
         },
       });
 
-      const totalRevenue = orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+      // What the customers pay for them, after the discount (src/lib/order-balance.ts).
+      const totalRevenue = orders.reduce((sum: any, order: any) => sum + orderNet(order), 0);
       const totalOrders = orders.length;
       const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -101,7 +112,7 @@ const tools: AgentTool[] = [
               acc[customerId] = { name: customerName, orders: 0, revenue: 0 };
             }
             acc[customerId].orders += 1;
-            acc[customerId].revenue += Number(order.totalAmount);
+            acc[customerId].revenue += orderNet(order);
             return acc;
           }, {} as Record<string, any>)
       };
@@ -118,9 +129,10 @@ const tools: AgentTool[] = [
       const customer = await prisma.customer.findUnique({
         where: { id: params.customerId },
         include: {
+          // Every order that stands: a cancelled one was never bought.
           orders: {
+            where: { status: { not: 'CANCELLED' } },
             orderBy: { createdAt: 'desc' },
-            take: 10,
           },
         },
       });
@@ -129,8 +141,10 @@ const tools: AgentTool[] = [
         return { error: 'مشتری یافت نشد' };
       }
 
+      // What they bought, after the discount, and still owe, as the customer's profile shows it (src/lib/order-balance.ts).
       const totalOrders = customer.orders.length;
-      const totalSpent = customer.orders.reduce((sum: any, order: any) => sum + Number(order.totalAmount), 0);
+      const totalSpent = customer.orders.reduce((sum: any, order: any) => sum + orderNet(order), 0);
+      const debt = customerBalance(customer.orders).debt;
 
       return {
         name: customer.name,
@@ -140,9 +154,10 @@ const tools: AgentTool[] = [
         creditLimit: Number(customer.creditLimit),
         totalOrders,
         totalSpent,
+        debt,
         recentOrders: customer.orders.slice(0, 5).map((order: any) => ({
           number: order.number,
-          amount: Number(order.totalAmount),
+          amount: orderNet(order),
           date: order.createdAt,
         })),
       };
@@ -211,33 +226,45 @@ const tools: AgentTool[] = [
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
 
+      // Every account that holds money, and their total in toman at the latest rates: «موجودی کل» (src/lib/money-totals.ts).
       const accounts = await prisma.account.findMany({
         where: {
-          type: { in: ['BANK', 'CASH'] },
+          type: { not: 'EXPENSE' },
         },
       });
+      const cash = cashPosition(accounts, await latestRates(prisma));
 
       const transactions = await prisma.transaction.findMany({
         where: {
           date: { gte: startDate },
         },
+        include: { marketingGift: { select: { id: true } }, LoanPayment: { select: { interest: true } } },
       });
+      // COGS and gift rows are valued at cost: left out for a role without cost.view, as in the accounting totals.
+      const canSeeCost = await hasPermission('cost.view');
+      const counted = transactions.filter((t: any) => canSeeCost || !isCostRow(t));
 
-      const totalIncome = transactions
-        .filter((t: any) => t.type === 'INCOME')
-        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
-
-      const totalExpense = transactions
-        .filter((t: any) => t.type === 'EXPENSE')
-        .reduce((sum: any, t: any) => sum + Number(t.amount), 0);
+      // In toman, by profit and loss's rule (src/lib/profit-rows.ts): capital,
+      // loans, exchanges and transfers left out, goods at their cost of goods sold.
+      let totalIncome = 0;
+      let totalExpense = 0;
+      for (const t of counted) {
+        const entry = profitEntry(t);
+        if (!entry) continue;
+        if (entry.line === 'revenue') totalIncome += entry.amount;
+        else totalExpense += entry.amount;
+      }
 
       return {
         period: `${days} روز گذشته`,
         accounts: accounts.map((acc: any) => ({
           name: acc.name,
           type: acc.type,
+          currency: acc.currency,
           balance: Number(acc.balance),
         })),
+        totalBalanceToman: cash.total,
+        ...(cash.unpriced.length > 0 ? { currenciesWithoutRate: cash.unpriced.map((row) => row.currency) } : {}),
         totalIncome,
         totalExpense,
         ...((await hasPermission('profit.view')) ? { netProfit: totalIncome - totalExpense } : {}),
@@ -282,6 +309,10 @@ const tools: AgentTool[] = [
       category: 'string (optional) - دسته‌بندی',
     },
     execute: async (params: { amount: number; description: string; accountId: string; category?: string }) => {
+      // The model writes the parameters: the same rule as the expense form (at least 1 toman).
+      if (typeof params.amount !== 'number' || !Number.isFinite(params.amount) || params.amount < 1) {
+        return { success: false, error: 'مبلغ باید بیشتر از صفر باشد' };
+      }
       const account = await prisma.account.findUnique({
         where: { id: params.accountId },
       });
@@ -299,6 +330,11 @@ const tools: AgentTool[] = [
         account,
         params.amount
       );
+
+      // As the expense form: never more than the account holds.
+      if (Number(account.balance) < amountInAccountCurrency) {
+        return { success: false, error: `موجودی حساب «${account.name}» کافی نیست.` };
+      }
 
       const transaction = await prisma.$transaction(async (tx) => {
         const created = await tx.transaction.create({

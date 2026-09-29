@@ -7,6 +7,16 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { checkPermission, requirePermission } from '@/lib/access';
+import { isDuplicateRequest } from '@/lib/request-id';
+import { jalaliYearMonth } from '@/lib/tehran-day';
+import { consumableValue } from '@/lib/fixed-asset-value';
+
+/**
+ * One depreciation row per asset per Jalali year. The row carries this key in
+ * its unique clientRequestId, so a second post of the same year, even one
+ * clicked at the same moment, cannot be written.
+ */
+const depreciationKey = (assetId: string, year: number) => `depreciation-${assetId}-${year}`;
 
 // Use z.enum instead of z.nativeEnum to avoid runtime issues
 const FixedAssetSchema = z.object({
@@ -61,7 +71,8 @@ export async function createAsset(prevState: any, formData: FormData) {
         usefulLife,
         quantity: assetType === 'CONSUMABLE' ? quantity : undefined,
         depreciationMethod: DepreciationMethod.STRAIGHT_LINE,
-        currentValue: purchasePrice, // Initially equal to purchase price
+        // Initially the purchase price; a consumable is worth quantity × unit price (src/lib/fixed-asset-value.ts).
+        currentValue: assetType === 'CONSUMABLE' ? consumableValue({ quantity, purchasePrice }) : purchasePrice,
       },
     });
   } catch (error) {
@@ -86,7 +97,8 @@ export async function getAssets() {
     // Calculate current value on the fly for display accuracy
     // Convert Decimal to number for client components
     return assets.map((asset: any) => {
-      const currentValue = calculateCurrentValue(asset);
+      // A consumable is worth quantity × unit cost, not depreciated as one item.
+      const currentValue = asset.assetType === 'CONSUMABLE' ? consumableValue(asset) : calculateCurrentValue(asset);
       return {
         ...asset,
         purchasePrice: Number(asset.purchasePrice),
@@ -144,36 +156,65 @@ export async function postDepreciation(assetId: string) {
       return { success: false, error: 'این دارایی کاملاً مستهلک شده است' };
     }
 
+    // This Jalali year's depreciation is booked once. Rows posted before the
+    // key existed are found by their description and date.
+    const year = jalaliYearMonth(new Date()).year;
+    const description = `استهلاک سالانه دارایی: ${asset.name}`;
+    const posted = await prisma.transaction.findMany({
+      where: {
+        category: 'Depreciation',
+        OR: [{ clientRequestId: { startsWith: `depreciation-${asset.id}-` } }, { clientRequestId: null, description }],
+      },
+      select: { amount: true, date: true, clientRequestId: true },
+    });
+    const alreadyThisYear = (message: string) => ({ success: false, error: message, message });
+    const yearLabel = year.toLocaleString('fa-IR', { useGrouping: false });
+    if (posted.some((row: any) => row.clientRequestId === depreciationKey(asset.id, year) || (!row.clientRequestId && jalaliYearMonth(row.date).year === year))) {
+      return alreadyThisYear(`استهلاک سال ${yearLabel} برای «${asset.name}» قبلاً ثبت شده است.`);
+    }
+    // Never more than the cost less the salvage value, over all the years.
+    const depreciatedSoFar = posted.reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+    const amount = Math.min(annualDepreciation, purchasePrice - salvageValue - depreciatedSoFar);
+    if (!(amount > 0)) {
+      return { success: false, error: 'این دارایی کاملاً مستهلک شده است' };
+    }
+
     let expenseAccount = await prisma.account.findFirst({
       where: { name: 'هزینه‌های عمومی' }
     });
 
     if (!expenseAccount) {
-      expenseAccount = await prisma.account.create({
-        data: {
-          name: 'هزینه‌های عمومی',
-          type: 'EXPENSE',
-          balance: 0,
-          currency: 'TOMAN'
-        }
+      // Under one fixed id: two posts at the same moment both find it missing,
+      // and a plain create made one copy each (the name is not unique).
+      await prisma.account.createMany({
+        data: [{ id: 'general-expenses', name: 'هزینه‌های عمومی', type: 'EXPENSE', balance: 0, currency: 'TOMAN' }],
+        skipDuplicates: true,
       });
+      expenseAccount = await prisma.account.findUniqueOrThrow({ where: { id: 'general-expenses' } });
     }
 
     // Depreciation is non-cash: the row feeds P&L, but the expense account's
     // balance deliberately stays 0 (same as consignment COGS) so it never
     // leaks into the cash totals.
-    await prisma.transaction.create({
-      data: {
-        type: 'EXPENSE',
-        amount: annualDepreciation,
-        amountInToman: annualDepreciation,
-        currency: 'TOMAN',
-        category: 'Depreciation',
-        description: `استهلاک سالانه دارایی: ${asset.name}`,
-        accountId: expenseAccount.id,
-        date: new Date(),
-      }
-    });
+    try {
+      await prisma.transaction.create({
+        data: {
+          type: 'EXPENSE',
+          amount,
+          amountInToman: amount,
+          currency: 'TOMAN',
+          category: 'Depreciation',
+          description,
+          accountId: expenseAccount.id,
+          date: new Date(),
+          clientRequestId: depreciationKey(asset.id, year),
+        }
+      });
+    } catch (error) {
+      // A second post of the same year at the same moment: the first one wrote it.
+      if (isDuplicateRequest(error)) return alreadyThisYear(`استهلاک سال ${yearLabel} برای «${asset.name}» قبلاً ثبت شده است.`);
+      throw error;
+    }
 
     try {
       revalidatePath('/dashboard/accounting/assets');

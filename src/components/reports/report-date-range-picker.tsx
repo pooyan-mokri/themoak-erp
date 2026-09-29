@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { localDateString } from '@/lib/date-utils';
 
 interface DateRange {
   from: Date;
@@ -19,9 +20,8 @@ interface ReportDateRangePickerProps {
 }
 
 export function ReportDateRangePicker({ value, onChange }: ReportDateRangePickerProps) {
-  const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0]; // YYYY-MM-DD for input
-  };
+  // YYYY-MM-DD for input: the browser's own calendar day (src/lib/date-utils.ts), not the UTC one.
+  const formatDate = (date: Date) => localDateString(date);
 
   const presets = [
     {

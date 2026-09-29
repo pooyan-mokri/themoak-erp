@@ -15,6 +15,8 @@ import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/dashboard/kpi-card';
 import { formatJalaliDate, formatJalaliDateTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
+import { filterOrders, orderExportRow, orderFinalAmount, orderRemaining } from '@/lib/order-list';
+import { orderTotals } from '@/lib/order-balance';
 import { PaymentDialog } from './payment-dialog';
 import { cancelOrder, getCancelOrderPreview } from '@/actions/sales';
 
@@ -97,8 +99,10 @@ function describeReversal(account: { label: string; currency: string | null; cha
 }
 
 const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(n);
-const finalOf = (o: OrderWithDetails) => Number(o.totalAmount) - Number(o.discount || 0);
-const remainingOf = (o: OrderWithDetails) => finalOf(o) - Number(o.paidAmount || 0);
+// The same figures as the order page, the invoice and the Excel export (src/lib/order-list.ts, src/lib/order-balance.ts):
+// after the discount, and nothing owed on a cancelled order.
+const finalOf = (o: OrderWithDetails) => orderFinalAmount(o);
+const remainingOf = (o: OrderWithDetails) => orderRemaining(o);
 const unitsOf = (o: OrderWithDetails) => o.items.reduce((sum, item) => sum + item.quantity, 0);
 
 /** Status is a colour and a word (design system §12): cancelled, or how far it is paid. */
@@ -164,22 +168,16 @@ export function OrderList({ orders, canManage = false }: OrderListProps) {
   const currentView = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = orders.filter((o) => {
+    // The advanced filters as the list's shared rule has them (src/lib/order-list.ts), then the view and the search.
+    const list = filterOrders(orders, {
+      from: filterFromDate,
+      to: filterToDate,
+      minAmount: filterMinAmount,
+      maxAmount: filterMaxAmount,
+      warehouse: filterWarehouse,
+    }).filter((o) => {
       if (!currentView.match(o)) return false;
       if (q && !String(o.number).includes(q) && !(o.customer?.name ?? 'مشتری عمومی').toLowerCase().includes(q)) return false;
-      if (filterFromDate) {
-        const from = new Date(filterFromDate);
-        from.setHours(0, 0, 0, 0);
-        if (new Date(o.createdAt) < from) return false;
-      }
-      if (filterToDate) {
-        const to = new Date(filterToDate);
-        to.setHours(23, 59, 59, 999);
-        if (new Date(o.createdAt) > to) return false;
-      }
-      if (filterMinAmount && finalOf(o) < Number(filterMinAmount)) return false;
-      if (filterMaxAmount && finalOf(o) > Number(filterMaxAmount)) return false;
-      if (filterWarehouse !== 'all' && !o.items.some((item) => item.warehouse?.id === filterWarehouse)) return false;
       return true;
     });
     const value = (o: OrderWithDetails): number | string =>
@@ -254,11 +252,15 @@ export function OrderList({ orders, canManage = false }: OrderListProps) {
       return;
     }
     const money =
-      preview.accounts.length === 0
+      (preview.accounts.length === 0
         ? `- هیچ مبلغی از این سفارش در حساب‌ها ثبت نشده است\n`
         : `- این ردیف‌های مالی سفارش حذف و اثرشان از حساب‌ها برگردانده می‌شود:\n` +
           preview.accounts.map(describeReversal).join('\n') +
-          '\n';
+          '\n') +
+      (preview.creditReturned > 0
+        ? `- ${fa(preview.creditReturned)} تومان اعتبار مشتری که خرج این سفارش شده بود به اعتبارش برمی‌گردد\n`
+        : '');
+
     const confirmed = window.confirm(
       `آیا مطمئن هستید که می‌خواهید سفارش #${order.number} را لغو کنید؟\n\n` +
         `این عملیات:\n` +
@@ -280,24 +282,13 @@ export function OrderList({ orders, canManage = false }: OrderListProps) {
   const handleExport = () => {
     const rows = selected.size > 0 ? filtered.filter((o) => selected.has(o.id)) : filtered;
     const sheet = XLSX.utils.json_to_sheet(
-      rows.map((order) => ({
-        'شماره سفارش': order.number,
-        'مشتری': order.customer?.name || 'مشتری عمومی',
-        'مبلغ کل (تومان)': Number(order.totalAmount),
-        'تخفیف (تومان)': Number(order.discount || 0),
-        'مبلغ پرداختی (تومان)': Number(order.paidAmount || 0),
-        'باقیمانده (تومان)': remainingOf(order),
-        'وضعیت': statusOf(order).label,
-        'تعداد اقلام': unitsOf(order),
-        'تاریخ': formatJalaliDateTime(order.createdAt),
-        'منبع': order.siteReference ? 'سایت' : order.wooId ? 'WooCommerce' : 'فروشگاه',
-        'تگ‌ها': (order.tags ?? []).join('، '),
-      })),
+      // The same figures as the list (src/lib/order-list.ts), and the tags.
+      rows.map((order) => ({ ...orderExportRow(order), 'تگ‌ها': (order.tags ?? []).join('، ') })),
     );
-    sheet['!cols'] = [12, 20, 15, 15, 15, 15, 14, 12, 20, 12, 20].map((wch) => ({ wch }));
+    sheet['!cols'] = [12, 20, 15, 15, 15, 15, 15, 12, 15, 20, 15, 20].map((wch) => ({ wch }));
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, 'سفارشات');
-    XLSX.writeFile(book, `سفارشات-${new Date().toLocaleDateString('fa-IR').replace(/\//g, '-')}.xlsx`);
+    XLSX.writeFile(book, `سفارشات-${new Date().toLocaleDateString('fa-IR', { timeZone: 'Asia/Tehran' }).replace(/\//g, '-')}.xlsx`);
     toast.success(`${fa(rows.length)} سفارش در فایل اکسل`);
   };
 
@@ -633,6 +624,13 @@ export function OrderList({ orders, canManage = false }: OrderListProps) {
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">مانده</dt>
                   <dd className="font-medium tabular-nums">{fa(remainingOf(peek))}</dd>
+                </div>
+              )}
+              {/* Paid beyond the net: the customer's credit («بستانکار»), as on the order page. */}
+              {peek.status !== 'CANCELLED' && orderTotals(peek).credit > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">بستانکار</dt>
+                  <dd className="tabular-nums">{fa(orderTotals(peek).credit)}</dd>
                 </div>
               )}
             </dl>

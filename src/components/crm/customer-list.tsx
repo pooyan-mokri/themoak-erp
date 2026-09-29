@@ -31,6 +31,7 @@ interface Customer {
   email?: string;
   address?: string;
   totalDebt?: number;
+  totalCredit?: number;
   segment?: string;
 }
 
@@ -181,10 +182,13 @@ export function CRMCustomerList({ customers, summaries = {}, canManage = false }
                   <td className="px-3 text-end font-medium tabular-nums">{valueOf(customer) ? fa(valueOf(customer)) : '—'}</td>
                   <td className="px-3 text-end tabular-nums">
                     {customer.totalDebt && customer.totalDebt > 0 ? (
-                      fa(customer.totalDebt)
+                      fa(Math.round(customer.totalDebt))
                     ) : (
                       <span className={cn(PILL, 'bg-success-soft text-success')}>تسویه</span>
                     )}
+                    {customer.totalCredit && customer.totalCredit > 0 ? (
+                      <div className="text-[11.5px] text-muted-foreground">بستانکار: {fa(Math.round(customer.totalCredit))}</div>
+                    ) : null}
                   </td>
                   <td className="px-3">
                     <CustomerActions customer={customer} canManage={canManage} />

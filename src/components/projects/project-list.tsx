@@ -13,10 +13,12 @@ interface ProjectListProps {
   projects: any[];
   /** Tasks, done, overdue and (finance.view) spent, per project id. */
   figures?: Record<string, ProjectFigures>;
+  /** The budget is finance data (finance.view). */
+  showBudget?: boolean;
 }
 
-/** The projects as cards: status, dates, task progress, budget and what was spent. */
-export function ProjectList({ projects, figures = {} }: ProjectListProps) {
+/** The projects as cards: status, dates, task progress and, for finance.view, budget and what was spent. */
+export function ProjectList({ projects, figures = {}, showBudget = false }: ProjectListProps) {
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
 
@@ -121,23 +123,25 @@ export function ProjectList({ projects, figures = {} }: ProjectListProps) {
                   </div>
                 </div>
 
-                <div className="mt-auto grid grid-cols-2 gap-3 border-t pt-3">
-                  <div>
-                    <p className="text-[11.5px] text-muted-foreground">بودجه (تومان)</p>
-                    <p className="mt-0.5 text-[13.5px] font-medium tabular-nums">{budget ? fa(budget) : '—'}</p>
-                  </div>
-                  {spent !== undefined && (
+                {showBudget && (
+                  <div className="mt-auto grid grid-cols-2 gap-3 border-t pt-3">
                     <div>
-                      <p className="text-[11.5px] text-muted-foreground">
-                        هزینه شده{budget > 0 && ` · ${fa((spent / budget) * 100)}٪`}
-                      </p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-[13.5px] font-medium tabular-nums">
-                        {spent ? fa(spent) : '—'}
-                        {over && <span className={cn(PILL, 'bg-warning-soft text-warning')}>بیش از بودجه</span>}
-                      </p>
+                      <p className="text-[11.5px] text-muted-foreground">بودجه (تومان)</p>
+                      <p className="mt-0.5 text-[13.5px] font-medium tabular-nums">{budget ? fa(budget) : '—'}</p>
                     </div>
-                  )}
-                </div>
+                    {spent !== undefined && (
+                      <div>
+                        <p className="text-[11.5px] text-muted-foreground">
+                          هزینه شده{budget > 0 && ` · ${fa((spent / budget) * 100)}٪`}
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-[13.5px] font-medium tabular-nums">
+                          {spent ? fa(spent) : '—'}
+                          {over && <span className={cn(PILL, 'bg-warning-soft text-warning')}>بیش از بودجه</span>}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

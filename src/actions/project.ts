@@ -7,19 +7,39 @@ import { ActionState, ActionResult } from '@/lib/types';
 import { checkPermission, getCurrentRole, hasPermission } from '@/lib/access';
 import { auth } from '@/auth';
 
+/** A project's budget is finance data: shown to, and set by, finance.view only. */
+const seesBudget = () => hasPermission('finance.view');
+
 const ProjectSchema = z.object({
   name: z.string().min(1, 'نام پروژه الزامی است'),
   description: z.string().optional(),
   status: z.enum(['ACTIVE', 'COMPLETED', 'ON_HOLD', 'CANCELLED']),
   startDate: z.string().optional(), // Will convert to Date
   endDate: z.string().optional(),   // Will convert to Date
-  budget: z.coerce.number().optional(),
+  budget: z.coerce.number().min(0, 'بودجه نمی‌تواند منفی باشد').optional(),
 });
+
+const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'] as const;
+const ASSIGNEE_UNAVAILABLE = 'کاربر انتخاب‌شده وجود ندارد یا غیرفعال است؛ کاربر دیگری را انتخاب کنید.';
+
+/** Only an existing, active user can be given a task (the picker offers no one else). */
+async function isAssignable(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+  return !!user?.isActive;
+}
+const END_BEFORE_START = 'تاریخ پایان پروژه نمی‌تواند قبل از تاریخ شروع باشد.';
+
+/** Both dates given and the end before the start. */
+function endsBeforeStart(start?: string, end?: string) {
+  if (!start || !end) return false;
+  const [from, to] = [new Date(start), new Date(end)];
+  return !isNaN(from.getTime()) && !isNaN(to.getTime()) && to < from;
+}
 
 const TaskSchema = z.object({
   title: z.string().min(1, 'عنوان وظیفه الزامی است'),
   description: z.string().optional(),
-  status: z.enum(['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE']),
+  status: z.enum(TASK_STATUSES),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   startDate: z.string().optional(), // Will convert to Date
   dueDate: z.string().optional(), // Will convert to Date
@@ -48,6 +68,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
   }
 
   const { name, description, status, startDate, endDate, budget } = validatedFields.data;
+  if (endsBeforeStart(startDate, endDate)) return { success: false, message: END_BEFORE_START, errors: undefined };
 
   try {
     await prisma.project.create({
@@ -57,7 +78,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
         status,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        budget,
+        budget: (await seesBudget()) ? budget : undefined,
       },
     });
   } catch (error) {
@@ -74,6 +95,7 @@ export async function createProject(prevState: ActionState, formData: FormData):
 
 export async function getProjects() {
   if (!(await getCurrentRole())) return [];
+  const showBudget = await seesBudget();
   try {
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: 'desc' },
@@ -85,7 +107,7 @@ export async function getProjects() {
     });
     return projects.map((project: any) => ({
       ...project,
-      budget: project.budget ? Number(project.budget) : undefined,
+      budget: showBudget && project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
@@ -153,6 +175,7 @@ export async function getMyTasks() {
 
 export async function getProjectById(id: string) {
   if (!(await getCurrentRole())) return undefined;
+  const showBudget = await seesBudget();
   try {
     const project = await prisma.project.findUnique({
       where: { id },
@@ -174,7 +197,7 @@ export async function getProjectById(id: string) {
     const users = userIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true },
         })
       : [];
     
@@ -183,7 +206,7 @@ export async function getProjectById(id: string) {
     // Map tasks with user information
     return {
       ...project,
-      budget: project.budget ? Number(project.budget) : undefined,
+      budget: showBudget && project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
@@ -205,6 +228,7 @@ export async function getProjectById(id: string) {
 
 export async function getProjectsForCalendar() {
   if (!(await getCurrentRole())) return [];
+  const showBudget = await seesBudget();
   try {
     const projects = await prisma.project.findMany({
       include: {
@@ -226,7 +250,7 @@ export async function getProjectsForCalendar() {
     const users = userIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true },
         })
       : [];
 
@@ -235,7 +259,7 @@ export async function getProjectsForCalendar() {
     // Map projects with user information
     return projects.map((project: any) => ({
       ...project,
-      budget: project.budget ? Number(project.budget) : undefined,
+      budget: showBudget && project.budget ? Number(project.budget) : undefined,
       description: project.description ?? undefined,
       endDate: project.endDate ?? undefined,
       startDate: project.startDate ?? undefined,
@@ -281,6 +305,9 @@ export async function createTask(prevState: ActionState, formData: FormData): Pr
   }
 
   const { title, description, status, priority, startDate, dueDate, projectId, assignedTo } = validatedFields.data;
+  if (assignedTo && !(await isAssignable(assignedTo))) {
+    return { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined };
+  }
 
   // Ensure start date is not after due date
   if (startDate && startDate.trim() && dueDate && dueDate.trim()) {
@@ -323,6 +350,9 @@ export async function createTask(prevState: ActionState, formData: FormData): Pr
 export async function updateTaskStatus(taskId: string, status: string, projectId: string) {
   const denied = await checkPermission('projects.manage');
   if (denied) return denied;
+  if (!(TASK_STATUSES as readonly string[]).includes(status)) {
+    return { success: false, message: 'وضعیت نامعتبر است.' };
+  }
 
   try {
     await prisma.task.update({
@@ -374,6 +404,7 @@ export async function updateProject(id: string, prevState: ActionState, formData
   }
 
   const { name, description, status, startDate, endDate, budget } = validatedFields.data;
+  if (endsBeforeStart(startDate, endDate)) return { success: false, message: END_BEFORE_START, errors: undefined };
 
   try {
     await prisma.project.update({
@@ -384,7 +415,8 @@ export async function updateProject(id: string, prevState: ActionState, formData
         status,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        budget,
+        // A role that does not see the budget leaves it as it is.
+        budget: (await seesBudget()) ? budget : undefined,
       },
     });
   } catch (error) {
@@ -441,6 +473,16 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
 
     const { title, description, status, priority, startDate, dueDate, projectId, assignedTo } = validatedFields.data;
 
+    // A new assignee must be an existing, active user. The one the task already
+    // has stays through an edit, even after they were deactivated.
+    const newAssignee = assignedTo?.trim();
+    if (newAssignee) {
+        const current = await prisma.task.findUnique({ where: { id: taskId }, select: { assignedTo: true } });
+        if (current?.assignedTo !== newAssignee && !(await isAssignable(newAssignee))) {
+            return { success: false, message: ASSIGNEE_UNAVAILABLE, errors: undefined };
+        }
+    }
+
     // Ensure start date is not after due date
     if (startDate && startDate.trim() && dueDate && dueDate.trim()) {
         const start = new Date(startDate);
@@ -468,7 +510,8 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         // Prepare data for update
         const updateData: Record<string, unknown> = {
             title,
-            description: description || undefined,
+            // An emptied description is cleared, not kept.
+            description: description ?? undefined,
             status,
             priority,
         };
@@ -602,33 +645,10 @@ export async function updateTask(taskId: string, prevState: ActionState, formDat
         console.error('Error type:', typeof error);
         console.error('Error:', error);
 
-        let errorMessage = 'خطا در بروزرسانی وظیفه';
-
-        if (error) {
-            if (typeof error === 'string') {
-                errorMessage = error;
-            } else if (error instanceof Error) {
-                errorMessage = error.message;
-                console.error('Error name:', error.name);
-                console.error('Error message:', error.message);
-                console.error('Error stack:', error.stack);
-            } else if (error && typeof error === 'object') {
-                if ('message' in error && typeof error.message === 'string') {
-                    errorMessage = error.message;
-                    console.error('Error message:', error.message);
-                }
-                if ('name' in error) {
-                    console.error('Error name:', error.name);
-                }
-                if ('code' in error) {
-                    console.error('Error code:', error.code);
-                }
-            }
-        }
-
+        // The database's own (English) message stays in the log, not on the page.
         return {
             success: false,
-            message: `خطا در بروزرسانی وظیفه: ${errorMessage}`,
+            message: 'خطا در بروزرسانی وظیفه.',
             errors: undefined
         };
     }
