@@ -72,7 +72,7 @@ export default async function InvoiceDetailsPage({ params }: { params: { id: str
               <span>{toman(data.bill.paid)} تومان</span>
             </div>
             {data.bill.credit > 0 ? (
-              <div className="flex justify-between text-green-700">
+              <div className="flex justify-between text-success">
                 <span>بستانکار:</span>
                 <span>{toman(data.bill.credit)} تومان</span>
               </div>

@@ -132,43 +132,46 @@ export function SalesOverview({ period: w, summary }: { period: ReportWindow; su
             در این بازه و دورهٔ قبلش فروشی ثبت نشده است. بازهٔ بلندتری را انتخاب کنید.
           </p>
         ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={trend} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-              <CartesianGrid stroke="#E3E3E3" vertical={false} />
-              <XAxis
-                dataKey="at"
-                tickFormatter={(at: number) => jalaliShort(at)}
-                tick={{ fontSize: 11, fill: '#6B7280' }}
-                axisLine={false}
-                tickLine={false}
-                reversed
-                minTickGap={20}
-              />
-              <YAxis
-                orientation="right"
-                tickFormatter={axisMoney}
-                tick={{ fontSize: 11, fill: '#6B7280' }}
-                axisLine={false}
-                tickLine={false}
-                width={64}
-              />
-              <Tooltip
-                cursor={{ stroke: '#D2D2D2', strokeDasharray: '2 3' }}
-                content={<TrendTooltip compare={compare} bucketDays={w.bucketDays} end={w.end} prevEnd={w.prevEnd} />}
-              />
-              {compare && (
-                <Line
-                  dataKey="prevRevenue"
-                  stroke={INDIGO_LIGHT}
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                  dot={false}
-                  isAnimationActive={false}
+          <div dir="ltr">
+            {/* Laid out left to right, so SVG axis labels anchor on the right side (the page is RTL); axes are reversed where time runs right to left. */}
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={trend} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                <CartesianGrid stroke="#E3E3E3" vertical={false} />
+                <XAxis
+                  dataKey="at"
+                  tickFormatter={(at: number) => jalaliShort(at)}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  axisLine={false}
+                  tickLine={false}
+                  reversed
+                  minTickGap={20}
                 />
-              )}
-              <Line dataKey="revenue" stroke={INDIGO} strokeWidth={2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
+                <YAxis
+                  orientation="right"
+                  tickFormatter={axisMoney}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={64}
+                />
+                <Tooltip
+                  cursor={{ stroke: '#D2D2D2', strokeDasharray: '2 3' }}
+                  content={<TrendTooltip compare={compare} bucketDays={w.bucketDays} end={w.end} prevEnd={w.prevEnd} />}
+                />
+                {compare && (
+                  <Line
+                    dataKey="prevRevenue"
+                    stroke={INDIGO_LIGHT}
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                )}
+                <Line dataKey="revenue" stroke={INDIGO} strokeWidth={2} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </SectionCard>
 

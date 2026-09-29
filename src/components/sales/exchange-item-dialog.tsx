@@ -244,7 +244,7 @@ export function ExchangeItemDialog({
                 required
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.quantity && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
+                <p className="text-danger text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
               )}
             </div>
 
@@ -263,7 +263,7 @@ export function ExchangeItemDialog({
                 </SelectContent>
               </Select>
               {(state.errors as Record<string, string[] | undefined> | undefined)?.returnWarehouseId && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.returnWarehouseId?.[0]}</p>
+                <p className="text-danger text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.returnWarehouseId?.[0]}</p>
               )}
             </div>
 
@@ -364,7 +364,7 @@ export function ExchangeItemDialog({
                   آنچه اکنون دریافت نشود به بدهی مشتری روی این سفارش اضافه می‌شود.
                 </p>
                 {receivedTooMuch && (
-                  <p className="text-red-500 text-sm">
+                  <p className="text-danger text-sm">
                     مبلغ دریافتی نمی‌تواند بیشتر از {receivable.toLocaleString('fa-IR')} تومان باشد.
                   </p>
                 )}
@@ -409,7 +409,7 @@ export function ExchangeItemDialog({
                   </SelectContent>
                 </Select>
                 {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-                  <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+                  <p className="text-danger text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
                 )}
               </div>
             )}
@@ -430,7 +430,7 @@ export function ExchangeItemDialog({
                 {discount.lost > 0 && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm">تخفیفی که به کالای تعویضی نمی‌رسد:</span>
-                    <span className="text-sm font-medium text-red-600">-{discount.lost.toLocaleString('fa-IR')} تومان</span>
+                    <span className="text-sm font-medium text-danger">-{discount.lost.toLocaleString('fa-IR')} تومان</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">
@@ -445,7 +445,7 @@ export function ExchangeItemDialog({
                   </span>
                   <span
                     className={`text-lg font-bold ${
-                      priceDifference > 0 ? 'text-red-600' : 'text-green-600'
+                      priceDifference > 0 ? 'text-danger' : 'text-success'
                     }`}
                   >
                     {Math.abs(priceDifference).toLocaleString('fa-IR')} تومان
@@ -486,7 +486,7 @@ export function ExchangeItemDialog({
             )}
 
             {state.message && !state.success && (
-              <div className="text-sm p-2 rounded bg-red-100 text-red-700">
+              <div className="text-sm p-2 rounded bg-danger-soft text-danger">
                 {state.message}
               </div>
             )}

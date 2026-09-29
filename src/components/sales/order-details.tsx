@@ -190,7 +190,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
             {orderStatusLabel(order.status)}
           </Badge>
           {order.isConsignmentSale && (
-            <Badge variant="outline" className="mr-2 border-amber-500 text-amber-700">
+            <Badge variant="outline" className="mr-2 border-transparent bg-warning-soft text-warning">
               فروش امانی
             </Badge>
           )}
@@ -248,7 +248,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                         <Badge variant="secondary" className="ml-2">تعویض شده</Badge>
                       )}
                       {item.isExchangeDerived && (
-                        <Badge variant="outline" className="ml-2 border-blue-500 text-blue-700">حاصل تعویض</Badge>
+                        <Badge variant="outline" className="ml-2 border-transparent bg-brand-soft text-brand">حاصل تعویض</Badge>
                       )}
                       {(item.remainingQuantity !== undefined && item.remainingQuantity < item.quantity) && (
                         <Badge variant="outline" className="ml-2">
@@ -300,7 +300,7 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                   <span>{totals.gross.toLocaleString('fa-IR')} تومان</span>
                 </div>
                 {totals.discount > 0 && (
-                  <div className="flex justify-between items-center text-red-600">
+                  <div className="flex justify-between items-center text-danger">
                     <span>تخفیف</span>
                     <span>-{totals.discount.toLocaleString('fa-IR')} تومان</span>
                   </div>
@@ -314,12 +314,12 @@ export function OrderDetails({ order, accounts, warehouses, returns = [], exchan
                   <span>{totals.paid.toLocaleString('fa-IR')} تومان</span>
                 </div>
                 {totals.credit > 0 ? (
-                  <div className="flex justify-between items-center font-medium text-green-600">
+                  <div className="flex justify-between items-center font-medium text-success">
                     <span>بستانکار</span>
                     <span>{totals.credit.toLocaleString('fa-IR')} تومان</span>
                   </div>
                 ) : (
-                  <div className={`flex justify-between items-center font-medium ${totals.remaining > 0 ? 'text-red-600' : ''}`}>
+                  <div className={`flex justify-between items-center font-medium ${totals.remaining > 0 ? 'text-danger' : ''}`}>
                     <span>باقی‌مانده</span>
                     <span>{totals.remaining.toLocaleString('fa-IR')} تومان</span>
                   </div>

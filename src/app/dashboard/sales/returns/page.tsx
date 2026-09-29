@@ -54,7 +54,7 @@ export default async function ReturnsHistoryPage() {
                       <TableRow key={ret.id}>
                         <TableCell>{formatJalaliDateTime(ret.createdAt)}</TableCell>
                         <TableCell>
-                          <Link href={`/dashboard/sales/history/${ret.orderId}`} className="text-blue-600 hover:underline">
+                          <Link href={`/dashboard/sales/history/${ret.orderId}`} className="text-brand hover:underline">
                             #{ret.orderNumber}
                           </Link>
                         </TableCell>
@@ -101,7 +101,7 @@ export default async function ReturnsHistoryPage() {
                       <TableRow key={ex.id}>
                         <TableCell>{formatJalaliDateTime(ex.createdAt)}</TableCell>
                         <TableCell>
-                          <Link href={`/dashboard/sales/history/${ex.orderId}`} className="text-blue-600 hover:underline">
+                          <Link href={`/dashboard/sales/history/${ex.orderId}`} className="text-brand hover:underline">
                             #{ex.orderNumber}
                           </Link>
                         </TableCell>
@@ -111,10 +111,10 @@ export default async function ReturnsHistoryPage() {
                         <TableCell>{ex.quantity}</TableCell>
                         <TableCell>
                           {ex.priceDifference > 0 && (
-                            <span className="text-green-600">+{ex.priceDifference.toLocaleString('fa-IR')}</span>
+                            <span className="text-success">+{ex.priceDifference.toLocaleString('fa-IR')}</span>
                           )}
                           {ex.priceDifference < 0 && (
-                            <span className="text-red-600">{ex.priceDifference.toLocaleString('fa-IR')}</span>
+                            <span className="text-danger">{ex.priceDifference.toLocaleString('fa-IR')}</span>
                           )}
                           {ex.priceDifference === 0 && '—'}
                         </TableCell>

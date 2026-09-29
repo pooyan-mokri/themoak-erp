@@ -60,50 +60,53 @@ export function SalesReport({ data }: SalesReportProps) {
             در این بازه فروشی ثبت نشده است. بازهٔ دیگری را انتخاب کنید.
           </p>
         ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={trend} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-              <CartesianGrid stroke="#E3E3E3" vertical={false} />
-              <XAxis
-                dataKey="at"
-                tickFormatter={(at: number) => jalaliShort(at)}
-                tick={{ fontSize: 11, fill: '#6B7280' }}
-                axisLine={false}
-                tickLine={false}
-                reversed
-                minTickGap={20}
-              />
-              <YAxis
-                orientation="right"
-                tickFormatter={axisMoney}
-                tick={{ fontSize: 11, fill: '#6B7280' }}
-                axisLine={false}
-                tickLine={false}
-                width={64}
-              />
-              <Tooltip
-                labelFormatter={(at) =>
-                  weekly
-                    ? `هفتهٔ ${jalaliShort(Number(at))} تا ${jalaliShort(Number(at) + 6 * DAY)}`
-                    : jalaliFull(Number(at))
-                }
-                formatter={(value, _name, item) => [
-                  `${fa(Number(value))} تومان · ${fa((item?.payload as { orders?: number })?.orders ?? 0)} سفارش`,
-                  'فروش',
-                ]}
-                contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit' }}
-              />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke={INDIGO}
-                strokeWidth={1.75}
-                fill={INDIGO}
-                fillOpacity={0.08}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div dir="ltr">
+            {/* Laid out left to right, so SVG axis labels anchor on the right side (the page is RTL); axes are reversed where time runs right to left. */}
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={trend} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                <CartesianGrid stroke="#E3E3E3" vertical={false} />
+                <XAxis
+                  dataKey="at"
+                  tickFormatter={(at: number) => jalaliShort(at)}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  axisLine={false}
+                  tickLine={false}
+                  reversed
+                  minTickGap={20}
+                />
+                <YAxis
+                  orientation="right"
+                  tickFormatter={axisMoney}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={64}
+                />
+                <Tooltip
+                  labelFormatter={(at) =>
+                    weekly
+                      ? `هفتهٔ ${jalaliShort(Number(at))} تا ${jalaliShort(Number(at) + 6 * DAY)}`
+                      : jalaliFull(Number(at))
+                  }
+                  formatter={(value, _name, item) => [
+                    `${fa(Number(value))} تومان · ${fa((item?.payload as { orders?: number })?.orders ?? 0)} سفارش`,
+                    'فروش',
+                  ]}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke={INDIGO}
+                  strokeWidth={1.75}
+                  fill={INDIGO}
+                  fillOpacity={0.08}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </SectionCard>
 

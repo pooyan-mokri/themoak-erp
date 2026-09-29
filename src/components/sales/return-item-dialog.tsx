@@ -162,7 +162,7 @@ export function ReturnItemDialog({
                 required
               />
               {(state.errors as Record<string, string[] | undefined> | undefined)?.quantity && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
+                <p className="text-danger text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.quantity?.[0]}</p>
               )}
             </div>
 
@@ -181,7 +181,7 @@ export function ReturnItemDialog({
                 </SelectContent>
               </Select>
               {(state.errors as Record<string, string[] | undefined> | undefined)?.warehouseId && (
-                <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.warehouseId?.[0]}</p>
+                <p className="text-danger text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.warehouseId?.[0]}</p>
               )}
             </div>
 
@@ -202,7 +202,7 @@ export function ReturnItemDialog({
                   </SelectContent>
                 </Select>
                 {(state.errors as Record<string, string[] | undefined> | undefined)?.accountId && (
-                  <p className="text-red-500 text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
+                  <p className="text-danger text-sm">{(state.errors as Record<string, string[] | undefined> | undefined)?.accountId?.[0]}</p>
                 )}
               </div>
             )}
@@ -231,12 +231,12 @@ export function ReturnItemDialog({
                   {share > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm">سهم این کالا از تخفیف سفارش:</span>
-                      <span className="text-sm font-medium text-red-600">-{share.toLocaleString('fa-IR')} تومان</span>
+                      <span className="text-sm font-medium text-danger">-{share.toLocaleString('fa-IR')} تومان</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center border-t pt-2">
                     <span className="text-sm font-medium">پرداخت نقدی به مشتری:</span>
-                    <span className="text-lg font-bold text-green-600">
+                    <span className="text-lg font-bold text-success">
                       {cashRefund.toLocaleString('fa-IR')} تومان
                     </span>
                   </div>
@@ -250,7 +250,7 @@ export function ReturnItemDialog({
             </div>
 
             {state.message && !state.success && (
-              <div className="text-sm p-2 rounded bg-red-100 text-red-700">
+              <div className="text-sm p-2 rounded bg-danger-soft text-danger">
                 {state.message}
               </div>
             )}

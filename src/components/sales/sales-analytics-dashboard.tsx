@@ -158,52 +158,55 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
         {salesOverTime.length === 0 ? (
           <p className="py-10 text-center text-[13px] text-muted-foreground">در ۹۰ روز گذشته سفارش تکمیل‌شده‌ای ثبت نشده است.</p>
         ) : (
-          <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={combinedSalesData} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-              <CartesianGrid stroke="#E3E3E3" vertical={false} />
-              <XAxis
-                dataKey="dateFormatted"
-                tick={{ fontSize: 11, fill: '#6B7280' }}
-                axisLine={false}
-                tickLine={false}
-                reversed
-                minTickGap={24}
-              />
-              <YAxis
-                orientation="right"
-                tickFormatter={axisMoney}
-                tick={{ fontSize: 11, fill: '#6B7280' }}
-                axisLine={false}
-                tickLine={false}
-                width={64}
-              />
-              <Tooltip
-                formatter={(value, name) => [`${fa(Number(value))} تومان`, name === 'forecast' ? 'پیش‌بینی' : 'فروش']}
-                contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit' }}
-              />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                name="revenue"
-                stroke={INDIGO}
-                strokeWidth={1.75}
-                fill={INDIGO}
-                fillOpacity={0.08}
-                dot={false}
-                isAnimationActive={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="forecast"
-                name="forecast"
-                stroke={INDIGO_LIGHT}
-                strokeWidth={1.75}
-                strokeDasharray="4 3"
-                dot={false}
-                isAnimationActive={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <div dir="ltr">
+            {/* Laid out left to right, so SVG axis labels anchor on the right side (the page is RTL); axes are reversed where time runs right to left. */}
+            <ResponsiveContainer width="100%" height={320}>
+              <ComposedChart data={combinedSalesData} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                <CartesianGrid stroke="#E3E3E3" vertical={false} />
+                <XAxis
+                  dataKey="dateFormatted"
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  axisLine={false}
+                  tickLine={false}
+                  reversed
+                  minTickGap={24}
+                />
+                <YAxis
+                  orientation="right"
+                  tickFormatter={axisMoney}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={64}
+                />
+                <Tooltip
+                  formatter={(value, name) => [`${fa(Number(value))} تومان`, name === 'forecast' ? 'پیش‌بینی' : 'فروش']}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  name="revenue"
+                  stroke={INDIGO}
+                  strokeWidth={1.75}
+                  fill={INDIGO}
+                  fillOpacity={0.08}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="forecast"
+                  name="forecast"
+                  stroke={INDIGO_LIGHT}
+                  strokeWidth={1.75}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
         )}
         <p className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3 text-[12.5px] text-muted-foreground">
           <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11.5px] text-brand">پیش‌بینی ۷ روز آینده</span>
@@ -269,30 +272,33 @@ export function SalesAnalyticsDashboard({ data }: SalesAnalyticsDashboardProps) 
             <p className="text-[13px] text-muted-foreground">در این دوره فروشی ثبت نشده است.</p>
           ) : (
             <>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={categoryDistribution}
-                    dataKey="revenue"
-                    nameKey="type"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={56}
-                    outerRadius={84}
-                    stroke="#FFFFFF"
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  >
-                    {categoryDistribution.map((entry, index) => (
-                      <Cell key={entry.type} fill={SERIES[index % SERIES.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, name) => [`${fa(Number(value))} تومان`, getCategoryLabel(String(name))]}
-                    contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              <div dir="ltr">
+                {/* Laid out left to right, so SVG axis labels anchor on the right side (the page is RTL); axes are reversed where time runs right to left. */}
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={categoryDistribution}
+                      dataKey="revenue"
+                      nameKey="type"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={56}
+                      outerRadius={84}
+                      stroke="#FFFFFF"
+                      strokeWidth={2}
+                      isAnimationActive={false}
+                    >
+                      {categoryDistribution.map((entry, index) => (
+                        <Cell key={entry.type} fill={SERIES[index % SERIES.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [`${fa(Number(value))} تومان`, getCategoryLabel(String(name))]}
+                      contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12, fontFamily: 'inherit', direction: 'rtl' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
               <div className="mt-2 divide-y">
                 {categoryDistribution.map((entry, index) => (
                   <div key={entry.type} className="flex items-center gap-2.5 py-2 text-[12.5px]">

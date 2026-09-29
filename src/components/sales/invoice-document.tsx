@@ -14,9 +14,9 @@ import type { InvoiceData } from '@/lib/invoice-data';
 const toman = (amount: number) => Math.round(amount).toLocaleString('fa-IR');
 
 const NOTE_CLASS: Record<InvoiceLine['kind'], string> = {
-  SOLD: 'text-blue-600',
-  RETURNED: 'text-red-600',
-  EXCHANGED: 'text-blue-600',
+  SOLD: 'text-brand',
+  RETURNED: 'text-danger',
+  EXCHANGED: 'text-brand',
 };
 
 /** The lines and, in its footer, the money rows. */
@@ -57,7 +57,7 @@ export function InvoiceTable({ bill }: { bill: InvoiceBill }) {
       <tfoot>
         {bill.rows.map((row) => {
           const pad = row.key === 'net' ? 'py-4' : 'py-2';
-          const tone = row.deduction ? ' text-red-600' : row.key === 'credit' ? ' text-green-700' : '';
+          const tone = row.deduction ? ' text-danger' : row.key === 'credit' ? ' text-success' : '';
           return (
           <tr
             key={row.key}
@@ -144,19 +144,19 @@ export function InvoiceDocument({
 
         {/* Bank account info for credit sales */}
         {account && (account.cardNumber || account.sheba) && (
-          <div className="mb-6 p-4 border border-blue-200 rounded-lg bg-blue-50 print:bg-blue-50">
-            <h4 className="font-bold text-sm text-blue-800 mb-2">اطلاعات واریز (فروش نسیه)</h4>
+          <div className="mb-6 p-4 border rounded-lg bg-secondary print:bg-secondary">
+            <h4 className="font-bold text-sm text-foreground mb-2">اطلاعات واریز (فروش نسیه)</h4>
             <div className="space-y-1 text-sm" dir="ltr">
               {account.cardNumber && (
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 text-xs">شماره کارت:</span>
-                  <span className="font-mono tracking-widest text-blue-900 font-bold">{account.cardNumber}</span>
+                  <span className="font-mono tracking-widest text-foreground font-bold">{account.cardNumber}</span>
                 </div>
               )}
               {account.sheba && (
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 text-xs">شبا:</span>
-                  <span className="font-mono text-[12px] text-blue-900">{account.sheba}</span>
+                  <span className="font-mono text-[12px] text-foreground">{account.sheba}</span>
                 </div>
               )}
               <div className="text-xs text-gray-500 mt-1">به نام: {account.name}</div>
