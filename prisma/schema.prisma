@@ -1,6 +1,9 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "darwin", "darwin-arm64"]
+  // native: the machine that runs `prisma generate` (Vercel's, Liara's builder). debian-openssl-3.0.x: Liara's
+  // runtime image too, in case it is not the builder's (Debian/Ubuntu with OpenSSL 3, as Node 22's images are;
+  // docs/deploy-liara.md says how to check after the first deploy).
+  binaryTargets = ["native", "darwin", "darwin-arm64", "debian-openssl-3.0.x"]
 }
 
 datasource db {
