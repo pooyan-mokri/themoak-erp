@@ -148,13 +148,13 @@ test('the accounting reports page shows every asset and liability line, and they
   await prisma.order.create({ data: { customerId: partner.id, totalAmount: 1_000_000, paidAmount: 0, paymentStatus: 'UNPAID' } });
 
   const sheet = await getReportingBalanceSheet();
-  const lines = [sheet.assets.cashAndBank, sheet.assets.inventory, sheet.assets.consignmentInventory, sheet.assets.accountsReceivable, sheet.assets.prepaidPurchases];
-  assert.deepEqual(lines, [10_000_000, 1_200_000, 800_000, 1_000_000, 0]);
+  const lines = [sheet.assets.cashAndBank, sheet.assets.inventory, sheet.assets.consignmentInventory, sheet.assets.accountsReceivable, sheet.assets.prepaidPurchases, sheet.assets.rentDeposits];
+  assert.deepEqual(lines, [10_000_000, 1_200_000, 800_000, 1_000_000, 0, 0]);
   assert.equal(lines.reduce((sum, v) => sum + v, 0), sheet.assets.total);
   const html = renderToStaticMarkup(await AccountingReportsPage());
   for (const [label, value] of [
     ['نقد و بانک', sheet.assets.cashAndBank], ['ارزش موجودی کالا', sheet.assets.inventory], ['کالای امانی نزد همکاران', sheet.assets.consignmentInventory],
-    ['حساب‌های دریافتنی', sheet.assets.accountsReceivable], ['پیش‌پرداخت خرید', sheet.assets.prepaidPurchases], ['جمع دارایی‌ها', sheet.assets.total],
+    ['حساب‌های دریافتنی', sheet.assets.accountsReceivable], ['پیش‌پرداخت خرید', sheet.assets.prepaidPurchases], ['ودیعه‌ها', sheet.assets.rentDeposits], ['جمع دارایی‌ها', sheet.assets.total],
     ['بدهی به تأمین‌کنندگان', sheet.liabilities.accountsPayable], ['جمع بدهی‌ها', sheet.liabilities.total],
   ] as Array<[string, number]>) {
     assert.match(html, new RegExp(`${label}:</span><span[^>]*>${value.toLocaleString('fa-IR')}</span>`), label);

@@ -3,6 +3,8 @@
  * list them, and the form pages use them to find the recent entries each form made.
  */
 
+import { RENT_DEPOSIT_CATEGORY, RENT_DEPOSIT_RETURN_CATEGORY } from '@/lib/profit-rows';
+
 /** Stored as the English value; shown with the Persian label. */
 export const EXPENSE_CATEGORIES = [
   { value: 'Rent', label: 'اجاره' },
@@ -12,6 +14,8 @@ export const EXPENSE_CATEGORIES = [
   { value: 'Transport', label: 'حمل و نقل' },
   // A fixed asset bought is an asset, not an expense (src/lib/profit-rows.ts).
   { value: 'خرید تجهیزات', label: 'خرید تجهیزات (دارایی ثابت)' },
+  // A rent deposit is an asset that comes back, not an expense (src/lib/profit-rows.ts).
+  { value: RENT_DEPOSIT_CATEGORY, label: 'ودیعه اجاره (دارایی)' },
   { value: 'Other', label: 'سایر' },
 ];
 
@@ -22,6 +26,8 @@ export const DEPOSIT_CATEGORIES = [
   'دریافت از مشتری',
   'سرمایه‌گذاری',
   'وام دریافتی',
+  // A rent deposit coming back: not revenue (src/lib/profit-rows.ts).
+  RENT_DEPOSIT_RETURN_CATEGORY,
   'سایر',
 ];
 
@@ -32,6 +38,7 @@ export const PAYMENT_CATEGORIES = [
   'پرداخت اجاره',
   'پرداخت قبض',
   'خرید تجهیزات',
+  RENT_DEPOSIT_CATEGORY,
   'هزینه حمل‌ونقل',
   'پرداخت به تامین‌کننده',
   'پرداخت به پیمانکار',

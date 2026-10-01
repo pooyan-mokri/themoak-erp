@@ -58,6 +58,17 @@ export const CAPITALISED_CATEGORIES: readonly string[] = [
   FIXED_ASSET_PURCHASE_CATEGORY,
 ];
 
+/**
+ * A rent deposit («ودیعه اجاره») paid to a landlord is an asset, not an
+ * expense: it comes back when the lease ends. A deposit that comes back is an
+ * INCOME row «بازگشت ودیعه», which is not revenue either. The balance sheet's
+ * «ودیعه‌ها» is the deposits paid less the deposits returned
+ * (rentDepositsHeld in src/lib/money-totals.ts). The expense and payment
+ * forms offer the first, the deposit form the second.
+ */
+export const RENT_DEPOSIT_CATEGORY = 'ودیعه اجاره';
+export const RENT_DEPOSIT_RETURN_CATEGORY = 'بازگشت ودیعه';
+
 /** Cost of goods sold, at product cost: consignment sales and POS sales book it. */
 export const COGS_CATEGORY = 'COGS';
 
@@ -98,6 +109,11 @@ export function isCapitalised(row: ProfitRow): boolean {
   return CAPITALISED_CATEGORIES.includes(row.category ?? '');
 }
 
+/** True for a rent deposit paid or returned (see above). */
+export function isRentDeposit(row: ProfitRow): boolean {
+  return row.category === RENT_DEPOSIT_CATEGORY || row.category === RENT_DEPOSIT_RETURN_CATEGORY;
+}
+
 /**
  * Where a row goes in profit and loss: revenue, cost of goods sold or an
  * operating expense; null for a row that is none of them.
@@ -105,7 +121,7 @@ export function isCapitalised(row: ProfitRow): boolean {
  */
 export function profitLine(row: ProfitRow): 'revenue' | 'cogs' | 'expense' | null {
   if (row.type !== 'INCOME' && row.type !== 'EXPENSE') return null;
-  if (isNonOperating(row) || isCapitalised(row)) return null;
+  if (isNonOperating(row) || isCapitalised(row) || isRentDeposit(row)) return null;
   if (row.type === 'INCOME') return 'revenue';
   return row.category === COGS_CATEGORY ? 'cogs' : 'expense';
 }

@@ -1,6 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { isClosedShort, landedCostPerUnit, receivedValueInToman } from '@/lib/landed-cost';
 import { orderTotals } from '@/lib/order-balance';
+import { RENT_DEPOSIT_CATEGORY, RENT_DEPOSIT_RETURN_CATEGORY, profitAmount } from '@/lib/profit-rows';
 
 /**
  * Totals of account balances across currencies, for the dashboard's «موجودی کل»
@@ -88,6 +89,29 @@ export const RECEIVABLE_ORDERS = { customerId: { not: null }, status: { not: 'CA
 export async function customerReceivables(client: any): Promise<number> {
   const orders = await client.order.findMany({ where: RECEIVABLE_ORDERS, select: ORDER_BALANCE_FIELDS });
   return orders.reduce((sum: number, order: any) => sum + orderTotals(order).remaining, 0);
+}
+
+/**
+ * The rent deposits the company holds with landlords, the balance sheet's
+ * «ودیعه‌ها», in Toman: the deposits paid (EXPENSE rows «ودیعه اجاره») less
+ * the deposits returned (INCOME rows «بازگشت ودیعه»), src/lib/profit-rows.ts.
+ */
+export async function rentDepositsHeld(client: any): Promise<number> {
+  const rows = await client.transaction.findMany({
+    where: {
+      OR: [
+        { type: 'EXPENSE', category: RENT_DEPOSIT_CATEGORY },
+        { type: 'INCOME', category: RENT_DEPOSIT_RETURN_CATEGORY },
+      ],
+    },
+    select: { type: true, category: true, amount: true, amountInToman: true, currency: true },
+  });
+  let held = new Decimal(0);
+  for (const row of rows) {
+    const toman = new Decimal(profitAmount(row));
+    held = row.type === 'EXPENSE' ? held.plus(toman) : held.minus(toman);
+  }
+  return Number(held);
 }
 
 /** The latest recorded rate of each currency (`client` is a Prisma client or transaction). */

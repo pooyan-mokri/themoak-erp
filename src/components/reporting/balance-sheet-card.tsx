@@ -9,6 +9,7 @@ interface BalanceSheetCardProps {
       consignmentInventory?: number;
       accountsReceivable: number;
       prepaidPurchases?: number;
+      rentDeposits?: number;
       total: number;
     };
     liabilities: {
@@ -51,6 +52,10 @@ export function BalanceSheetCard({ data }: BalanceSheetCardProps) {
               <div className="flex justify-between border-b pb-1">
                 <span>پیش‌پرداخت خرید:</span>
                 <span>{(data.assets.prepaidPurchases ?? 0).toLocaleString('fa-IR')}</span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
+                <span>ودیعه‌ها:</span>
+                <span>{(data.assets.rentDeposits ?? 0).toLocaleString('fa-IR')}</span>
               </div>
               <div className="flex justify-between font-bold pt-1">
                 <span>جمع دارایی‌ها:</span>
