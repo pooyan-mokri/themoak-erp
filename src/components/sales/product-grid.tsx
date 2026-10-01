@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ScanBarcode } from 'lucide-react';
+import { ProductPhoto } from '@/components/inventory/product-photo';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { buildScanIndex, resolveScan } from '@/lib/audit-scan';
@@ -217,13 +218,14 @@ function ProductCard({
       )}
     >
       <div className="relative aspect-[4/3] w-full bg-secondary">
-        {photo ? (
-          // The website's photo is portrait with the frame just below the middle.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt={product.name} loading="lazy" className="h-full w-full object-cover object-[50%_59%]" />
-        ) : (
-          <span className="absolute inset-0 grid place-items-center text-[11.5px] text-muted-foreground">بدون تصویر</span>
-        )}
+        {/* The website's photo is portrait with the frame just below the middle. */}
+        <ProductPhoto
+          src={photo}
+          alt={product.name}
+          loading="lazy"
+          className="h-full w-full object-cover object-[50%_59%]"
+          fallback={<span className="absolute inset-0 grid place-items-center text-[11.5px] text-muted-foreground">بدون تصویر</span>}
+        />
         {inCart > 0 && (
           <span className="absolute start-2 top-2 rounded-full bg-brand px-2 py-0.5 text-[11px] tabular-nums text-white">
             {fa(inCart)} در سبد

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Edit, ExternalLink, Image as ImageIcon, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,7 @@ import { formatJalaliDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 import { ProductForm } from './product-form';
 import { STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
-import { isLocalProductImage } from '@/lib/product-image';
+import { ProductPhoto } from '@/components/inventory/product-photo';
 
 interface ProductHeaderProps {
   product: {
@@ -68,29 +67,17 @@ export function ProductHeader({
       <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-start">
         {/* Product Image */}
         <div className="shrink-0">
-          {product.imageUrl ? (
-            // The website's photo: a plain <img>, so a change of image host on
-            // the site can never break this page the way next/image would.
-            <div className="relative h-24 w-24 overflow-hidden rounded-md border bg-secondary">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover object-[50%_60%]" />
-            </div>
-          ) : product.image ? (
-            <div className="relative h-24 w-24 overflow-hidden rounded-md border bg-secondary">
-              {isLocalProductImage(product.image) ? (
-                // A plain <img> for a photo on this ERP: it carries the session, which next/image's fetch would not
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
-              ) : (
-                // Use Next.js Image for external URLs
-                <Image src={product.image} alt={product.name} fill className="object-cover" />
-              )}
-            </div>
-          ) : (
-            <div className="grid h-24 w-24 place-items-center rounded-md border bg-secondary text-muted-foreground">
-              <ImageIcon className="h-8 w-8" strokeWidth={1.5} />
-            </div>
-          )}
+          {/* The website's photo first, else the one uploaded here; a placeholder when neither loads. */}
+          <ProductPhoto
+            src={product.imageUrl || product.image}
+            alt={product.name}
+            className="h-24 w-24 rounded-md border bg-secondary object-cover object-[50%_60%]"
+            fallback={
+              <div className="grid h-24 w-24 place-items-center rounded-md border bg-secondary text-muted-foreground">
+                <ImageIcon className="h-8 w-8" strokeWidth={1.5} />
+              </div>
+            }
+          />
         </div>
 
         {/* Product Info */}

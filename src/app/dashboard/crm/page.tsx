@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { DEAL_STAGES, PILL, dealStage, fa, leadStatus } from '@/components/crm/crm-labels';
 import { getCurrentRole, hasPermission, requireRouteAccess } from '@/lib/access';
 import { cn } from '@/lib/utils';
+import { activityLabel } from '@/lib/activity-labels';
 
 /**
  * CRM overview: customers, VIPs and what they bought (net of cancelled orders and
@@ -200,7 +201,7 @@ export default async function CRMDashboardPage() {
               <li key={activity.id} className="flex items-start gap-3 py-2.5">
                 <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium">{activity.action}</p>
+                  <p className="text-[13px] font-medium">{activityLabel(activity.action)}</p>
                   <p className="text-[12px] text-muted-foreground">{activity.details}</p>
                   {activity.user && <p className="text-[11.5px] text-muted-foreground">توسط {activity.user.name}</p>}
                 </div>

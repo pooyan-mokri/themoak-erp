@@ -19,8 +19,3 @@ export function productImageName(url: string): string | null {
   const name = url.slice(PRODUCT_IMAGE_ROUTE.length);
   return isProductImageName(name) ? name : null;
 }
-
-/** A photo on this ERP (shown with a plain <img>, which carries the session), not on another site. */
-export function isLocalProductImage(url: string): boolean {
-  return url.startsWith('/uploads/') || url.startsWith(PRODUCT_IMAGE_ROUTE);
-}

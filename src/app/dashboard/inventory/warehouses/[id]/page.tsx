@@ -36,9 +36,9 @@ export default async function WarehouseDetailPage({
 
     return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      {/* Header: stacked on a phone, so a long name and the actions never push past the screen */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-3 mb-2">
             <Link href="/dashboard/inventory/warehouses">
               <Button variant="ghost" size="sm">
@@ -47,8 +47,8 @@ export default async function WarehouseDetailPage({
               </Button>
             </Link>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">{warehouse.name}</h1>
-          <div className="flex items-center gap-2 mt-2">
+          <h1 className="text-3xl font-bold tracking-tight break-words">{warehouse.name}</h1>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             {warehouse.isVirtual ? (
               <Badge variant="secondary" className="text-sm">
                 <WarehouseIcon className="h-3 w-3 ml-1" />
@@ -67,7 +67,7 @@ export default async function WarehouseDetailPage({
             )}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-start gap-3 sm:items-end">
           <WarehouseArchiveActions
             warehouseId={warehouse.id}
             isArchived={(warehouse as any).isArchived ?? false}

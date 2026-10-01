@@ -3,11 +3,10 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Upload, X, Loader2 } from 'lucide-react';
-import Image from 'next/image';
+import { Image as ImageIcon, Upload, X, Loader2 } from 'lucide-react';
 import { uploadProductImage, deleteProductImage } from '@/actions/upload';
 import { toast } from 'sonner';
-import { isLocalProductImage } from '@/lib/product-image';
+import { ProductPhoto } from '@/components/inventory/product-photo';
 
 interface ProductImageUploadProps {
   onUploadComplete: (url: string) => void;
@@ -80,22 +79,12 @@ export function ProductImageUpload({ onUploadComplete, onRemove, currentUrl }: P
           </Button>
           
           <div className="h-24 w-24 relative rounded overflow-hidden border bg-background flex items-center justify-center">
-            {isLocalProductImage(currentUrl) ? (
-              // A plain <img> for a photo on this ERP: it carries the session, which next/image's fetch would not
-              <img
-                src={currentUrl}
-                alt="Product"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              // Use Next.js Image for external URLs
-              <Image 
-                src={currentUrl} 
-                alt="Product" 
-                fill 
-                className="object-cover"
-              />
-            )}
+            <ProductPhoto
+              src={currentUrl}
+              alt="عکس کالا"
+              className="w-full h-full object-cover"
+              fallback={<ImageIcon className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />}
+            />
           </div>
           
           <div className="flex-1 min-w-0">

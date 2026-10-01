@@ -33,7 +33,7 @@ export function WarehouseArchiveActions({ warehouseId, isArchived, totalStock, i
 
   if (isArchived) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-100">
           <Archive className="h-3 w-3 ml-1" />
           آرشیو شده

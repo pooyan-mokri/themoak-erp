@@ -305,7 +305,7 @@ export function ConsignmentReport({ reportData }: ConsignmentReportProps) {
                         {partner.orders.map((order, orderIndex) => (
                           <TableRow key={order.id} className="animate-fade-in-up" style={{ animationDelay: `${0.05 * orderIndex}s` }}>
                             <TableCell className="font-medium">
-                              <Link href={`/dashboard/sales/orders/${order.id}`} className="hover:underline text-blue-600">
+                              <Link href={`/dashboard/sales/history/${order.id}`} className="hover:underline text-blue-600">
                                 #{formatNumber(order.number)}
                               </Link>
                             </TableCell>

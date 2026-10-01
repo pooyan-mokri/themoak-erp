@@ -23,7 +23,6 @@ import { deleteProductImage, deleteReceipt, uploadProductImage, uploadReceipt } 
 import { attachReceipt, removeReceipt } from '@/actions/receipts';
 import { GET } from '@/app/api/receipts/route';
 import { GET as serveProductImage } from '@/app/api/product-images/[name]/route';
-import { isLocalProductImage } from '@/lib/product-image';
 
 console.error = () => {};
 
@@ -423,14 +422,14 @@ test('a product image is deleted only by stock managers; an image uploaded befor
   const legacy = `/uploads/products/${UUID}.jpeg`;
   mkdirSync(PRODUCTS, { recursive: true });
   writeFileSync(join(process.cwd(), 'public', legacy), JPEG);
-  assert.equal(isLocalProductImage(legacy), true);
-  assert.equal(isLocalProductImage(url), true);
-  assert.equal(isLocalProductImage('https://themoak.com/wp-content/x.png'), false);
   assert.deepEqual(await deleteProductImage(legacy), { success: true });
   assert.equal(existsSync(join(process.cwd(), 'public', legacy)), false);
   assert.deepEqual(await deleteProductImage(legacy), { success: false, error: 'حذف عکس انجام نشد.' });
 
+  // Every product photo is a plain <img> (src/components/inventory/product-photo.tsx), which carries the session.
   for (const file of ['src/components/inventory/product-header.tsx', 'src/components/inventory/product-image-upload.tsx']) {
-    assert.match(readFileSync(join(process.cwd(), file), 'utf8'), /isLocalProductImage\(/, file);
+    const source = readFileSync(join(process.cwd(), file), 'utf8');
+    assert.match(source, /<ProductPhoto\b/, file);
+    assert.doesNotMatch(source, /next\/image/, file);
   }
 });

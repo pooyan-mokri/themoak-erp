@@ -1,3 +1,4 @@
+import { activityLabel } from '@/lib/activity-labels';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { SectionCard } from './section-card';
 
@@ -23,7 +24,9 @@ export function RecentActivity({ activities }: { activities: ActivityItem[] }) {
             <div key={activity.id} className="flex items-start gap-3 py-2.5">
               <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${index === 0 ? 'bg-brand' : 'bg-muted-foreground/40'}`} />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium">{activity.userName}</p>
+                <p className="text-[13px] font-medium">
+                  {activityLabel(activity.action)} <span className="font-normal text-muted-foreground">· {activity.userName}</span>
+                </p>
                 <p className="text-[12.5px] text-muted-foreground">{activity.description}</p>
               </div>
               <span className="shrink-0 font-mono text-[11px] text-muted-foreground">

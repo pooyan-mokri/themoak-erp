@@ -1,6 +1,7 @@
 'use client';
 
 import { Minus, Plus, ShoppingCart, X } from 'lucide-react';
+import { ProductPhoto } from '@/components/inventory/product-photo';
 
 interface Product {
   id: string;
@@ -47,10 +48,7 @@ export function CartSummary({ cart, onRemove, onUpdateQuantity, stock = null }: 
         return (
           <div key={item.product.id} className="flex gap-2.5 px-4 py-2.5">
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-secondary">
-              {photo && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photo} alt="" className="h-full w-full object-cover object-[50%_60%]" />
-              )}
+              <ProductPhoto src={photo} alt="" className="h-full w-full object-cover object-[50%_60%]" fallback={null} />
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <div className="flex items-start gap-2">

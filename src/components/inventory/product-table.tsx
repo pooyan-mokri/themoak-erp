@@ -46,6 +46,7 @@ import { ProductForm } from './product-form';
 import { ProductActions as ExcelActions } from './product-actions';
 import { holdsStock } from '@/lib/stock-levels';
 import { LOW_STOCK_MAX, PRODUCT_TYPE_LABELS, STOCK_STATUS, productTypeLabel, stockStatus } from './stock-status';
+import { ProductPhoto } from '@/components/inventory/product-photo';
 
 interface Product {
   id: string;
@@ -418,12 +419,13 @@ export function ProductTable({ products, stock, canSeeCost, canSeeSellPrice, can
                       <div className="flex min-w-[200px] items-center gap-2.5">
                         {/* The website's front-of-frame photo first: many frames share a code
                             family and a colour, and the photo is what tells them apart. */}
-                        {photo ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={photo} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-md border bg-secondary object-cover object-[50%_60%]" />
-                        ) : (
-                          <div className="h-9 w-9 shrink-0 rounded-md border bg-secondary" />
-                        )}
+                        <ProductPhoto
+                          src={photo}
+                          alt=""
+                          loading="lazy"
+                          className="h-9 w-9 shrink-0 rounded-md border bg-secondary object-cover object-[50%_60%]"
+                          fallback={<div className="h-9 w-9 shrink-0 rounded-md border bg-secondary" />}
+                        />
                         <Link
                           href={`/dashboard/inventory/products/${product.id}`}
                           onClick={(e) => e.stopPropagation()}
