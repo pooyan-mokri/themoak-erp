@@ -435,6 +435,9 @@ test('a malformed body is 422 with a reason, null optional fields are fine, and 
   const cases: Array<[string, Record<string, unknown>]> = [
     ['no reference', saleBody({ reference: null })],
     ['bad date', saleBody({ issuedAt: 'yesterday' })],
+    // A Jalali date sent as Gregorian lands in 1404 AD (src/lib/entry-date.ts), as 16 WooCommerce orders once did.
+    ['Jalali year as Gregorian', saleBody({ issuedAt: '1405-06-19T18:42:11.000Z' })],
+    ['payment in a Jalali year', saleBody({ payment: { paidAt: '1405-06-19T18:41:55.000Z' } })],
     ['dollars', saleBody({ currency: 'usd' })],
     ['no items', saleBody({ items: [] })],
     ['zero quantity', saleBody({ items: [{ webId: 'MOAK-PANJ-BLUE', quantity: 0, unitPrice: 1 }] })],

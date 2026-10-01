@@ -17,6 +17,7 @@ async function alreadyBooked(client: any, requestId: string | null): Promise<boo
   return !!requestId && !!(await client.transaction.findUnique({ where: { clientRequestId: requestId }, select: { id: true } }));
 }
 import { auth } from '@/auth';
+import { readEntryDate } from '@/lib/entry-date';
 
 // --- Schemas ---
 
@@ -199,7 +200,9 @@ export async function recordPayrollPayment(prevState: ActionState, formData: For
     const { amount: amountInAccountCurrency, rate } =
       await inAccountCurrency(prisma, account, amountInToman);
 
-    const transactionDate = date ? new Date(date) : new Date();
+    const when = readEntryDate(date, 'پرداخت');
+    if (!when.ok) return { message: when.error, success: false };
+    const transactionDate = when.date;
 
     // Create payment and update payroll
     const outcome = await prisma.$transaction(async (tx: any) => {

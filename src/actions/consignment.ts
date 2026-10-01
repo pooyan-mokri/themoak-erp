@@ -33,6 +33,7 @@ import {
   readChannels,
   type ChannelInput,
 } from '@/lib/consignment-channels';
+import { entryDateProblem, readEntryDate } from '@/lib/entry-date';
 
 // const prisma = new PrismaClient();
 
@@ -449,7 +450,8 @@ export async function recordConsignmentSales(input: {
   const requestId = readRequestId(input.requestId);
   // Normalise to start-of-day to make per-date matching deterministic
   const day = new Date(saleDate);
-  if (Number.isNaN(day.getTime())) return { message: 'تاریخ فروش نامعتبر است.' };
+  const dayProblem = entryDateProblem(day, 'فروش');
+  if (dayProblem) return { message: dayProblem };
   day.setHours(0, 0, 0, 0);
   const dayStart = new Date(day);
   const dayEnd = new Date(day);
@@ -945,7 +947,8 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
   }
 
   const { orderId, accountId, amount, paymentDate } = validatedFields.data;
-  if (paymentDate && Number.isNaN(new Date(paymentDate).getTime())) return { message: 'تاریخ پرداخت نامعتبر است.' };
+  const paidOn = readEntryDate(paymentDate, 'پرداخت');
+  if (!paidOn.ok) return { message: paidOn.error };
   const requestId = readRequestId(formData.get('requestId'));
   const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
   if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE };
@@ -1014,7 +1017,7 @@ export async function paySettlement(prevState: ActionState, formData: FormData):
           amount: new Prisma.Decimal(converted.amount),
           amountInToman: new Prisma.Decimal(payAmount),
           rateSnapshot: new Prisma.Decimal(converted.rate),
-          date: paymentDate ? new Date(paymentDate) : new Date(),
+          date: paidOn.date,
           description: `تسویه فروش امانی - سفارش #${order.number}${
             payAmount < remaining ? ' (پرداخت جزئی)' : ''
           }`,

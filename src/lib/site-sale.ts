@@ -29,6 +29,7 @@ import {
 import { syncInvoiceWithOrder } from '@/lib/sales-records';
 import { holdOpenAudits } from '@/lib/audit-stock-lock';
 import { bookSaleCogs, reverseCogs } from '@/lib/cogs';
+import { entryDateProblem } from '@/lib/entry-date';
 
 export type SiteSaleResult = { status: 200 | 422; body: Record<string, unknown> };
 
@@ -65,12 +66,19 @@ function money(value: unknown): number | null | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_AMOUNT ? value : undefined;
 }
 
-/** A date; null when absent; undefined when malformed. */
+/**
+ * A date; null when absent; undefined when malformed or impossible (before
+ * 1 Farvardin 1404 or over a year ahead, src/lib/entry-date.ts: a Jalali date
+ * sent as Gregorian lands in 1404 AD).
+ */
 function when(value: unknown): Date | null | undefined {
   if (value === null || value === undefined) return null;
   const date = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(NaN);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  return entryDateProblem(date, '') ? undefined : date;
 }
+
+/** What a date field must be, for the refusals. */
+const DATE_RULE = 'تاریخ میلادی معتبر (ISO-8601) از ۲۰۲۵-۰۳-۲۱ (۱ فروردین ۱۴۰۴) تا یک سال بعد از امروز';
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -164,7 +172,7 @@ type SaleInput = {
 /** The sale, or the reason it is malformed. */
 function parseSale(body: Record<string, unknown>, reference: string): SaleInput | string {
   const issuedAt = when(body.issuedAt);
-  if (!issuedAt) return 'issuedAt باید تاریخ معتبر (ISO-8601) باشد.';
+  if (!issuedAt) return `issuedAt باید ${DATE_RULE} باشد.`;
   const currency = text(body.currency);
   if (currency && currency.toLowerCase() !== 'toman') return 'مبلغ‌ها باید به تومان باشند (currency: "toman").';
   const warehouseId = text(body.warehouseId);
@@ -209,7 +217,7 @@ function parseSale(body: Record<string, unknown>, reference: string): SaleInput 
   const paid = money(payment?.amount);
   const paidAt = when(payment?.paidAt);
   if (!payment || paid == null || paidAt === undefined) {
-    return `payment.amount الزامی است (${AMOUNT_RULE}) و payment.paidAt باید تاریخ معتبر باشد.`;
+    return `payment.amount الزامی است (${AMOUNT_RULE}) و payment.paidAt باید ${DATE_RULE} باشد.`;
   }
   const shipping = record(body.shipping);
   const freight = money(shipping?.freight);
@@ -624,7 +632,7 @@ export async function setSaleStatus(client: any, body: Record<string, unknown>):
   const amount = money(body.amount);
   const refundedTotal = money(body.refundedTotal);
   if (at === undefined || amount === undefined || refundedTotal === undefined) {
-    return invalid(`at باید تاریخ معتبر باشد، و amount و refundedTotal ${AMOUNT_RULE}.`);
+    return invalid(`at باید ${DATE_RULE} باشد، و amount و refundedTotal ${AMOUNT_RULE}.`);
   }
   if (body.restock != null && typeof body.restock !== 'boolean') return invalid('restock باید true یا false باشد.');
   if (status === 'refunded' && amount === null) return invalid('amount برای refunded الزامی است.');

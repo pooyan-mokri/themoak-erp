@@ -12,6 +12,7 @@ import { userMessage } from '@/lib/action-error';
 import { profitEntry } from '@/lib/profit-rows';
 import { tehranDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { readEntryDate } from '@/lib/entry-date';
 
 /** A submission already booked under this id (src/lib/request-id.ts). */
 async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
@@ -249,7 +250,9 @@ export async function withdrawShareholderProfit(prevState: ActionState, formData
     const { amount: amountInAccountCurrency, rate } =
       await inAccountCurrency(prisma, account, amountInToman);
 
-    const transactionDate = date ? new Date(date) : new Date();
+    const when = readEntryDate(date, 'برداشت');
+    if (!when.ok) return { message: when.error, success: false };
+    const transactionDate = when.date;
 
     // Create withdrawal and update profit
     const outcome = await prisma.$transaction(async (tx: any) => {

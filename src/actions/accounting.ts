@@ -14,6 +14,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { INVALID_RECEIPT_MESSAGE, readReceiptRef } from '@/lib/receipt-ref';
 import { JOURNAL_MAX_ROWS } from '@/lib/journal-export';
 import { profitAmount, profitLine } from '@/lib/profit-rows';
+import { readEntryDate } from '@/lib/entry-date';
 import { COGS_LABEL, cogsSourceLabel } from '@/lib/cogs';
 import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
 import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
@@ -423,6 +424,8 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
   }
 
   const { amount, currency, category, accountId, employeeId, description, date, projectId } = validatedFields.data;
+  const when = readEntryDate(date, 'هزینه');
+  if (!when.ok) return { message: when.error, success: false };
   const requestId = readRequestId(formData.get('requestId'));
   // An uploaded receipt or none, as recordDeposit takes it (src/lib/receipt-ref.ts).
   const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
@@ -472,7 +475,7 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
             employeeId: employeeId,
             category: category,
             description: description ? `${category} - ${description} (پرداخت شده توسط: ${employee.name})` : `${category} - پرداخت شده توسط: ${employee.name}`,
-            date: date ? new Date(date) : new Date(),
+            date: when.date,
             projectId: projectId || undefined,
             receiptUrl: receiptUrl || undefined,
             clientRequestId: requestId ?? undefined,
@@ -512,7 +515,7 @@ export async function recordExpense(prevState: ActionState, formData: FormData):
             accountId,
             category: category,
             description: description ? `${category} - ${description}` : category,
-            date: date ? new Date(date) : new Date(),
+            date: when.date,
             projectId: projectId || undefined,
             receiptUrl: receiptUrl || undefined,
             clientRequestId: requestId ?? undefined,
@@ -703,6 +706,8 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
     return { success: false, message: 'اطلاعات وارد شده معتبر نیست.' };
   }
   const { id, amount, currency, category, description, date, accountId } = parsed.data;
+  const when = date ? readEntryDate(date, 'هزینه') : null;
+  if (when && !when.ok) return { success: false, message: when.error };
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
@@ -775,7 +780,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
             amountInToman: new Prisma.Decimal(newAmountInToman),
             category,
             description: description || category,
-            date: date ? new Date(date) : existing.date,
+            date: when ? when.date : existing.date,
             accountId: targetAccountId,
           },
         });
@@ -790,7 +795,7 @@ export async function updateExpense(input: z.infer<typeof UpdateExpenseSchema>):
             amountInToman: new Prisma.Decimal(newAmountInToman),
             category,
             description: description || category,
-            date: date ? new Date(date) : existing.date,
+            date: when ? when.date : existing.date,
           },
         });
       }
@@ -1350,6 +1355,8 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
   }
 
   const { employeeId, amount, accountId, description, date } = validatedFields.data;
+  const when = readEntryDate(date, 'پرداخت');
+  if (!when.ok) return { message: when.error, success: false };
   const requestId = readRequestId(formData.get('requestId'));
 
   try {
@@ -1420,7 +1427,7 @@ export async function payEmployeeDebt(prevState: ActionState, formData: FormData
           employeeId,
           category: EMPLOYEE_DEBT_REPAYMENT_CATEGORY,
           description: description || `تسویه بدهی به ${employee.name}`,
-          date: date ? new Date(date) : new Date(),
+          date: when.date,
           clientRequestId: requestId ?? undefined,
         },
       });
@@ -1489,6 +1496,8 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
   }
 
   const { amount, currency, accountId, payee, description, category, tags, date } = validatedFields.data;
+  const when = readEntryDate(date, 'پرداخت');
+  if (!when.ok) return { message: when.error, success: false };
   const requestId = readRequestId(formData.get('requestId'));
   const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
   if (receiptUrl === null) return { message: INVALID_RECEIPT_MESSAGE, success: false };
@@ -1526,7 +1535,7 @@ export async function recordWithdrawal(prevState: ActionState, formData: FormDat
           category: category || 'برداشت/پرداخت',
           description: description || `پرداخت به: ${payee}`,
           tags: tagsArr,
-          date: date ? new Date(date) : new Date(),
+          date: when.date,
           receiptUrl: receiptUrl || undefined,
           clientRequestId: requestId ?? undefined,
         },
@@ -1591,6 +1600,8 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
   }
 
   const { amount, fromAccountId, toAccountId, description, tags, date } = validatedFields.data;
+  const when = readEntryDate(date, 'انتقال');
+  if (!when.ok) return { message: when.error, success: false };
 
   if (fromAccountId === toAccountId) {
     return { message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.', success: false };
@@ -1616,7 +1627,7 @@ export async function recordInternalTransfer(prevState: ActionState, formData: F
     }
 
     const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
-    const txDate = date ? new Date(date) : new Date();
+    const txDate = when.date;
     const desc = description || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
     // The two legs share one id, so they are listed, corrected and removed as one transfer.
     const transferGroupId = randomUUID();
@@ -1847,6 +1858,8 @@ export async function updateInternalTransfer(input: {
     return { success: false, message: first ?? 'اطلاعات وارد شده معتبر نیست.' };
   }
   const { id, amount, fromAccountId, toAccountId, description, date } = parsed.data;
+  const when = date ? readEntryDate(date, 'انتقال') : null;
+  if (when && !when.ok) return { success: false, message: when.error };
   if (fromAccountId === toAccountId) {
     return { success: false, message: 'حساب مبدأ و مقصد نمی‌توانند یکسان باشند.' };
   }
@@ -1870,7 +1883,7 @@ export async function updateInternalTransfer(input: {
 
       const desc = description?.trim() || `انتقال از ${fromAccount.name} به ${toAccount.name}`;
       const transferGroupId = existing.groupId ?? randomUUID();
-      const txDate = date ? new Date(date) : (existing.from ?? existing.to)!.date;
+      const txDate = when ? when.date : (existing.from ?? existing.to)!.date;
       let rate: number;
       try {
         rate = await tomanRateOf(tx, fromAccount.currency);
@@ -2019,6 +2032,8 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
   }
 
   const { amount, currency, accountId, description, category, tags, date } = validatedFields.data;
+  const when = readEntryDate(date, 'واریز');
+  if (!when.ok) return { message: when.error, success: false };
   const tagsArr = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
   const requestId = readRequestId(formData.get('requestId'));
   const receiptUrl = readReceiptRef(formData.get('receiptUrl'));
@@ -2060,7 +2075,7 @@ export async function recordDeposit(prevState: ActionState, formData: FormData):
           category: category || 'واریز',
           description,
           tags: tagsArr,
-          date: date ? new Date(date) : new Date(),
+          date: when.date,
           receiptUrl,
           clientRequestId: requestId ?? undefined,
         },

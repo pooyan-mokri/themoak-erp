@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { checkPermission, getCurrentRole, requirePermission } from '@/lib/access';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { randomUUID } from 'node:crypto';
+import { readEntryDate } from '@/lib/entry-date';
 
 // --- Schemas ---
 
@@ -239,7 +240,9 @@ async function applyExchange(
     targetAmountInToman = Number(targetAmount) * Number(targetRate.rateToToman);
   }
 
-  const transactionDate = date ? new Date(date) : new Date();
+  const when = readEntryDate(date, 'معامله ارز');
+  if (!when.ok) throw new ExchangeRefusal(when.error);
+  const transactionDate = when.date;
   const leg = (
     type: TransactionType,
     accountId: string,

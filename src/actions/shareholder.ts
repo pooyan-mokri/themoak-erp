@@ -9,6 +9,7 @@ import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { checkPermission, requirePermission } from '@/lib/access';
 import { userMessage } from '@/lib/action-error';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { readEntryDate } from '@/lib/entry-date';
 
 /** A submission already booked under this id (src/lib/request-id.ts). */
 async function alreadyBooked(requestId: string | null): Promise<boolean> {
@@ -346,7 +347,9 @@ export async function depositShareholderFunds(prevState: ActionState, formData: 
       amountInToman = amount * rate;
     }
 
-    const transactionDate = date ? new Date(date) : new Date();
+    const when = readEntryDate(date, 'واریز');
+    if (!when.ok) return { message: when.error, success: false };
+    const transactionDate = when.date;
 
     // The money lands in the account in the account's own currency; an amount
     // already in it is taken as typed, not × rate ÷ rate in floats.
@@ -501,7 +504,9 @@ export async function withdrawShareholderFunds(prevState: ActionState, formData:
       };
     }
 
-    const transactionDate = date ? new Date(date) : new Date();
+    const when = readEntryDate(date, 'برداشت');
+    if (!when.ok) return { message: when.error, success: false };
+    const transactionDate = when.date;
 
     // Create transaction and update account balance
     // Type: EXPENSE (money goes out) but with shareholderId (creates Accounts Receivable - shareholder owes company)

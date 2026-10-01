@@ -10,6 +10,7 @@ import { checkPermission, hasPermission, requirePermission } from '@/lib/access'
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
+import { readEntryDate } from '@/lib/entry-date';
 
 // --- Schemas ---
 
@@ -92,6 +93,8 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
   } = validatedFields.data;
   // One submission of the form books one gift, even when it reaches the server twice.
   const requestId = readRequestId(formData.get('requestId'));
+  const when = readEntryDate(date, 'هدیه');
+  if (!when.ok) return { message: when.error, success: false };
 
   try {
     const outcome = await prisma.$transaction(async (tx: any) => {
@@ -169,7 +172,7 @@ export async function createMarketingGift(prevState: ActionState, formData: Form
       }
 
       // 3. Create transaction for marketing expense
-      const transactionDate = date ? new Date(date) : new Date();
+      const transactionDate = when.date;
       const productNames = validatedItems.map((item: any) => `${item.product.name} (${item.quantity} عدد)`).join('، ');
       // The cost is in Toman; the account is kept in its own currency.
       const booked = await inAccountCurrency(tx, account, totalCost);

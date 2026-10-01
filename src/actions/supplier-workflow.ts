@@ -9,6 +9,7 @@ import { auth } from '@/auth';
 import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_SET_BY, canMovePurchaseOrder } from '@/lib/purchase-order-status';
+import { readEntryDate } from '@/lib/entry-date';
 
 /** A figure in the account's own unit, for balance messages. */
 const inUnit = (amount: number, currency: string) =>
@@ -268,7 +269,8 @@ export async function recordPurchasePartialPayment(input: {
 
   if (!accountId) return { success: false, message: 'لطفا حساب پرداخت را انتخاب کنید.' };
   if (!amount || amount <= 0) return { success: false, message: 'مبلغ پرداخت باید بیشتر از صفر باشد.' };
-  if (date && Number.isNaN(new Date(date).getTime())) return { success: false, message: 'تاریخ پرداخت نامعتبر است.' };
+  const paidOn = readEntryDate(date, 'پرداخت');
+  if (!paidOn.ok) return { success: false, message: paidOn.error };
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
@@ -332,7 +334,7 @@ export async function recordPurchasePartialPayment(input: {
         throw new Error(`موجودی حساب "${account.name}" کافی نیست. موجودی: ${inUnit(balance, account.currency)}، مبلغ مورد نیاز: ${inUnit(account.currency === 'TOMAN' ? Math.round(paid.amount) : paid.amount, account.currency)}`);
       }
 
-      const paymentDate = date ? new Date(date) : new Date();
+      const paymentDate = paidOn.date;
 
       // 1. Expense transaction
       const transaction = await tx.transaction.create({

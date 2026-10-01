@@ -35,6 +35,7 @@ import { auth } from '@/auth';
 import { isConsignmentOrder } from '@/lib/consignment-amounts';
 import { assertNoOpenAudit } from '@/lib/audit-stock-lock';
 import { bookSaleCogs } from '@/lib/cogs';
+import { readEntryDate } from '@/lib/entry-date';
 
 // const prisma = new PrismaClient();
 
@@ -67,11 +68,12 @@ export async function createOrder(data: OrderData) {
   const denied = await checkPermission('sales.manage');
   if (denied) return denied;
   const { customerId, items, paymentMethod, accountId, totalAmount, discount = 0, paidAmount, warehouseId, saleDate, tags = [], invoiceAccountId } = data;
-  const orderDate = saleDate ? new Date(saleDate) : new Date();
+  const when = readEntryDate(saleDate, 'فروش');
   const requestId = readRequestId(data.requestId);
   const receiptUrl = readReceiptRef(data.receiptUrl);
   if (receiptUrl === null) return { success: false, message: INVALID_RECEIPT_MESSAGE };
-  if (Number.isNaN(orderDate.getTime())) return { success: false, message: 'تاریخ فروش نامعتبر است.' };
+  if (!when.ok) return { success: false, message: when.error };
+  const orderDate = when.date;
 
   if (!items.length) {
     return { success: false, message: 'سبد خرید خالی است.' };

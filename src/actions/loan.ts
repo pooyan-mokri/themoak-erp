@@ -10,6 +10,7 @@ import { checkPermission, requirePermission } from '@/lib/access';
 import { userMessage } from '@/lib/action-error';
 import { toLatinDigits } from '@/lib/digits';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { readEntryDate } from '@/lib/entry-date';
 
 /** A submission already booked under this id (src/lib/request-id.ts). */
 async function alreadyBooked(client: any, requestId: string | null): Promise<boolean> {
@@ -214,7 +215,9 @@ export async function recordLoanPayment(prevState: ActionState, formData: FormDa
     const { amount: amountInAccountCurrency, rate } =
       await inAccountCurrency(prisma, account, amountInToman);
 
-    const transactionDate = date ? new Date(date) : new Date();
+    const when = readEntryDate(date, 'پرداخت');
+    if (!when.ok) return { message: when.error, success: false };
+    const transactionDate = when.date;
 
     // Create payment and update loan
     const outcome = await prisma.$transaction(async (tx: any) => {
