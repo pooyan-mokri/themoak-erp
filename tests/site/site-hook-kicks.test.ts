@@ -6,10 +6,14 @@ import { createOrder } from '@/actions/sales';
 
 beforeEach(async () => {
   delete process.env.VERCEL_ENV;
+  delete process.env.APP_ENV;
+  delete process.env.VERCEL;
   await resetDatabase();
 });
 after(async () => {
   delete process.env.VERCEL_ENV;
+  delete process.env.APP_ENV;
+  delete process.env.VERCEL;
   await prisma.$disconnect();
 });
 
@@ -23,15 +27,20 @@ async function until(check: () => Promise<boolean>, ms = 5_000) {
   }
 }
 
-test('outside Vercel production a kick starts no drain', async () => {
+test('outside the live ERP a kick starts no drain', async () => {
   await prisma.product.create({ data: { name: 'PANJ - Blue', sku: 'PANJ/BLUE', webId: 'MOAK-PANJ-BLUE', costPrice: 1, sellPrice: 1 } });
   // The trigger's 'webid' row. A drain would take the lease and, with pushing off, empty the log.
   assert.equal(await prisma.siteHookLog.count(), 1);
 
-  kickSiteHook();
-  await sleep(300);
-  assert.equal(await prisma.siteHookLease.count(), 0, 'no drain took the lease');
-  assert.equal(await prisma.siteHookLog.count(), 1, 'no drain read the log');
+  // Development, a Vercel preview, a host that is not the live one.
+  for (const env of [{}, { VERCEL: '1', VERCEL_ENV: 'preview' }, { APP_ENV: 'staging' }, { APP_ENV: 'Production ' }]) {
+    Object.assign(process.env, env);
+    kickSiteHook();
+    await sleep(300);
+    assert.equal(await prisma.siteHookLease.count(), 0, `no drain took the lease (${JSON.stringify(env)})`);
+    assert.equal(await prisma.siteHookLog.count(), 1, `no drain read the log (${JSON.stringify(env)})`);
+    for (const key of Object.keys(env)) delete process.env[key];
+  }
 
   // The same signs do show when a drain runs.
   process.env.VERCEL_ENV = 'production';
@@ -90,5 +99,40 @@ test('on Vercel production the kick in a POS sale runs a drain, which with pushi
   } finally {
     if (previous === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = previous;
+  }
+});
+
+test('on Liara (APP_ENV=production, no Vercel variables) the kick in a POS sale runs a drain in the background', async () => {
+  process.env.APP_ENV = 'production';
+  try {
+    const { result } = await posSale();
+    assert.equal(result.success, true, result.message);
+    // A long-running server has no waitUntil: the drain simply carries on after the sale has answered.
+    await until(async () => (await prisma.siteHookLog.count()) === 0 && (await prisma.siteHookLease.findFirst())?.holder === null);
+    assert.equal(await prisma.siteHookLease.count(), 1, 'the drain took the lease and gave it back');
+  } finally {
+    delete process.env.APP_ENV;
+  }
+});
+
+test('on a long-running server many kicks at once run one drain at a time, all settle, and nothing is left rejected', async () => {
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => rejections.push(reason);
+  process.on('unhandledRejection', onRejection);
+  process.env.APP_ENV = 'production';
+  try {
+    for (let i = 0; i < 5; i++) {
+      await prisma.product.create({ data: { name: `P${i}`, sku: `P/${i}`, webId: `MOAK-P-${i}`, costPrice: 1, sellPrice: 1 } });
+    }
+    assert.equal(await prisma.siteHookLog.count(), 5);
+    for (let i = 0; i < 25; i++) kickSiteHook();
+    await until(async () => (await prisma.siteHookLog.count()) === 0 && (await prisma.siteHookLease.findFirst())?.holder === null);
+    // Kicks that found the lease taken returned at once; the one drain that held it gave it back.
+    await sleep(500);
+    assert.equal((await prisma.siteHookLease.findFirst())?.holder, null);
+    assert.deepEqual(rejections, []);
+  } finally {
+    delete process.env.APP_ENV;
+    process.off('unhandledRejection', onRejection);
   }
 });

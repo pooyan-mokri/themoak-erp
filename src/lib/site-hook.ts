@@ -11,6 +11,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { keepAlive } from '@/lib/keep-alive';
+import { isLiveErp } from '@/lib/deployment';
 import { WEB_ID_PATTERN } from '@/lib/web-id';
 import { fetchSiteCatalogue } from '@/lib/site-catalogue';
 import {
@@ -673,9 +674,9 @@ export async function drainSiteHook({ deadlineMs = 25_000 }: { deadlineMs?: numb
   return result;
 }
 
-/** After a stock change commits: deliver in the background on production. Never waits, never throws. */
+/** After a stock change commits: deliver in the background on the live ERP. Never waits, never throws. */
 export function kickSiteHook(): void {
-  if (process.env.VERCEL_ENV !== 'production') return;
+  if (!isLiveErp()) return;
   keepAlive(drainSiteHook({ deadlineMs: 20_000 }).catch(() => undefined));
 }
 

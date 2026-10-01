@@ -2,6 +2,8 @@
 // Deliberately not a 'use server' file: that would make every export a public endpoint.
 import { prisma } from '@/lib/prisma';
 import { deleteFromFTP, listFromFTP, uploadToFTP } from '@/lib/ftp';
+import { codeCommit } from '@/lib/deployment';
+import { readSystemSetting } from '@/lib/system-settings';
 
 /**
  * Database backups without pg_dump, which a Vercel function does not have:
@@ -33,7 +35,7 @@ export async function buildDatabaseDump(now = new Date()): Promise<string> {
 
       const lines = [
         '-- TheMoak ERP — full database backup (rows only)',
-        `-- Taken: ${now.toISOString()}${process.env.VERCEL_GIT_COMMIT_SHA ? `   Code: ${process.env.VERCEL_GIT_COMMIT_SHA}` : ''}`,
+        `-- Taken: ${now.toISOString()}${codeCommit() ? `   Code: ${codeCommit()}` : ''}`,
         '--',
         '-- To restore: create an EMPTY database, make its tables from the same code',
         '-- (`npx prisma db push` at the commit above), then as a superuser run:',
@@ -133,10 +135,11 @@ export type BackupSchedule = {
 };
 
 /**
- * Whether the daily check (a fixed time each day, see vercel.json) should take
- * a backup now: the schedule is on, today is its day in Tehran, and none was
- * taken yet today — a second deployment of the same code checking the same
- * database finds today's backup and skips.
+ * Whether the daily check (a fixed time each day: liara.json's cron, or
+ * vercel.json's until the move) should take a backup now: the schedule is on,
+ * today is its day in Tehran, and none was taken yet today — a second
+ * deployment of the same code checking the same database finds today's backup
+ * and skips.
  */
 export function isBackupDue(schedule: BackupSchedule | undefined, last: { createdAt?: string } | undefined, now: Date): boolean {
   if (!schedule?.enabled) return false;
@@ -154,4 +157,31 @@ export function isBackupDue(schedule: BackupSchedule | undefined, last: { create
     return jalaliDay === (schedule.dayOfMonth ?? 1);
   }
   return true; // daily
+}
+
+/** Held while the daily check decides and backs up; any number, unique to this check. */
+const SCHEDULED_BACKUP_LOCK = 7202610010001;
+
+/**
+ * The daily check: a backup when isBackupDue says so, else null. Two instances
+ * checking at once (a new deploy starting while the old one still runs) take
+ * one backup between them: the check holds a database lock from reading
+ * `last_backup` until the new one is recorded, and an instance that finds the
+ * lock taken skips, as one that finds today's backup does.
+ */
+export async function runScheduledBackup(now = new Date()): Promise<BackupInfo | null> {
+  return prisma.$transaction(
+    async (tx: any) => {
+      const [{ locked }]: Array<{ locked: boolean }> = await tx.$queryRawUnsafe(
+        `SELECT pg_try_advisory_xact_lock(${SCHEDULED_BACKUP_LOCK}) AS locked`,
+      );
+      if (!locked) return null;
+      const schedule = (await readSystemSetting('backup_settings')) as BackupSchedule | undefined;
+      const last = (await readSystemSetting('last_backup')) as { createdAt?: string } | undefined;
+      if (!isBackupDue(schedule, last, now)) return null;
+      // runBackup reads and writes on its own connections; this one only holds the lock.
+      return runBackup(schedule?.keepBackups ?? 30, now);
+    },
+    { timeout: 15 * 60_000, maxWait: 10_000 },
+  );
 }

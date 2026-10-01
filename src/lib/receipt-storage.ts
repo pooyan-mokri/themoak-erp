@@ -4,13 +4,14 @@ import { randomUUID } from 'crypto';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { readSystemSetting } from '@/lib/system-settings';
+import { isDeployed } from '@/lib/deployment';
 import { deleteFromFTP, downloadFromFTP, uploadToFTP } from '@/lib/ftp';
 import { RECEIPT_EXTENSIONS, isReceiptRef, type ReceiptContentType } from '@/lib/receipt-ref';
 
 /**
  * Receipts live on the FTP server set in Settings. A machine without one
  * (development, tests) keeps them in .receipts/ next to the code, under the
- * same paths; a deployment without one refuses.
+ * same paths; a deployment without one refuses (src/lib/deployment.ts).
  */
 const ftpConfigured = async () => Boolean(await readSystemSetting('ftp_credentials'));
 
@@ -42,7 +43,7 @@ export async function storeReceipt(bytes: Buffer, contentType: ReceiptContentTyp
     if (!isReceiptRef(url)) throw new Error(`پوشهٔ FTP در تنظیمات مسیر نامعتبری دارد: ${url}`);
     return url;
   }
-  if (process.env.VERCEL) throw new Error(STORAGE_MISSING_MESSAGE);
+  if (isDeployed()) throw new Error(STORAGE_MISSING_MESSAGE);
   const ref = `ftp:${LOCAL_FOLDER}/${name}`;
   await mkdir(dirname(localPath(ref)), { recursive: true });
   await writeFile(localPath(ref), bytes);

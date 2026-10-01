@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import { Client } from 'basic-ftp';
 import { NextRequest } from 'next/server';
 import { fakeFtp, FTP_SETTINGS } from './fake-ftp';
 import { prisma, resetDatabase } from '../helpers/db';
@@ -149,6 +150,25 @@ test('the dump says how to restore it, including the deploy SQL after the rows',
   assert.match(sql, /npx prisma db push/);
   assert.match(sql, /psql "<database url>" -v ON_ERROR_STOP=1 -f <this file>/);
   assert.match(sql, /and last `npx prisma db execute --file prisma\/sql\/pre-push-unique-columns\.sql`/);
+});
+
+test("the dump names the commit it was taken with: Vercel's, else APP_COMMIT_SHA (Liara), else none", async () => {
+  const saved = { vercel: process.env.VERCEL_GIT_COMMIT_SHA, app: process.env.APP_COMMIT_SHA };
+  const header = async () => (await buildDatabaseDump(new Date('2026-09-24T00:00:00Z'))).split('\n')[1];
+  try {
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env.APP_COMMIT_SHA;
+    assert.equal(await header(), '-- Taken: 2026-09-24T00:00:00.000Z');
+    process.env.APP_COMMIT_SHA = 'e7ffa7a0000000000000000000000000000liara';
+    assert.equal(await header(), '-- Taken: 2026-09-24T00:00:00.000Z   Code: e7ffa7a0000000000000000000000000000liara');
+    process.env.VERCEL_GIT_COMMIT_SHA = '1022c870000000000000000000000000000vercel';
+    assert.equal(await header(), '-- Taken: 2026-09-24T00:00:00.000Z   Code: 1022c870000000000000000000000000000vercel');
+  } finally {
+    for (const [key, value] of [['VERCEL_GIT_COMMIT_SHA', saved.vercel], ['APP_COMMIT_SHA', saved.app]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 // ---------------------------------------------------------------- storing and pruning
@@ -355,6 +375,60 @@ test('the scheduled backup refuses without CRON_SECRET, runs once on its day, an
     assert.deepEqual(await (await call('Bearer cron-secret-for-tests')).json(), { ok: true, skipped: true });
     assert.equal(backupFiles().length, 1);
   } finally {
+    if (saved === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = saved;
+  }
+});
+
+test('two instances checking at the same moment take one backup between them, and a failed one leaves the day open', async () => {
+  const saved = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'cron-secret-for-tests';
+  const call = () =>
+    scheduled(new NextRequest('http://localhost/api/cron/backup', { headers: { authorization: 'Bearer cron-secret-for-tests' } }));
+  const ftp = Client.prototype as any;
+  const upload = ftp.uploadFrom;
+  try {
+    await withFtp();
+    await prisma.systemSetting.create({ data: { key: 'backup_settings', value: JSON.stringify({ enabled: true, frequency: 'daily', keepBackups: 5 }) } });
+
+    // The first instance stops mid-upload: it has read last_backup (none today) and not yet written it.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let uploading!: () => void;
+    const inUpload = new Promise<void>((resolve) => (uploading = resolve));
+    ftp.uploadFrom = async function (...args: unknown[]) {
+      uploading();
+      await gate;
+      return upload.apply(this, args);
+    };
+    const first = call();
+    await inUpload;
+    assert.equal(await readSystemSetting('last_backup'), undefined, 'the first has not recorded its backup yet');
+
+    // The second instance finds the check taken and skips, without waiting for the first.
+    const second = await call();
+    assert.deepEqual(await second.json(), { ok: true, skipped: true });
+
+    release();
+    const done = await (await first).json();
+    assert.equal(done.ok, true);
+    assert.deepEqual(backupFiles(), [`/backups/${done.backup}`]);
+    ftp.uploadFrom = upload;
+
+    // Once it is done, a third check the same Tehran day finds today's backup.
+    assert.deepEqual(await (await call()).json(), { ok: true, skipped: true });
+    assert.equal(backupFiles().length, 1);
+
+    // A check whose backup fails releases the lock: the next check that day takes it.
+    await prisma.systemSetting.delete({ where: { key: 'last_backup' } });
+    fakeFtp.failWith = new Error('421 Too many connections.');
+    assert.equal((await call()).status, 500);
+    fakeFtp.failWith = null;
+    const retried = await (await call()).json();
+    assert.equal(retried.ok, true);
+    assert.ok(retried.backup);
+  } finally {
+    ftp.uploadFrom = upload;
     if (saved === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = saved;
   }

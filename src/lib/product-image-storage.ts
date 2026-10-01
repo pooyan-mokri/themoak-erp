@@ -4,14 +4,15 @@ import { randomUUID } from 'crypto';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { readSystemSetting } from '@/lib/system-settings';
+import { isDeployed } from '@/lib/deployment';
 import { deleteFromFTP, downloadFromFTP, uploadToFTP } from '@/lib/ftp';
 import { PRODUCT_IMAGE_ROUTE, isProductImageName } from '@/lib/product-image';
 
 /**
  * Product photos go to the FTP server set in Settings, like receipts: a
- * Vercel function cannot write to public/. A machine without FTP settings
- * (development, tests) keeps them in .product-images/ next to the code; a
- * deployment without them refuses.
+ * deployed copy cannot keep files on its own disk (src/lib/deployment.ts). A
+ * machine without FTP settings (development, tests) keeps them in
+ * .product-images/ next to the code; a deployment without them refuses.
  */
 export const PRODUCT_IMAGE_FOLDER = '/product-images';
 
@@ -33,7 +34,7 @@ export async function storeProductImage(bytes: Buffer, extension: Extension): Pr
   if (await ftpConfigured()) {
     await uploadToFTP(bytes, name, PRODUCT_IMAGE_FOLDER);
   } else {
-    if (process.env.VERCEL) throw new Error(PRODUCT_IMAGE_STORAGE_MISSING);
+    if (isDeployed()) throw new Error(PRODUCT_IMAGE_STORAGE_MISSING);
     await mkdir(join(process.cwd(), '.product-images'), { recursive: true });
     await writeFile(localPath(name), bytes);
   }

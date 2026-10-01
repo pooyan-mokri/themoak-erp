@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /**
- * Daily photo sync from the website's catalogue, scheduled in vercel.json.
- * Vercel sends `Authorization: Bearer $CRON_SECRET`. With that env var unset,
- * every call is refused rather than falling back to a guessable key.
+ * Daily photo sync from the website's catalogue, scheduled in liara.json's
+ * cron (vercel.json's until the move). The caller sends
+ * `Authorization: Bearer $CRON_SECRET`. With that env var unset, every call is
+ * refused rather than falling back to a guessable key.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;

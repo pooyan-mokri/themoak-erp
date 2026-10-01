@@ -38,6 +38,8 @@ beforeEach(async () => {
   setTestRole('ADMIN');
   fakeFtp.reset();
   delete process.env.VERCEL;
+  delete process.env.VERCEL_ENV;
+  delete process.env.APP_ENV;
   await resetDatabase();
   await prisma.user.create({ data: { id: 'test-user', name: 'Test', email: 'test@example.com', password: 'x' } });
 });
@@ -224,14 +226,25 @@ test('an FTP server that cannot delete still leaves the row clean, and the remov
   assert.equal(await prisma.activityLog.count({ where: { action: 'REMOVE_RECEIPT', userId: 'test-user' } }), 1);
 });
 
-test('on Vercel without FTP settings a receipt is refused in Persian and nothing is written locally', async () => {
-  process.env.VERCEL = '1';
-  try {
-    setTestRole('SALES');
-    assert.deepEqual(await uploadReceipt(fileForm(PNG)), { success: false, error: STORAGE_MISSING_MESSAGE });
-    await assert.rejects(storeReceipt(PNG, 'image/png'), { message: STORAGE_MISSING_MESSAGE });
-  } finally {
-    delete process.env.VERCEL;
+// Any Vercel deployment, or the live ERP on another host (Liara): its own disk is no place for receipts.
+const DEPLOYED = [{ VERCEL: '1' }, { VERCEL: '1', VERCEL_ENV: 'production' }, { APP_ENV: 'production' }];
+const localFiles = (folder: string) => {
+  const root = join(process.cwd(), folder);
+  return existsSync(root) ? readdirSync(root, { recursive: true }).length : 0;
+};
+
+test('deployed without FTP settings (Vercel, or APP_ENV=production on Liara) a receipt is refused in Persian and nothing is written locally', async () => {
+  for (const env of DEPLOYED) {
+    Object.assign(process.env, env);
+    try {
+      const before = localFiles('.receipts');
+      setTestRole('SALES');
+      assert.deepEqual(await uploadReceipt(fileForm(PNG)), { success: false, error: STORAGE_MISSING_MESSAGE }, JSON.stringify(env));
+      await assert.rejects(storeReceipt(PNG, 'image/png'), { message: STORAGE_MISSING_MESSAGE });
+      assert.equal(localFiles('.receipts'), before, JSON.stringify(env));
+    } finally {
+      for (const key of Object.keys(env)) delete process.env[key];
+    }
   }
 });
 
@@ -384,16 +397,20 @@ function served_header(served: { response: Response }, header: string) {
   return served.response.headers.get(header);
 }
 
-test('on Vercel without FTP settings a product image is refused in Persian, and nothing is written', async () => {
-  process.env.VERCEL = '1';
-  try {
-    setTestRole('WAREHOUSE');
-    assert.deepEqual(await uploadProductImage(fileForm(PNG)), {
-      success: false,
-      error: 'سرور FTP در تنظیمات وارد نشده است؛ عکس کالا ذخیره نمی‌شود. به مدیر سیستم خبر دهید.',
-    });
-  } finally {
-    delete process.env.VERCEL;
+test('deployed without FTP settings (Vercel, or APP_ENV=production on Liara) a product image is refused in Persian, and nothing is written', async () => {
+  for (const env of DEPLOYED) {
+    Object.assign(process.env, env);
+    try {
+      const before = localFiles('.product-images');
+      setTestRole('WAREHOUSE');
+      assert.deepEqual(await uploadProductImage(fileForm(PNG)), {
+        success: false,
+        error: 'سرور FTP در تنظیمات وارد نشده است؛ عکس کالا ذخیره نمی‌شود. به مدیر سیستم خبر دهید.',
+      }, JSON.stringify(env));
+      assert.equal(localFiles('.product-images'), before, JSON.stringify(env));
+    } finally {
+      for (const key of Object.keys(env)) delete process.env[key];
+    }
   }
   await withFtp();
   fakeFtp.failWith = new Error('530 Login incorrect.');
