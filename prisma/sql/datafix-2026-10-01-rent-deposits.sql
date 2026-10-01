@@ -7,6 +7,9 @@
 -- becomes «ودیعه اجاره» (src/lib/profit-rows.ts), so profit and loss and the
 -- expense breakdown leave them out and the balance sheet shows them under
 -- «ودیعه‌ها». Amount, account, date and description stay; no balance moves.
+-- Three of the six payments (1,034M) were the partner's share, lent to him:
+-- datafix-2026-10-01-partner-loan.sql, run before this file, books them as
+-- «قرض به شریک», so this one finds the company's own three (505M).
 --
 -- Idempotent: a second run finds no 'Rent' row left to change.
 DO $$
