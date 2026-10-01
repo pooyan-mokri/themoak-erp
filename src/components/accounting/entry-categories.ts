@@ -3,7 +3,12 @@
  * list them, and the form pages use them to find the recent entries each form made.
  */
 
-import { RENT_DEPOSIT_CATEGORY, RENT_DEPOSIT_RETURN_CATEGORY } from '@/lib/profit-rows';
+import {
+  PARTNER_LOAN_CATEGORY,
+  PARTNER_LOAN_REPAYMENT_CATEGORY,
+  RENT_DEPOSIT_CATEGORY,
+  RENT_DEPOSIT_RETURN_CATEGORY,
+} from '@/lib/profit-rows';
 
 /** Stored as the English value; shown with the Persian label. */
 export const EXPENSE_CATEGORIES = [
@@ -16,6 +21,8 @@ export const EXPENSE_CATEGORIES = [
   { value: 'خرید تجهیزات', label: 'خرید تجهیزات (دارایی ثابت)' },
   // A rent deposit is an asset that comes back, not an expense (src/lib/profit-rows.ts).
   { value: RENT_DEPOSIT_CATEGORY, label: 'ودیعه اجاره (دارایی)' },
+  // Money lent to a partner, owed back (src/lib/profit-rows.ts).
+  { value: PARTNER_LOAN_CATEGORY, label: 'قرض به شریک (طلب)' },
   { value: 'Other', label: 'سایر' },
 ];
 
@@ -28,6 +35,8 @@ export const DEPOSIT_CATEGORIES = [
   'وام دریافتی',
   // A rent deposit coming back: not revenue (src/lib/profit-rows.ts).
   RENT_DEPOSIT_RETURN_CATEGORY,
+  // A partner repaying what was lent: not revenue (src/lib/profit-rows.ts).
+  PARTNER_LOAN_REPAYMENT_CATEGORY,
   'سایر',
 ];
 
@@ -39,6 +48,7 @@ export const PAYMENT_CATEGORIES = [
   'پرداخت قبض',
   'خرید تجهیزات',
   RENT_DEPOSIT_CATEGORY,
+  PARTNER_LOAN_CATEGORY,
   'هزینه حمل‌ونقل',
   'پرداخت به تامین‌کننده',
   'پرداخت به پیمانکار',

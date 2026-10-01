@@ -23,7 +23,25 @@
  *  - an employee's out-of-pocket expense repaid: 'تسویه بدهی کارمند'
  *    (EXPENSE), formerly 'Employee Debt Payment' (INCOME) —
  *    src/actions/accounting.ts
+ *  - money lent to a partner and its repayment, and a partner's withdrawal
+ *    recorded without a shareholder (below)
  */
+/**
+ * Money lent to a partner («قرض به شریک», EXPENSE) and paid back («بازپرداخت
+ * قرض شریک», INCOME): neither spent nor earned. The balance sheet's «طلب از
+ * شرکا» is what was lent less what came back (partnerLoansOutstanding in
+ * src/lib/money-totals.ts). The expense and payment forms offer the first,
+ * the deposit form the second.
+ */
+export const PARTNER_LOAN_CATEGORY = 'قرض به شریک';
+export const PARTNER_LOAN_REPAYMENT_CATEGORY = 'بازپرداخت قرض شریک';
+/**
+ * A partner's withdrawal («برداشت شریک», EXPENSE) booked without naming a
+ * shareholder: capital paid out, as a 'Shareholder Withdrawal' is, but the
+ * shareholder pages cannot attribute it.
+ */
+export const PARTNER_WITHDRAWAL_CATEGORY = 'برداشت شریک';
+
 export const NON_OPERATING_CATEGORIES: readonly string[] = [
   'Shareholder Deposit',
   'Shareholder Withdrawal',
@@ -35,6 +53,9 @@ export const NON_OPERATING_CATEGORIES: readonly string[] = [
   'انتقال داخلی',
   'تسویه بدهی کارمند',
   'Employee Debt Payment',
+  PARTNER_LOAN_CATEGORY,
+  PARTNER_LOAN_REPAYMENT_CATEGORY,
+  PARTNER_WITHDRAWAL_CATEGORY,
 ];
 
 /**

@@ -1,7 +1,13 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { isClosedShort, landedCostPerUnit, receivedValueInToman } from '@/lib/landed-cost';
 import { orderTotals } from '@/lib/order-balance';
-import { RENT_DEPOSIT_CATEGORY, RENT_DEPOSIT_RETURN_CATEGORY, profitAmount } from '@/lib/profit-rows';
+import {
+  PARTNER_LOAN_CATEGORY,
+  PARTNER_LOAN_REPAYMENT_CATEGORY,
+  RENT_DEPOSIT_CATEGORY,
+  RENT_DEPOSIT_RETURN_CATEGORY,
+  profitAmount,
+} from '@/lib/profit-rows';
 
 /**
  * Totals of account balances across currencies, for the dashboard's «موجودی کل»
@@ -91,17 +97,13 @@ export async function customerReceivables(client: any): Promise<number> {
   return orders.reduce((sum: number, order: any) => sum + orderTotals(order).remaining, 0);
 }
 
-/**
- * The rent deposits the company holds with landlords, the balance sheet's
- * «ودیعه‌ها», in Toman: the deposits paid (EXPENSE rows «ودیعه اجاره») less
- * the deposits returned (INCOME rows «بازگشت ودیعه»), src/lib/profit-rows.ts.
- */
-export async function rentDepositsHeld(client: any): Promise<number> {
+/** In Toman: the EXPENSE rows of `out` less the INCOME rows of `back`. */
+async function paidOutLessBack(client: any, out: string, back: string): Promise<number> {
   const rows = await client.transaction.findMany({
     where: {
       OR: [
-        { type: 'EXPENSE', category: RENT_DEPOSIT_CATEGORY },
-        { type: 'INCOME', category: RENT_DEPOSIT_RETURN_CATEGORY },
+        { type: 'EXPENSE', category: out },
+        { type: 'INCOME', category: back },
       ],
     },
     select: { type: true, category: true, amount: true, amountInToman: true, currency: true },
@@ -112,6 +114,24 @@ export async function rentDepositsHeld(client: any): Promise<number> {
     held = row.type === 'EXPENSE' ? held.plus(toman) : held.minus(toman);
   }
   return Number(held);
+}
+
+/**
+ * The rent deposits the company holds with landlords, the balance sheet's
+ * «ودیعه‌ها», in Toman: the deposits paid (EXPENSE rows «ودیعه اجاره») less
+ * the deposits returned (INCOME rows «بازگشت ودیعه»), src/lib/profit-rows.ts.
+ */
+export function rentDepositsHeld(client: any): Promise<number> {
+  return paidOutLessBack(client, RENT_DEPOSIT_CATEGORY, RENT_DEPOSIT_RETURN_CATEGORY);
+}
+
+/**
+ * What partners still owe the company, the balance sheet's «طلب از شرکا», in
+ * Toman: lent (EXPENSE rows «قرض به شریک») less repaid (INCOME rows «بازپرداخت
+ * قرض شریک»), src/lib/profit-rows.ts.
+ */
+export function partnerLoansOutstanding(client: any): Promise<number> {
+  return paidOutLessBack(client, PARTNER_LOAN_CATEGORY, PARTNER_LOAN_REPAYMENT_CATEGORY);
 }
 
 /** The latest recorded rate of each currency (`client` is a Prisma client or transaction). */

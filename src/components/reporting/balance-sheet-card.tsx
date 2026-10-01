@@ -10,6 +10,7 @@ interface BalanceSheetCardProps {
       accountsReceivable: number;
       prepaidPurchases?: number;
       rentDeposits?: number;
+      partnerLoans?: number;
       total: number;
     };
     liabilities: {
@@ -57,6 +58,12 @@ export function BalanceSheetCard({ data }: BalanceSheetCardProps) {
                 <span>ودیعه‌ها:</span>
                 <span>{(data.assets.rentDeposits ?? 0).toLocaleString('fa-IR')}</span>
               </div>
+              {data.assets.partnerLoans ? (
+                <div className="flex justify-between border-b pb-1">
+                  <span>طلب از شرکا:</span>
+                  <span>{data.assets.partnerLoans.toLocaleString('fa-IR')}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between font-bold pt-1">
                 <span>جمع دارایی‌ها:</span>
                 <span>{data.assets.total.toLocaleString('fa-IR')}</span>

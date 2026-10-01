@@ -92,6 +92,12 @@ export default async function ReportsPage() {
                 <span className="text-muted-foreground">ودیعه‌ها:</span>
                 <span className="font-medium">{bs.assets.rentDeposits.toLocaleString('fa-IR')}</span>
               </div>
+              {bs.assets.partnerLoans ? (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">طلب از شرکا:</span>
+                  <span className="font-medium">{bs.assets.partnerLoans.toLocaleString('fa-IR')}</span>
+                </div>
+              ) : null}
               <Separator className="my-2" />
               <div className="flex justify-between font-bold text-lg">
                 <span>جمع دارایی‌ها:</span>
