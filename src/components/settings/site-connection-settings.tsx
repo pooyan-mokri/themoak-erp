@@ -297,7 +297,7 @@ export function SiteConnectionSettings({
             id="siteUrl"
             dir="ltr"
             className="font-mono"
-            placeholder="https://api.themoak.com"
+            placeholder="https://themoak.com"
             value={siteUrl}
             onChange={(e) => setSiteUrl(e.target.value)}
           />

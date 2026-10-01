@@ -98,7 +98,7 @@ export async function saveSiteConnection(input: {
   if (!(await isAdmin())) return { success: false, message: ADMIN_ONLY };
 
   const siteUrl = normalizeSiteUrl(input.siteUrl ?? '');
-  if (!siteUrl) return { success: false, message: 'آدرس سایت معتبر نیست؛ مثلاً https://api.themoak.com' };
+  if (!siteUrl) return { success: false, message: 'آدرس سایت معتبر نیست؛ مثلاً https://themoak.com' };
 
   const current = await readSiteConnection(prisma);
   const typedSecret = input.webhookSecret?.trim();
