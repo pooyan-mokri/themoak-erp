@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { TransactionType, Currency, ActionResult, ActionState } from '@/lib/types';
-import { additionalCostPerUnit, landedCostPerUnit as computeLandedCostPerUnit, shortShipmentCredit } from '@/lib/landed-cost';
+import { landedCostPerUnit as computeLandedCostPerUnit } from '@/lib/landed-cost';
 import { auth } from '@/auth';
 import { WarehouseUnderAudit, assertNoOpenAudit } from '@/lib/audit-stock-lock';
 import { addToConsumable } from '@/lib/fixed-asset-value';
@@ -13,6 +13,7 @@ import { kickSiteHook } from '@/lib/site-hook';
 import { ACCESS_DENIED_MESSAGE, checkPermission, hasPermission } from '@/lib/access';
 import { latestRates, unpaidOnPurchaseOrder } from '@/lib/money-totals';
 import { PAID_OUTSIDE_DESCRIPTION } from '@/lib/purchase-order-status';
+import { CloseShortRefusal, closeShortInTransaction } from '@/lib/close-short';
 
 // --- Schemas ---
 
@@ -722,114 +723,17 @@ export async function receivePurchaseOrderItems(
 }
 
 /**
- * Finish receiving a PARTIALLY_RECEIVED order with what came (a short shipment). Receipts cost each unit with
- * the order's additional costs (freight, customs, arrival costs) spread over the units ORDERED; closing short
- * re-spreads them over the units RECEIVED, so all of it reaches the cost of the units that came (Pooyan's
- * decision: 10 ordered, 200,000 freight, 8 received gives 25,000 a unit). This is the one point where that is
- * known: before it, the rest may still arrive. The part the missing units carried is added to each line's
- * received cost and to its product's cost of record, spread over the stock on hand; for a consumable, to its
- * asset's units. The order becomes RECEIVED.
- *
- * What was paid beyond the value of the units that came (shortShipmentCredit) becomes a credit with the
- * supplier («طلب از تأمین‌کننده»), as a cancel's payments do: once per order (its key is unique), under the same
- * lock as a cancel, the order row. expectedCredit is the amount the confirmation named; if it differs, nothing
- * happens.
+ * Close a PARTIALLY_RECEIVED order short (src/lib/close-short.ts): the additional costs re-spread over the units
+ * that came, what was paid for the missing ones credited to the supplier. stock.manage.
  */
 export async function closePurchaseOrderShort(orderId: string, expectedCredit?: number): Promise<ActionResult> {
   const denied = await checkPermission('stock.manage');
   if (denied) return denied;
   const session = await auth();
   try {
-    const result = await prisma.$transaction(async (tx: any) => {
-      // Hold the order: a receipt, a payment, a cancel or a second close waits, then finds it received.
-      await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${orderId} FOR UPDATE`;
-      const order = await tx.purchaseOrder.findUnique({
-        where: { id: orderId },
-        include: {
-          items: { include: { product: true } },
-          additionalCosts: true,
-          arrivalAdditionalCosts: true,
-          payments: { select: { amount: true } },
-        },
-      });
-      if (!order) throw new ReceiveRefusal('سفارش یافت نشد');
-      if (order.status !== 'PARTIALLY_RECEIVED') {
-        throw new ReceiveRefusal('فقط سفارشی که بخشی از آن دریافت شده، با کسری بسته می‌شود.');
-      }
-
-      const exchangeRates = await tx.exchangeRate.findMany({ orderBy: { date: 'desc' }, distinct: ['currency'] });
-      const getExchangeRate = (currency: string) => {
-        if (currency === 'TOMAN') return 1;
-        const rate = exchangeRates.find((r: any) => r.currency === currency);
-        if (!rate) {
-          throw new ReceiveRefusal(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
-        }
-        return Number(rate.rateToToman);
-      };
-
-      const paid = order.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
-      const credit = shortShipmentCredit(order, paid, getExchangeRate);
-      if (expectedCredit !== undefined && Math.abs(expectedCredit - credit) >= 1) {
-        throw new ReceiveRefusal('پرداخت‌ها یا دریافت‌های این سفارش از وقتی صفحه باز شد تغییر کرده است؛ صفحه را تازه کنید و دوباره ببندید.');
-      }
-
-      let respread = 0;
-      const nothingOnHand: string[] = [];
-      for (const item of order.items) {
-        if (item.receivedQuantity <= 0) continue;
-        const extra =
-          item.receivedQuantity *
-          (additionalCostPerUnit(item, order, getExchangeRate, 'received') -
-            additionalCostPerUnit(item, order, getExchangeRate, 'ordered'));
-        if (Math.abs(extra) < 1e-9) continue;
-        respread += extra;
-
-        await tx.purchaseOrderItem.update({
-          where: { id: item.id },
-          data: { totalCostInToman: Number(item.totalCostInToman ?? 0) + extra },
-        });
-
-        const product = await tx.product.findUniqueOrThrow({ where: { id: item.productId } });
-        if (product.productType === 'SALEABLE' || product.productType === 'OTHER') {
-          const stock = await tx.inventory.aggregate({ where: { productId: item.productId }, _sum: { quantity: true } });
-          const onHand = Math.max(0, Number(stock._sum.quantity ?? 0));
-          // With nothing on hand (all of it sold already) there is no stock left to carry it.
-          if (onHand > 0) {
-            await tx.product.update({
-              where: { id: item.productId },
-              data: { costPrice: new Prisma.Decimal(Number(product.costPrice) + extra / onHand) },
-            });
-          } else if (extra > 0) {
-            nothingOnHand.push(product.name);
-          }
-        } else if (product.productType === 'CONSUMABLE') {
-          const asset = await tx.fixedAsset.findUnique({ where: { productId: item.productId } });
-          if (asset && (asset.quantity ?? 0) > 0) {
-            const value = (asset.quantity ?? 0) * Number(asset.purchasePrice) + extra;
-            await tx.fixedAsset.update({
-              where: { id: asset.id },
-              data: { purchasePrice: value / (asset.quantity ?? 1), currentValue: value },
-            });
-          }
-        }
-      }
-
-      await tx.purchaseOrder.update({ where: { id: orderId }, data: { status: 'RECEIVED' } });
-      if (credit > 0) {
-        await tx.supplierCredit.create({
-          data: {
-            supplierId: order.supplierId,
-            amount: credit,
-            purchaseOrderId: orderId,
-            reason: `کسری سفارش خرید #${order.number}`,
-            userId: session?.user?.id ?? null,
-            clientRequestId: `po-short:${orderId}`,
-          },
-        });
-      }
-      const missing = order.items.reduce((sum: number, item: any) => sum + Math.max(0, item.quantity - item.receivedQuantity), 0);
-      return { missing, respread, credit, nothingOnHand };
-    });
+    const result = await prisma.$transaction((tx: any) =>
+      closeShortInTransaction(tx, orderId, { expectedCredit, userId: session?.user?.id ?? null }),
+    );
 
     try {
       revalidatePath('/dashboard/suppliers/orders');
@@ -850,7 +754,7 @@ export async function closePurchaseOrderShort(orderId: string, expectedCredit?: 
     }
     return { success: true, message: parts.join(' ') };
   } catch (error: unknown) {
-    if (error instanceof ReceiveRefusal) return { success: false, error: error.message };
+    if (error instanceof CloseShortRefusal) return { success: false, error: error.message };
     console.error('Error closing purchase order short:', error);
     return { success: false, error: 'خطا در بستن سفارش با کسری' };
   }
