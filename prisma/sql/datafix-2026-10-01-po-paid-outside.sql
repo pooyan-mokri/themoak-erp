@@ -6,8 +6,10 @@
 -- paid both outside the ERP. Each gets one PurchaseOrderPayment for what is
 -- still unpaid in Toman (its Toman total less its payments), with no account
 -- and no transaction, as a payment from a supplier's credit is stored, so no
--- account balance moves. Description «پرداخت‌شده بیرون از سیستم — ثبت اصلاحی»,
--- dated today. The status changes only as recording a payment changes it
+-- account balance moves. Description «پرداخت‌شده بیرون از سیستم — ثبت اصلاحی»
+-- (PAID_OUTSIDE_DESCRIPTION in src/lib/purchase-order-status.ts: the order
+-- page names the payment «بیرون از سیستم», not the supplier's credit), dated
+-- today. The status changes only as recording a payment changes it
 -- (src/actions/supplier-workflow.ts): an order still PENDING_PAYMENT or
 -- PARTIALLY_PAID becomes PAID; a received one (#1 RECEIVED, #4
 -- PARTIALLY_RECEIVED) keeps its status. #4 is not closed short: 2 of the 10

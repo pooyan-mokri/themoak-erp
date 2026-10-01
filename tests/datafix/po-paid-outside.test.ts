@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { prisma, resetDatabase } from '../helpers/db';
 import { setTestRole } from '../stubs/auth';
 import { getBalanceSheet } from '@/actions/reports';
+import { getPurchaseOrder } from '@/actions/supplier';
+import { PAID_OUTSIDE_DESCRIPTION } from '@/lib/purchase-order-status';
 import { latestRates, supplierPositions, unpaidOnPurchaseOrder, PURCHASE_ORDER_DEBT_FIELDS } from '@/lib/money-totals';
 import { balances, reportRows, rowsHash, runTwice } from './sql';
 
@@ -14,7 +16,7 @@ beforeEach(async () => {
 });
 after(() => prisma.$disconnect());
 
-const DESCRIPTION = 'پرداخت‌شده بیرون از سیستم — ثبت اصلاحی';
+const DESCRIPTION = PAID_OUTSIDE_DESCRIPTION;
 
 /** A purchase order as the real data has it: Toman lines, some received, paid in part from the bank. */
 async function purchaseOrder(number: number, supplierName: string, status: string, lines: Array<[number, number, number]>, paid: number) {
@@ -75,6 +77,14 @@ test('#1 and #4 get one account-less payment for what was unpaid; status, balanc
   assert.equal(sheet.assets.prepaidPurchases, sheetBefore.assets.prepaidPurchases + 2 * 10_000_000);
   assert.equal((await supplierPositions(prisma, await latestRates(prisma))).unpaidOnOrders, 20_000_000);
   assert.deepEqual(await reportRows('report-purchase-orders-paid-by-hand.sql'), []);
+
+  // The order page names it as paid outside the ERP, not from the supplier's credit.
+  const detail: any = (await getPurchaseOrder(po1.id)).data;
+  assert.deepEqual(
+    detail.payments.map((p: any) => [p.amount, p.accountName, p.fromCredit, p.description ?? null]),
+    [[264_060_280, 'بانک', false, null], [75_000_000, 'بیرون از سیستم', false, DESCRIPTION]],
+  );
+  assert.equal(detail.paidAmountInToman, 339_060_280);
 });
 
 test('an order still waiting for payment becomes PAID, as recording a payment makes it', async () => {

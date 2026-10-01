@@ -38,6 +38,13 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'لغو شده',
 };
 
+/**
+ * A payment Pooyan made outside the ERP, recorded afterwards as a correction
+ * (prisma/sql/datafix-2026-10-01-po-paid-outside.sql): like a payment from the
+ * supplier's credit it has no account, and its description tells it apart.
+ */
+export const PAID_OUTSIDE_DESCRIPTION = 'پرداخت‌شده بیرون از سیستم — ثبت اصلاحی';
+
 export function canMovePurchaseOrder(from: string, to: string): boolean {
   return PURCHASE_ORDER_TRANSITIONS[from]?.includes(to) ?? false;
 }

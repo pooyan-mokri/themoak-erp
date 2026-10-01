@@ -6,8 +6,9 @@
 -- noted «بازسازی تاریخچه»):
 --  1. SALE: every order line report-pos-sales-without-movements.sql lists
 --     (no SALE movement of its order and product; website and WooCommerce
---     orders always wrote theirs) leaves its line's warehouse, dated at the
---     sale, or at the exchange for a line an exchange issued. Left out, and
+--     orders are outside that report and left as they are) leaves its line's
+--     warehouse, dated at the sale, or at the exchange for a line an exchange
+--     issued. Left out, and
 --     counted in a NOTICE: a line with no warehouse recorded (nothing to take
 --     it from), and the lines of a cancelled order whose cancel left nothing
 --     on record (no «بازگشت از لغو سفارش» RETURN movement of the order, as

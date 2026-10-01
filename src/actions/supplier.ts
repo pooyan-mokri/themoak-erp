@@ -12,6 +12,7 @@ import { addToConsumable } from '@/lib/fixed-asset-value';
 import { kickSiteHook } from '@/lib/site-hook';
 import { ACCESS_DENIED_MESSAGE, checkPermission, hasPermission } from '@/lib/access';
 import { latestRates, unpaidOnPurchaseOrder } from '@/lib/money-totals';
+import { PAID_OUTSIDE_DESCRIPTION } from '@/lib/purchase-order-status';
 
 // --- Schemas ---
 
@@ -449,9 +450,13 @@ export async function getPurchaseOrder(orderId: string) {
         id: p.id,
         amount: Number(p.amount),
         accountId: p.accountId ?? undefined,
-        // A payment with no account was paid from the supplier's credit.
-        accountName: p.accountId ? (p.account?.name ?? '') : 'طلب از تأمین‌کننده',
-        fromCredit: !p.accountId,
+        // A payment with no account was paid from the supplier's credit, or outside the ERP (a correction).
+        accountName: p.accountId
+          ? (p.account?.name ?? '')
+          : p.description === PAID_OUTSIDE_DESCRIPTION
+            ? 'بیرون از سیستم'
+            : 'طلب از تأمین‌کننده',
+        fromCredit: !p.accountId && p.description !== PAID_OUTSIDE_DESCRIPTION,
         description: p.description ?? undefined,
         date: p.date,
       })),
