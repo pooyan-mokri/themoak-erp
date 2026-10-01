@@ -51,7 +51,10 @@ export async function pettyAccount(opening = 437_346) {
   return 'petty';
 }
 
-/** Order #121: 16,000,000 sold, one checkout row of 18,000,000 on a Toman bank account. */
+/**
+ * Order #121: 16,000,000 sold, one checkout row of 18,000,000 on a Toman bank account, and that account's
+ * reconciliation to the bank on 1405/06/30 (an «اصلاح موجودی» of −1,569,900 that absorbed the 2M never received).
+ */
 export async function order121(accountId: string) {
   const checkout = await income(accountId, 'Sales', 'سفارش فروش', 18_000_000, '2026-02-28T00:00:00Z');
   const order = await prisma.order.create({
@@ -61,5 +64,12 @@ export async function order121(accountId: string) {
     },
   });
   await prisma.transaction.update({ where: { id: checkout.id }, data: { orderId: order.id } });
-  return { order, checkout };
+  const correction = await prisma.transaction.create({
+    data: {
+      type: 'ADJUSTMENT', category: 'اصلاح موجودی', amount: -1_569_900, amountInToman: -1_569_900, accountId,
+      description: 'تطبیق با بانک ۱۴۰۵/۰۶/۳۰: موجودی صفر. — اصلاح موجودی از ۱٬۵۶۹٬۹۰۰ به ۰', date: new Date('2026-09-21T16:49:14.344Z'),
+    },
+  });
+  await prisma.account.update({ where: { id: accountId }, data: { balance: { decrement: 1_569_900 } } });
+  return { order, checkout, correction };
 }

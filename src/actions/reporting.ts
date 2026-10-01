@@ -68,7 +68,7 @@ export async function getProfitAndLoss(startDate?: Date, endDate?: Date) {
  * The financial reports' balance sheet (src/actions/reports.ts), in this
  * card's shape, so both pages show the same figures: every account in Toman,
  * stock of the stock product types at cost, what customers owe, prepaid
- * purchases, rent deposits, what partners owe, and what is owed to suppliers.
+ * purchases, rent deposits, what partners and suppliers owe, and what is owed to suppliers.
  */
 export async function getBalanceSheet() {
   await requirePermission('profit.view');
@@ -83,6 +83,7 @@ export async function getBalanceSheet() {
         prepaidPurchases: sheet.assets.prepaidPurchases,
         rentDeposits: sheet.assets.rentDeposits,
         partnerLoans: sheet.assets.partnerLoans,
+        supplierCredits: sheet.assets.supplierCredits,
         total: sheet.assets.total,
       },
       liabilities: {
@@ -96,7 +97,7 @@ export async function getBalanceSheet() {
   } catch (error) {
     console.error('Error calculating Balance Sheet:', error);
     return {
-      assets: { cashAndBank: 0, inventory: 0, consignmentInventory: 0, accountsReceivable: 0, prepaidPurchases: 0, rentDeposits: 0, partnerLoans: 0, total: 0 },
+      assets: { cashAndBank: 0, inventory: 0, consignmentInventory: 0, accountsReceivable: 0, prepaidPurchases: 0, rentDeposits: 0, partnerLoans: 0, supplierCredits: 0, total: 0 },
       liabilities: { accountsPayable: 0, total: 0 },
       equity: { total: 0 }
     };

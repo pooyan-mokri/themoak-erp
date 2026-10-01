@@ -5,7 +5,15 @@ import { TransactionType } from '@prisma/client';
 import { requirePermission } from '@/lib/access';
 import { orderNet } from '@/lib/order-balance';
 import { SALE_LINE_INCLUDE, netLineSale } from '@/lib/product-sales';
-import { cashPosition, customerReceivables, latestRates, partnerLoansOutstanding, rentDepositsHeld, supplierPositions } from '@/lib/money-totals';
+import {
+  cashPosition,
+  customerReceivables,
+  latestRates,
+  partnerLoansOutstanding,
+  rentDepositsHeld,
+  supplierCreditsHeld,
+  supplierPositions,
+} from '@/lib/money-totals';
 import { profitEntry } from '@/lib/profit-rows';
 import { tehranDay } from '@/lib/tehran-day';
 import { STOCK_TYPES } from '@/lib/stock-levels';
@@ -157,9 +165,18 @@ export async function getBalanceSheet(date: Date) {
     const rentDeposits = await rentDepositsHeld(prisma);
     // Money lent to partners and not yet repaid (src/lib/profit-rows.ts).
     const partnerLoans = await partnerLoansOutstanding(prisma);
+    // What suppliers owe back: cancelled or short orders' payments, not yet used (src/lib/money-totals.ts).
+    const supplierCredits = await supplierCreditsHeld(prisma);
 
     const totalAssets =
-      totalCash + inventoryValue + consignmentInventoryValue + accountsReceivable + suppliers.prepaid + rentDeposits + partnerLoans;
+      totalCash +
+      inventoryValue +
+      consignmentInventoryValue +
+      accountsReceivable +
+      suppliers.prepaid +
+      rentDeposits +
+      partnerLoans +
+      supplierCredits;
 
     // Liabilities: what is still owed to suppliers
     const accountsPayable = suppliers.payables;
@@ -181,6 +198,7 @@ export async function getBalanceSheet(date: Date) {
         prepaidPurchases: suppliers.prepaid,
         rentDeposits,
         partnerLoans,
+        supplierCredits,
         total: totalAssets,
       },
       liabilities: {

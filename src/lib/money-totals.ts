@@ -134,6 +134,18 @@ export function partnerLoansOutstanding(client: any): Promise<number> {
   return paidOutLessBack(client, PARTNER_LOAN_CATEGORY, PARTNER_LOAN_REPAYMENT_CATEGORY);
 }
 
+/**
+ * What suppliers owe the company back, the balance sheet's «طلب از تأمین‌کنندگان», in Toman: the sum of the
+ * SupplierCredit rows (+ what was paid on an order cancelled, or for units an order closed short never brought;
+ * − what such a credit paid on a later order). It never counts twice with prepaid purchases: a cancelled order
+ * is not a payable order, an order closed short is RECEIVED (never prepaid), and a credit spent on a later order
+ * leaves the credit as it becomes that order's payment (supplierPositions above).
+ */
+export async function supplierCreditsHeld(client: any): Promise<number> {
+  const sum = await client.supplierCredit.aggregate({ _sum: { amount: true } });
+  return Number(sum._sum.amount ?? 0);
+}
+
 /** The latest recorded rate of each currency (`client` is a Prisma client or transaction). */
 export async function latestRates(client: any): Promise<RateRow[]> {
   return client.exchangeRate.findMany({

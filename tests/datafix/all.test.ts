@@ -72,12 +72,12 @@ test('run in its order in one transaction, the fixes change what they should; a 
   );
   assert.equal((await prisma.transaction.findUniqueOrThrow({ where: { id: advances.booom.id } })).category, 'برداشت شریک');
   assert.equal(await prisma.account.count({ where: { name: 'تنخواه showroom' } }), 0);
-  // Every account keeps its balance but «تنخواه» (+170M of advances) and the order-121 account (−2M);
-  // the COGS fix made its account.
+  // Every account keeps its balance but «تنخواه» (+170M of advances; order #121's 2M comes off its checkout and
+  // off the reconciliation that had absorbed it); the COGS fix made its account.
   const now = await balances();
   assert.deepEqual(
     Object.fromEntries(Object.keys(accounts).map((id) => [id, now[id] - accounts[id]]).filter(([, d]) => d !== 0)),
-    { [petty]: 170_000_000, novin: -2_000_000 },
+    { [petty]: 170_000_000 },
   );
   assert.deepEqual(Object.keys(now).filter((id) => !(id in accounts)), ['cogs-account']);
   assert.deepEqual(

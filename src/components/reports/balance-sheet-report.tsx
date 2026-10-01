@@ -24,6 +24,8 @@ interface BalanceSheetData {
     rentDeposits?: number;
     /** Lent to partners, less what they repaid; shown only when not 0. */
     partnerLoans?: number;
+    /** What suppliers owe back (their credits); shown only when not 0. */
+    supplierCredits?: number;
     total: number;
   };
   liabilities: {
@@ -40,7 +42,7 @@ interface BalanceSheetReportProps {
 }
 
 /** The indigo series, for the parts of the asset bar. */
-const COLORS = ['#353DB2', '#7C82D0', '#A9AEDE', '#2D333D', '#5B62C4', '#8A8FA0', '#C5C8EA'];
+const COLORS = ['#353DB2', '#7C82D0', '#A9AEDE', '#2D333D', '#5B62C4', '#8A8FA0', '#C5C8EA', '#4B5160'];
 
 const fa = (value: number) => new Intl.NumberFormat('fa-IR').format(Math.round(value));
 const number = (value: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 }).format(value);
@@ -95,6 +97,7 @@ export function BalanceSheetReport({ data }: BalanceSheetReportProps) {
     { name: 'پیش‌پرداخت خرید (کالای دریافت‌نشده)', value: assets.prepaidPurchases ?? 0 },
     { name: 'ودیعه‌ها', value: assets.rentDeposits ?? 0 },
     ...(assets.partnerLoans ? [{ name: 'طلب از شرکا', value: assets.partnerLoans }] : []),
+    ...(assets.supplierCredits ? [{ name: 'طلب از تأمین‌کنندگان', value: assets.supplierCredits }] : []),
   ];
   const positive = assetBreakdown.reduce((sum, part) => sum + Math.max(0, part.value), 0);
 
