@@ -119,13 +119,19 @@ test('/api/health answers 503 when the database does not', async () => {
 
 /** Whether `npm run build` runs db:sync first, in this environment. */
 function buildSyncs(env: Record<string, string>) {
-  const condition = pkg.scripts.build.split('; then ')[0];
+  // The database condition, without the leading `prisma generate &&` (it needs no database).
+  const condition = pkg.scripts.build.replace(/^prisma generate && /, '').split('; then ')[0];
   const out = execFileSync('/bin/sh', ['-c', `${condition}; then echo sync; else echo skip; fi`], { env: { PATH: process.env.PATH, ...env } as unknown as NodeJS.ProcessEnv });
   return out.toString().trim() === 'sync';
 }
 
 test('the build brings the database up to date on Vercel and locally as before, but not on Liara (APP_ENV=production)', () => {
   assert.match(pkg.scripts.build, /npm run db:sync; fi && next build$/);
+  // Liara runs `npm ci` with only package.json and the lockfile in place, so postinstall must not
+  // need the schema; the build generates the client once the whole source is there.
+  assert.match(pkg.scripts.build, /^prisma generate && /);
+  assert.equal(pkg.scripts.postinstall, 'if [ -f prisma/schema.prisma ]; then prisma generate; fi');
+  assert.equal(execFileSync('/bin/sh', ['-c', pkg.scripts.postinstall], { cwd: '/', env: { PATH: '/usr/bin:/bin' } as unknown as NodeJS.ProcessEnv }).toString(), '', 'without a schema, postinstall does nothing');
   assert.equal(buildSyncs({ VERCEL: '1' }), true, 'Vercel');
   assert.equal(buildSyncs({ VERCEL: '1', APP_ENV: 'production' }), true, 'Vercel, even with APP_ENV');
   assert.equal(buildSyncs({}), true, 'a local build, as before');
