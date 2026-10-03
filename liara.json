@@ -22,7 +22,7 @@
     "interval": 30000,
     "timeout": 10000,
     "retries": 3,
-    "startPeriod": 300000
+    "startPeriod": 3000
   },
   "cron": [
     "30 1 * * * curl --fail --silent --show-error --max-time 300 -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3000/api/site/catalogue-sync",
