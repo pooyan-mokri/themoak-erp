@@ -456,8 +456,10 @@ test('the pre-push SQL creates CustomerCredit exactly as db push does, and can r
       `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'CustomerCredit' ORDER BY indexname`,
     )) as any[],
     constraints: (await prisma.$queryRawUnsafe(
+      // PostgreSQL 18 also lists NOT NULL as constraints (contype 'n'); column nullability is
+      // compared through the columns above, so keep this list the same on 17 and 18.
       `SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
-       WHERE conrelid = to_regclass('"CustomerCredit"') ORDER BY conname`,
+       WHERE conrelid = to_regclass('"CustomerCredit"') AND contype <> 'n' ORDER BY conname`,
     )) as any[],
   });
   const prePush = () => prisma.$executeRawUnsafe(sql('pre-push-unique-columns.sql'));
