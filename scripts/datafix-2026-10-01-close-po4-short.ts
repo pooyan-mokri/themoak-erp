@@ -45,7 +45,9 @@ export async function closePo4Short(client: any = prisma): Promise<string> {
     if (problems.length) throw new Error(`purchase order #${NUMBER} left as it is: ${problems.join('; ')}.`);
     const result = await closeShortInTransaction(tx, order.id, { userId: null });
     return `#${NUMBER} closed short: ${result.missing} units missing, ${Math.round(result.respread)} toman of additional costs re-spread, FINEWELL credited ${Math.round(result.credit)} toman.`;
-  });
+    // Run against a remote database (Liara over its public address) this takes several seconds
+    // of round trips, beyond Prisma's default 5 s interactive-transaction limit.
+  }, { maxWait: 30_000, timeout: 120_000 });
 }
 
 if (require.main === module) {
