@@ -1,5 +1,5 @@
 {
-  "app": "REPLACE-WITH-LIARA-APP-NAME",
+  "app": "themoak-erp",
   "platform": "next",
   "port": 3000,
   "next": {
@@ -9,7 +9,16 @@
     "location": "germany"
   },
   "healthCheck": {
-    "command": ["CMD", "curl", "--fail", "--silent", "--show-error", "--output", "/dev/null", "http://localhost:3000/api/health"],
+    "command": [
+      "CMD",
+      "curl",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--output",
+      "/dev/null",
+      "http://localhost:3000/api/health"
+    ],
     "interval": 30,
     "timeout": 20,
     "retries": 3,
@@ -17,6 +26,7 @@
   },
   "cron": [
     "30 1 * * * curl --fail --silent --show-error --max-time 300 -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3000/api/site/catalogue-sync",
-    "0 0 * * * curl --fail --silent --show-error --max-time 900 -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3000/api/cron/backup"
+    "0 0 * * * curl --fail --silent --show-error --max-time 900 -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3000/api/cron/backup",
+    "*/2 * * * * curl --fail --silent --show-error --max-time 60 -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3000/api/site/hook-flush"
   ]
 }

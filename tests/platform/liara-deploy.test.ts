@@ -33,16 +33,20 @@ after(async () => {
 
 // ---------------------------------------------------------------- liara.json
 
-test('liara.json deploys the next platform on port 3000, builds outside Iran, and has a name to fill in', () => {
+test('liara.json deploys the themoak-erp app on the next platform, port 3000, built outside Iran', () => {
   assert.equal(liara.platform, 'next');
   assert.equal(liara.port, 3000);
   assert.equal(liara.next.nodeVersion, '22');
   assert.equal(liara.build.location, 'germany');
-  assert.equal(liara.app, 'REPLACE-WITH-LIARA-APP-NAME');
+  assert.equal(liara.app, 'themoak-erp');
   assert.equal(liara.envs, undefined, 'envs in liara.json would replace every env var set in the panel');
 });
 
-test("liara.json's cron runs vercel.json's two jobs at the same times, with CRON_SECRET, inside the container", () => {
+// Liara runs vercel.json's two jobs at the same times, plus a stock-push retry every 2 minutes
+// (on Vercel a failed push waited for the next stock change).
+const HOOK_FLUSH = { schedule: '*/2 * * * *', path: '/api/site/hook-flush' };
+
+test("liara.json's cron runs vercel.json's two jobs at the same times plus the stock-push retry, with CRON_SECRET, inside the container", () => {
   const jobs = liara.cron.map((line: string) => {
     const fields = line.split(' ');
     const url = fields.find((part) => part.startsWith('http://'));
@@ -50,7 +54,7 @@ test("liara.json's cron runs vercel.json's two jobs at the same times, with CRON
   });
   assert.deepEqual(
     jobs.map(({ schedule, url }: any) => ({ schedule, path: new URL(url).pathname })).sort((a: any, b: any) => a.path.localeCompare(b.path)),
-    vercel.crons.map((c: any) => ({ schedule: c.schedule, path: c.path })).sort((a: any, b: any) => a.path.localeCompare(b.path)),
+    [...vercel.crons.map((c: any) => ({ schedule: c.schedule, path: c.path })), HOOK_FLUSH].sort((a: any, b: any) => a.path.localeCompare(b.path)),
   );
   for (const { url, line } of jobs) {
     assert.equal(new URL(url).origin, `http://localhost:${liara.port}`);
@@ -79,8 +83,8 @@ test('the cron command, run by a shell as Liara does, sends exactly the header t
   } finally {
     server.close();
   }
-  assert.deepEqual(seen.map((s) => s.authorization), ['Bearer cron-secret-from-panel', 'Bearer cron-secret-from-panel']);
-  assert.deepEqual(seen.map((s) => s.path).sort(), ['/api/cron/backup', '/api/site/catalogue-sync']);
+  assert.deepEqual(seen.map((s) => s.authorization), liara.cron.map(() => 'Bearer cron-secret-from-panel'));
+  assert.deepEqual(seen.map((s) => s.path).sort(), ['/api/cron/backup', '/api/site/catalogue-sync', '/api/site/hook-flush']);
 });
 
 test("liara.json's health check asks /api/health, which answers 200 when the database answers", async () => {
