@@ -87,18 +87,11 @@ test('the cron command, run by a shell as Liara does, sends exactly the header t
   assert.deepEqual(seen.map((s) => s.path).sort(), ['/api/cron/backup', '/api/site/catalogue-sync', '/api/site/hook-flush']);
 });
 
-test("liara.json's health check asks /api/health, which answers 200 when the database answers", async () => {
-  const command: string[] = liara.healthCheck.command;
-  assert.equal(command[0], 'CMD');
-  assert.ok(!command.includes('||'), 'an exec-form command gets no shell: || would be passed to curl as a URL');
-  assert.ok(command.includes('--fail'));
-  assert.equal(command.at(-1), `http://localhost:${liara.port}/api/health`);
-  // Liara reads interval, timeout and startPeriod in milliseconds (liara init asks for "interval(ms)").
-  assert.ok(liara.healthCheck.interval >= 10_000, 'interval is in milliseconds');
-  assert.ok(liara.healthCheck.timeout >= 5_000 && liara.healthCheck.timeout <= 10_000, 'timeout is in milliseconds; Liara refuses more than 10000');
-  assert.ok(liara.healthCheck.startPeriod <= 3_000, 'Liara refuses a startPeriod over 3000');
-  // The first check runs one interval after start; unhealthy only after `retries` failures in a row.
-  assert.ok(liara.healthCheck.interval * liara.healthCheck.retries >= 60_000, 'the database is brought up to date before the first answer');
+test("liara.json has no health check; /api/health answers 200 when the database answers", async () => {
+  // Release v3 (2026-10-03) was killed by Liara's health check about 90 s after start although db:deploy had
+  // finished and a cron curl to localhost:3000 had just succeeded: Liara runs the command some other way.
+  // Until that is checked inside the live container (liara shell), there is none.
+  assert.equal(liara.healthCheck, undefined);
 
   const res = await health();
   assert.equal(res.status, 200);
