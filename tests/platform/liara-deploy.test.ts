@@ -95,7 +95,7 @@ test("liara.json's health check asks /api/health, which answers 200 when the dat
   assert.equal(command.at(-1), `http://localhost:${liara.port}/api/health`);
   // Liara reads interval, timeout and startPeriod in milliseconds (liara init asks for "interval(ms)").
   assert.ok(liara.healthCheck.interval >= 10_000, 'interval is in milliseconds');
-  assert.ok(liara.healthCheck.timeout >= 5_000, 'timeout is in milliseconds');
+  assert.ok(liara.healthCheck.timeout >= 5_000 && liara.healthCheck.timeout <= 10_000, 'timeout is in milliseconds; Liara refuses more than 10000');
   assert.ok(liara.healthCheck.startPeriod >= 120_000, 'the database is brought up to date before the first answer (milliseconds)');
 
   const res = await health();
