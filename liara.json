@@ -19,10 +19,10 @@
       "/dev/null",
       "http://localhost:3000/api/health"
     ],
-    "interval": 30,
-    "timeout": 20,
+    "interval": 30000,
+    "timeout": 20000,
     "retries": 3,
-    "startPeriod": 300
+    "startPeriod": 300000
   },
   "cron": [
     "30 1 * * * curl --fail --silent --show-error --max-time 300 -H \"Authorization: Bearer $CRON_SECRET\" http://localhost:3000/api/site/catalogue-sync",
