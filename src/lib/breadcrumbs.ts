@@ -86,6 +86,7 @@ export function getBreadcrumbs(pathname: string): BreadcrumbItem[] {
     'return': 'برگشت کالا',
     'returns': 'عودت‌ها و تعویض‌ها',
     'search': 'جستجو',
+    'world': 'دنیای کسب‌وکار',
     'site': 'سایت',
     'statement': 'کارت حساب',
     'transactions': 'دفتر روزنامه',

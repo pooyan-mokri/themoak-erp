@@ -174,7 +174,7 @@ test('the longest matching prefix decides, on whole path segments only', () => {
   assert.equal(canAccessRoute('WAREHOUSE', '/dashboard/inventory/products/new'), true);
 });
 
-const EVERYONE = ['/dashboard', '/dashboard/projects', '/dashboard/assistant', '/dashboard/settings'];
+const EVERYONE = ['/dashboard', '/dashboard/world', '/dashboard/projects', '/dashboard/assistant', '/dashboard/settings'];
 const MENU: Record<string, string[]> = {
   ADMIN: ['*'],
   AUDITOR: ['*'],

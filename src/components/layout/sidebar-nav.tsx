@@ -10,6 +10,7 @@ import {
   Calculator,
   LayoutDashboard,
   LogOut,
+  Map as MapIcon,
   Megaphone,
   Package,
   Search,
@@ -32,6 +33,7 @@ import { useNavMemory, type NavEntry } from '@/components/layout/nav-memory';
  */
 const routes = [
   { group: 0, label: 'داشبورد', icon: LayoutDashboard, href: '/dashboard' },
+  { group: 0, label: 'دنیای کسب‌وکار', icon: MapIcon, href: '/dashboard/world' },
   { group: 0, label: 'حسابداری', icon: Calculator, href: '/dashboard/accounting' },
   { group: 0, label: 'کارمندان', icon: UserCircle, href: '/dashboard/accounting/employees' },
   { group: 0, label: 'حقوق و دستمزد', icon: Wallet, href: '/dashboard/accounting/payroll' },
