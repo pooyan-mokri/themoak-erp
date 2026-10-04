@@ -21,6 +21,7 @@ import {
   Gift,
   Handshake,
   LayoutDashboard,
+  Map as MapIcon,
   Loader2,
   Megaphone,
   Moon,
@@ -52,6 +53,7 @@ type Item = { id: string; label: string; icon: LucideIcon; hint?: string; sub?: 
 
 const DESTINATIONS: Destination[] = [
   { label: 'داشبورد', href: '/dashboard', icon: LayoutDashboard, words: 'خانه' },
+  { label: 'دنیای کسب‌وکار', href: '/dashboard/world', icon: MapIcon, words: 'نقشه سه بعدی بازی' },
   { label: 'سفارش‌ها', href: '/dashboard/sales/history', icon: ShoppingBag, words: 'فروش فاکتور' },
   { label: 'صندوق فروش (POS)', href: '/dashboard/sales/pos', icon: ShoppingCart, words: 'pos فروش' },
   { label: 'انبارداری', href: '/dashboard/inventory', icon: Package, words: 'موجودی' },
