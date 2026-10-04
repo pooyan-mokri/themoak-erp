@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
-import { Edit, KeyRound, Trash2, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { Bot, Edit, KeyRound, Trash2, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { UserForm } from './user-form';
 import { SetPasswordDialog } from './set-password-dialog';
+import { ApiKeysDialog } from './api-keys-dialog';
 import { deleteUser, setUserActive } from '@/actions/user';
 import { toast } from 'sonner';
 import { Role } from '@/lib/types';
@@ -35,6 +36,7 @@ export function UserList({ users }: UserListProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(undefined);
   const [passwordUser, setPasswordUser] = useState<{ id: string; name: string } | undefined>(undefined);
+  const [keysUser, setKeysUser] = useState<{ id: string; name: string } | undefined>(undefined);
 
   const handleEdit = (user: any) => {
     setSelectedUser(user);
@@ -158,6 +160,15 @@ export function UserList({ users }: UserListProps) {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => setKeysUser(user)}
+                    title="کلیدهای Claude"
+                    aria-label={`کلیدهای Claude ${user.name}`}
+                  >
+                    <Bot className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleActive(user)}
                     title={user.isActive ? 'غیرفعال کردن' : 'فعال کردن'}
                     aria-label={`${user.isActive ? 'غیرفعال کردن' : 'فعال کردن'} ${user.name}`}
@@ -225,6 +236,7 @@ export function UserList({ users }: UserListProps) {
         user={selectedUser} 
       />
       <SetPasswordDialog user={passwordUser} onOpenChange={(open) => !open && setPasswordUser(undefined)} />
+      <ApiKeysDialog user={keysUser} onOpenChange={(open) => !open && setKeysUser(undefined)} />
     </>
   );
 }

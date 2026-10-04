@@ -1,3 +1,5 @@
+import { currentApiActor } from '@/lib/api-actor';
+
 // Stand-in for @/auth so server actions can be called directly in tests.
 let role: string | null = 'ADMIN';
 
@@ -6,6 +8,9 @@ export function setTestRole(next: string | null) {
 }
 
 export async function auth() {
+  // Inside an /api/erp call made with a personal key, as src/auth.ts: that key's user.
+  const actor = currentApiActor();
+  if (actor) return { user: { id: actor.id, name: actor.name, email: actor.email, role: actor.role } };
   return role ? { user: { id: 'test-user', role } } : null;
 }
 

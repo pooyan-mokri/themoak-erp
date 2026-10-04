@@ -11,6 +11,10 @@ import { LOW_STOCK_MAX, STOCK_TYPES } from '@/lib/stock-levels';
 import { createSale, setSaleStatus } from '@/lib/site-sale';
 import { kickSiteHook } from '@/lib/site-hook';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
+import { apiKeyUser, apiTag, looksLikeApiKey } from '@/lib/api-keys';
+import { currentApiActor, runAsApiUser, type ApiActor } from '@/lib/api-actor';
+import { logActivity } from '@/lib/activity-log';
+import { PERSONAL_POST_ACTIONS, personalMay, personalPost, redactForRole, whoami } from '@/lib/erp-api-personal';
 
 // Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
 export const maxDuration = 30;
@@ -23,7 +27,8 @@ export const maxDuration = 30;
 const SITE_GET_ACTIONS = ['warehouses', 'stock'];
 const SITE_POST_ACTIONS = ['createSale', 'setSaleStatus'];
 
-type ApiKey = 'full' | 'site';
+/** The owner's full key, the website's key, or a person's own key (src/lib/api-keys.ts). */
+type ApiKey = 'full' | 'site' | { actor: ApiActor };
 
 function bearerMatches(auth: string, secret: string | undefined): boolean {
   if (!secret) return false; // an unset or empty secret matches nothing
@@ -32,12 +37,26 @@ function bearerMatches(auth: string, secret: string | undefined): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-function authenticate(req: NextRequest): ApiKey | null {
+async function authenticate(req: NextRequest): Promise<ApiKey | null> {
   const auth = req.headers.get('authorization') ?? '';
   const full = bearerMatches(auth, process.env.ERP_API_SECRET);
   const site = bearerMatches(auth, process.env.ERP_SITE_API_SECRET);
   if (full) return 'full';
-  return site ? 'site' : null;
+  if (site) return 'site';
+  // A person's own key acts as them, with their role (src/lib/erp-api-personal.ts).
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!looksLikeApiKey(token)) return null;
+  const actor = await apiKeyUser(prisma, token);
+  return actor ? { actor } : null;
+}
+
+/** A person's key runs an action only their role may, as them; what comes back leaves out what the role may not see. */
+async function asPerson(key: { actor: ApiActor }, action: string, run: () => Promise<NextResponse>): Promise<NextResponse> {
+  if (!personalMay(key.actor.role, action)) return forbidden();
+  const res = await runAsApiUser(key.actor, run);
+  if (!res.headers.get('content-type')?.includes('application/json')) return res;
+  const body = redactForRole(action, await res.clone().json(), key.actor.role);
+  return NextResponse.json(body, { status: res.status });
 }
 
 function unauthorized() {
@@ -75,8 +94,20 @@ function unknownGetAction() {
 }
 
 export async function GET(req: NextRequest) {
-  const key = authenticate(req);
+  const key = await authenticate(req);
   if (!key) return unauthorized();
+  if (typeof key === 'object') {
+    const action = req.nextUrl.searchParams.get('action') ?? '';
+    if (action !== 'whoami' && !GET_ACTIONS.includes(action)) return unknownGetAction();
+    return asPerson(key, action, () => getAction(req, key));
+  }
+  if (req.nextUrl.searchParams.get('action') === 'whoami') {
+    return key === 'full' ? NextResponse.json({ owner: true, name: 'کلید کامل', role: 'ADMIN' }) : forbidden();
+  }
+  return getAction(req, key);
+}
+
+async function getAction(req: NextRequest, key: ApiKey) {
 
   const { searchParams } = req.nextUrl;
   const action = searchParams.get('action') ?? '';
@@ -86,6 +117,12 @@ export async function GET(req: NextRequest) {
 
   try {
     switch (action) {
+      // ── چه کسی هستم: کلید شخصی ─────────────────────────────────────────────
+      case 'whoami': {
+        const actor = currentApiActor();
+        return actor ? NextResponse.json(whoami(actor)) : forbidden();
+      }
+
       // ── خلاصه مالی ─────────────────────────────────────────────────────────
       case 'summary': {
         // EXPENSE-type accounts are P&L buckets, not money. «موجودی کل» of the
@@ -628,15 +665,31 @@ async function repeatedReply(requestId: string) {
 }
 
 // ── POST /api/erp  body: { action, ...fields } ───────────────────────────────
-const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus'];
+const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus', ...PERSONAL_POST_ACTIONS];
 
 function unknownPostAction() {
   return NextResponse.json({ error: 'Unknown action', availableActions: POST_ACTIONS }, { status: 404 });
 }
 
 export async function POST(req: NextRequest) {
-  const key = authenticate(req);
+  const key = await authenticate(req);
   if (!key) return unauthorized();
+  if (typeof key === 'object') {
+    // The action, read the way postAction reads it, to check it before running.
+    let action = req.nextUrl.searchParams.get('action') ?? '';
+    try {
+      const peek = await req.clone().json();
+      if (peek && typeof peek === 'object' && typeof peek.action === 'string') action = peek.action;
+    } catch {
+      // A bad body: postAction answers it.
+    }
+    if (!POST_ACTIONS.includes(action)) return unknownPostAction();
+    return asPerson(key, action, () => postAction(req, key));
+  }
+  return postAction(req, key);
+}
+
+async function postAction(req: NextRequest, key: ApiKey) {
   // The spec writes the address as /api/erp?action=…, so the action may come
   // there instead of in the body. The body's wins when both name one.
   const queryAction = req.nextUrl.searchParams.get('action');
@@ -674,6 +727,7 @@ export async function POST(req: NextRequest) {
         const input = readMoneyInput(fields);
         if (typeof input === 'string') return NextResponse.json({ error: input }, { status: 422 });
         const income = action === 'deposit';
+        const person = currentApiActor();
 
         try {
           const row = await prisma.$transaction(async (tx: any) => {
@@ -702,6 +756,7 @@ export async function POST(req: NextRequest) {
                 ...(income ? {} : { payee: payee ?? null }),
                 date: input.date,
                 clientRequestId: input.requestId ?? undefined,
+                ...(person && { tags: [apiTag(person)] }),
               },
             });
             const updated = await tx.account.update({
@@ -716,6 +771,9 @@ export async function POST(req: NextRequest) {
             return rowReply(created, updated.balance);
           });
           if (!row) return repeatedReply(input.requestId as string);
+          if (person) {
+            await logActivity(person.id, income ? 'API_DEPOSIT' : 'API_EXPENSE', `${apiTag(person)}: ${income ? 'واریز' : 'هزینه'} ${input.amount.toLocaleString('fa-IR')} — ${description}`);
+          }
           return NextResponse.json({
             success: true,
             message: income ? 'واریز ثبت شد' : 'هزینه ثبت شد',
@@ -739,6 +797,7 @@ export async function POST(req: NextRequest) {
         if (typeof input === 'string') return NextResponse.json({ error: input }, { status: 422 });
         const amount = input.amount;
         const text = typeof description === 'string' && description.trim() ? description : null;
+        const person = currentApiActor();
 
         try {
           const rows = await prisma.$transaction(async (tx: any) => {
@@ -774,6 +833,7 @@ export async function POST(req: NextRequest) {
                 date: input.date,
                 transferGroupId,
                 clientRequestId: input.requestId ?? undefined,
+                ...(person && { tags: [apiTag(person)] }),
               },
             });
             const credit = await tx.transaction.create({
@@ -788,6 +848,7 @@ export async function POST(req: NextRequest) {
                 description: text ?? `انتقال از ${from.name}`,
                 date: input.date,
                 transferGroupId,
+                ...(person && { tags: [apiTag(person)] }),
               },
             });
             const fromNow = await tx.account.update({
@@ -803,12 +864,25 @@ export async function POST(req: NextRequest) {
             return [rowReply(debit, fromNow.balance), rowReply(credit, toNow.balance)];
           });
           if (!rows) return repeatedReply(input.requestId as string);
+          if (person) {
+            await logActivity(person.id, 'API_TRANSFER', `${apiTag(person)}: انتقال وجه ${amount.toLocaleString('fa-IR')}${text ? ` — ${text}` : ''}`);
+          }
           return NextResponse.json({ success: true, message: 'انتقال وجه انجام شد', transactions: rows });
         } catch (err) {
           if (input.requestId && isDuplicateRequest(err)) return repeatedReply(input.requestId);
           if (err instanceof Refused) return NextResponse.json({ error: err.message }, { status: 422 });
           throw err;
         }
+      }
+
+      // ── کارهای یک کاربر، با کلید شخصی او (src/lib/erp-api-personal.ts) ────────
+      case 'createCustomer':
+      case 'createOrder':
+      case 'recordOrderPayment':
+      case 'returnOrderItem':
+      case 'transferStock': {
+        const result = await personalPost(prisma, action, fields);
+        return NextResponse.json(result.body, { status: result.status });
       }
 
       // ── فروش سایت ────────────────────────────────────────────────────────────
