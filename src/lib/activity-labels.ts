@@ -20,6 +20,17 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   REMOVE_RECEIPT: 'حذف رسید',
   SETTLE_OUTSIDE: 'تسویهٔ فاکتور امانی بیرون از سیستم',
   UPDATE_PAYROLL: 'ویرایش فیش حقوقی',
+  // Claude's ERP connector, with a person's own key (src/lib/erp-api-personal.ts).
+  API_KEY_CREATED: 'ساخت کلید کلاد',
+  API_KEY_REVOKED: 'باطل کردن کلید کلاد',
+  API_DEPOSIT: 'واریز با کلاد',
+  API_EXPENSE: 'هزینه با کلاد',
+  API_TRANSFER: 'انتقال وجه با کلاد',
+  API_CREATE_CUSTOMER: 'ثبت مشتری با کلاد',
+  API_CREATE_ORDER: 'ثبت سفارش با کلاد',
+  API_ORDER_PAYMENT: 'ثبت پرداخت سفارش با کلاد',
+  API_RETURN: 'مرجوعی با کلاد',
+  API_TRANSFER_STOCK: 'انتقال کالا با کلاد',
 };
 
 export function activityLabel(action: string | null | undefined): string {
