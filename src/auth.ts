@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { Role } from '@prisma/client';
 import type { JWT } from 'next-auth/jwt';
 import { findUserByEmail } from '@/lib/user-email';
+import { currentApiActor } from '@/lib/api-actor';
 
 // No email, password result or session is ever logged here: these run on every
 // sign-in and every session read, and the logs are not a place for them.
@@ -116,4 +117,18 @@ try {
   throw error;
 }
 
-export const { handlers, auth, signIn, signOut } = authExport;
+const { auth: sessionAuth } = authExport;
+export const { handlers, signIn, signOut } = authExport;
+
+/**
+ * The signed-in session; inside an /api/erp call made with a personal key, that
+ * key's user (src/lib/api-actor.ts), so the call's server actions check their
+ * role and record their name.
+ */
+export const auth = ((...args: unknown[]) => {
+  const actor = currentApiActor();
+  if (actor && args.length === 0) {
+    return Promise.resolve({ user: { id: actor.id, name: actor.name, email: actor.email, role: actor.role }, expires: new Date(Date.now() + 60_000).toISOString() });
+  }
+  return (sessionAuth as (...a: unknown[]) => unknown)(...args);
+}) as typeof sessionAuth;

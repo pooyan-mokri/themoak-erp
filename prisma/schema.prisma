@@ -26,6 +26,7 @@ model User {
   isActive            Boolean              @default(true)
   aiConversations     AIConversation[]
   activityLogs        ActivityLog[]
+  apiKeys             ApiKey[]
   employee            Employee?
   createdAudits       InventoryAudit[]     @relation("AuditCreatedBy")
   countedItems1       InventoryAuditItem[] @relation("CountedBy1")
@@ -1166,4 +1167,23 @@ enum ProductType {
   FIXED_ASSET
   CONSUMABLE
   OTHER
+}
+
+/// A personal key for the ERP API (/api/erp): Claude's ERP connector signs in with it as its user, with that
+/// user's role, and what it records carries the user's name (src/lib/api-keys.ts). Only its SHA-256 is kept.
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  /// What it is for, e.g. «Claude ویندوز».
+  name       String
+  /// The key's first characters, to tell keys apart without the key.
+  prefix     String
+  hash       String    @unique
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
