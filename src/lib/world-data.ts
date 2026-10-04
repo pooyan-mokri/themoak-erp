@@ -8,7 +8,8 @@
  * - units sold: netLineSale, net of returns and exchanges (product-sales.ts);
  * - stock levels: stockLevel, low is 3 or fewer (stock-levels.ts);
  * - revenue and expenses: profitEntry, profit and loss's rule (profit-rows.ts);
- * - the sales window: since the start of the Tehran day 30 days ago (tehran-day.ts).
+ * - the sales window: since the start of the Tehran day 30 days ago (tehran-day.ts);
+ * - a product's photo: the website's, else the one uploaded here, as every screen shows it (product-image.ts).
  *
  * What a role may not see (permissions.ts) is never read, let alone sent.
  */
@@ -31,6 +32,7 @@ import { categoryLabel } from '@/lib/category-labels';
 import { isConsignmentOrder } from '@/lib/consignment-amounts';
 import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
 import { readSiteConnection, SITE_CATALOGUE_SYNC_KEY, SITE_HOOK_STATUS_KEY } from '@/lib/site-connection';
+import { productPhotoOnSite } from '@/lib/product-image';
 import type {
   WorldAccount,
   WorldChannel,
@@ -167,6 +169,7 @@ export async function buildWorld(client: any, role: string | null | undefined, n
   const warehouseIds = new Set<string>(warehouses.map((w: any) => w.id));
   const mainWarehouse = warehouses.find((w: any) => !w.isVirtual) ?? warehouses[0] ?? null;
   const productNames = new Map<string, string>();
+  const productPhotos = new Map<string, string | null>();
 
   // Sales in the window, read once for the sales, the products' units sold and the website.
   let windowOrders: any[] = [];
@@ -188,10 +191,16 @@ export async function buildWorld(client: any, role: string | null | undefined, n
   if (layers.stock || layers.sales) {
     const products = await client.product.findMany({
       where: { productType: { in: [...STOCK_TYPES] } },
-      select: { id: true, name: true, webId: true, costPrice: true, inventory: { select: { warehouseId: true, quantity: true } } },
+      select: {
+        id: true, name: true, webId: true, costPrice: true, imageUrl: true, image: true,
+        inventory: { select: { warehouseId: true, quantity: true } },
+      },
       orderBy: { name: 'asc' },
     });
-    for (const p of products) productNames.set(p.id, p.name);
+    for (const p of products) {
+      productNames.set(p.id, p.name);
+      productPhotos.set(p.id, productPhotoOnSite(p));
+    }
 
     if (layers.stock) {
       const byWarehouse = new Map<string, { units: number; products: number; value: number }>();
@@ -279,10 +288,16 @@ export async function buildWorld(client: any, role: string | null | undefined, n
       }
     }
     const recent = await client.order.findMany({ select: ORDER_SELECT, orderBy: [{ createdAt: 'desc' }, { number: 'desc' }], take: RECENT_ORDERS });
+    // The window as long again just before it: from as far before its start as now is after it.
+    const previousOrders = await client.order.findMany({
+      where: { createdAt: { gte: new Date(since.getTime() - (now.getTime() - since.getTime())), lt: since }, status: { not: 'CANCELLED' } },
+      select: ORDER_BALANCE_FIELDS,
+    });
     sales = {
       since: since.toISOString(),
       today: { orders: todayOrders, total: todayTotal },
       window: { orders: live.length, total: windowTotal },
+      previous: { orders: previousOrders.length, total: previousOrders.reduce((sum: number, o: any) => sum + orderNet(o), 0) },
       days: [...dayRows.values()],
       channels: [...channels.values()],
       topProducts: [...soldByProduct.entries()]
@@ -291,7 +306,7 @@ export async function buildWorld(client: any, role: string | null | undefined, n
         .slice(0, TOP_PRODUCTS)
         .map(([id, units]) => {
           const name = productNames.get(id) ?? 'نامشخص';
-          return { id, name, family: productFamily(name), units };
+          return { id, name, family: productFamily(name), units, image: productPhotos.get(id) ?? null };
         }),
       recentOrders: recent.map(toWorldOrder),
     };

@@ -85,10 +85,13 @@ export type WorldSales = {
   since: string;
   today: { orders: number; total: number };
   window: { orders: number; total: number };
+  /** The window as long again just before this one, by the same rules: the world's weather compares the two. */
+  previous: { orders: number; total: number };
   /** Every Tehran day of the window, days without a sale included. */
   days: Array<{ day: string; orders: number; total: number }>;
   channels: Array<{ channel: WorldChannel; orders: number; total: number }>;
-  topProducts: Array<{ id: string; name: string; family: string; units: number }>;
+  /** `image`: the product's photo at an address on this site (the app's own image route), or null when it has none. */
+  topProducts: Array<{ id: string; name: string; family: string; units: number; image: string | null }>;
   recentOrders: WorldOrder[];
 };
 

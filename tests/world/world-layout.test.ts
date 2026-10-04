@@ -32,9 +32,9 @@ function world(n: { products: number; stores: number; suppliers: number; custome
     layers,
     stock: { lowMax: 3, warehouses, products, totals: { products: n.products, units: 100, low: 3, out: 2, valueAtCost: 5e8 } },
     sales: {
-      since: '2026-09-03T20:30:00Z', today: { orders: 2, total: 3e6 }, window: { orders: 40, total: 9e7 }, days,
+      since: '2026-09-03T20:30:00Z', today: { orders: 2, total: 3e6 }, window: { orders: 40, total: 9e7 }, previous: { orders: 30, total: 8e7 }, days,
       channels: [{ channel: 'site', orders: 3, total: 9e6 }, { channel: 'shop', orders: 30, total: 7e7 }, { channel: 'consignment', orders: 7, total: 1.1e7 }],
-      topProducts: products.slice(0, 10).map((p) => ({ id: p.id, name: p.name, family: p.family, units: 10 - Number(p.id.slice(1)) })),
+      topProducts: products.slice(0, 10).map((p) => ({ id: p.id, name: p.name, family: p.family, units: 10 - Number(p.id.slice(1)), image: null })),
       recentOrders: [],
     },
     customers: {

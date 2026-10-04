@@ -7,7 +7,8 @@ import { setTestRole } from '../stubs/auth';
 import { getDashboardFinancials, getDashboardSales } from '@/actions/dashboard';
 import { buildWorld, orderChannel, productFamily, worldLayers } from '@/lib/world-data';
 import { categoryLabel } from '@/lib/category-labels';
-import { tehranDay, tehranDayStart } from '@/lib/tehran-day';
+import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
+import { productPhotoOnSite } from '@/lib/product-image';
 import { GET as worldRoute } from '@/app/api/world/route';
 import type { WorldData } from '@/lib/world-types';
 
@@ -217,6 +218,48 @@ test('sales: the window\'s figures, the days and the best sellers are the dashbo
     ['COMPLETED', 'consignment', 1, 4_000_000, 'فروشگاه نقش'],
     ['COMPLETED', 'shop', 1, 1_000_000, 'علی رضایی'],
   ]);
+});
+
+test('sales: the window before is as long as the window and ends where it starts, by the same rules', async () => {
+  const now = new Date();
+  const s = await seed(now);
+  const since = tehranDayStart(addDays(tehranDay(now), -30));
+  const start = new Date(since.getTime() - (now.getTime() - since.getTime()));
+  const order = (createdAt: Date, data: any = {}) => prisma.order.create({
+    data: {
+      customerId: s.ali.id, totalAmount: 2_000_000, discount: 500_000, paidAmount: 0, paymentStatus: 'UNPAID', status: 'COMPLETED', createdAt, ...data,
+      items: { create: [{ productId: s.yekBrown.id, quantity: 1, price: 2_000_000, warehouseId: s.main.id }] },
+    },
+  });
+  await order(start); // its first moment
+  await order(new Date(since.getTime() - 1)); // its last
+  await order(new Date(since.getTime() - DAY), { status: 'CANCELLED' }); // cancelled: not a sale
+  await order(new Date(start.getTime() - 1)); // before it
+  await order(since); // the window's
+  const sales = (await buildWorld(prisma, 'ADMIN', now)).sales!;
+  // The seed's order 60 days ago falls in it too, 1 000 000 with no discount; each of these nets 1 500 000.
+  assert.deepEqual(sales.previous, { orders: 3, total: 1_000_000 + 2 * 1_500_000 });
+  assert.deepEqual(sales.window, { orders: 4, total: 2_500_000 + 2_000_000 + 4_000_000 + 1_500_000 });
+});
+
+test('the best sellers carry their photo at an address on this site, the website\'s first, as every screen shows it', async () => {
+  const s = await seed();
+  const uploaded = '/api/product-images/0f8fad5b-d9cb-469f-a165-70867728950e.webp';
+  await prisma.product.update({ where: { id: s.yekBlack.id }, data: { imageUrl: 'https://themoak.com/media/products/yek-black.webp', image: uploaded } });
+  await prisma.product.update({ where: { id: s.yekBrown.id }, data: { image: uploaded } });
+  const top = (await buildWorld(prisma, 'ADMIN')).sales!.topProducts;
+  assert.deepEqual(top.map((p) => [p.name, p.image]), [
+    ['YEK - Black', '/_next/image?url=https%3A%2F%2Fthemoak.com%2Fmedia%2Fproducts%2Fyek-black.webp&w=384&q=75'],
+    ['YEK - Brown', uploaded],
+  ]);
+  await prisma.product.update({ where: { id: s.yekBrown.id }, data: { image: null } });
+  assert.equal((await buildWorld(prisma, 'ADMIN')).sales!.topProducts[1].image, null);
+  // Another host's photo cannot be drawn on this site's canvas: the uploaded one, else none.
+  assert.equal(productPhotoOnSite({ imageUrl: 'https://cdn.example.com/a.webp', image: uploaded }), uploaded);
+  assert.equal(productPhotoOnSite({ imageUrl: 'https://cdn.example.com/a.webp', image: null }), null);
+  assert.equal(productPhotoOnSite({ imageUrl: 'http://themoak.com/a.webp' }), null);
+  assert.equal(productPhotoOnSite({ imageUrl: '//themoak.com/a.webp' }), null);
+  assert.equal(productPhotoOnSite({}), null);
 });
 
 test('money: «موجودی کل», receivables and payables are the dashboard\'s; flows and profit follow profit and loss', async () => {
