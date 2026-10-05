@@ -7,7 +7,8 @@ import { setTestRole } from '../stubs/auth';
 import { getDashboardFinancials, getDashboardSales } from '@/actions/dashboard';
 import { buildWorld, orderChannel, productFamily, worldLayers } from '@/lib/world-data';
 import { categoryLabel } from '@/lib/category-labels';
-import { tehranDay, tehranDayStart } from '@/lib/tehran-day';
+import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
+import { productPhotoOnSite } from '@/lib/product-image';
 import { GET as worldRoute } from '@/app/api/world/route';
 import type { WorldData } from '@/lib/world-types';
 
@@ -219,6 +220,48 @@ test('sales: the window\'s figures, the days and the best sellers are the dashbo
   ]);
 });
 
+test('sales: the window before is as long as the window and ends where it starts, by the same rules', async () => {
+  const now = new Date();
+  const s = await seed(now);
+  const since = tehranDayStart(addDays(tehranDay(now), -30));
+  const start = new Date(since.getTime() - (now.getTime() - since.getTime()));
+  const order = (createdAt: Date, data: any = {}) => prisma.order.create({
+    data: {
+      customerId: s.ali.id, totalAmount: 2_000_000, discount: 500_000, paidAmount: 0, paymentStatus: 'UNPAID', status: 'COMPLETED', createdAt, ...data,
+      items: { create: [{ productId: s.yekBrown.id, quantity: 1, price: 2_000_000, warehouseId: s.main.id }] },
+    },
+  });
+  await order(start); // its first moment
+  await order(new Date(since.getTime() - 1)); // its last
+  await order(new Date(since.getTime() - DAY), { status: 'CANCELLED' }); // cancelled: not a sale
+  await order(new Date(start.getTime() - 1)); // before it
+  await order(since); // the window's
+  const sales = (await buildWorld(prisma, 'ADMIN', now)).sales!;
+  // The seed's order 60 days ago falls in it too, 1 000 000 with no discount; each of these nets 1 500 000.
+  assert.deepEqual(sales.previous, { orders: 3, total: 1_000_000 + 2 * 1_500_000 });
+  assert.deepEqual(sales.window, { orders: 4, total: 2_500_000 + 2_000_000 + 4_000_000 + 1_500_000 });
+});
+
+test('the best sellers carry their photo at an address on this site, the website\'s first, as every screen shows it', async () => {
+  const s = await seed();
+  const uploaded = '/api/product-images/0f8fad5b-d9cb-469f-a165-70867728950e.webp';
+  await prisma.product.update({ where: { id: s.yekBlack.id }, data: { imageUrl: 'https://themoak.com/media/products/yek-black.webp', image: uploaded } });
+  await prisma.product.update({ where: { id: s.yekBrown.id }, data: { image: uploaded } });
+  const top = (await buildWorld(prisma, 'ADMIN')).sales!.topProducts;
+  assert.deepEqual(top.map((p) => [p.name, p.image]), [
+    ['YEK - Black', '/_next/image?url=https%3A%2F%2Fthemoak.com%2Fmedia%2Fproducts%2Fyek-black.webp&w=384&q=75'],
+    ['YEK - Brown', uploaded],
+  ]);
+  await prisma.product.update({ where: { id: s.yekBrown.id }, data: { image: null } });
+  assert.equal((await buildWorld(prisma, 'ADMIN')).sales!.topProducts[1].image, null);
+  // Another host's photo cannot be drawn on this site's canvas: the uploaded one, else none.
+  assert.equal(productPhotoOnSite({ imageUrl: 'https://cdn.example.com/a.webp', image: uploaded }), uploaded);
+  assert.equal(productPhotoOnSite({ imageUrl: 'https://cdn.example.com/a.webp', image: null }), null);
+  assert.equal(productPhotoOnSite({ imageUrl: 'http://themoak.com/a.webp' }), null);
+  assert.equal(productPhotoOnSite({ imageUrl: '//themoak.com/a.webp' }), null);
+  assert.equal(productPhotoOnSite({}), null);
+});
+
 test('money: «موجودی کل», receivables and payables are the dashboard\'s; flows and profit follow profit and loss', async () => {
   const s = await seed();
   const world = await buildWorld(prisma, 'ADMIN');
@@ -386,4 +429,37 @@ test('/api/world: a stranger gets 401, an unknown role 403, a user their world, 
   const body = (await res.json()) as WorldData;
   assert.equal(body.finance, undefined);
   assert.ok(body.stock);
+});
+
+test('customers: everyone in a tier by what they ever bought, with what they owe and are owed; partners are not customers', async () => {
+  const s = await seed();
+  await prisma.customerCredit.create({ data: { customerId: s.sara.id, amount: 300_000, reason: 'تعویض' } });
+  const world = await buildWorld(prisma, 'ADMIN');
+  const people = world.customers!.people;
+  assert.deepEqual(people.map((p) => [p.name, p.tier, p.spend, p.debt, p.credit]), [
+    ['علی رضایی', 1, 3_500_000, 1_500_000, 0],
+    ['سارا احمدی', 2, 2_000_000, 0, 300_000],
+  ]);
+  assert.ok(!people.some((p) => p.id === s.partner.id));
+  assert.deepEqual(world.customers!.tiers.filter((t) => t.count).map((t) => [t.label, t.count]), [['الماسی', 1], ['طلایی', 1]]);
+});
+
+test('a partner\'s store: its 90 days of sales and what it owes us; a supplier: what we bought and the credit it holds', async () => {
+  const s = await seed();
+  await prisma.order.updateMany({ where: { customerId: s.partner.id }, data: { paidAmount: 1_000_000, paymentStatus: 'PARTIAL' } });
+  await prisma.supplierCredit.create({ data: { supplierId: s.maker.id, amount: 750_000, reason: 'کسری' } });
+  const admin = await buildWorld(prisma, 'ADMIN');
+  const store = admin.stock!.warehouses.find((w) => w.id === s.store.id)!;
+  assert.deepEqual([store.sales90, store.receivable, store.payable], [4_000_000, 3_000_000, 0]);
+  const maker = admin.suppliers!.suppliers.find((x) => x.id === s.maker.id)!;
+  assert.deepEqual([maker.volume, maker.credit, maker.unpaid], [10_000_000, 750_000, 10_000_000]);
+  // Without sales.view, no partner's money; without finance.view, no supplier's.
+  const warehouse = await buildWorld(prisma, 'WAREHOUSE');
+  const theirs = warehouse.stock!.warehouses.find((w) => w.id === s.store.id)!;
+  assert.deepEqual([theirs.sales90, theirs.receivable, theirs.payable], [undefined, undefined, undefined]);
+  assert.equal(warehouse.customers, undefined);
+  const sales = await buildWorld(prisma, 'SALES');
+  const seen = sales.suppliers!.suppliers.find((x) => x.id === s.maker.id)!;
+  assert.deepEqual([seen.volume, seen.credit, seen.unpaid], [undefined, undefined, undefined]);
+  assert.ok(sales.customers!.people.length === 2);
 });

@@ -43,6 +43,12 @@ export type WorldWarehouse = {
   products: number;
   /** cost.view only: units here at their cost price. */
   valueAtCost?: number;
+  /** sales.view only, a partner's store: what its orders of the last 90 days came to, after discounts. */
+  sales90?: number;
+  /** sales.view only, a partner's store: what the partner still owes us on its orders. */
+  receivable?: number;
+  /** sales.view only, a partner's store: what we owe the partner (their credit). */
+  payable?: number;
 };
 
 export type WorldProduct = {
@@ -85,10 +91,13 @@ export type WorldSales = {
   since: string;
   today: { orders: number; total: number };
   window: { orders: number; total: number };
+  /** The window as long again just before this one, by the same rules: the world's weather compares the two. */
+  previous: { orders: number; total: number };
   /** Every Tehran day of the window, days without a sale included. */
   days: Array<{ day: string; orders: number; total: number }>;
   channels: Array<{ channel: WorldChannel; orders: number; total: number }>;
-  topProducts: Array<{ id: string; name: string; family: string; units: number }>;
+  /** `image`: the product's photo at an address on this site (the app's own image route), or null when it has none. */
+  topProducts: Array<{ id: string; name: string; family: string; units: number; image: string | null }>;
   recentOrders: WorldOrder[];
 };
 
@@ -102,7 +111,18 @@ export type WorldCustomers = {
   receivables: number;
   /** The best customers of the last 90 days by what they paid for, consignment partners left out. */
   top: Array<{ id: string; name: string; orders: number; spend: number; debt: number }>;
+  /**
+   * Every customer (partners left out) by what they ever bought, in tiers (customerTier): 1 الماسی …
+   * 5 عادی, 6 never bought. The world houses each tier its own way.
+   */
+  people: WorldCustomer[];
+  tiers: Array<{ tier: CustomerTier; label: string; count: number }>;
 };
+
+export type CustomerTier = 1 | 2 | 3 | 4 | 5 | 6;
+
+/** debt: what they still owe us on their orders. credit: what we owe them (their credit account, and paid beyond an order). */
+export type WorldCustomer = { id: string; name: string; spend: number; orders: number; debt: number; credit: number; lastAt: string | null; tier: CustomerTier };
 
 export type WorldSupplier = {
   id: string;
@@ -113,6 +133,10 @@ export type WorldSupplier = {
   lastOrderAt: string | null;
   /** finance.view only: still to pay on its purchase orders, in Toman. */
   unpaid?: number;
+  /** finance.view only: what its purchase orders came to, in Toman, cancelled ones left out. */
+  volume?: number;
+  /** finance.view only: the credit it holds for us (supplier credit: goods or money it owes us). */
+  credit?: number;
 };
 
 export type WorldSuppliers = {
