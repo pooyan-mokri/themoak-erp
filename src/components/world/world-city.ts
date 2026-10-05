@@ -36,7 +36,12 @@ export type District = { key: DistrictKey; label: string; rect: Rect; center: Po
 export type Plot = Rect & { id: string; facing: number };
 export type Pallet = Point & { product: WorldProduct; units: number };
 export type Yard = { warehouseId: string; building: Plot; docks: Point[]; pallets: Pallet[]; truckBays: Plot[] };
-export type Store = { warehouseId: string; plot: Plot; display: Pallet[] };
+/** A partner's store: its plot (building and forecourt), the building, and a crate column per product in front. */
+export type Size = 'large' | 'medium' | 'small';
+export type Store = { warehouseId: string; plot: Plot; building: Plot; display: Pallet[]; size: Size };
+export type HomeKind = 'mansion' | 'villa' | 'house' | 'terrace' | 'apartment';
+/** A home's lot; a terrace or an apartment block houses several customers. */
+export type Home = Plot & { kind: HomeKind; residents: string[]; tier: number };
 export type Road = { a: Point; b: Point; width: number };
 
 export type CityPlan = {
@@ -49,13 +54,20 @@ export type CityPlan = {
   stores: Store[];
   hq: Plot;
   bank: Plot;
+  /** The headquarters' plaza: the fountain, a bar per day of sales, the best sellers' podium. */
+  plaza: { fountain: Point; days: Array<Point & { id: string }>; podium: Array<Point & { id: string }>; billboard: Point };
+  /** Beside the bank: a bar per category of revenue (west) and of expense (east). */
+  flows: { income: Array<Point & { id: string }>; expense: Array<Point & { id: string }> };
   /** A coin stack per account, on the bank's forecourt. */
   accounts: Array<Point & { id: string }>;
   office: Plot;
   tower: Plot;
-  homes: { top: Plot[]; crowd: Plot[] };
+  /** Where the customers live, by tier: mansions, villas, houses, terraced rows, apartment blocks in the town. */
+  homes: Home[];
+  /** The residential quarters, for their signs. */
+  quarters: Array<{ label: string; rect: Rect }>;
   port: { quay: Rect; cranes: Point[]; berth: Point; containers: Point[] };
-  china: { island: Rect; quay: Rect; berth: Point; cranes: Point[]; factories: Plot[] };
+  china: { island: Rect; quay: Rect; berth: Point; cranes: Point[]; factories: Array<Plot & { size: Size }> };
   /** The sea lane between the two berths. */
   lane: Point[];
   trees: Point[];
@@ -67,15 +79,28 @@ export type CityPlan = {
 };
 
 /** Small houses stand for customers up to this many; the count is in the card. */
-export const CROWD_MAX = 120;
 const ROAD = 12;
 const SIDEWALK = 2.5;
 const PALLET_STEP = 2.6;
 const STORE_W = 14;
 const STORE_D = 12;
-const HOME_LOT = 11;
-const FACTORY_LOT = 24;
-
+/** In front of each store: its stock on show, a column per product. */
+const FORECOURT = 8;
+const SHOW_STEP = 0.9;
+const SHOW_ROWS = 6;
+/** Each kind of home's lot (width along the street, depth) and how many customers it houses. */
+const LOTS: Record<HomeKind, { w: number; d: number; holds: number }> = {
+  mansion: { w: 34, d: 30, holds: 1 },
+  villa: { w: 24, d: 22, holds: 1 },
+  house: { w: 15, d: 15, holds: 1 },
+  terrace: { w: 44, d: 14, holds: 6 },
+  apartment: { w: 20, d: 18, holds: 24 },
+};
+const FACTORY: Record<Size, { lot: number; w: number; d: number }> = {
+  large: { lot: 34, w: 28, d: 22 },
+  medium: { lot: 26, w: 20, d: 16 },
+  small: { lot: 19, w: 14, d: 12 },
+};
 /** A seeded random from a string, the same on every visit. */
 function seeded(text: string): () => number {
   let h = 2166136261;
@@ -91,6 +116,10 @@ function seeded(text: string): () => number {
 
 const center = (r: Rect): Point => ({ x: r.x + r.w / 2, z: r.z + r.d / 2 });
 
+type Quarter = 'villas' | 'terraces' | 'town';
+const quarterOf = (kind: HomeKind): Quarter => (kind === 'terrace' ? 'terraces' : kind === 'apartment' ? 'town' : 'villas');
+const QUARTER_LABELS: Record<Quarter, string> = { villas: 'ویلاها', terraces: 'خانه‌های شهری', town: 'شهرک' };
+
 /** Cells of a grid, row by row, filling `count`, `columns` wide, `step` apart, starting at (x0, z0). */
 function cells(count: number, columns: number, stepX: number, stepZ: number, x0: number, z0: number): Point[] {
   return Array.from({ length: count }, (_, i) => ({ x: x0 + (i % columns) * stepX, z: z0 + Math.floor(i / columns) * stepZ }));
@@ -103,19 +132,50 @@ function palletsOf(data: WorldData, warehouseId: string, ghosts: boolean): Array
     .map((p) => ({ product: p, units: Math.max(0, p.byWarehouse[warehouseId] ?? 0) }));
 }
 
+/** The best third by `measure` large, the next third medium, the rest small (ties keep their order). */
+export function sizesBy<T>(items: T[], measure: (t: T) => number): Map<T, Size> {
+  const ranked = [...items].sort((a, b) => measure(b) - measure(a));
+  const third = Math.max(1, Math.ceil(items.length / 3));
+  return new Map(ranked.map((t, i) => [t, i < third ? 'large' : i < third * 2 ? 'medium' : 'small']));
+}
+
+/** Lays rectangles out left to right in rows `width` wide, a new row also wherever `breakBefore` says. */
+function flow<T extends { w: number; d: number }>(items: T[], width: number, gap: number, breakBefore: (t: T, i: number) => boolean = () => false) {
+  const placed: Array<T & { x: number; z: number }> = [];
+  let x = 0;
+  let z = 0;
+  let row = 0;
+  items.forEach((it, i) => {
+    if (i > 0 && (x + it.w > width || breakBefore(it, i))) {
+      z += row + gap;
+      x = 0;
+      row = 0;
+    }
+    placed.push({ ...it, x, z });
+    x += it.w + gap;
+    row = Math.max(row, it.d);
+  });
+  return { placed, depth: items.length ? z + row : 0 };
+}
+
 export function planCity(data: WorldData): CityPlan {
   const stock = data.stock;
   const physical = stock?.warehouses.filter((w) => !w.virtual) ?? [];
   const partners = stock?.warehouses.filter((w) => w.virtual) ?? [];
   const accounts = data.finance?.accounts ?? [];
   const suppliers = data.suppliers?.suppliers ?? [];
-  const top = data.customers?.top ?? [];
-  const crowdCount = Math.min(CROWD_MAX, Math.max(0, (data.customers?.total ?? 0) - top.length));
 
   // ── Column widths (x) and row depths (z) from what each block holds ───────
   const PORT_W = 50;
   const CENTER_W = 92;
-  const STORES_W = Math.max(70, STORE_D * 2 + 14 + 10);
+  // A partner's store is as big as it matters to us: its sales of 90 days, else the stock it holds.
+  const storeSize = sizesBy(partners, (w) => w.sales90 ?? w.units);
+  const STORE: Record<Size, { depth: number; front: number }> = { large: { depth: 15, front: 22 }, medium: { depth: STORE_D, front: STORE_W + 2 }, small: { depth: 9, front: 11 } };
+  const STORES_W = Math.max(70, (STORE.large.depth + FORECOURT) * 2 + 14);
+  // Each store's frontage: its size's, or wider when it needs room for a column per product in its forecourt.
+  const showing = (id: string) => (stock?.products ?? []).filter((p) => (p.byWarehouse[id] ?? 0) > 0);
+  const sizeOf = (id: string): Size => storeSize.get(partners.find((w) => w.id === id)!) ?? 'medium';
+  const frontage = (id: string) => Math.max(STORE[sizeOf(id)].front, Math.ceil(showing(id).length / SHOW_ROWS) * SHOW_STEP + 3);
   // The warehouse block: each physical warehouse a section, its hall, its truck yard and its pallets.
   const sections = physical.map((w, i) => {
     const items = palletsOf(data, w.id, i === 0);
@@ -126,12 +186,33 @@ export function planCity(data: WorldData): CityPlan {
   const sectionDepth = (count: number, first: boolean) => (first ? 30 : 22) + 6 + 24 + Math.ceil(count / yardColumns(count)) * PALLET_STEP + 10;
   const warehouseDepth = sections.reduce((sum, s, i) => sum + sectionDepth(s.items.length, i === 0), 0);
   const storeRows = Math.ceil(partners.length / 2);
-  const storesDepth = storeRows * (STORE_W + 5) + 12;
+  const rowDepth = (row: number) => Math.max(...partners.slice(row * 2, row * 2 + 2).map((w) => frontage(w.id)), STORE_W) + 5;
+  const storesDepth = Array.from({ length: storeRows }, (_, r) => rowDepth(r)).reduce((a, b) => a + b, 0) + 12;
   const NORTH_D = 56;
   const MID_D = Math.max(124, warehouseDepth + 8, storesDepth);
-  const homeColumnsTotal = Math.floor((PORT_W + WAREHOUSE_W + CENTER_W + STORES_W + ROAD * 3 - 12) / HOME_LOT);
-  const crowdRows = Math.ceil(crowdCount / Math.max(1, homeColumnsTotal));
-  const SOUTH_D = Math.max(40, 8 + 16 + crowdRows * HOME_LOT + 8);
+  // The homes: by tier, the best alone on big lots, the rest together in terraces and apartment blocks.
+  const people = data.customers?.people ?? [];
+  const homeItems: Array<{ w: number; d: number; kind: HomeKind; residents: string[]; tier: number }> = [];
+  const alone = (tier: number, kind: HomeKind) => {
+    for (const c of people.filter((p) => p.tier === tier)) homeItems.push({ ...LOTS[kind], kind, residents: [c.id], tier });
+  };
+  const together = (tiers: number[], kind: HomeKind) => {
+    const group = people.filter((p) => tiers.includes(p.tier));
+    for (let i = 0; i < group.length; i += LOTS[kind].holds) {
+      const residents = group.slice(i, i + LOTS[kind].holds);
+      homeItems.push({ ...LOTS[kind], kind, residents: residents.map((c) => c.id), tier: Math.min(...residents.map((c) => c.tier)) });
+    }
+  };
+  alone(1, 'mansion');
+  alone(2, 'villa');
+  alone(3, 'house');
+  together([4], 'terrace');
+  together([5, 6], 'apartment');
+  const homesWidth = WAREHOUSE_W + ROAD + CENTER_W + ROAD + STORES_W - 16;
+  const homeFlow = flow(homeItems, homesWidth, 4, (it, i) => i > 0 && quarterOf(homeItems[i - 1].kind) !== quarterOf(it.kind));
+  // A quarter's sign row between quarters.
+  const quarterBreaks = homeFlow.placed.filter((h, i) => i > 0 && quarterOf(homeFlow.placed[i - 1].kind) !== quarterOf(h.kind)).length;
+  const SOUTH_D = Math.max(40, 10 + homeFlow.depth + quarterBreaks * 8 + 10);
 
   const width = PORT_W + ROAD + WAREHOUSE_W + ROAD + CENTER_W + ROAD + STORES_W + ROAD;
   const depth = ROAD + NORTH_D + ROAD + MID_D + ROAD + SOUTH_D + ROAD;
@@ -193,12 +274,35 @@ export function planCity(data: WorldData): CityPlan {
   });
 
   // ── The shopping street: a partner's store on either side ─────────────────
+  const rowTops: number[] = [];
+  for (let r = 0, z = zM + 8; r < storeRows; r++) {
+    rowTops.push(z);
+    z += rowDepth(r);
+  }
   const stores: Store[] = partners.map((w, i) => {
     const west = i % 2 === 0;
     const row = Math.floor(i / 2);
-    const zTop = zM + 8 + row * (STORE_W + 5);
-    const x = west ? storeStreetX - 5 - STORE_D : storeStreetX + 5;
-    return { warehouseId: w.id, plot: { id: w.id, x, z: zTop, w: STORE_D, d: STORE_W, facing: west ? Math.PI / 2 : -Math.PI / 2 }, display: [] };
+    const zTop = rowTops[row];
+    const size = sizeOf(w.id);
+    const width = frontage(w.id);
+    const deep = STORE[size].depth;
+    const depth = deep + FORECOURT;
+    const x = west ? storeStreetX - 5 - depth : storeStreetX + 5;
+    const facing = west ? Math.PI / 2 : -Math.PI / 2;
+    const building: Plot = { id: w.id, x: west ? x : x + FORECOURT, z: zTop, w: deep, d: width, facing };
+    // The forecourt's columns: rows outward from the shop window, along the frontage.
+    const items = showing(w.id);
+    const perRow = Math.max(1, Math.floor((width - 3) / SHOW_STEP));
+    const display = items.map((p, k) => {
+      const out = 1.3 + Math.floor(k / perRow) * SHOW_STEP;
+      return {
+        x: west ? x + deep + out : x + FORECOURT - out,
+        z: zTop + 1.5 + (k % perRow) * SHOW_STEP + SHOW_STEP / 2,
+        product: p,
+        units: p.byWarehouse[w.id] ?? 0,
+      };
+    });
+    return { warehouseId: w.id, plot: { id: w.id, x, z: zTop, w: depth, d: width, facing }, building, display, size };
   });
 
   // ── The centre: the bank and its coin stacks, the headquarters, the office, the tower ──
@@ -206,14 +310,40 @@ export function planCity(data: WorldData): CityPlan {
   const perRow = Math.min(8, Math.max(1, accounts.length));
   const coinSpots = cells(accounts.length, perRow, 6, 6, xC + CENTER_W / 2 - ((perRow - 1) * 6) / 2, bank.z + bank.d + 8);
   const hq: Plot = { id: 'hq', x: xC + CENTER_W / 2 - 16, z: zM + 10, w: 32, d: 24, facing: 0 };
+  // The plaza south of the headquarters: the fountain, the best sellers' podium, a bar per day of sales.
+  const days = data.sales?.days ?? [];
+  const tops = data.sales?.topProducts ?? [];
+  const midX = xC + CENTER_W / 2;
+  const plaza = {
+    fountain: { x: midX, z: zM + 46 },
+    podium: tops.map((t, i) => ({ id: t.id, x: midX - ((tops.length - 1) * 5.4) / 2 + i * 5.4, z: zM + 66 })),
+    days: days.map((d, i) => ({ id: d.day, x: midX - ((days.length - 1) * 2.2) / 2 + i * 2.2, z: zM + MID_D - 16 })),
+    billboard: { x: hq.x + hq.w + 12, z: hq.z + hq.d / 2 },
+  };
+  const incomes = data.finance?.flows.income ?? [];
+  const expenses = data.finance?.flows.expense ?? [];
+  const flowAt = (k: number, side: -1 | 1) => ({ x: midX + side * (22 + (k % 4) * 4), z: zN + 12 + Math.floor(k / 4) * 6 });
+  const flows = {
+    income: incomes.map((f, k) => ({ id: f.category, ...flowAt(k, -1) })),
+    expense: expenses.map((f, k) => ({ id: f.category, ...flowAt(k, 1) })),
+  };
   const tower: Plot = { id: 'site', x: xS + STORES_W * 0.275 - 11, z: zN + NORTH_D / 2 - 11, w: 22, d: 22, facing: 0 };
   const office: Plot = { id: 'office', x: xS + STORES_W * 0.775 - 10, z: zN + NORTH_D / 2 - 8, w: 20, d: 16, facing: 0 };
 
   // ── Homes: the best customers along the avenue, everyone else behind ──────
-  const homesLeft = xW + 4;
-  const topHomes: Plot[] = top.map((c, i) => ({ id: c.id, x: homesLeft + i * 15, z: zR + 4, w: 12, d: 12, facing: Math.PI }));
-  const crowdColumns = Math.max(1, homeColumnsTotal);
-  const crowd: Plot[] = cells(crowdCount, crowdColumns, HOME_LOT, HOME_LOT, homesLeft, zR + 24).map((p, i) => ({ id: `home${i}`, x: p.x, z: p.z, w: 8, d: 8, facing: Math.PI }));
+  const homesLeft = xW + 8;
+  const homes: Home[] = [];
+  const quarters: Array<{ label: string; rect: Rect }> = [];
+  let shift = 0;
+  homeFlow.placed.forEach((h, i) => {
+    const quarter = quarterOf(h.kind);
+    if (i === 0 || quarterOf(homeFlow.placed[i - 1].kind) !== quarter) {
+      if (i > 0) shift += 8;
+      quarters.push({ label: QUARTER_LABELS[quarter], rect: { x: homesLeft, z: zR + 10 + h.z + shift - 7, w: homesWidth, d: 6 } });
+    }
+    const id = h.residents.length === 1 && (h.kind === 'mansion' || h.kind === 'villa' || h.kind === 'house') ? h.residents[0] : `${h.kind}:${i}`;
+    homes.push({ id, x: homesLeft + h.x, z: zR + 10 + h.z + shift, w: h.w, d: h.d, facing: Math.PI, kind: h.kind, residents: h.residents, tier: h.tier });
+  });
 
   // ── The port: a quay on the west coast, cranes, stacked containers ────────
   const quay: Rect = { x: xPort, z: portRoadZ - 40, w: 12, d: 80 };
@@ -222,14 +352,18 @@ export function planCity(data: WorldData): CityPlan {
   const containers = cells(24, 4, 3, 7, xPort + 22, portRoadZ - 40);
 
   // ── China: the suppliers' island across the water ─────────────────────────
-  const fColumns = Math.max(1, Math.ceil(Math.sqrt(suppliers.length)));
-  const fRows = Math.max(1, Math.ceil(suppliers.length / fColumns));
-  const chinaW = Math.max(90, fColumns * FACTORY_LOT + 40);
-  const chinaD = Math.max(100, fRows * FACTORY_LOT + 40);
+  const factorySize = sizesBy(suppliers, (s) => s.volume ?? s.orders);
+  const factoryRow = Math.max(70, Math.ceil(Math.sqrt(suppliers.length)) * FACTORY.large.lot);
+  const factoryFlow = flow(suppliers.map((s) => ({ id: s.id, size: factorySize.get(s)!, w: FACTORY[factorySize.get(s)!].lot, d: FACTORY[factorySize.get(s)!].lot })), factoryRow, 4);
+  const chinaW = Math.max(90, factoryRow + 40);
+  const chinaD = Math.max(100, factoryFlow.depth + 40);
   const chinaX = x0 - 150 - chinaW;
   const chinaIsland: Rect = { x: chinaX, z: portRoadZ - chinaD / 2, w: chinaW, d: chinaD };
   const chinaQuay: Rect = { x: chinaX + chinaW - 12, z: portRoadZ - 30, w: 12, d: 60 };
-  const factories: Plot[] = cells(suppliers.length, fColumns, FACTORY_LOT, FACTORY_LOT, chinaX + 20, chinaIsland.z + 20).map((p, i) => ({ id: suppliers[i].id, x: p.x, z: p.z, w: 18, d: 16, facing: Math.PI / 2 }));
+  const factories: Array<Plot & { size: Size }> = factoryFlow.placed.map((f) => {
+    const dims = FACTORY[f.size];
+    return { id: f.id, size: f.size, x: chinaX + 20 + f.x + (f.w - dims.w) / 2, z: chinaIsland.z + 20 + f.z + (f.d - dims.d) / 2, w: dims.w, d: dims.d, facing: Math.PI / 2 };
+  });
   const chinaBerth = { x: chinaX + chinaW + 16, z: portRoadZ };
   const chinaCranes = [-14, 14].map((dz) => ({ x: chinaX + chinaW - 6, z: portRoadZ + dz }));
   if (suppliers.length) add('suppliers', chinaIsland);
@@ -254,7 +388,8 @@ export function planCity(data: WorldData): CityPlan {
     }
   }
   // A few in the plazas.
-  for (let i = 0; i < 6; i++) trees.push({ x: xC + 8 + random() * (CENTER_W - 16), z: zM + MID_D - 8 - random() * 30 });
+  // A few along the plaza's edges, clear of its bars and podium.
+  for (let i = 0; i < 8; i++) trees.push({ x: i % 2 ? xC + 4 : xC + CENTER_W - 4, z: zM + 44 + random() * (MID_D - 64) });
 
   // ── The street graph ──────────────────────────────────────────────────────
   const graph = buildGraph(roads);
@@ -281,10 +416,13 @@ export function planCity(data: WorldData): CityPlan {
     stores,
     hq,
     bank,
+    plaza,
+    flows,
     accounts: coinSpots.map((p, i) => ({ ...p, id: accounts[i].id })),
     office,
     tower,
-    homes: { top: topHomes, crowd },
+    homes,
+    quarters,
     port: { quay, cranes, berth, containers },
     china: { island: chinaIsland, quay: chinaQuay, berth: chinaBerth, cranes: chinaCranes, factories },
     lane,

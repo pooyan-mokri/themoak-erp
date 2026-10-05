@@ -265,15 +265,16 @@ const FACADES = [0xf3efe6, 0xe9eef5, 0xf6e7dc, 0xe6efe8, 0xefe6f2, 0xfaf7f0];
 const AWNINGS = [COLORS.red, COLORS.blue, 0x2e3440, COLORS.teal, 0x8e5bd6, COLORS.orange];
 
 /** A partner's store on the shopping street: a shop window full of sunglasses, a striped awning, its name above. */
-export function buildStore(atlas: SignAtlas, m: Model, w: number, d: number, name: string, seed: string, units: number) {
+export function buildStore(atlas: SignAtlas, m: Model, w: number, d: number, name: string, seed: string, units: number, size: 'large' | 'medium' | 'small' = 'medium'): number {
   const random = seeded(seed);
-  const h = 6 + Math.floor(random() * 3) * 1.4;
+  const h = size === 'large' ? 10.5 + random() * 1.5 : size === 'small' ? 4.6 : 6.4 + Math.floor(random() * 2) * 1.2;
   const facade = pick(random, FACADES);
   const awning = pick(random, AWNINGS);
   m.box(facade, 0, -0.5, w, h, d - 1);
   m.box(0xffffff, 0, -0.5, w + 0.3, 0.5, d - 0.7, h);
   // Upper windows.
-  for (let x = -w / 2 + 2; x < w / 2 - 1; x += 3) m.box(COLORS.glass, x, d / 2 - 0.98, 1.6, 1.5, 0.06, h - 2.4);
+  if (h > 5) for (let x = -w / 2 + 2; x < w / 2 - 1; x += 3) m.box(COLORS.glass, x, d / 2 - 0.98, 1.6, 1.5, 0.06, h - 2.4);
+  if (h > 9) for (let x = -w / 2 + 2; x < w / 2 - 1; x += 3) m.box(COLORS.glass, x, d / 2 - 0.98, 1.6, 1.5, 0.06, h - 5.4);
   // The shop front: a big window and a door.
   m.box(0x2e3440, 0, d / 2 - 0.95, w - 1, 3.4, 0.12, 0.3);
   m.box(COLORS.glass, -1.2, d / 2 - 0.88, w - 4.2, 2.6, 0.06, 0.6);
@@ -296,6 +297,7 @@ export function buildStore(atlas: SignAtlas, m: Model, w: number, d: number, nam
   signOn(atlas, m, { text: name, style: 'store', bg: `#${awning.toString(16).padStart(6, '0')}` }, 0, h - 1.0, d / 2 - 0.9, Math.min(w - 2, 10), 1.5);
   // Plants by the door.
   for (const x of [w / 2 - 0.4, -w / 2 + 0.4]) m.shape(m.shapes.ball, COLORS.leafDark, x, 0.7, d / 2 - 0.3, 0.9, 1.1, 0.9);
+  return h;
 }
 
 /** The bank: steps, columns, a pediment, «خزانه» over the door. */
@@ -365,17 +367,19 @@ export function buildHome(atlas: SignAtlas | null, m: Model, w: number, d: numbe
 }
 
 /** A supplier's factory: a sawtooth roof, a chimney, silos, its name in red and gold. */
-export function buildFactory(atlas: SignAtlas, m: Model, w: number, d: number, name: string, seed: string) {
+export function buildFactory(atlas: SignAtlas, m: Model, w: number, d: number, name: string, seed: string, size: 'large' | 'medium' | 'small' = 'medium'): number {
   const random = seeded(seed);
   const wall = pick(random, [0xe7ded2, 0xd9dde4, 0xe9d8c8, 0xd6dcd2]);
-  m.box(wall, 0, 0, w, 7, d);
+  const h = size === 'large' ? 10 : size === 'small' ? 5 : 7;
+  m.box(wall, 0, 0, w, h, d);
   const teeth = Math.max(3, Math.floor(w / 4));
-  for (let i = 0; i < teeth; i++) m.shape(m.shapes.tooth, 0x8a95a5, -w / 2 + (w / teeth) * (i + 0.5), 7, 0, w / teeth, 2.4, d, 0, 0, 0);
-  m.post(0xb7aa9b, w * 0.32, -d * 0.3, 0.8, 14);
-  m.post(COLORS.red, w * 0.32, -d * 0.3, 0.82, 1, 13);
+  for (let i = 0; i < teeth; i++) m.shape(m.shapes.tooth, 0x8a95a5, -w / 2 + (w / teeth) * (i + 0.5), h, 0, w / teeth, 2.4, d, 0, 0, 0);
+  m.post(0xb7aa9b, w * 0.32, -d * 0.3, 0.8, h * 2);
+  m.post(COLORS.red, w * 0.32, -d * 0.3, 0.82, 1, h * 2 - 1);
   for (let i = 0; i < 2; i++) m.post(0xdfe3ea, -w / 2 - 2.2, -d * 0.25 + i * 4, 1.6, 9);
   for (let k = 0; k < 2; k++) m.box(COLORS.steelDark, -w * 0.2 + k * w * 0.4, d / 2 + 0.05, 4, 4.2, 0.1, 0);
-  signOn(atlas, m, { text: name, style: 'factory', ltr: /^[\x00-\x7F]+$/.test(name) }, 0, 5.6, d / 2 + 0.08, Math.min(w * 0.8, 14), 1.8);
+  signOn(atlas, m, { text: name, style: 'factory', ltr: /^[\x00-\x7F]+$/.test(name) }, 0, h - 1.4, d / 2 + 0.08, Math.min(w * 0.8, 16), 1.8);
+  return h;
 }
 
 /** A ship-to-shore crane: legs over the quay, a boom out over the water (local -x). */
@@ -385,4 +389,88 @@ export function buildCrane(m: Model) {
   m.box(COLORS.red, -10, 0, 30, 1.0, 1.4, 25);
   m.box(COLORS.white, 6, 0, 3, 3, 3, 23);
   m.box(COLORS.red, 0, 0, 0.6, 8, 0.6, 23);
+}
+
+// ── Homes by tier (local: front facing +z) ──────────────────────────────────
+
+/** A mansion for the best customers: two wings, a pool, a lawn, a hedge, a gate; their name on the gate. */
+export function buildMansion(atlas: SignAtlas, m: Model, w: number, d: number, seed: string, name: string) {
+  const random = seeded(seed);
+  m.box(COLORS.lawn, 0, 0, w, 0.08, d);
+  for (const x of [-w / 2 + 0.4, w / 2 - 0.4]) m.box(COLORS.leafDark, x, 0, 0.8, 1.3, d - 1);
+  m.box(COLORS.leafDark, 0, -d / 2 + 0.4, w - 1, 1.3, 0.8);
+  // The house: a long white wing and a taller one, flat roofs, wide glass.
+  m.box(0xfbfaf7, -w * 0.12, -d * 0.18, w * 0.62, 5.5, d * 0.36);
+  m.box(0xfbfaf7, w * 0.22, -d * 0.12, w * 0.3, 8.6, d * 0.42);
+  m.box(0xe8e4dc, -w * 0.12, -d * 0.18, w * 0.64, 0.4, d * 0.38, 5.5);
+  m.box(0xe8e4dc, w * 0.22, -d * 0.12, w * 0.32, 0.4, d * 0.44, 8.6);
+  m.box(COLORS.glass, -w * 0.12, -d * 0.18 + d * 0.18 + 0.02, w * 0.5, 3.6, 0.06, 0.8);
+  m.box(COLORS.glass, w * 0.22, -d * 0.12 + d * 0.21 + 0.02, w * 0.22, 2.4, 0.06, 5.0);
+  // The pool and its deck.
+  m.box(0xf1ece2, -w * 0.12, d * 0.17, w * 0.5, 0.15, d * 0.24);
+  m.box(0x4fb6e0, -w * 0.12, d * 0.17, w * 0.42, 0.18, d * 0.17);
+  for (let i = 0; i < 2; i++) m.box(COLORS.white, -w * 0.3 + i * 2.2, d * 0.34, 1.6, 0.35, 0.7, 0.1);
+  for (let i = 0; i < 3; i++) m.shape(m.shapes.ball, COLORS.leaf, w * (0.2 + random() * 0.2), 2.4, d * (0.1 + random() * 0.25), 3.2, 3.6, 3.2);
+  // The gate.
+  for (const x of [-2.2, 2.2]) m.box(0xe8e4dc, x, d / 2 - 0.4, 0.8, 2.6, 0.8);
+  m.box(0x2e3440, 0, d / 2 - 0.4, 3.6, 0.25, 0.25, 2.2);
+  signOn(atlas, m, { text: name, style: 'plate' }, 0, 1.6, d / 2 - 0.02, 3.4, 0.7);
+}
+
+/** A villa: a pitched roof over two floors, a garden, a car port; the name on a plate. */
+export function buildVilla(atlas: SignAtlas, m: Model, w: number, d: number, seed: string, name: string) {
+  const random = seeded(seed);
+  m.box(COLORS.lawn, 0, 0, w, 0.08, d);
+  const wall = pick(random, [0xfbf7ef, 0xf3ece2, 0xeef2f6, 0xf5ede8]);
+  m.box(wall, -w * 0.1, -d * 0.12, w * 0.6, 6.2, d * 0.46);
+  m.shape(m.shapes.hip, pick(random, [0x8c5a43, 0x6f7c8c, 0xa0563b]), -w * 0.1, 6.2, -d * 0.12, w * 0.68, 2.8, d * 0.54);
+  for (const y of [1.0, 4.0]) for (const x of [-w * 0.3, -w * 0.1, w * 0.1]) m.box(COLORS.glass, x, -d * 0.12 + d * 0.23 + 0.02, 1.5, 1.4, 0.06, y);
+  m.box(0x6b4f3a, -w * 0.1, -d * 0.12 + d * 0.23 + 0.03, 1.2, 2.3, 0.06);
+  // A car port with a car under it.
+  m.box(0xd9dde4, w * 0.32, -d * 0.05, 5, 0.25, 6, 3);
+  for (const x of [w * 0.32 - 2.3, w * 0.32 + 2.3]) m.box(COLORS.steel, x, -d * 0.05 + 2.8, 0.2, 3, 0.2);
+  m.box(pick(random, [0x26303f, 0xd9534f, 0xfbfcfe]), w * 0.32, -d * 0.05, 1.9, 1.2, 4.2, 0.3);
+  for (let i = 0; i < 3; i++) m.shape(m.shapes.ball, COLORS.leafDark, -w / 2 + 2 + random() * (w - 4), 1.0, d * 0.3 + random() * d * 0.12, 2.2, 2.2, 2.2);
+  m.box(0xe8e4dc, 0, d / 2 - 0.3, w - 1, 0.9, 0.3);
+  signOn(atlas, m, { text: name, style: 'plate' }, -w * 0.32, 1.25, d / 2 - 0.12, 3.2, 0.62);
+}
+
+/** A row of terraced houses, one door per customer. `lit`: which of them bought lately. */
+export function buildTerrace(m: Model, w: number, d: number, residents: number, seed: string, lit: boolean[]) {
+  const random = seeded(seed);
+  const unit = w / Math.max(1, residents);
+  const roof = pick(random, [0x8c6a5a, 0x6f7c8c, 0xb07a4f]);
+  for (let i = 0; i < residents; i++) {
+    const x = -w / 2 + unit * (i + 0.5);
+    const wall = [0xf6efe4, 0xefe3cf, 0xe6ece2, 0xf1e1da, 0xe1e6ee][i % 5];
+    m.box(wall, x, -1, unit - 0.15, 7, d * 0.62);
+    m.box(0x6b4f3a, x, -1 + d * 0.31 + 0.02, 1, 2.2, 0.06);
+    for (const y of [1.0, 4.2]) m.box(lit[i] ? COLORS.glass : COLORS.glassDark, x + unit * 0.22, -1 + d * 0.31 + 0.02, 1.2, 1.3, 0.06, y);
+    m.box(COLORS.lawn, x, d * 0.36, unit - 0.4, 0.08, d * 0.25);
+  }
+  m.shape(m.shapes.gable, roof, 0, 7, -1, d * 0.66, 2.4, w, 0, 0, Math.PI / 2);
+}
+
+/** An apartment block in the town: a floor per three households; lit windows for those who bought lately. */
+export function buildApartment(m: Model, w: number, d: number, residents: number, seed: string, lit: boolean[]) {
+  const random = seeded(seed);
+  const floors = Math.max(2, Math.ceil(residents / 3));
+  const h = floors * 3.1;
+  const wall = pick(random, [0xeef1f6, 0xf3ece2, 0xe6ece2, 0xf1e1da]);
+  const bw = w * 0.72;
+  const bd = d * 0.62;
+  m.box(0xd9dde4, 0, 0, w, 0.08, d);
+  m.box(wall, 0, -0.5, bw, h, bd);
+  m.box(0xd9dde4, 0, -0.5, bw + 0.4, 0.5, bd + 0.4, h);
+  for (let f = 0; f < floors; f++) {
+    for (let k = 0; k < 3; k++) {
+      const n = f * 3 + k;
+      const x = -bw / 2 + (bw / 3) * (k + 0.5);
+      const glass = n < residents ? (lit[n] ? COLORS.glass : COLORS.glassDark) : 0xc9cfd9;
+      m.box(glass, x, -0.5 + bd / 2 + 0.02, 1.8, 1.4, 0.06, 0.9 + f * 3.1);
+      m.box(0xd9dde4, x, -0.5 + bd / 2 + 0.4, 2.2, 0.12, 0.8, 0.5 + f * 3.1);
+    }
+  }
+  m.box(0x6b4f3a, 0, -0.5 + bd / 2 + 0.03, 1.4, 2.4, 0.06);
+  for (const x of [-w / 2 + 1.5, w / 2 - 1.5]) m.shape(m.shapes.ball, COLORS.leaf, x, 1.3, d / 2 - 1.5, 2.2, 2.6, 2.2);
 }

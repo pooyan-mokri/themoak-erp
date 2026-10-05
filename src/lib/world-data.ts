@@ -34,6 +34,8 @@ import { addDays, tehranDay, tehranDayStart } from '@/lib/tehran-day';
 import { readSiteConnection, SITE_CATALOGUE_SYNC_KEY, SITE_HOOK_STATUS_KEY } from '@/lib/site-connection';
 import { productPhotoOnSite } from '@/lib/product-image';
 import type {
+  CustomerTier,
+  WorldCustomer,
   WorldAccount,
   WorldChannel,
   WorldCustomers,
@@ -64,6 +66,23 @@ const DONE_TASKS = ['DONE', 'COMPLETED', 'CANCELLED'];
 const CLOSED_PROJECTS = ['COMPLETED', 'CANCELLED'];
 
 const fa = (n: number) => n.toLocaleString('fa-IR', { maximumFractionDigits: 0 });
+
+export const TIER_LABELS: Record<CustomerTier, string> = { 1: 'الماسی', 2: 'طلایی', 3: 'نقره‌ای', 4: 'برنزی', 5: 'عادی', 6: 'بی‌خرید' };
+
+/**
+ * A customer's tier from their rank among the n who ever bought, by what they bought (0 is the best):
+ * the top 3% الماسی, the next 7% طلایی, 15% نقره‌ای, 25% برنزی, the rest عادی; each of the first four at
+ * least one customer while there are buyers left. Someone who never bought is 6, بی‌خرید.
+ */
+export function customerTier(rank: number | null, n: number): CustomerTier {
+  if (rank === null || n <= 0) return 6;
+  let edge = 0;
+  for (const [tier, share] of [[1, 0.03], [2, 0.07], [3, 0.15], [4, 0.25]] as const) {
+    edge += Math.max(1, Math.round(n * share));
+    if (rank < edge) return tier;
+  }
+  return 5;
+}
 
 /** Which parts of the world a role sees. */
 export function worldLayers(role: string | null | undefined): WorldLayers {
@@ -339,7 +358,68 @@ export async function buildWorld(client: any, role: string | null | undefined, n
         row.spend += orderNet(order);
         spendBy.set(order.customerId, row);
       }
+      // Every customer by what they ever bought: their tier, their debt and their credit.
+      const all = await client.customer.findMany({ select: { id: true, name: true } });
+      const lifetime = await client.order.findMany({
+        where: { status: { not: 'CANCELLED' }, customerId: { not: null } },
+        select: { customerId: true, createdAt: true, ...ORDER_BALANCE_FIELDS },
+      });
+      const life = new Map<string, { spend: number; orders: number; lastAt: Date | null; overpaid: number }>();
+      for (const order of lifetime) {
+        const row = life.get(order.customerId) ?? { spend: 0, orders: 0, lastAt: null, overpaid: 0 };
+        row.spend += orderNet(order);
+        row.orders += 1;
+        row.overpaid += orderTotals(order).credit;
+        if (!row.lastAt || order.createdAt > row.lastAt) row.lastAt = order.createdAt;
+        life.set(order.customerId, row);
+      }
+      const creditOf = new Map<string, number>(
+        (await client.customerCredit.groupBy({ by: ['customerId'], _sum: { amount: true } })).map((r: any) => [r.customerId, Number(r._sum.amount ?? 0)]),
+      );
+      const ranked = all
+        .filter((c: any) => !partners.has(c.id) && (life.get(c.id)?.orders ?? 0) > 0)
+        .sort((a: any, b: any) => life.get(b.id)!.spend - life.get(a.id)!.spend);
+      const rankOf = new Map<string, number>(ranked.map((c: any, i: number) => [c.id, i]));
+      const people: WorldCustomer[] = all
+        .filter((c: any) => !partners.has(c.id))
+        .map((c: any) => {
+          const row = life.get(c.id);
+          return {
+            id: c.id,
+            name: c.name,
+            spend: row?.spend ?? 0,
+            orders: row?.orders ?? 0,
+            debt: debtBy.get(c.id) ?? 0,
+            credit: Math.max(0, (creditOf.get(c.id) ?? 0) + (row?.overpaid ?? 0)),
+            lastAt: row?.lastAt ? row.lastAt.toISOString() : null,
+            tier: customerTier(rankOf.has(c.id) ? rankOf.get(c.id)! : null, ranked.length),
+          };
+        })
+        .sort((a: WorldCustomer, b: WorldCustomer) => a.tier - b.tier || b.spend - a.spend);
+      const tiers = ([1, 2, 3, 4, 5, 6] as CustomerTier[]).map((tier) => ({ tier, label: TIER_LABELS[tier], count: people.filter((p) => p.tier === tier).length }));
+      // A partner's store: its sales of 90 days, what the partner owes us and what we owe it.
+      const partnerOf = new Map<string, string>(warehouses.filter((w: any) => w.isVirtual && w.customerId).map((w: any) => [w.id, w.customerId]));
+      if (stock && partnerOf.size) {
+        const sold = await client.order.findMany({
+          where: { createdAt: { gte: since90 }, status: { not: 'CANCELLED' }, items: { some: { warehouseId: { in: [...partnerOf.keys()] } } } },
+          select: { ...ORDER_BALANCE_FIELDS, items: { select: { warehouseId: true } } },
+        });
+        const salesOf = new Map<string, number>();
+        for (const order of sold) {
+          const at = order.items.find((i: any) => partnerOf.has(i.warehouseId))?.warehouseId;
+          if (at) salesOf.set(at, (salesOf.get(at) ?? 0) + orderNet(order));
+        }
+        for (const w of stock.warehouses) {
+          const partner = partnerOf.get(w.id);
+          if (!partner) continue;
+          w.sales90 = salesOf.get(w.id) ?? 0;
+          w.receivable = debtBy.get(partner) ?? 0;
+          w.payable = Math.max(0, creditOf.get(partner) ?? 0);
+        }
+      }
       customers = {
+        people,
+        tiers,
         total: await client.customer.count(),
         newInWindow: await client.customer.count({ where: { createdAt: { gte: since } } }),
         buyers90: spendBy.size,
@@ -373,6 +453,14 @@ export async function buildWorld(client: any, role: string | null | undefined, n
           unpaidBy.set(order.supplierId, (unpaidBy.get(order.supplierId) ?? 0) + unpaidOnPurchaseOrder(order, rates));
         }
       }
+      const volumeBy = new Map<string, number>();
+      const supplierCreditBy = new Map<string, number>();
+      if (layers.finance) {
+        for (const po of await client.purchaseOrder.findMany({ where: { status: { not: 'CANCELLED' } }, select: { supplierId: true, totalAmountInToman: true } })) {
+          volumeBy.set(po.supplierId, (volumeBy.get(po.supplierId) ?? 0) + Number(po.totalAmountInToman ?? 0));
+        }
+        for (const r of await client.supplierCredit.groupBy({ by: ['supplierId'], _sum: { amount: true } })) supplierCreditBy.set(r.supplierId, Number(r._sum.amount ?? 0));
+      }
       suppliers = {
         suppliers: rows.map((s: any) => {
           const last = s.orders.reduce((max: Date | null, o: any) => (!max || o.createdAt > max ? o.createdAt : max), null);
@@ -382,7 +470,7 @@ export async function buildWorld(client: any, role: string | null | undefined, n
             orders: s.orders.filter((o: any) => o.status !== 'CANCELLED').length,
             open: s.orders.filter((o: any) => !CLOSED_PURCHASE.includes(o.status)).length,
             lastOrderAt: last ? last.toISOString() : null,
-            ...(layers.finance && { unpaid: unpaidBy.get(s.id) ?? 0 }),
+            ...(layers.finance && { unpaid: unpaidBy.get(s.id) ?? 0, volume: volumeBy.get(s.id) ?? 0, credit: Math.max(0, supplierCreditBy.get(s.id) ?? 0) }),
           };
         }),
         ...(layers.finance && { payables }),

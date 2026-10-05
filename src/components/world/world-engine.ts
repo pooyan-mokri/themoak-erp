@@ -25,8 +25,10 @@ import { along, pathLength, planCity, route, type CityPlan, type DistrictKey, ty
 import {
   COLORS, Model, buildBank, buildContainer, buildCrane, buildFactory, buildForklift, buildForks, buildHall, buildHome,
   buildHq, buildLamp, buildOffice, buildPallet, buildPlane, buildShip, buildStore, buildTower, buildTree, buildTruck, buildVan, signOn,
+  buildMansion, buildVilla, buildTerrace, buildApartment,
 } from '@/components/world/world-models';
-import type { WorldData, WorldEvent } from '@/lib/world-types';
+import type { WorldCustomer, WorldData, WorldEvent } from '@/lib/world-types';
+import { tomanTick } from '@/lib/chart-format';
 import { businessWeather, daylight, type Weather } from '@/components/world/world-hud';
 
 export type EngineCallbacks = {
@@ -48,7 +50,9 @@ type Mover = {
   done?: () => void;
   ambient: boolean;
 };
-type Label = { el: HTMLDivElement; pos: THREE.Vector3; kind: 'district' | 'thing'; id?: string };
+type Label = { el: HTMLDivElement; pos: THREE.Vector3; kind: 'district' | 'thing' | 'info'; id?: string };
+type Tone = 'red' | 'amber' | 'blue' | 'green';
+type Token = { x: number; y: number; z: number; amount: number; tone: 'red' | 'amber' };
 
 const PIN_COLOR = 0x2f6fe0;
 const TAU = Math.PI * 2;
@@ -657,14 +661,22 @@ export class WorldEngine {
     this.proxies.push(mesh);
   }
 
-  private label(text: string, x: number, y: number, z: number, kind: Label['kind'], id?: string) {
+  private label(text: string, x: number, y: number, z: number, kind: Label['kind'], id?: string, tone?: Tone) {
     const el = document.createElement('div');
     el.textContent = text;
     el.dir = 'rtl';
+    const toned = {
+      red: 'bg-red-50/95 text-red-700 ring-red-200 dark:bg-red-950/90 dark:text-red-200',
+      amber: 'bg-amber-50/95 text-amber-800 ring-amber-200 dark:bg-amber-950/90 dark:text-amber-200',
+      blue: 'bg-white/95 text-[#2f6fe0] ring-black/5 dark:bg-slate-900/90',
+      green: 'bg-emerald-50/95 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/90 dark:text-emerald-200',
+    };
     el.className =
       kind === 'district'
         ? 'pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[12.5px] font-semibold text-slate-800 shadow-md ring-1 ring-black/5 backdrop-blur will-change-transform dark:bg-slate-900/85 dark:text-slate-100'
-        : 'pointer-events-none absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/95 px-2.5 py-1 text-[11.5px] font-medium text-slate-800 shadow-md ring-1 ring-black/5 will-change-transform dark:bg-slate-900/90 dark:text-slate-100';
+        : `pointer-events-none absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-md ring-1 will-change-transform ${
+            tone ? toned[tone] : 'bg-white/95 text-slate-800 ring-black/5 dark:bg-slate-900/90 dark:text-slate-100'
+          }`;
     this.labelLayer.appendChild(el);
     this.labels.push({ el, pos: new THREE.Vector3(x, y, z), kind, id });
   }
@@ -712,6 +724,8 @@ export class WorldEngine {
       const hall = new Model(batch, S, b.x + b.w / 2, b.z + b.d / 2, 0);
       buildHall(atlas, hall, b.w, b.d, y.docks.length, w.name);
       this.proxy(`warehouse:${w.id}`, b.x + b.w / 2, b.z + b.d / 2, b.w, 11, b.d, 0, 0);
+      const low = data.stock!.products.filter((p) => (p.byWarehouse[w.id] ?? 0) > 0 && p.level === 'LOW').length;
+      this.label(`${w.units.toLocaleString('fa-IR')} عدد · ${y.pallets.length.toLocaleString('fa-IR')} کالا${low ? ` · ${low.toLocaleString('fa-IR')} کم` : ''}`, b.x + b.w / 2, 14, b.z + b.d / 2, 'info', `warehouse:${w.id}`, 'blue');
       // Truck bays: yellow lines; a truck backed up to some of them.
       const busy = Math.min(y.truckBays.length - 1, 2 + (data.sales?.today.orders ?? 0));
       y.truckBays.forEach((bay, k) => {
@@ -968,14 +982,28 @@ export class WorldEngine {
   private buildCentre(batch: Batch, atlas: SignAtlas, lamps: Batch, plan: CityPlan, data: WorldData) {
     const S = this.shapes;
     // Stores on the shopping street.
+    const columns: Array<{ x: number; z: number; units: number; family: string; id: string }> = [];
+    const tokens: Token[] = [];
     for (const st of plan.stores) {
       const w = data.stock?.warehouses.find((x) => x.id === st.warehouseId);
       if (!w) continue;
-      const p = st.plot;
-      const m = new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing);
-      buildStore(atlas, m, p.d, p.w, w.partner ?? w.name, w.id, w.units);
-      this.proxy(`warehouse:${w.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d, 0, p.facing);
+      const b = st.building;
+      const m = new Model(batch, S, b.x + b.w / 2, b.z + b.d / 2, b.facing);
+      const height = buildStore(atlas, m, b.d, b.w, w.partner ?? w.name, w.id, w.units, st.size);
+      this.proxy(`warehouse:${w.id}`, b.x + b.w / 2, b.z + b.d / 2, b.w, height, b.d, 0, b.facing);
+      const sold = w.sales90 !== undefined ? ` · فروش ${tomanTick(w.sales90)}` : '';
+      this.label(`${w.units.toLocaleString('fa-IR')} عدد${sold}`, b.x + b.w / 2, height + 2.5, b.z + b.d / 2, 'info', `warehouse:${w.id}`, 'blue');
+      if (w.receivable) tokens.push({ x: b.x + b.w / 2, y: height + 6, z: b.z + b.d / 2 - 2, amount: w.receivable, tone: 'red' });
+      if (w.payable) tokens.push({ x: b.x + b.w / 2, y: height + 6, z: b.z + b.d / 2 + 2, amount: w.payable, tone: 'amber' });
+      // The forecourt: a pale pad, then a column of crates per product with sunglasses on top.
+      const pad = st.plot;
+      const fx = st.building.x === pad.x ? pad.x + b.w : pad.x;
+      flatPad(batch, S, fx + (pad.w - b.w) / 2, pad.z + pad.d / 2, pad.w - b.w - 0.6, pad.d - 0.6);
+      for (const c of st.display) {
+        columns.push({ x: c.x, z: c.z, units: c.units, family: c.product.family, id: `product:${w.id}:${c.product.id}` });
+      }
     }
+    this.instanceColumns(columns);
     // The bank, its forecourt, a coin stack and a name plate per account.
     if (data.finance) {
       const b = plan.bank;
@@ -995,19 +1023,51 @@ export class WorldEngine {
         for (let i = 0; i < discs; i++) m.post(i % 2 && color === COLORS.gold ? COLORS.goldDark : color, Math.sin(i * 1.7) * 0.06, Math.cos(i * 1.3) * 0.06, 1.0, (h / discs) * 0.92, 0.3 + (i * h) / discs);
         signOn(atlas, m, { text: a.name, style: 'plate' }, 0, 0.45, 1.62, 2.8, 0.55);
         this.proxy(`account:${a.id}`, spot.x, spot.z, 3.2, h + 0.6, 3.2);
+        const shownAmount = a.currency === 'TOMAN' ? tomanTick(a.balance) : `${a.balance.toLocaleString('fa-IR', { maximumFractionDigits: 0 })} ${a.currency}`;
+        this.label(shownAmount, spot.x, h + 2.4, spot.z, 'info', `account:${a.id}`, value < 0 ? 'red' : 'blue');
       });
     }
     // The headquarters and its plaza with a fountain.
     const hq = plan.hq;
     buildHq(atlas, new Model(batch, S, hq.x + hq.w / 2, hq.z + hq.d / 2, 0), hq.w, hq.d);
     this.proxy('district:hq', hq.x + hq.w / 2, hq.z + hq.d / 2, hq.w, 22, hq.d);
-    const fountain = new Model(batch, S, hq.x + hq.w / 2, hq.z + hq.d + 22, 0);
+    const fountain = new Model(batch, S, plan.plaza.fountain.x, plan.plaza.fountain.z, 0);
     fountain.post(COLORS.stone, 0, 0, 6, 0.8);
     fountain.post(COLORS.water, 0, 0, 5.4, 0.85);
     fountain.post(COLORS.stone, 0, 0, 0.8, 2.6);
+    if (data.sales) {
+      const plaza = new Model(batch, S);
+      const dayMax = Math.max(1, ...data.sales.days.map((d) => d.total));
+      plan.plaza.days.forEach((spot, i) => {
+        const d = data.sales!.days[i];
+        if (!d) return;
+        const h = 0.25 + 14 * (d.total / dayMax);
+        const today = i === data.sales!.days.length - 1;
+        plaza.box(COLORS.stone, spot.x, spot.z, 1.9, 0.25, 1.9);
+        plaza.box(today ? COLORS.orange : COLORS.blue, spot.x, spot.z, 1.3, h, 1.3, 0.25);
+        this.proxy(`day:${d.day}`, spot.x, spot.z, 1.9, h + 0.5, 1.9);
+      });
+      if (plan.plaza.days.length) {
+        const first = plan.plaza.days[0];
+        const last = plan.plaza.days[plan.plaza.days.length - 1];
+        this.label('فروش ۳۰ روز', (first.x + last.x) / 2, 17, first.z, 'info', undefined, 'blue');
+      }
+      const topMax = Math.max(1, ...data.sales.topProducts.map((t) => t.units));
+      plan.plaza.podium.forEach((spot, i) => {
+        const t = data.sales!.topProducts[i];
+        if (!t) return;
+        const h = 0.6 + 5 * (t.units / topMax);
+        plaza.box(COLORS.white, spot.x, spot.z, 3.4, h, 3.4);
+        plaza.box(FAMILY[Math.floor(hash(t.family) * FAMILY.length) % FAMILY.length], spot.x, spot.z, 2, 1.4, 2, h);
+        for (const dx of [-0.42, 0.42]) plaza.box(0x111317, spot.x + dx, spot.z + 1.02, 0.66, 0.34, 0.06, h + 0.8);
+        plaza.box(0x111317, spot.x, spot.z + 1.02, 0.4, 0.08, 0.06, h + 1.02);
+        this.proxy(`top:${t.id}`, spot.x, spot.z, 3.4, h + 1.6, 3.4);
+        this.label(`${(i + 1).toLocaleString('fa-IR')}. ${t.name} · ${t.units.toLocaleString('fa-IR')}`, spot.x, h + 3.4, spot.z, 'info', `top:${t.id}`);
+      });
+    }
     // A billboard on the plaza: the best sellers' photos, one after another.
     const photos = (data.sales?.topProducts ?? []).filter((p) => p.image).slice(0, 8);
-    if (photos.length) this.billboard(batch, atlas, { x: hq.x + hq.w + 10, z: hq.z + hq.d + 16 }, photos.map((p) => p.image!));
+    if (photos.length) this.billboard(batch, atlas, plan.plaza.billboard, photos.map((p) => p.image!));
     // The website's tower and its status light.
     if (data.site) {
       const t = plan.tower;
@@ -1028,16 +1088,46 @@ export class WorldEngine {
     const o = plan.office;
     buildOffice(atlas, new Model(batch, S, o.x + o.w / 2, o.z + o.d / 2, 0), o.w, o.d);
     this.proxy('office', o.x + o.w / 2, o.z + o.d / 2, o.w, 11, o.d);
-    // Homes: the best customers with their names, everyone else around them.
-    plan.homes.top.forEach((p) => {
-      const c = data.customers?.top.find((x) => x.id === p.id);
-      if (!c) return;
-      buildHome(atlas, new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing), p.w, p.d, c.id, c.name, c.debt > 0);
-      this.proxy(`customer:${c.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d, 0, p.facing);
-    });
-    for (const p of plan.homes.crowd) {
-      buildHome(null, new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing), p.w, p.d, p.id, null, false);
-      this.proxy('crowd', p.x + p.w / 2, p.z + p.d / 2, p.w, 5, p.d);
+    // Homes by tier: mansions, villas and houses with their names; terraces and apartment blocks in the town,
+    // their windows lit for those who bought in 90 days. Above each, what they owe us and what we owe them.
+    const people = new Map<string, WorldCustomer>((data.customers?.people ?? []).map((c) => [c.id, c]));
+    const lately = (c: WorldCustomer | undefined) => !!c?.lastAt && Date.parse(c.lastAt) > Date.now() - 90 * 86_400_000;
+    for (const h of plan.homes) {
+      const residents = h.residents.map((id) => people.get(id)).filter((c): c is WorldCustomer => !!c);
+      if (!residents.length) continue;
+      const cx = h.x + h.w / 2;
+      const cz = h.z + h.d / 2;
+      const m = new Model(batch, S, cx, cz, h.facing);
+      const one = residents[0];
+      let height = 9;
+      if (h.kind === 'mansion') buildMansion(atlas, m, h.w, h.d, h.id, one.name);
+      else if (h.kind === 'villa') buildVilla(atlas, m, h.w, h.d, h.id, one.name);
+      else if (h.kind === 'house') {
+        buildHome(atlas, m, h.w * 0.8, h.d * 0.8, h.id, one.name, false);
+        height = 7;
+      } else if (h.kind === 'terrace') buildTerrace(m, h.w, h.d, residents.length, h.id, residents.map(lately));
+      else {
+        buildApartment(m, h.w, h.d, residents.length, h.id, residents.map(lately));
+        height = Math.max(2, Math.ceil(residents.length / 3)) * 3.1 + 0.5;
+      }
+      const single = h.kind === 'mansion' || h.kind === 'villa' || h.kind === 'house';
+      this.proxy(single ? `customer:${one.id}` : `home:${h.id}`, cx, cz, h.w, height, h.d, 0, h.facing);
+      const debt = residents.reduce((sum, c) => sum + c.debt, 0);
+      const credit = residents.reduce((sum, c) => sum + c.credit, 0);
+      if (debt > 0) {
+        tokens.push({ x: cx - 1.8, y: height + 4, z: cz, amount: debt, tone: 'red' });
+        this.label(`طلب ${tomanTick(debt)}`, cx - 1.8, height + 7.5, cz, 'info', single ? `customer:${one.id}` : `home:${h.id}`, 'red');
+      }
+      if (credit > 0) {
+        tokens.push({ x: cx + 1.8, y: height + 4, z: cz, amount: credit, tone: 'amber' });
+        this.label(`بدهی ${tomanTick(credit)}`, cx + 1.8, height + 7.5, cz, 'info', single ? `customer:${one.id}` : `home:${h.id}`, 'amber');
+      }
+    }
+    // The quarters' signs.
+    for (const q of plan.quarters) {
+      const m = new Model(batch, S, q.rect.x + 9, q.rect.z + q.rect.d / 2, Math.PI);
+      for (const x of [-3.2, 3.2]) m.post(COLORS.steelDark, x, 0, 0.12, 3.2);
+      signOn(atlas, m, { text: q.label, style: 'hall' }, 0, 3.6, 0, 7.6, 1.5, 0, true);
     }
     // The port: the quay, its cranes, stacked containers, a ship at the berth.
     const port = plan.port;
@@ -1061,9 +1151,17 @@ export class WorldEngine {
     for (const f of china.factories) {
       const s = data.suppliers?.suppliers.find((x) => x.id === f.id);
       if (!s) continue;
-      buildFactory(atlas, new Model(batch, S, f.x + f.w / 2, f.z + f.d / 2, f.facing), f.d, f.w, s.name, s.id);
-      this.proxy(`supplier:${s.id}`, f.x + f.w / 2, f.z + f.d / 2, f.w, 12, f.d, 0, f.facing);
-      if (s.open > 0) this.smoke(f.x + f.w / 2 - (f.w * 0.3), f.z + f.d / 2 - f.d * 0.32);
+      const fh = buildFactory(atlas, new Model(batch, S, f.x + f.w / 2, f.z + f.d / 2, f.facing), f.d, f.w, s.name, s.id, f.size);
+      this.proxy(`supplier:${s.id}`, f.x + f.w / 2, f.z + f.d / 2, f.w, fh + 3, f.d, 0, f.facing);
+      if (s.credit) {
+        tokens.push({ x: f.x + f.w / 2, y: fh + 9, z: f.z + f.d / 2 - 2.5, amount: s.credit, tone: 'red' });
+        this.label(`طلب ${tomanTick(s.credit)}`, f.x + f.w / 2, fh + 12.5, f.z + f.d / 2 - 2.5, 'info', `supplier:${s.id}`, 'red');
+      }
+      if (s.unpaid) {
+        tokens.push({ x: f.x + f.w / 2, y: fh + 9, z: f.z + f.d / 2 + 2.5, amount: s.unpaid, tone: 'amber' });
+        this.label(`بدهی ${tomanTick(s.unpaid)}`, f.x + f.w / 2, fh + 12.5, f.z + f.d / 2 + 2.5, 'info', `supplier:${s.id}`, 'amber');
+      }
+      if (s.open > 0) this.smoke(f.x + f.w / 2 - (f.w * 0.3), f.z + f.d / 2 - f.d * 0.32, fh * 2 + 1);
     }
     if (china.factories.length) {
       const c = china.island;
@@ -1075,6 +1173,47 @@ export class WorldEngine {
       buildLamp(new Model(batch, S, l.x, l.z, 0));
       lamps.add(S.box, { x: l.x, y: 5.85, z: l.z + 1.2, sx: 0.5, sy: 0.12, sz: 0.7 }, 0xfffbe8);
     }
+    // Revenue and expenses beside the bank, a bar per category.
+    if (data.finance) {
+      const fm = new Model(batch, S);
+      const max = Math.max(1, ...data.finance.flows.income.map((f) => f.amount), ...data.finance.flows.expense.map((f) => f.amount));
+      for (const [kind, rows, spots] of [['income', data.finance.flows.income, plan.flows.income], ['expense', data.finance.flows.expense, plan.flows.expense]] as const) {
+        rows.forEach((row, i) => {
+          const spot = spots[i];
+          if (!spot) return;
+          const h = 0.3 + 10 * (row.amount / max);
+          fm.box(COLORS.stone, spot.x, spot.z, 3, 0.25, 3);
+          fm.box(kind === 'income' ? 0x2ecc71 : COLORS.red, spot.x, spot.z, 2.2, h, 2.2, 0.25);
+          this.proxy(`flow:${kind}:${row.category}`, spot.x, spot.z, 3, h + 0.5, 3);
+          this.label(`${row.category} · ${tomanTick(row.amount)}`, spot.x, h + 2.4, spot.z, 'info', `flow:${kind}:${row.category}`, kind === 'income' ? 'green' : 'red');
+        });
+      }
+    }
+    // The products on the website circle its tower.
+    if (data.site && data.site.productsOnSite > 0) {
+      const t = plan.tower;
+      const count = Math.min(120, data.site.productsOnSite);
+      const ringMesh = new THREE.InstancedMesh(this.shapes.box, this.matte, count);
+      const matrix = new THREE.Matrix4();
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * TAU;
+        matrix.compose(new THREE.Vector3(Math.cos(a) * 15, Math.sin(i * 1.7) * 0.6, Math.sin(a) * 15), new THREE.Quaternion(), new THREE.Vector3(0.8, 0.8, 0.8));
+        ringMesh.setMatrixAt(i, matrix);
+        ringMesh.setColorAt(i, new THREE.Color(FAMILY[i % FAMILY.length]));
+      }
+      ringMesh.instanceMatrix.needsUpdate = true;
+      if (ringMesh.instanceColor) ringMesh.instanceColor.needsUpdate = true;
+      const holder = new THREE.Group();
+      holder.position.set(t.x + t.w / 2, 30, t.z + t.d / 2);
+      holder.add(ringMesh);
+      this.world.add(holder);
+      this.owned.push({ dispose: () => ringMesh.dispose() });
+      this.animated.push((_, dt) => {
+        holder.rotation.y += dt * 0.25;
+      });
+      this.label(`${data.site.productsOnSite.toLocaleString('fa-IR')} کالا روی سایت`, t.x + t.w / 2, 55, t.z + t.d / 2, 'info', 'site', 'blue');
+    }
+    this.instanceTokens(tokens);
   }
 
   /** A billboard: posts, a frame, a photo that changes every few seconds, «پرفروش‌ها» under it. */
@@ -1119,8 +1258,76 @@ export class WorldEngine {
     });
   }
 
+  /** A crate column per product in front of each store: a crate per unit (up to 10), sunglasses on top. */
+  private instanceColumns(columns: Array<{ x: number; z: number; units: number; family: string; id: string }>) {
+    if (!columns.length) return;
+    const crates = columns.reduce((n, c) => n + Math.min(10, c.units), 0);
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75 });
+    this.owned.push(material);
+    const boxes = new THREE.InstancedMesh(this.shapes.box, material, crates);
+    const lenses = new THREE.InstancedMesh(this.shapes.box, material, columns.length * 3);
+    const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const color = new THREE.Color();
+    let i = 0;
+    columns.forEach((c, k) => {
+      const tint = FAMILY[Math.floor(hash(c.family) * FAMILY.length) % FAMILY.length];
+      const n = Math.min(10, c.units);
+      for (let l = 0; l < n; l++) {
+        matrix.compose(new THREE.Vector3(c.x, 0.2 + l * 0.36, c.z), q, new THREE.Vector3(0.7, 0.33, 0.7));
+        boxes.setMatrixAt(i, matrix);
+        boxes.setColorAt(i, color.set(tint).offsetHSL(0, 0, l % 2 ? 0.06 : 0));
+        i++;
+      }
+      const top = 0.2 + n * 0.36 + 0.1;
+      for (const [j, dx, w] of [[0, -0.15, 0.24], [1, 0.15, 0.24], [2, 0, 0.56]] as const) {
+        matrix.compose(new THREE.Vector3(c.x + dx, top + (j === 2 ? 0.08 : 0), c.z), q, new THREE.Vector3(w, j === 2 ? 0.03 : 0.12, 0.05));
+        lenses.setMatrixAt(k * 3 + j, matrix);
+        lenses.setColorAt(k * 3 + j, color.set(0x111317));
+      }
+      this.proxy(c.id, c.x, c.z, 0.8, top + 0.3, 0.8);
+    });
+    for (const m of [boxes, lenses]) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      this.world.add(m);
+      this.owned.push({ dispose: () => m.dispose() });
+    }
+  }
+
+  /** Coins floating over who owes whom: red, they owe us; amber, we owe them. Bigger for more. */
+  private instanceTokens(tokens: Token[]) {
+    if (!tokens.length) return;
+    const geometry = new THREE.CylinderGeometry(1, 1, 0.28, 28).rotateX(Math.PI / 2);
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.4, emissive: 0x220000, emissiveIntensity: 0.25 });
+    this.owned.push(geometry, material);
+    const mesh = new THREE.InstancedMesh(geometry, material, tokens.length);
+    const color = new THREE.Color();
+    tokens.forEach((t, i) => mesh.setColorAt(i, color.set(t.tone === 'red' ? 0xe0443e : 0xf2a33a)));
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = true;
+    this.world.add(mesh);
+    this.owned.push({ dispose: () => mesh.dispose() });
+    const sizes = tokens.map((t) => THREE.MathUtils.clamp(0.7 + Math.log10(1 + t.amount / 1e5) * 0.45, 0.7, 2.6));
+    const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const v = new THREE.Vector3();
+    const sc = new THREE.Vector3();
+    this.animated.push((t) => {
+      tokens.forEach((tok, i) => {
+        q.setFromAxisAngle(UP, t * 1.6 + i);
+        sc.setScalar(sizes[i]);
+        matrix.compose(v.set(tok.x, tok.y + Math.sin(t * 2 + i) * 0.35, tok.z), q, sc);
+        mesh.setMatrixAt(i, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    });
+  }
+
   /** Smoke from a chimney while a purchase order is open. */
-  private smoke(x: number, z: number) {
+  private smoke(x: number, z: number, y = 15) {
     const material = new THREE.MeshStandardMaterial({ color: 0xe6e9ef, transparent: true, opacity: 0.75, roughness: 1 });
     this.owned.push(material);
     const puffs = Array.from({ length: 4 }, (_, k) => {
@@ -1132,7 +1339,7 @@ export class WorldEngine {
       for (const { m, phase } of puffs) {
         const f = (t * 0.25 + phase) % 1;
         const s = 1.2 + f * 3;
-        m.position.set(x + f * 3, 15 + f * 9, z - f);
+        m.position.set(x + f * 3, y + f * 9, z - f);
         m.scale.set(s, s, s);
       }
     });
@@ -1498,7 +1705,12 @@ export class WorldEngine {
     const placed: Array<[number, number, number, number]> = [];
     const showDistricts = this.dist > 230;
     for (const label of this.labels) {
-      let show = label.kind === 'district' ? showDistricts || label.id === this.hovered : label.id === this.hovered || label.id === this.selected;
+      let show =
+        label.kind === 'district'
+          ? showDistricts || label.id === this.hovered
+          : label.kind === 'info'
+            ? this.dist < 260 || (label.id !== undefined && (label.id === this.hovered || label.id === this.selected))
+            : label.id === this.hovered || label.id === this.selected;
       if (show) {
         v.copy(label.pos).project(this.camera);
         show = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
@@ -1586,6 +1798,11 @@ export class WorldEngine {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** A pale paved pad on the ground. */
+function flatPad(batch: Batch, shapes: Shapes, x: number, z: number, w: number, d: number) {
+  batch.add(shapes.box, { x, y: 0.06, z, sx: w, sy: 0.08, sz: d }, 0xf4f1ea);
+}
 
 const UP = new THREE.Vector3(0, 1, 0);
 const PROXY_MATERIAL = new THREE.MeshBasicMaterial({ visible: false });

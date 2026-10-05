@@ -63,6 +63,10 @@ const KIND_LABELS: Record<string, string> = {
   site: 'وب‌سایت',
   office: 'دفتر',
   port: 'بندر',
+  home: 'خانه‌ها',
+  day: 'روز فروش',
+  top: 'پرفروش',
+  flow: 'جریان پول',
   district: 'منطقه',
 };
 
@@ -364,7 +368,7 @@ export function WorldClient({ role }: { role: string | null }) {
     if (!shown) return null;
     for (const id of [selected, hovered]) {
       if (!id) continue;
-      const c = thingCard(id, shown);
+      const c = thingCard(id, shown, plan);
       if (c) return { ...c, id };
     }
     const key = district && plan?.districts.some((d) => d.key === district) ? district : 'hq';
@@ -660,6 +664,12 @@ export function WorldClient({ role }: { role: string | null }) {
                 ))
               ))}
           </ul>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-1.5 text-[10.5px] text-muted-foreground dark:border-slate-700">
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-[#e0443e]" />طلب ما</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-[#f2a33a]" />بدهی ما</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-[#d9534f]" />ناموجود</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-[#f0a14a]" />کم</span>
+          </div>
         </div>
       )}
 

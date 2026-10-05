@@ -2,7 +2,8 @@
 // can go has a street in front of it, and a vehicle can drive from any of them to any other.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CROWD_MAX, along, pathLength, planCity, route, type Rect } from '@/components/world/world-city';
+import { along, pathLength, planCity, route, sizesBy, type Rect } from '@/components/world/world-city';
+import { customerTier } from '@/lib/world-data';
 import type { WorldData } from '@/lib/world-types';
 
 const ALL = { stock: true, sales: true, customers: true, suppliers: true, site: true, finance: true, profit: true, cost: true };
@@ -18,7 +19,16 @@ function world(n: { products: number; stores: number; suppliers: number; custome
     generatedAt: '2026-10-05T10:00:00Z',
     layers,
     stock: { lowMax: 3, warehouses: [...halls, ...stores], products, totals: { products: n.products, units: 1, low: 0, out: 0 } },
-    customers: { total: n.customers, newInWindow: 0, buyers90: 0, debtors: 0, receivables: 0, top: Array.from({ length: Math.min(10, n.customers) }, (_, i) => ({ id: `c${i}`, name: `م${i}`, orders: 1, spend: 1, debt: 0 })) },
+    customers: {
+      total: n.customers, newInWindow: 0, buyers90: 0, debtors: 0, receivables: 0,
+      top: Array.from({ length: Math.min(10, n.customers) }, (_, i) => ({ id: `c${i}`, name: `م${i}`, orders: 1, spend: 1, debt: 0 })),
+      // Two in three ever bought: tiered by rank; the rest never did.
+      people: Array.from({ length: n.customers }, (_, i) => {
+        const buyers = Math.ceil(n.customers * 2 / 3);
+        return { id: `c${i}`, name: `م${i}`, spend: 1000 - i, orders: i < buyers ? 1 : 0, debt: i % 5 === 0 ? 100 : 0, credit: 0, lastAt: null, tier: customerTier(i < buyers ? i : null, buyers) };
+      }),
+      tiers: [],
+    },
     suppliers: { suppliers: Array.from({ length: n.suppliers }, (_, i) => ({ id: `s${i}`, name: `S${i}`, orders: 1, open: 0, lastOrderAt: null })) },
     site: { host: 'themoak.com', stockPush: true, productsOnSite: 1, hook: { lastOkAt: null, failingSince: null, paused: false }, catalogue: { at: null, ok: true, read: 1, updated: 0, notInErp: 0 } },
     finance: { total: 1, accounts: Array.from({ length: n.accounts }, (_, i) => ({ id: `a${i}`, name: `ح${i}`, type: 'BANK', currency: 'TOMAN', balance: 1, toman: 1 })), receivables: 0, payables: 0, flows: { income: [], expense: [] } },
@@ -50,7 +60,16 @@ function assertSound(data: WorldData) {
     for (let j = i + 1; j < plan.stores.length; j++) assert.ok(!overlap(plan.stores[i].plot, plan.stores[j].plot), 'stores overlap');
   }
   for (const f of plan.china.factories) assert.ok(inside(f, plan.china.island), 'factory off China');
-  assert.ok(plan.homes.crowd.length <= CROWD_MAX);
+  // Every home stands inside the customers' district, none on another, and every customer has one.
+  const homesAt = district('customers');
+  if (data.customers?.people.length) {
+    for (let i = 0; i < plan.homes.length; i++) {
+      assert.ok(inside(plan.homes[i], homesAt.rect), `${plan.homes[i].kind} ${i} outside the customers' district`);
+      for (let j = i + 1; j < plan.homes.length; j++) assert.ok(!overlap(plan.homes[i], plan.homes[j]), 'homes overlap');
+    }
+    const housed = plan.homes.flatMap((h) => h.residents).sort();
+    assert.deepEqual(housed, data.customers.people.map((p) => p.id).sort());
+  }
   // The two islands do not touch.
   assert.ok(!overlap(plan.island, plan.china.island));
   // From every place on the main island to every other there is a way along the streets.
@@ -78,7 +97,11 @@ test('the business as it is today fits, and every place can be driven to', () =>
   assert.equal(plan.stores.length, 6);
   assert.equal(plan.accounts.length, 12);
   assert.equal(plan.china.factories.length, 6);
-  assert.equal(plan.homes.top.length, 10);
+  const kinds = (k: string) => plan.homes.filter((h) => h.kind === k);
+  assert.ok(kinds('mansion').length >= 1 && kinds('villa').length >= 1 && kinds('house').length >= 1);
+  assert.ok(kinds('terrace').every((h) => h.residents.length <= 6));
+  assert.ok(kinds('apartment').every((h) => h.residents.length <= 24));
+  assert.deepEqual(plan.quarters.map((q) => q.label), ['ویلاها', 'خانه‌های شهری', 'شهرک']);
   assert.ok(plan.places.has('wh:hall0') && plan.places.has('wh:store3') && plan.places.has('sup:s2'));
 });
 
@@ -100,4 +123,17 @@ test('along a path: the start, the end, and the heading of each leg', () => {
   assert.deepEqual(along(path, 5), { p: { x: 0, z: 5 }, heading: 0 });
   assert.deepEqual(along(path, 15), { p: { x: 5, z: 10 }, heading: Math.PI / 2 });
   assert.deepEqual(along(path, 99).p, { x: 10, z: 10 });
+});
+
+test('tiers: the best 3% الماسی, then 7%, 15%, 25%, the rest; someone who never bought is بی‌خرید', () => {
+  const tiers = Array.from({ length: 100 }, (_, i) => customerTier(i, 100));
+  assert.deepEqual([1, 2, 3, 4, 5].map((t) => tiers.filter((x) => x === t).length), [3, 7, 15, 25, 50]);
+  assert.equal(customerTier(null, 100), 6);
+  assert.deepEqual([0, 1, 2, 3, 4].map((i) => customerTier(i, 5)), [1, 2, 3, 4, 5]);
+  assert.equal(customerTier(0, 1), 1);
+});
+
+test('sizes by importance: the best third large, the next third medium, the rest small', () => {
+  const sizes = sizesBy([5, 50, 1, 20, 9, 30], (n) => n);
+  assert.deepEqual([50, 30, 20, 9, 5, 1].map((n) => sizes.get(n)), ['large', 'large', 'medium', 'medium', 'small', 'small']);
 });

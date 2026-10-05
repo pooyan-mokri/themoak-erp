@@ -4,8 +4,11 @@
  * may not see is never shown (it is not in the snapshot to begin with).
  */
 import { tomanTick } from '@/lib/chart-format';
-import { DISTRICT_LABELS, type DistrictKey } from '@/components/world/world-city';
-import type { WorldChannel, WorldData, WorldEvent } from '@/lib/world-types';
+import { DISTRICT_LABELS, type CityPlan, type DistrictKey } from '@/components/world/world-city';
+import type { CustomerTier, WorldChannel, WorldData, WorldEvent } from '@/lib/world-types';
+
+export const TIER_NAMES: Record<CustomerTier, string> = { 1: 'الماسی', 2: 'طلایی', 3: 'نقره‌ای', 4: 'برنزی', 5: 'عادی', 6: 'بی‌خرید' };
+const HOME_NAMES: Record<string, string> = { mansion: 'عمارت', villa: 'ویلا', house: 'خانه', terrace: 'خانه‌های شهری', apartment: 'آپارتمان شهرک' };
 
 export type Card = { title: string; subtitle?: string; rows: Array<[string, string]>; href?: string; tone?: 'good' | 'warn' | 'bad' };
 
@@ -101,6 +104,7 @@ export function districtCard(key: DistrictKey, data: WorldData): Card {
           ['خرید در ۹۰ روز', `${fa(c.buyers90)} نفر`],
           ['مشتری تازه در ۳۰ روز', fa(c.newInWindow)],
           ['بدهکار', `${fa(c.debtors)} نفر · ${toman(c.receivables)}`],
+          ...c.tiers.filter((t) => t.count > 0).map((t): [string, string] => [`مشتری ${t.label}`, `${fa(t.count)} نفر`]),
         ],
         href: '/dashboard/crm',
       };
@@ -149,13 +153,16 @@ function siteCard(data: WorldData): Card {
 }
 
 /** The card of a thing on the map, by its id (see world-engine.ts), or null when it is gone. */
-export function thingCard(id: string, data: WorldData): Card | null {
+export function thingCard(id: string, data: WorldData, plan?: CityPlan | null): Card | null {
   const [kind, a, b] = id.split(':');
   if (kind === 'district') return districtCard(a as DistrictKey, data);
   if (kind === 'warehouse') {
     const w = data.stock?.warehouses.find((x) => x.id === a);
     if (!w) return null;
     const rows: Array<[string, string]> = [['موجودی', `${fa(w.units)} عدد`], ['تعداد کالا', fa(w.products)]];
+    if (w.sales90 !== undefined) rows.push(['فروش ۹۰ روز', toman(w.sales90)]);
+    if (w.receivable) rows.push(['طلب ما از او', toman(w.receivable)]);
+    if (w.payable) rows.push(['بدهی ما به او', toman(w.payable)]);
     if (w.valueAtCost !== undefined) rows.push(['ارزش به قیمت تمام‌شده', toman(w.valueAtCost)]);
     return { title: w.partner ?? w.name, subtitle: w.virtual ? `فروشگاه امانی · ${w.name}` : 'انبار', rows, href: `/dashboard/inventory/warehouses/${w.id}` };
   }
@@ -210,18 +217,43 @@ export function thingCard(id: string, data: WorldData): Card | null {
     const s = data.suppliers?.suppliers.find((x) => x.id === a);
     if (!s) return null;
     const rows: Array<[string, string]> = [['سفارش خرید', fa(s.orders)], ['باز', fa(s.open)], ['آخرین سفارش', s.lastOrderAt ? dateFa(s.lastOrderAt) : '—']];
-    if (s.unpaid !== undefined) rows.push(['مانده پرداخت', toman(s.unpaid)]);
+    if (s.volume !== undefined) rows.push(['کل خرید از او', toman(s.volume)]);
+    if (s.unpaid !== undefined) rows.push(['بدهی ما به او', toman(s.unpaid)]);
+    if (s.credit) rows.push(['طلب ما از او', toman(s.credit)]);
     return { title: s.name, subtitle: 'تأمین‌کننده', rows, href: '/dashboard/suppliers', tone: s.unpaid ? 'warn' : undefined };
   }
   if (kind === 'customer') {
-    const c = data.customers?.top.find((x) => x.id === a);
+    const c = data.customers?.people.find((x) => x.id === a);
     if (!c) return null;
+    const rows: Array<[string, string]> = [['کل خرید', toman(c.spend)], ['سفارش', fa(c.orders)], ['طلب ما', c.debt ? toman(c.debt) : 'ندارد'], ['بدهی ما', c.credit ? toman(c.credit) : 'ندارد']];
+    if (c.lastAt) rows.push(['آخرین خرید', ago(c.lastAt)]);
     return {
       title: c.name,
-      subtitle: 'از بهترین مشتری‌های ۹۰ روز',
-      rows: [['خرید', toman(c.spend)], ['سفارش', fa(c.orders)], ['بدهی', c.debt ? toman(c.debt) : 'ندارد']],
+      subtitle: `مشتری ${TIER_NAMES[c.tier]}`,
+      rows,
       href: `/dashboard/crm/customers/${c.id}`,
       tone: c.debt ? 'warn' : undefined,
+    };
+  }
+  if (kind === 'home') {
+    const home = plan?.homes.find((h) => `home:${h.id}` === id);
+    const people = data.customers?.people ?? [];
+    if (!home) return null;
+    const residents = home.residents.map((r) => people.find((p) => p.id === r)).filter((p): p is NonNullable<typeof p> => !!p);
+    const debt = residents.reduce((s, r) => s + r.debt, 0);
+    const credit = residents.reduce((s, r) => s + r.credit, 0);
+    return {
+      title: HOME_NAMES[home.kind] ?? 'خانه',
+      subtitle: `${fa(residents.length)} مشتری ${[...new Set(residents.map((r) => TIER_NAMES[r.tier]))].join('، ')}`,
+      rows: [
+        ['کل خرید', toman(residents.reduce((s, r) => s + r.spend, 0))],
+        ['طلب ما', debt ? toman(debt) : 'ندارد'],
+        ['بدهی ما', credit ? toman(credit) : 'ندارد'],
+        ['خرید در ۹۰ روز', `${fa(residents.filter((r) => r.lastAt && Date.parse(r.lastAt) > Date.now() - 90 * 86_400_000).length)} نفر`],
+        ...residents.slice(0, 8).map((r): [string, string] => [r.name, r.spend ? short(r.spend) : '—']),
+      ],
+      href: '/dashboard/crm',
+      tone: debt ? 'warn' : undefined,
     };
   }
   if (kind === 'crowd') {

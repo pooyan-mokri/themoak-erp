@@ -430,3 +430,36 @@ test('/api/world: a stranger gets 401, an unknown role 403, a user their world, 
   assert.equal(body.finance, undefined);
   assert.ok(body.stock);
 });
+
+test('customers: everyone in a tier by what they ever bought, with what they owe and are owed; partners are not customers', async () => {
+  const s = await seed();
+  await prisma.customerCredit.create({ data: { customerId: s.sara.id, amount: 300_000, reason: 'تعویض' } });
+  const world = await buildWorld(prisma, 'ADMIN');
+  const people = world.customers!.people;
+  assert.deepEqual(people.map((p) => [p.name, p.tier, p.spend, p.debt, p.credit]), [
+    ['علی رضایی', 1, 3_500_000, 1_500_000, 0],
+    ['سارا احمدی', 2, 2_000_000, 0, 300_000],
+  ]);
+  assert.ok(!people.some((p) => p.id === s.partner.id));
+  assert.deepEqual(world.customers!.tiers.filter((t) => t.count).map((t) => [t.label, t.count]), [['الماسی', 1], ['طلایی', 1]]);
+});
+
+test('a partner\'s store: its 90 days of sales and what it owes us; a supplier: what we bought and the credit it holds', async () => {
+  const s = await seed();
+  await prisma.order.updateMany({ where: { customerId: s.partner.id }, data: { paidAmount: 1_000_000, paymentStatus: 'PARTIAL' } });
+  await prisma.supplierCredit.create({ data: { supplierId: s.maker.id, amount: 750_000, reason: 'کسری' } });
+  const admin = await buildWorld(prisma, 'ADMIN');
+  const store = admin.stock!.warehouses.find((w) => w.id === s.store.id)!;
+  assert.deepEqual([store.sales90, store.receivable, store.payable], [4_000_000, 3_000_000, 0]);
+  const maker = admin.suppliers!.suppliers.find((x) => x.id === s.maker.id)!;
+  assert.deepEqual([maker.volume, maker.credit, maker.unpaid], [10_000_000, 750_000, 10_000_000]);
+  // Without sales.view, no partner's money; without finance.view, no supplier's.
+  const warehouse = await buildWorld(prisma, 'WAREHOUSE');
+  const theirs = warehouse.stock!.warehouses.find((w) => w.id === s.store.id)!;
+  assert.deepEqual([theirs.sales90, theirs.receivable, theirs.payable], [undefined, undefined, undefined]);
+  assert.equal(warehouse.customers, undefined);
+  const sales = await buildWorld(prisma, 'SALES');
+  const seen = sales.suppliers!.suppliers.find((x) => x.id === s.maker.id)!;
+  assert.deepEqual([seen.volume, seen.credit, seen.unpaid], [undefined, undefined, undefined]);
+  assert.ok(sales.customers!.people.length === 2);
+});
