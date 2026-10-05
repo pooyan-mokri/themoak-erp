@@ -4,7 +4,7 @@
  * may not see is never shown (it is not in the snapshot to begin with).
  */
 import { tomanTick } from '@/lib/chart-format';
-import { DISTRICT_LABELS, type DistrictKey } from '@/components/world/world-layout';
+import { DISTRICT_LABELS, type DistrictKey } from '@/components/world/world-city';
 import type { WorldChannel, WorldData, WorldEvent } from '@/lib/world-types';
 
 export type Card = { title: string; subtitle?: string; rows: Array<[string, string]>; href?: string; tone?: 'good' | 'warn' | 'bad' };
@@ -110,6 +110,13 @@ export function districtCard(key: DistrictKey, data: WorldData): Card {
       const rows: Array<[string, string]> = [['تأمین‌کننده', fa(s.suppliers.length)], ['سفارش خرید باز', fa(s.suppliers.reduce((n, x) => n + x.open, 0))]];
       if (s.payables !== undefined) rows.push(['بدهی', toman(s.payables)]);
       return { title, rows, href: '/dashboard/suppliers' };
+    }
+    case 'port': {
+      const purchases = data.events.filter((e) => e.kind === 'purchase');
+      const rows: Array<[string, string]> = [['رسید خرید در ۷ روز', fa(purchases.length)]];
+      if (data.suppliers) rows.push(['سفارش خرید باز', fa(data.suppliers.suppliers.reduce((n, x) => n + x.open, 0))]);
+      if (data.suppliers?.payables !== undefined) rows.push(['بدهی به تأمین‌کننده‌ها', toman(data.suppliers.payables)]);
+      return { title, subtitle: 'کالا از چین با کشتی و هواپیما به این بندر می‌رسد', rows, href: '/dashboard/suppliers' };
     }
     case 'office':
       return {
@@ -223,6 +230,7 @@ export function thingCard(id: string, data: WorldData): Card | null {
     return { title: 'بقیهٔ مشتری‌ها', rows: [['همهٔ مشتری‌ها', fa(c.total)], ['خرید در ۹۰ روز', fa(c.buyers90)]], href: '/dashboard/crm' };
   }
   if (kind === 'site') return data.site ? siteCard(data) : null;
+  if (kind === 'port') return districtCard('port', data);
   if (kind === 'office') return districtCard('office', data);
   if (kind === 'out') {
     const total = data.finance?.flows.expense.reduce((s, r) => s + r.amount, 0);

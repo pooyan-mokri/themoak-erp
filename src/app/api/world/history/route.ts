@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentRole } from '@/lib/access';
 import { ROLES } from '@/lib/permissions';
-import { buildWorldHistory } from '@/lib/world-history';
+import { buildWorldHistory } from '@/lib/world-history-build';
 
 export const dynamic = 'force-dynamic';
 

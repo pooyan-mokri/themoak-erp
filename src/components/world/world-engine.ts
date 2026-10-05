@@ -27,8 +27,7 @@ import {
   buildHq, buildLamp, buildOffice, buildPallet, buildPlane, buildShip, buildStore, buildTower, buildTree, buildTruck, buildVan, signOn,
 } from '@/components/world/world-models';
 import type { WorldData, WorldEvent } from '@/lib/world-types';
-
-export type Weather = 'sunny' | 'cloudy' | 'rain';
+import { businessWeather, daylight, type Weather } from '@/components/world/world-hud';
 
 export type EngineCallbacks = {
   onHover: (id: string | null) => void;
@@ -39,10 +38,10 @@ export type EngineCallbacks = {
   onView: (target: Point, yaw: number) => void;
 };
 
-type Picked = { id: string; base: Point; radius: number; height: number };
+type Picked = { id: string; base: Point; radius: number; height: number; facing?: number };
 type Mover = {
   mesh: THREE.Object3D;
-  legs: Array<{ path: Point[]; speed: number; y?: (t: number) => number; kind: 'road' | 'sea' | 'air' }>;
+  legs: Array<{ path: Point[]; speed: number; y?: (t: number) => number; kind: 'road' | 'sea' | 'air' | 'walk' }>;
   leg: number;
   s: number;
   label: HTMLDivElement | null;
@@ -60,28 +59,6 @@ function tehranHour(now = new Date()): number {
   const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 12);
   const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
   return h + m / 60;
-}
-
-/** How much daylight there is at an hour: 0 at night, 1 at midday, a soft dawn and dusk. */
-export function daylight(hour: number): number {
-  const rise = 6.3;
-  const set = 17.9;
-  if (hour <= rise - 0.7 || hour >= set + 0.7) return 0;
-  if (hour < rise + 0.7) return (hour - (rise - 0.7)) / 1.4;
-  if (hour > set - 0.7) return ((set + 0.7) - hour) / 1.4;
-  return 1;
-}
-
-/** The weather the business has: from the sales of this window against the one before. */
-export function businessWeather(data: Pick<WorldData, 'sales'>): { weather: Weather; change: number | null; rainbow: boolean } {
-  const s = data.sales;
-  if (!s) return { weather: 'sunny', change: null, rainbow: false };
-  const before = s.previous?.total ?? 0;
-  const change = before > 0 ? (s.window.total - before) / before : null;
-  const weather: Weather = change === null || change >= 0.05 ? 'sunny' : change > -0.05 ? 'cloudy' : 'rain';
-  const best = Math.max(0, ...s.days.map((d) => d.total));
-  const rainbow = best > 0 && (s.days[s.days.length - 1]?.total ?? 0) >= best;
-  return { weather, change, rainbow };
 }
 
 export class WorldEngine {
@@ -147,13 +124,14 @@ export class WorldEngine {
   private resizeObserver: ResizeObserver;
   private disposed = false;
   private small: boolean;
+  private people = new Map<string, { mesh: THREE.Mesh; label: HTMLDivElement; goal: THREE.Vector3 }>();
 
   constructor(private container: HTMLElement, private labelLayer: HTMLElement, private callbacks: EngineCallbacks, dark: boolean) {
     this.dark = dark;
     this.small = Math.min(window.innerWidth, window.innerHeight) < 700;
     this.effects = !this.small;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.small ? 1.5 : 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -164,7 +142,7 @@ export class WorldEngine {
     container.appendChild(this.renderer.domElement);
 
     this.sun.castShadow = true;
-    const size = this.small ? 2048 : 4096;
+    const size = 2048;
     this.sun.shadow.mapSize.set(size, size);
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.6;
@@ -225,7 +203,7 @@ export class WorldEngine {
     const composer = new EffectComposer(this.renderer, target);
     composer.addPass(new RenderPass(this.scene, this.camera));
     const ao = new GTAOPass(this.scene, this.camera, w, h);
-    ao.updateGtaoMaterial({ radius: 2.2, distanceExponent: 1.4, thickness: 2, scale: 1.1, samples: 12 });
+    ao.updateGtaoMaterial({ radius: 2.2, distanceExponent: 1.4, thickness: 2, scale: 1.1, samples: 8 });
     ao.blendIntensity = 0.85;
     composer.addPass(ao);
     const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.5, 0.92);
@@ -280,7 +258,9 @@ export class WorldEngine {
     }
     const pick = this.findPick(id);
     if (!pick) return;
-    this.flyTo(pick.base, Math.max(32, pick.radius * 5 + pick.height * 2));
+    // Framed whole, from a little to one side of its front when it has one.
+    const distance = THREE.MathUtils.clamp(pick.radius * 6.5 + pick.height * 3, 55, 280);
+    this.flyTo(pick.base, distance, pick.facing === undefined ? undefined : pick.facing + Math.PI / 7, pick.facing === undefined ? undefined : 0.55);
     this.select(id);
   }
 
@@ -319,8 +299,66 @@ export class WorldEngine {
     this.sendEvent(event, fresh);
   }
 
+  /**
+   * Everyone else in the world right now (src/lib/world-presence.ts): a figure in sunglasses with a name,
+   * standing where their view is, gliding as it moves.
+   */
+  setPeople(people: Array<{ userId: string; name: string; x: number; z: number }>) {
+    const seen = new Set<string>();
+    for (const person of people) {
+      seen.add(person.userId);
+      let entry = this.people.get(person.userId);
+      if (!entry) {
+        const paint = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, color: PEOPLE[Math.floor(hash(person.userId) * PEOPLE.length) % PEOPLE.length] });
+        const mesh = new THREE.Mesh(this.vehicle('person'), paint);
+        mesh.castShadow = true;
+        mesh.position.set(person.x, 0, person.z);
+        this.scene.add(mesh);
+        const label = document.createElement('div');
+        label.dir = 'rtl';
+        label.className = 'pointer-events-none absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-900/90 px-2.5 py-1 text-[11.5px] font-medium text-white shadow-md will-change-transform';
+        const dot = document.createElement('span');
+        dot.className = 'inline-block h-2 w-2 rounded-full bg-emerald-400';
+        label.append(dot, document.createTextNode(person.name));
+        this.labelLayer.appendChild(label);
+        entry = { mesh, label, goal: new THREE.Vector3(person.x, 0, person.z) };
+        this.people.set(person.userId, entry);
+      }
+      entry.goal.set(person.x, 0, person.z);
+    }
+    for (const [id, entry] of this.people) {
+      if (seen.has(id)) continue;
+      this.scene.remove(entry.mesh);
+      (entry.mesh.material as THREE.Material).dispose();
+      entry.label.remove();
+      this.people.delete(id);
+    }
+  }
+
+  private updatePeople(dt: number) {
+    const v = new THREE.Vector3();
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    for (const { mesh, label, goal } of this.people.values()) {
+      const dx = goal.x - mesh.position.x;
+      const dz = goal.z - mesh.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.2) {
+        mesh.position.x += dx * Math.min(1, dt * 2);
+        mesh.position.z += dz * Math.min(1, dt * 2);
+        mesh.rotation.y = Math.atan2(dx, dz);
+      }
+      mesh.position.y = Math.abs(Math.sin(this.elapsed * (d > 0.5 ? 9 : 2))) * (d > 0.5 ? 0.35 : 0.08);
+      v.set(mesh.position.x, 6.2, mesh.position.z).project(this.camera);
+      const show = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+      label.style.display = show ? '' : 'none';
+      if (show) label.style.transform = `translate(-50%, -100%) translate(${(((v.x + 1) / 2) * w).toFixed(1)}px, ${(((1 - v.y) / 2) * h).toFixed(1)}px)`;
+    }
+  }
+
   dispose() {
     this.disposed = true;
+    this.setPeople([]);
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     const el = this.renderer.domElement;
@@ -482,7 +520,8 @@ export class WorldEngine {
       m.shape(this.shapes.ball, tone, 3, 5, -3, 14, 9, 11);
       return batch.geometry()!;
     });
-    const cloudMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, transparent: true, opacity: w.weather === 'rain' ? 0.95 : 0.9, color: w.weather === 'sunny' ? 0xffffff : 0xdfe3ea });
+    // Only the clouds' shadows cross the map: seen from above they would hide it.
+    const cloudMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
     this.owned.push(cloudMaterial);
     for (let i = 0; i < count; i++) {
       const c = new THREE.Mesh(puff, cloudMaterial);
@@ -554,7 +593,7 @@ export class WorldEngine {
     return g;
   }
 
-  private vehicle(name: 'truck' | 'van' | 'cash' | 'forklift' | 'forks' | 'ship' | 'plane' | 'car' | 'pallet' | 'container') {
+  private vehicle(name: 'truck' | 'van' | 'cash' | 'forklift' | 'forks' | 'ship' | 'plane' | 'car' | 'pallet' | 'container' | 'person') {
     return this.kind(name, () => {
       const batch = new Batch();
       const m = new Model(batch, this.shapes);
@@ -569,6 +608,15 @@ export class WorldEngine {
         buildPallet(m);
         for (let i = 0; i < 6; i++) m.box(COLORS.cardboard, -0.38 + (i % 3) * 0.38, -0.22 + Math.floor(i / 3) * 0.44, 0.36, 0.34, 0.42, 0.15);
       } else if (name === 'container') buildContainer(m, COLORS.teal);
+      else if (name === 'person') {
+        // A figure in sunglasses, twice life size so it reads from afar.
+        const k = 2.2;
+        m.box(COLORS.white, 0, 0, 0.8 * k, 0.9 * k, 0.5 * k, 0.65 * k);
+        m.box(0xf2d3b3, 0, 0, 0.66 * k, 0.6 * k, 0.6 * k, 1.58 * k);
+        for (const x of [-0.17, 0.17]) m.box(0x111317, x * k, 0.31 * k, 0.27 * k, 0.16 * k, 0.05 * k, 1.78 * k);
+        m.box(0x111317, 0, 0.31 * k, 0.6 * k, 0.05 * k, 0.04 * k, 1.83 * k);
+        for (const x of [-0.2, 0.2]) m.box(0x3b4252, x * k, 0, 0.26 * k, 0.65 * k, 0.3 * k);
+      }
       else {
         // A small car: body, cabin, wheels.
         m.box(COLORS.white, 0, 0, 1.8, 0.7, 4.2, 0.35);
@@ -598,12 +646,12 @@ export class WorldEngine {
   }
 
   /** An invisible box to pick a thing by. */
-  private proxy(id: string, x: number, z: number, w: number, h: number, d: number, ry = 0) {
+  private proxy(id: string, x: number, z: number, w: number, h: number, d: number, ry = 0, facing?: number) {
     const mesh = new THREE.Mesh(this.shapes.box, PROXY_MATERIAL);
     mesh.position.set(x, h / 2, z);
     mesh.scale.set(w, h, d);
     mesh.rotation.y = ry;
-    mesh.userData.pick = { id, base: { x, z }, radius: Math.max(w, d) / 2, height: h } satisfies Picked;
+    mesh.userData.pick = { id, base: { x, z }, radius: Math.max(w, d) / 2, height: h, facing } satisfies Picked;
     mesh.updateMatrixWorld();
     this.world.add(mesh);
     this.proxies.push(mesh);
@@ -663,7 +711,7 @@ export class WorldEngine {
       const b = y.building;
       const hall = new Model(batch, S, b.x + b.w / 2, b.z + b.d / 2, 0);
       buildHall(atlas, hall, b.w, b.d, y.docks.length, w.name);
-      this.proxy(`warehouse:${w.id}`, b.x + b.w / 2, b.z + b.d / 2, b.w, 11, b.d);
+      this.proxy(`warehouse:${w.id}`, b.x + b.w / 2, b.z + b.d / 2, b.w, 11, b.d, 0, 0);
       // Truck bays: yellow lines; a truck backed up to some of them.
       const busy = Math.min(y.truckBays.length - 1, 2 + (data.sales?.today.orders ?? 0));
       y.truckBays.forEach((bay, k) => {
@@ -926,7 +974,7 @@ export class WorldEngine {
       const p = st.plot;
       const m = new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing);
       buildStore(atlas, m, p.d, p.w, w.partner ?? w.name, w.id, w.units);
-      this.proxy(`warehouse:${w.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d);
+      this.proxy(`warehouse:${w.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d, 0, p.facing);
     }
     // The bank, its forecourt, a coin stack and a name plate per account.
     if (data.finance) {
@@ -957,6 +1005,9 @@ export class WorldEngine {
     fountain.post(COLORS.stone, 0, 0, 6, 0.8);
     fountain.post(COLORS.water, 0, 0, 5.4, 0.85);
     fountain.post(COLORS.stone, 0, 0, 0.8, 2.6);
+    // A billboard on the plaza: the best sellers' photos, one after another.
+    const photos = (data.sales?.topProducts ?? []).filter((p) => p.image).slice(0, 8);
+    if (photos.length) this.billboard(batch, atlas, { x: hq.x + hq.w + 10, z: hq.z + hq.d + 16 }, photos.map((p) => p.image!));
     // The website's tower and its status light.
     if (data.site) {
       const t = plan.tower;
@@ -982,7 +1033,7 @@ export class WorldEngine {
       const c = data.customers?.top.find((x) => x.id === p.id);
       if (!c) return;
       buildHome(atlas, new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing), p.w, p.d, c.id, c.name, c.debt > 0);
-      this.proxy(`customer:${c.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d);
+      this.proxy(`customer:${c.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d, 0, p.facing);
     });
     for (const p of plan.homes.crowd) {
       buildHome(null, new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing), p.w, p.d, p.id, null, false);
@@ -1011,7 +1062,7 @@ export class WorldEngine {
       const s = data.suppliers?.suppliers.find((x) => x.id === f.id);
       if (!s) continue;
       buildFactory(atlas, new Model(batch, S, f.x + f.w / 2, f.z + f.d / 2, f.facing), f.d, f.w, s.name, s.id);
-      this.proxy(`supplier:${s.id}`, f.x + f.w / 2, f.z + f.d / 2, f.w, 12, f.d);
+      this.proxy(`supplier:${s.id}`, f.x + f.w / 2, f.z + f.d / 2, f.w, 12, f.d, 0, f.facing);
       if (s.open > 0) this.smoke(f.x + f.w / 2 - (f.w * 0.3), f.z + f.d / 2 - f.d * 0.32);
     }
     if (china.factories.length) {
@@ -1024,6 +1075,48 @@ export class WorldEngine {
       buildLamp(new Model(batch, S, l.x, l.z, 0));
       lamps.add(S.box, { x: l.x, y: 5.85, z: l.z + 1.2, sx: 0.5, sy: 0.12, sz: 0.7 }, 0xfffbe8);
     }
+  }
+
+  /** A billboard: posts, a frame, a photo that changes every few seconds, «پرفروش‌ها» under it. */
+  private billboard(batch: Batch, atlas: SignAtlas, at: Point, urls: string[]) {
+    const m = new Model(batch, this.shapes, at.x, at.z, Math.PI / 4);
+    for (const x of [-5, 5]) m.post(COLORS.steelDark, x, -0.3, 0.25, 6);
+    m.box(0x26303f, 0, 0, 13.4, 8.2, 0.5, 5.6);
+    signOn(atlas, m, { text: 'پرفروش‌ها', style: 'host' }, 0, 5.0, 0.3, 6, 1.0);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    this.owned.push(material);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(12.6, 7.4), material);
+    this.owned.push(screen.geometry);
+    const p = m.at(0, 0.27);
+    screen.position.set(p.x, 9.7, p.z);
+    screen.rotation.y = Math.PI / 4;
+    this.world.add(screen);
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    const textures: Array<THREE.Texture | null> = urls.map(() => null);
+    let shown = -1;
+    const show = (i: number) => {
+      const done = (t: THREE.Texture | null) => {
+        if (!t || this.disposed) return;
+        textures[i] = t;
+        material.map = t;
+        material.needsUpdate = true;
+      };
+      if (textures[i]) done(textures[i]);
+      else
+        loader.load(urls[i], (t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          this.owned.push(t);
+          done(t);
+        }, undefined, () => undefined);
+    };
+    this.animated.push((t) => {
+      const i = Math.floor(t / 6) % urls.length;
+      if (i !== shown) {
+        shown = i;
+        show(i);
+      }
+    });
   }
 
   /** Smoke from a chimney while a purchase order is open. */
@@ -1071,6 +1164,23 @@ export class WorldEngine {
         const b = plan.nodes[Math.floor(random() * plan.nodes.length)];
         const mover: Mover = { mesh, legs: [{ path: route(plan, a, b), speed: 8 + random() * 4, kind: 'road' }], leg: 0, s: 0, label: null, ambient: true, done: () => go() };
         this.movers.push(mover);
+      };
+      go();
+    }
+    // People out for a walk, on the sidewalks.
+    const walkers = this.small ? 6 : 16;
+    for (let i = 0; i < walkers; i++) {
+      const paint = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, color: PEOPLE[i % PEOPLE.length] });
+      this.owned.push(paint);
+      const mesh = new THREE.Mesh(this.vehicle('person'), paint);
+      mesh.scale.setScalar(0.42);
+      mesh.castShadow = true;
+      this.life.add(mesh);
+      const random = seeded(`walker${i}`);
+      const go = () => {
+        const a = plan.nodes[Math.floor(random() * plan.nodes.length)];
+        const b = plan.nodes[Math.floor(random() * plan.nodes.length)];
+        this.movers.push({ mesh, legs: [{ path: route(plan, a, b), speed: 1.3 + random() * 0.6, kind: 'walk' }], leg: 0, s: 0, label: null, ambient: true, done: () => go() });
       };
       go();
     }
@@ -1191,12 +1301,19 @@ export class WorldEngine {
       const { p, heading } = along(leg.path, m.s);
       let x = p.x;
       let z = p.z;
-      if (leg.kind === 'road') {
-        // Keep to the right-hand lane.
-        x += -Math.cos(heading) * 2.4;
-        z += Math.sin(heading) * 2.4;
+      if (leg.kind === 'road' || leg.kind === 'walk') {
+        // Cars keep to the right-hand lane, people to the sidewalk.
+        const side = leg.kind === 'walk' ? 7.4 : 2.4;
+        x += -Math.cos(heading) * side;
+        z += Math.sin(heading) * side;
       }
-      const y = leg.y ? leg.y(Math.min(1, m.s / Math.max(1, total))) : leg.kind === 'sea' ? -0.6 + Math.sin(this.elapsed * 0.8 + i) * 0.15 : 0;
+      const y = leg.y
+        ? leg.y(Math.min(1, m.s / Math.max(1, total)))
+        : leg.kind === 'sea'
+          ? -0.6 + Math.sin(this.elapsed * 0.8 + i) * 0.15
+          : leg.kind === 'walk'
+            ? 0.18 + Math.abs(Math.sin(this.elapsed * 8 + i)) * 0.08
+            : 0;
       m.mesh.position.set(x, y, z);
       let turn = heading - m.mesh.rotation.y;
       turn = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -1420,6 +1537,7 @@ export class WorldEngine {
     this.updateCamera(dt);
     for (const fn of [...this.animated]) fn(this.elapsed, dt);
     this.updateMovers(dt);
+    this.updatePeople(dt);
     for (const c of this.clouds.children) {
       c.position.x += (c.userData.speed as number) * dt;
       const i = this.plan?.island;
@@ -1471,6 +1589,8 @@ export class WorldEngine {
 
 const UP = new THREE.Vector3(0, 1, 0);
 const PROXY_MATERIAL = new THREE.MeshBasicMaterial({ visible: false });
+/** Shirts for the people in the world: each user always the same one. */
+const PEOPLE = [0x2f6fe0, 0xd9534f, 0x2aa6a0, 0x8e5bd6, 0xf08a3c, 0x26303f];
 /** The colour of a model's tape on its boxes. */
 const FAMILY = [0x2f6fe0, 0xd9534f, 0x2aa6a0, 0xf2b705, 0x8e5bd6, 0x26303f, 0xf08a3c, 0x5fb36b];
 const EVENT_COLORS: Record<WorldEvent['kind'], number> = {
@@ -1521,7 +1641,7 @@ const ISLAND_TOP = new THREE.MeshStandardMaterial({ color: COLORS.ground, roughn
 const ISLAND_SIDE = new THREE.MeshStandardMaterial({ color: 0xc9cfd9, roughness: 0.95 });
 
 function ring(color: number, opacity: number) {
-  const mesh = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
+  const mesh = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
   mesh.rotation.x = -Math.PI / 2;
   mesh.visible = false;
   mesh.renderOrder = 2;

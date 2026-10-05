@@ -72,7 +72,7 @@ export class Shapes {
   /** A cone, base 1 wide from y = 0 to 1 (a pine, a silo's top). */
   cone = new THREE.ConeGeometry(0.5, 1, 10).translate(0, 0.5, 0).toNonIndexed();
   /** A low-poly ball of diameter 1 (a tree's crown, a bush). */
-  ball = new THREE.IcosahedronGeometry(0.5, 1).toNonIndexed();
+  ball = new THREE.IcosahedronGeometry(0.5, 1);
 
   dispose() {
     for (const g of [this.box, this.cylinder, this.hip, this.gable, this.mansard, this.tooth, this.barrel, this.cone, this.ball]) g.dispose();
