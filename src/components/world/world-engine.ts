@@ -1,161 +1,197 @@
 /**
- * The business world's 3D engine: a minimal isometric island drawn from a
- * snapshot (src/lib/world-types.ts) and its plan (world-layout.ts), with a small
- * figure in sunglasses to walk around it. Imperative three.js, client only;
- * world-client.tsx owns it and draws the panels around it.
+ * The business world's engine (/dashboard/world): the whole business as a small
+ * city, drawn from a snapshot (src/lib/world-types.ts) and its plan
+ * (world-city.ts) with the models of world-models.ts. A perspective camera that
+ * glides from place to place, soft daylight with contact shadows (GTAO), the
+ * real time of day in Tehran, weather from how sales are going, and life on the
+ * streets: forklifts at the warehouse, trucks and vans carrying each order,
+ * transfer and purchase along the streets, ships and planes from the suppliers
+ * in China. world-client.tsx owns it and draws the panels around it.
  *
  * Every thing that can be picked carries an id (world-describe.ts reads it):
  * district:<key>, warehouse:<id>, product:<warehouseId>:<productId>,
- * account:<id>, flow:<income|expense>:<category>, channel:<c>, top:<productId>,
- * day:<yyyy-mm-dd>, supplier:<id>, customer:<id>, crowd, site, office, out,
- * kpi:<today|profit|balance|stock>.
+ * account:<id>, supplier:<id>, customer:<id>, crowd, site, office, hq, out.
  */
 import * as THREE from 'three';
-import { pathPoint, planWorld, type DistrictKey, type Point, type WorldPlan } from '@/components/world/world-layout';
-import { Batch, Shapes, pick as pickOne, seeded } from '@/components/world/world-kit';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Batch, Shapes, seeded, hash } from '@/components/world/world-kit';
 import { SignAtlas, signFontLoaded, signFontReady } from '@/components/world/world-signs';
+import { along, pathLength, planCity, route, type CityPlan, type DistrictKey, type Point, type Rect } from '@/components/world/world-city';
 import {
-  CROWD_ROOFS, CROWD_WALLS, buildFactory, buildHall, buildHouse, buildHq, buildKiosk, buildOffice, buildStore, buildTower,
-  type Footprint, type Kit,
-} from '@/components/world/world-buildings';
+  COLORS, Model, buildBank, buildContainer, buildCrane, buildFactory, buildForklift, buildForks, buildHall, buildHome,
+  buildHq, buildLamp, buildOffice, buildPallet, buildPlane, buildShip, buildStore, buildTower, buildTree, buildTruck, buildVan, signOn,
+} from '@/components/world/world-models';
 import type { WorldData, WorldEvent } from '@/lib/world-types';
 
-type Palette = {
-  sky: number; sea: number; island: number; islandSide: number; road: number; plaza: number;
-  tiles: Record<DistrictKey, number>;
-  wall: number; roof: number; door: number; glass: number; text: string; labelBg: string;
-  gold: number; usd: number; eur: number; income: number; expense: number; ghost: number;
-  site: number; shop: number; consignment: number; factory: number; house: number; roofWarm: number; roofDebt: number;
-  crowdOn: number; crowdOff: number; skin: number; brand: number; window: number; light: number; hemiSky: number; hemiGround: number;
-};
-
-const DAY: Palette = {
-  sky: 0xdfe8ee, sea: 0xc9d8e2, island: 0xf1ece3, islandSide: 0xcfc6b8, road: 0xd9d2c6, plaza: 0xfaf7f1,
-  tiles: { hq: 0xfaf7f1, treasury: 0xe6efe9, site: 0xe4ebf6, consignment: 0xf3e6ee, market: 0xf6eddf, customers: 0xeaf0e2, suppliers: 0xece6dd, warehouse: 0xe9e5f2, office: 0xeeeeea },
-  wall: 0xffffff, roof: 0x9aa3ad, door: 0x5b6470, glass: 0x1f2328, text: '#1f2328', labelBg: 'rgba(255,255,255,0.92)',
-  gold: 0xe7c35a, usd: 0x5fb59a, eur: 0x8f86d6, income: 0x63b97f, expense: 0xe07a6a, ghost: 0xb9b2a6,
-  site: 0x5b8def, shop: 0xf0a14a, consignment: 0xe57aa8, factory: 0xc9b8a3, house: 0xfdfbf7, roofWarm: 0xd98b5f, roofDebt: 0xd2554a,
-  crowdOn: 0xf3d9a8, crowdOff: 0xd9d4cc, skin: 0xf2d3b3, brand: 0x2e3440, window: 0x9fb6c9, light: 0xffffff, hemiSky: 0xffffff, hemiGround: 0xcfc6b8,
-};
-
-const NIGHT: Palette = {
-  ...DAY,
-  sky: 0x151a24, sea: 0x10151e, island: 0x2a303c, islandSide: 0x1d222b, road: 0x363d4a, plaza: 0x323946,
-  tiles: { hq: 0x323946, treasury: 0x2c3a35, site: 0x2b3446, consignment: 0x3a2e37, market: 0x3a342b, customers: 0x2f3829, suppliers: 0x37322c, warehouse: 0x322f3d, office: 0x33353a },
-  wall: 0x4a5160, roof: 0x5a6371, door: 0x23272e, glass: 0x0d0f12, text: '#e8eaf0', labelBg: 'rgba(28,32,42,0.9)',
-  house: 0x4a5160, crowdOff: 0x3a3f4a, window: 0xffd27a, light: 0xb8c6ff, hemiSky: 0x8090c0, hemiGround: 0x20242c,
-};
-
-const FAMILY_COLORS = [0x2e3440, 0xb4846c, 0x6f9a8d, 0xd9a441, 0x7c8fb3, 0xc06c84, 0x8aa05b, 0x5aa5c4, 0xa77bca, 0xd7745a, 0x4f8a8b, 0x9c8b6e];
-const TILE = 0.12;
-const CRATE_MAX = 12;
-const SPEED = 9;
+export type Weather = 'sunny' | 'cloudy' | 'rain';
 
 export type EngineCallbacks = {
   onHover: (id: string | null) => void;
   onSelect: (id: string | null) => void;
+  /** The district the view is over, as the camera moves. */
   onDistrict: (key: DistrictKey | null) => void;
-  /** The figure's place and the view's angle, about ten times a second (the minimap). */
-  onAvatar: (p: Point, yaw: number) => void;
+  /** The view's centre and its turn, a few times a second (the minimap). */
+  onView: (target: Point, yaw: number) => void;
 };
 
-type Pick = { id: string; base: Point; radius: number };
-type Traveler = { mesh: THREE.Mesh; label: HTMLDivElement | null; from: Point; to: Point; t: number; duration: number; fresh: boolean };
+type Picked = { id: string; base: Point; radius: number; height: number };
+type Mover = {
+  mesh: THREE.Object3D;
+  legs: Array<{ path: Point[]; speed: number; y?: (t: number) => number; kind: 'road' | 'sea' | 'air' }>;
+  leg: number;
+  s: number;
+  label: HTMLDivElement | null;
+  done?: () => void;
+  ambient: boolean;
+};
 type Label = { el: HTMLDivElement; pos: THREE.Vector3; kind: 'district' | 'thing'; id?: string };
 
-function familyColor(family: string): number {
-  let h = 0;
-  for (let i = 0; i < family.length; i++) h = (h * 31 + family.charCodeAt(i)) >>> 0;
-  return FAMILY_COLORS[h % FAMILY_COLORS.length];
+const PIN_COLOR = 0x2f6fe0;
+const TAU = Math.PI * 2;
+
+/** Tehran's local hour now, with minutes as a fraction (0–24). */
+function tehranHour(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 12);
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return h + m / 60;
+}
+
+/** How much daylight there is at an hour: 0 at night, 1 at midday, a soft dawn and dusk. */
+export function daylight(hour: number): number {
+  const rise = 6.3;
+  const set = 17.9;
+  if (hour <= rise - 0.7 || hour >= set + 0.7) return 0;
+  if (hour < rise + 0.7) return (hour - (rise - 0.7)) / 1.4;
+  if (hour > set - 0.7) return ((set + 0.7) - hour) / 1.4;
+  return 1;
+}
+
+/** The weather the business has: from the sales of this window against the one before. */
+export function businessWeather(data: Pick<WorldData, 'sales'>): { weather: Weather; change: number | null; rainbow: boolean } {
+  const s = data.sales;
+  if (!s) return { weather: 'sunny', change: null, rainbow: false };
+  const before = s.previous?.total ?? 0;
+  const change = before > 0 ? (s.window.total - before) / before : null;
+  const weather: Weather = change === null || change >= 0.05 ? 'sunny' : change > -0.05 ? 'cloudy' : 'rain';
+  const best = Math.max(0, ...s.days.map((d) => d.total));
+  const rainbow = best > 0 && (s.days[s.days.length - 1]?.total ?? 0) >= best;
+  return { weather, change, rainbow };
 }
 
 export class WorldEngine {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera: THREE.OrthographicCamera;
+  private camera = new THREE.PerspectiveCamera(30, 1, 1, 6000);
+  private composer: EffectComposer | null = null;
+  private ao: GTAOPass | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private effects = true;
   private world = new THREE.Group();
-  private sun: THREE.DirectionalLight;
-  private hemi: THREE.HemisphereLight;
+  private life = new THREE.Group();
+  private sun = new THREE.DirectionalLight(0xffffff, 2.4);
+  private hemi = new THREE.HemisphereLight(0xffffff, 0xcfd8e6, 1.25);
   private sea: THREE.Mesh;
-  private palette: Palette;
-  private box = new THREE.BoxGeometry(1, 1, 1);
-  private cylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
-  private cone4 = new THREE.ConeGeometry(0.75, 1, 4);
   private shapes = new Shapes();
-  private materials = new Map<string, THREE.Material>();
-  /** The batches' materials: one colour per vertex; windows light up at night; status lights always shine. */
-  private solidMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  private litMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffd27a, emissiveIntensity: 0 });
-  private glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
-  /** Invisible boxes that make a merged building pickable. */
-  private proxyMat = new THREE.MeshBasicMaterial({ visible: false });
-  private kit: Kit | null = null;
+  private matte = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.04 });
+  private glass = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 0.15, emissive: 0x000000 });
+  private signMaterial: THREE.MeshStandardMaterial | null = null;
+  private atlas: SignAtlas | null = null;
   private owned: Array<{ dispose: () => void }> = [];
-  private pickables: THREE.Object3D[] = [];
+  private proxies: THREE.Object3D[] = [];
   private labels: Label[] = [];
-  private travelers: Traveler[] = [];
+  private movers: Mover[] = [];
   private animated: Array<(t: number, dt: number) => void> = [];
-  private avatar = new THREE.Group();
-  private legs: THREE.Mesh[] = [];
+  private kinds = new Map<string, THREE.BufferGeometry>();
+  private pinGeometry: THREE.BufferGeometry;
+  private pinMaterial = new THREE.MeshStandardMaterial({ color: PIN_COLOR, roughness: 0.35, metalness: 0.1, emissive: 0x0c2a66, emissiveIntensity: 0.4 });
+  private selectPin: THREE.Mesh;
   private hoverRing: THREE.Mesh;
   private selectRing: THREE.Mesh;
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
-  private pointerMoved = false;
-  private pointerInside = false;
+  private pointerAt: { x: number; y: number } | null = null;
   private keys = new Set<string>();
-  private walkTo: Point | null = null;
+  // The camera rig: a target on the ground, a turn, a tilt and a distance, each easing to its goal.
   private target = new THREE.Vector3();
-  private follow = true;
+  private targetGoal = new THREE.Vector3();
   private yaw = Math.PI / 4;
   private yawGoal = Math.PI / 4;
-  private zoom = 1;
-  private viewHeight = 42;
-  private plan: WorldPlan | null = null;
+  private pitch = 0.62;
+  private pitchGoal = 0.62;
+  private dist = 400;
+  private distGoal = 400;
+  private plan: CityPlan | null = null;
   private data: WorldData | null = null;
   private hovered: string | null = null;
   private selected: string | null = null;
   private district: DistrictKey | null = null;
+  private dark: boolean;
+  private weather: Weather = 'sunny';
+  private clouds = new THREE.Group();
+  private rain: THREE.LineSegments | null = null;
+  private rainbow: THREE.Mesh | null = null;
+  private lampHeads: THREE.Mesh | null = null;
   private frame = 0;
   private clock = new THREE.Clock();
   private elapsed = 0;
-  private lastAvatarReport = 0;
-  private drag: { x: number; y: number; moved: boolean; pinch?: number; targetStart: THREE.Vector3 } | null = null;
+  private lastReport = 0;
+  private lastLight = -1;
+  private drag: { x: number; y: number; button: number; moved: boolean; pinch?: number; spread?: number } | null = null;
   private touches = new Map<number, { x: number; y: number }>();
   private resizeObserver: ResizeObserver;
   private disposed = false;
+  private small: boolean;
 
   constructor(private container: HTMLElement, private labelLayer: HTMLElement, private callbacks: EngineCallbacks, dark: boolean) {
-    this.palette = dark ? NIGHT : DAY;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.dark = dark;
+    this.small = Math.min(window.innerWidth, window.innerHeight) < 700;
+    this.effects = !this.small;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.small ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.touchAction = 'none';
     this.renderer.domElement.setAttribute('aria-label', 'نقشهٔ سه‌بعدی کسب‌وکار');
     container.appendChild(this.renderer.domElement);
 
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -500, 1000);
-    this.hemi = new THREE.HemisphereLight(this.palette.hemiSky, this.palette.hemiGround, 1.6);
-    this.sun = new THREE.DirectionalLight(this.palette.light, dark ? 0.9 : 2.2);
     this.sun.castShadow = true;
-    const small = Math.min(window.innerWidth, window.innerHeight) < 700;
-    this.sun.shadow.mapSize.set(small ? 1024 : 2048, small ? 1024 : 2048);
-    Object.assign(this.sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 });
-    this.sun.shadow.bias = -0.0005;
-    this.scene.add(this.hemi, this.sun, this.sun.target, this.world);
+    const size = this.small ? 2048 : 4096;
+    this.sun.shadow.mapSize.set(size, size);
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.6;
+    this.sun.shadow.radius = 4;
+    this.scene.add(this.hemi, this.sun, this.sun.target, this.world, this.life, this.clouds);
 
-    this.sea = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshLambertMaterial({ color: this.palette.sea }));
+    this.sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000, 1, 1), new THREE.MeshStandardMaterial({ color: COLORS.water, roughness: 0.35, metalness: 0.05 }));
     this.sea.rotation.x = -Math.PI / 2;
-    this.sea.position.y = -2.4;
+    this.sea.position.y = -1.2;
+    this.sea.receiveShadow = true;
     this.scene.add(this.sea);
 
-    this.hoverRing = this.ring(0x5b8def, 0.55);
-    this.selectRing = this.ring(0xf0a14a, 0.9);
-    this.scene.add(this.hoverRing, this.selectRing);
-    this.buildAvatar();
-    this.applyPalette();
+    // The pin: a ball over a cone, its point at the origin.
+    const ball = new THREE.SphereGeometry(1, 20, 14).translate(0, 2.6, 0);
+    const cone = new THREE.ConeGeometry(0.82, 2.0, 20).rotateX(Math.PI).translate(0, 1.15, 0);
+    this.pinGeometry = mergeGeometries([ball, cone]);
+    ball.dispose();
+    cone.dispose();
+    this.selectPin = new THREE.Mesh(this.pinGeometry, this.pinMaterial);
+    this.selectPin.visible = false;
+    this.selectPin.castShadow = true;
+    this.hoverRing = ring(0x2f6fe0, 0.55);
+    this.selectRing = ring(0x2f6fe0, 0.95);
+    this.scene.add(this.selectPin, this.hoverRing, this.selectRing);
+
+    this.setupComposer();
+    this.applyLight(true);
 
     const el = this.renderer.domElement;
     el.addEventListener('pointerdown', this.onPointerDown);
@@ -164,13 +200,41 @@ export class WorldEngine {
     el.addEventListener('pointercancel', this.onPointerUp);
     el.addEventListener('pointerleave', this.onPointerLeave);
     el.addEventListener('wheel', this.onWheel, { passive: false });
+    el.addEventListener('dblclick', this.onDoubleClick);
+    el.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
+    // Persian names are drawn once the app's font is in.
+    if (!signFontLoaded()) signFontReady().then(() => this.atlas?.redraw());
     this.loop();
+  }
+
+  private setupComposer() {
+    this.composer?.dispose();
+    this.composer = null;
+    this.ao = null;
+    this.bloom = null;
+    if (!this.effects) return;
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(this.renderer, target);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    const ao = new GTAOPass(this.scene, this.camera, w, h);
+    ao.updateGtaoMaterial({ radius: 2.2, distanceExponent: 1.4, thickness: 2, scale: 1.1, samples: 12 });
+    ao.blendIntensity = 0.85;
+    composer.addPass(ao);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.5, 0.92);
+    bloom.enabled = false;
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+    this.ao = ao;
+    this.bloom = bloom;
   }
 
   // ── Public ────────────────────────────────────────────────────────────────
@@ -178,126 +242,81 @@ export class WorldEngine {
   setData(data: WorldData) {
     const first = !this.data;
     this.data = data;
-    this.plan = planWorld(data);
+    this.plan = planCity(data);
     this.rebuild();
-    if (first) {
-      this.avatar.position.set(0, TILE, 4.5);
-      // Open on the whole island; the figure takes the view when it walks.
-      this.target.set(0, 0, 0);
-      this.follow = false;
-      this.zoom = this.fitZoom();
-      this.resize();
-    }
-    // A picked thing that is gone is no longer picked.
+    this.setWeather(businessWeather(data));
+    if (first) this.overview(true);
     if (this.selected && !this.findPick(this.selected)) this.select(null);
   }
 
   setDark(dark: boolean) {
-    const next = dark ? NIGHT : DAY;
-    if (next === this.palette) return;
-    this.palette = next;
-    for (const material of this.materials.values()) material.dispose();
-    this.materials.clear();
-    this.applyPalette();
-    this.buildAvatar();
-    if (this.data) this.rebuild();
+    if (dark === this.dark) return;
+    this.dark = dark;
+    this.applyLight(true);
   }
 
-  /** Walks the figure to a district or to a thing, and picks the thing. */
+  /** Contact shadows and glow: on by default on a desktop, off on a phone. */
+  setEffects(on: boolean) {
+    if (on === this.effects) return;
+    this.effects = on;
+    this.setupComposer();
+    this.resize();
+    this.applyLight(true);
+  }
+
+  get effectsOn() {
+    return this.effects;
+  }
+
+  /** Glides the view to a thing or a district, and picks it. */
   goTo(id: string) {
     if (!this.plan) return;
     if (id.startsWith('district:')) {
       const d = this.plan.districts.find((x) => `district:${x.key}` === id);
       if (!d) return;
-      const front = { x: d.center.x * 0.94, z: d.center.z + d.depth / 2 - 1.2 };
-      this.walkTo = d.key === 'hq' ? { x: 0, z: 4.5 } : front;
-      this.follow = true;
+      this.flyTo(d.center, Math.max(80, Math.max(d.rect.w, d.rect.d) * 1.5));
       this.select(id);
       return;
     }
     const pick = this.findPick(id);
     if (!pick) return;
-    this.walkTo = { x: pick.base.x, z: pick.base.z + pick.radius + 1.2 };
-    this.follow = true;
+    this.flyTo(pick.base, Math.max(32, pick.radius * 5 + pick.height * 2));
     this.select(id);
   }
 
-  /** Puts the figure in a district at once. */
+  /** Glides to a district. */
   jump(key: DistrictKey) {
-    const d = this.plan?.districts.find((x) => x.key === key);
-    if (!d) return;
-    const p = key === 'hq' ? { x: 0, z: 4.5 } : { x: d.center.x, z: d.center.z + d.depth / 2 + 1 };
-    this.avatar.position.set(p.x, TILE, p.z);
-    this.walkTo = null;
-    this.follow = true;
-    // Close enough to read the signs.
-    if (this.zoom < 1.3) {
-      this.zoom = 1.3;
-      this.resize();
-    }
-    this.select(`district:${key}`);
+    this.goTo(`district:${key}`);
   }
 
   rotate(dir: 1 | -1) {
-    this.yawGoal += (dir * Math.PI) / 2;
+    this.yawGoal += (dir * Math.PI) / 4;
   }
 
   zoomBy(factor: number) {
-    this.zoom = Math.min(3.2, Math.max(Math.min(0.4, this.fitZoom() * 0.8), this.zoom * factor));
-    this.resize();
+    this.distGoal = THREE.MathUtils.clamp(this.distGoal / factor, 18, this.maxDistance());
   }
 
-  /** Shows the whole island again. */
-  overview() {
-    this.target.set(0, 0, 0);
-    this.follow = false;
-    this.zoom = this.fitZoom();
-    this.resize();
-  }
-
-  /** The zoom at which the whole island fits the view, seen from the current angle. */
-  private fitZoom(): number {
-    if (!this.plan) return 1;
-    const w = this.container.clientWidth || 1;
-    const h = this.container.clientHeight || 1;
-    const { halfX, halfZ } = this.plan;
-    const c = Math.abs(Math.cos(this.yawGoal));
-    const s2 = Math.abs(Math.sin(this.yawGoal));
-    // A ground rectangle seen from above at 35.26°: its screen width and height in world units.
-    const screenW = 2 * (halfX * c + halfZ * s2);
-    const screenH = 2 * (halfX * s2 + halfZ * c) * Math.sin(Math.atan(1 / Math.SQRT2)) + 4;
-    const zoom = Math.min(this.viewHeight / (screenH * 1.08), (this.viewHeight * (w / h)) / (screenW * 1.08));
-    return Math.max(0.12, Math.min(1.5, zoom));
+  /** The whole main island in view. */
+  overview(instant = false) {
+    if (!this.plan) return;
+    const i = this.plan.island;
+    this.flyTo({ x: i.x + i.w / 2, z: i.z + i.d / 2 }, Math.max(i.w, i.d) * 1.15, Math.PI / 4, 0.72);
+    if (instant) this.settle();
   }
 
   select(id: string | null) {
     this.selected = id;
-    this.placeRing(this.selectRing, id);
+    this.placeMarker(this.selectRing, id, true);
     this.callbacks.onSelect(id);
   }
 
-  /** Sends one event across the map; a fresh one is larger, glows and keeps its label. */
+  /** Sends one event across the map; a fresh one carries its label and ends in confetti. */
   spawn(event: WorldEvent, fresh = false) {
     if (!this.plan || this.disposed) return;
-    const from = this.plan.places.get(event.from);
-    const to = this.plan.places.get(event.to);
-    if (!from || !to) return;
-    if (this.travelers.length > (fresh ? 14 : 8)) return;
-    const color = { order: 0x5b8def, transfer: 0xf0a14a, purchase: 0xa5835b, return: 0x9b7ad8, adjust: 0x9aa3ad, sale: 0x5b8def, income: 0x63b97f, expense: 0xe07a6a }[event.kind];
-    const size = fresh ? 0.75 : 0.45;
-    const geometry = event.kind === 'income' || event.kind === 'expense' ? this.cylinder : this.box;
-    const mesh = new THREE.Mesh(geometry, this.mat(color, { emissive: fresh ? color : undefined }));
-    mesh.scale.set(size, event.kind === 'income' || event.kind === 'expense' ? size * 0.35 : size, size);
-    mesh.castShadow = true;
-    this.scene.add(mesh);
-    let label: HTMLDivElement | null = null;
-    if (fresh || this.zoom > 1.3) {
-      label = this.labelEl(event.label, fresh ? 'event-fresh' : 'event');
-      this.labelLayer.appendChild(label);
-    }
-    const length = Math.hypot(from.x, from.z) + Math.hypot(to.x, to.z);
-    const same = from.x === to.x && from.z === to.z;
-    this.travelers.push({ mesh, label, from, to, t: 0, duration: same ? 2.4 : Math.max(2.2, length / 13), fresh });
+    const cap = fresh ? 18 : 10;
+    if (this.movers.filter((m) => !m.ambient).length >= cap) return;
+    this.sendEvent(event, fresh);
   }
 
   dispose() {
@@ -311,627 +330,996 @@ export class WorldEngine {
     el.removeEventListener('pointercancel', this.onPointerUp);
     el.removeEventListener('pointerleave', this.onPointerLeave);
     el.removeEventListener('wheel', this.onWheel);
+    el.removeEventListener('dblclick', this.onDoubleClick);
+    el.removeEventListener('contextmenu', this.onContextMenu);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
     this.clearWorld();
-    for (const t of this.travelers) t.label?.remove();
-    for (const m of this.materials.values()) m.dispose();
-    for (const m of [this.solidMat, this.litMat, this.glowMat, this.proxyMat]) m.dispose();
-    this.box.dispose();
-    this.cylinder.dispose();
-    this.cone4.dispose();
+    for (const g of this.kinds.values()) g.dispose();
     this.shapes.dispose();
+    this.pinGeometry.dispose();
+    for (const m of [this.matte, this.glass, this.pinMaterial]) m.dispose();
+    this.composer?.dispose();
     this.renderer.dispose();
     el.remove();
   }
 
-  // ── Building ──────────────────────────────────────────────────────────────
+  // ── Camera ────────────────────────────────────────────────────────────────
 
-  private mat(color: number, opts: { emissive?: number; transparent?: number } = {}): THREE.Material {
-    const key = `${color}|${opts.emissive ?? ''}|${opts.transparent ?? ''}`;
-    let m = this.materials.get(key);
-    if (!m) {
-      m = new THREE.MeshLambertMaterial({
-        color,
-        flatShading: true,
-        ...(opts.emissive !== undefined && { emissive: opts.emissive, emissiveIntensity: 0.55 }),
-        ...(opts.transparent !== undefined && { transparent: true, opacity: opts.transparent, depthWrite: false }),
-      });
-      this.materials.set(key, m);
+  private maxDistance() {
+    const i = this.plan?.island;
+    return i ? Math.max(i.w, i.d) * 2.4 + 300 : 1200;
+  }
+
+  private flyTo(p: Point, distance: number, yaw?: number, pitch?: number) {
+    this.targetGoal.set(p.x, 0, p.z);
+    this.distGoal = THREE.MathUtils.clamp(distance, 18, this.maxDistance());
+    if (yaw !== undefined) {
+      // The shorter way round.
+      let d = yaw - this.yawGoal;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yawGoal += d;
     }
-    return m;
+    if (pitch !== undefined) this.pitchGoal = pitch;
   }
 
-  private add(geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, parent: THREE.Object3D = this.world) {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(x, y, z);
-    mesh.scale.set(sx, sy, sz);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    parent.add(mesh);
-    return mesh;
+  private settle() {
+    this.target.copy(this.targetGoal);
+    this.yaw = this.yawGoal;
+    this.pitch = this.pitchGoal;
+    this.dist = this.distGoal;
   }
 
-  /** A box standing on y with its footprint centred at x, z. */
-  private block(color: number, x: number, z: number, w: number, h: number, d: number, y = TILE, opts?: { emissive?: number; transparent?: number }) {
-    return this.add(this.box, this.mat(color, opts), x, y + h / 2, z, w, h, d);
-  }
-
-  /** An invisible box over a merged building, so it can be picked. */
-  private proxy(id: string, f: Footprint, base: Point = f) {
-    const mesh = new THREE.Mesh(this.box, this.proxyMat);
-    mesh.position.set(f.x, TILE + f.h / 2, f.z);
-    mesh.scale.set(f.w, f.h, f.d);
-    this.world.add(mesh);
-    this.pickable(mesh, id, { x: base.x, z: base.z }, Math.max(f.w, f.d) / 2);
-    return mesh;
-  }
-
-  /** A fresh kit for one build of the map. */
-  private startKit(): Kit {
-    const small = Math.min(window.innerWidth, window.innerHeight) < 700;
-    this.kit = {
-      shapes: this.shapes,
-      solid: new Batch(),
-      lit: new Batch(),
-      glow: new Batch(),
-      signs: new SignAtlas(small ? 96 : 128, this.renderer.capabilities.getMaxAnisotropy()),
-    };
-    return this.kit;
-  }
-
-  /** Merges what the kit holds into the map: a few meshes, one texture of signs. */
-  private finishKit() {
-    const kit = this.kit;
-    if (!kit) return;
-    this.kit = null;
-    for (const [batch, material, shadows] of [[kit.solid, this.solidMat, true], [kit.lit, this.litMat, false], [kit.glow, this.glowMat, false]] as const) {
-      const mesh = batch.mesh(material, shadows);
-      if (!mesh) continue;
-      this.world.add(mesh);
-      this.owned.push(mesh.geometry);
+  private updateCamera(dt: number) {
+    const k = 1 - Math.exp(-dt * 4.2);
+    this.target.lerp(this.targetGoal, k);
+    this.yaw += (this.yawGoal - this.yaw) * k;
+    this.pitch += (this.pitchGoal - this.pitch) * k;
+    this.dist += (this.distGoal - this.dist) * k;
+    const horizontal = Math.cos(this.pitch) * this.dist;
+    this.camera.position.set(
+      this.target.x + Math.sin(this.yaw) * horizontal,
+      this.target.y + Math.sin(this.pitch) * this.dist,
+      this.target.z + Math.cos(this.yaw) * horizontal,
+    );
+    this.camera.lookAt(this.target);
+    // The sun's shadows follow the view, sized to it.
+    const span = THREE.MathUtils.clamp(this.dist * 0.75, 40, 420);
+    const cam = this.sun.shadow.camera;
+    if (Math.abs(cam.right - span) > span * 0.15) {
+      Object.assign(cam, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 1600 });
+      cam.updateProjectionMatrix();
     }
-    const signMat = new THREE.MeshLambertMaterial({ map: kit.signs.texture, emissive: 0xffffff, emissiveMap: kit.signs.texture, emissiveIntensity: this.palette === NIGHT ? 0.75 : 0 });
-    const signs = kit.signs.mesh(signMat);
-    if (signs) {
-      this.world.add(signs);
-      this.owned.push(signs.geometry);
-    }
-    this.owned.push(signMat, kit.signs);
-    if (!signFontLoaded()) signFontReady().then(() => kit.signs.redraw());
+    const sunDir = this.sunDirection();
+    this.sun.position.set(this.target.x + sunDir.x * 500, sunDir.y * 500, this.target.z + sunDir.z * 500);
+    this.sun.target.position.copy(this.target);
   }
 
-  private pickable(object: THREE.Object3D, id: string, base: Point, radius: number) {
-    object.userData.pick = { id, base, radius } satisfies Pick;
-    object.traverse((child) => {
-      child.userData.pick = { id, base, radius } satisfies Pick;
+  /** Pans along the ground by screen pixels. */
+  private panBy(dx: number, dy: number) {
+    const h = this.renderer.domElement.clientHeight || 1;
+    const perPixel = (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / h;
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    this.targetGoal.addScaledVector(right, -dx * perPixel).addScaledVector(forward, (dy * perPixel) / Math.max(0.35, Math.sin(this.pitch)));
+    this.clampTarget();
+  }
+
+  private clampTarget() {
+    if (!this.plan) return;
+    const { island, china } = this.plan;
+    const minX = Math.min(island.x, china.island.x) - 40;
+    const maxX = island.x + island.w + 40;
+    const minZ = Math.min(island.z, china.island.z) - 40;
+    const maxZ = Math.max(island.z + island.d, china.island.z + china.island.d) + 40;
+    this.targetGoal.x = THREE.MathUtils.clamp(this.targetGoal.x, minX, maxX);
+    this.targetGoal.z = THREE.MathUtils.clamp(this.targetGoal.z, minZ, maxZ);
+  }
+
+  // ── Light, time of day and weather ───────────────────────────────────────
+
+  /** Where the light comes from: the sun along its day in Tehran, or the moon. */
+  private sunDirection(): THREE.Vector3 {
+    const hour = tehranHour();
+    if (this.dark || daylight(hour) === 0) return new THREE.Vector3(0.35, 0.85, 0.4).normalize();
+    const a = THREE.MathUtils.clamp((hour - 6) / 12, 0, 1) * Math.PI;
+    return new THREE.Vector3(Math.cos(a), 0.3 + Math.sin(a) * 0.85, 0.55).normalize();
+  }
+
+  /** Night-ness 0–1: the theme's night, or Tehran's real night in the light theme. */
+  private night(): number {
+    return this.dark ? 1 : 1 - daylight(tehranHour());
+  }
+
+  private applyLight(force = false) {
+    const night = this.night();
+    const key = Math.round(night * 20) + (this.weather === 'sunny' ? 0 : this.weather === 'cloudy' ? 100 : 200);
+    if (!force && key === this.lastLight) return;
+    this.lastLight = key;
+    const dim = this.weather === 'sunny' ? 1 : this.weather === 'cloudy' ? 0.62 : 0.42;
+    const dayBg = new THREE.Color(this.weather === 'sunny' ? 0xe9eff7 : this.weather === 'cloudy' ? 0xdfe3ea : 0xc9cfd8);
+    const duskTint = new THREE.Color(0xf6d6bf);
+    const nightBg = new THREE.Color(0x111723);
+    const twilight = night > 0 && night < 1 ? 1 - Math.abs(night - 0.5) * 2 : 0;
+    const bg = dayBg.clone().lerp(duskTint, twilight * 0.6).lerp(nightBg, night);
+    this.scene.background = bg;
+    this.scene.fog = new THREE.Fog(bg, 1400, 4200);
+    this.hemi.color.set(0xffffff).lerp(new THREE.Color(0x7083b5), night);
+    this.hemi.groundColor.set(0xcfd8e6).lerp(new THREE.Color(0x1b2130), night);
+    this.hemi.intensity = THREE.MathUtils.lerp(1.25, 0.5, night) * (0.75 + dim * 0.25);
+    this.sun.color.set(0xffffff).lerp(new THREE.Color(0xffc48a), twilight).lerp(new THREE.Color(0xa8b8ff), night);
+    this.sun.intensity = THREE.MathUtils.lerp(2.5, 0.55, night) * dim;
+    (this.sea.material as THREE.MeshStandardMaterial).color.set(COLORS.water).lerp(new THREE.Color(0x1a2a40), night);
+    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(1.05, 0.95, night);
+    // Windows and lamps light up at dusk.
+    const glow = THREE.MathUtils.smoothstep(night, 0.25, 0.8);
+    this.glass.emissive.set(0xffcf7a);
+    this.glass.emissiveIntensity = glow * 0.55;
+    if (this.lampHeads) {
+      const m = this.lampHeads.material as THREE.MeshStandardMaterial;
+      m.emissive.set(0xfff0c8);
+      m.emissiveIntensity = glow * 2.2;
+    }
+    if (this.bloom) this.bloom.enabled = glow > 0.05;
+    if (this.ao) this.ao.blendIntensity = THREE.MathUtils.lerp(0.85, 0.45, night);
+  }
+
+  private setWeather(w: { weather: Weather; rainbow: boolean }) {
+    this.weather = w.weather;
+    // Clouds: a few in fine weather, many when sales are down.
+    this.clouds.clear();
+    const count = w.weather === 'sunny' ? 4 : w.weather === 'cloudy' ? 12 : 18;
+    const random = seeded(`clouds${count}`);
+    const island = this.plan?.island ?? { x: -300, z: -200, w: 600, d: 400 };
+    const puff = this.kind('cloud', () => {
+      const batch = new Batch();
+      const m = new Model(batch, this.shapes);
+      const tone = 0xffffff;
+      m.shape(this.shapes.ball, tone, 0, 0, 0, 22, 12, 16);
+      m.shape(this.shapes.ball, tone, 9, 2, 2, 16, 10, 12);
+      m.shape(this.shapes.ball, tone, -9, 1, -1, 15, 9, 12);
+      m.shape(this.shapes.ball, tone, 3, 5, -3, 14, 9, 11);
+      return batch.geometry()!;
     });
-    this.pickables.push(object);
+    const cloudMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, transparent: true, opacity: w.weather === 'rain' ? 0.95 : 0.9, color: w.weather === 'sunny' ? 0xffffff : 0xdfe3ea });
+    this.owned.push(cloudMaterial);
+    for (let i = 0; i < count; i++) {
+      const c = new THREE.Mesh(puff, cloudMaterial);
+      c.position.set(island.x - 200 + random() * (island.w + 400), 110 + random() * 50, island.z - 100 + random() * (island.d + 200));
+      const s = 0.8 + random() * 1.2;
+      c.scale.set(s, s, s);
+      c.castShadow = true;
+      c.userData.speed = 3 + random() * 4;
+      this.clouds.add(c);
+    }
+    // Rain.
+    if (this.rain) {
+      this.scene.remove(this.rain);
+      this.rain.geometry.dispose();
+      (this.rain.material as THREE.Material).dispose();
+      this.rain = null;
+    }
+    if (w.weather === 'rain') {
+      const n = this.small ? 1200 : 3000;
+      const pos = new Float32Array(n * 6);
+      for (let i = 0; i < n; i++) {
+        const x = (Math.random() - 0.5) * 600;
+        const y = Math.random() * 160;
+        const z = (Math.random() - 0.5) * 600;
+        pos.set([x, y, z, x + 0.4, y - 3.2, z + 0.2], i * 6);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9fb3cc, transparent: true, opacity: 0.55 }));
+      this.scene.add(this.rain);
+    }
+    // A rainbow on the best day of the window.
+    if (this.rainbow) {
+      this.scene.remove(this.rainbow);
+      this.rainbow.geometry.dispose();
+      this.rainbow = null;
+    }
+    if (w.rainbow && this.plan) {
+      const bands = [0xe74c3c, 0xf39c12, 0xf1c40f, 0x2ecc71, 0x3498db, 0x8e44ad];
+      const parts = bands.map((c, i) => {
+        const t = new THREE.TorusGeometry(260 - i * 7, 3.4, 6, 64, Math.PI);
+        const colors = new Float32Array(t.attributes.position.count * 3);
+        const col = new THREE.Color(c);
+        for (let k = 0; k < t.attributes.position.count; k++) colors.set([col.r, col.g, col.b], k * 3);
+        t.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        return t;
+      });
+      const geometry = mergeGeometries(parts);
+      parts.forEach((p) => p.dispose());
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.38, depthWrite: false, fog: false });
+      this.owned.push(material);
+      this.rainbow = new THREE.Mesh(geometry, material);
+      const i = this.plan.island;
+      this.rainbow.position.set(i.x + i.w / 2, -20, i.z - 120);
+      this.scene.add(this.rainbow);
+    }
+    this.applyLight(true);
   }
 
-  private ring(color: number, opacity: number) {
-    const mesh = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.visible = false;
-    mesh.renderOrder = 2;
-    return mesh;
+  // ── Building the city ─────────────────────────────────────────────────────
+
+  /** A shared geometry made once (a vehicle, a cloud). */
+  private kind(name: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    let g = this.kinds.get(name);
+    if (!g) {
+      g = make();
+      this.kinds.set(name, g);
+    }
+    return g;
   }
 
-  private labelEl(text: string, kind: 'district' | 'thing' | 'event' | 'event-fresh') {
-    const el = document.createElement('div');
-    el.textContent = text;
-    el.dir = 'rtl';
-    const base = 'pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] leading-5 shadow-sm will-change-transform';
-    const tone = {
-      district: 'text-[13px] font-bold px-2.5 py-1 rounded-full',
-      thing: 'font-medium',
-      event: 'text-[10px] opacity-90',
-      'event-fresh': 'font-bold ring-2 ring-amber-400',
-    }[kind];
-    el.className = `${base} ${tone}`;
-    el.style.background = this.palette.labelBg;
-    el.style.color = this.palette.text;
-    return el;
-  }
-
-  private label(text: string, x: number, y: number, z: number, kind: 'district' | 'thing', id?: string) {
-    const el = this.labelEl(text, kind);
-    this.labelLayer.appendChild(el);
-    this.labels.push({ el, pos: new THREE.Vector3(x, y, z), kind, id });
+  private vehicle(name: 'truck' | 'van' | 'cash' | 'forklift' | 'forks' | 'ship' | 'plane' | 'car' | 'pallet' | 'container') {
+    return this.kind(name, () => {
+      const batch = new Batch();
+      const m = new Model(batch, this.shapes);
+      if (name === 'truck') buildTruck(m);
+      else if (name === 'van') buildVan(m);
+      else if (name === 'cash') buildVan(m, 0x2e7d4f);
+      else if (name === 'forklift') buildForklift(m);
+      else if (name === 'forks') buildForks(m);
+      else if (name === 'ship') buildShip(m, 'ship');
+      else if (name === 'plane') buildPlane(m);
+      else if (name === 'pallet') {
+        buildPallet(m);
+        for (let i = 0; i < 6; i++) m.box(COLORS.cardboard, -0.38 + (i % 3) * 0.38, -0.22 + Math.floor(i / 3) * 0.44, 0.36, 0.34, 0.42, 0.15);
+      } else if (name === 'container') buildContainer(m, COLORS.teal);
+      else {
+        // A small car: body, cabin, wheels.
+        m.box(COLORS.white, 0, 0, 1.8, 0.7, 4.2, 0.35);
+        m.box(COLORS.glassDark, 0, -0.2, 1.6, 0.6, 2.2, 1.05);
+        for (const z of [1.3, -1.3]) for (const x of [-0.85, 0.85]) m.wheel(x, z, 0.33, 0.25);
+      }
+      return batch.geometry()!;
+    });
   }
 
   private clearWorld() {
     for (const o of this.owned) o.dispose();
     this.owned = [];
     this.world.clear();
-    this.pickables = [];
+    for (const m of this.movers) m.label?.remove();
+    this.movers = [];
+    this.life.clear();
+    this.proxies = [];
     this.animated = [];
     for (const l of this.labels) l.el.remove();
     this.labels = [];
+    this.atlas?.dispose();
+    this.atlas = null;
+    this.signMaterial?.dispose();
+    this.signMaterial = null;
+    this.lampHeads = null;
   }
 
-  private applyPalette() {
-    const p = this.palette;
-    this.scene.background = new THREE.Color(p.sky);
-    (this.sea.material as THREE.MeshLambertMaterial).color.set(p.sea);
-    this.hemi.color.set(p.hemiSky);
-    this.hemi.groundColor.set(p.hemiGround);
-    this.sun.color.set(p.light);
-    this.sun.intensity = p === NIGHT ? 0.9 : 2.2;
-    this.litMat.emissiveIntensity = p === NIGHT ? 0.85 : 0;
+  /** An invisible box to pick a thing by. */
+  private proxy(id: string, x: number, z: number, w: number, h: number, d: number, ry = 0) {
+    const mesh = new THREE.Mesh(this.shapes.box, PROXY_MATERIAL);
+    mesh.position.set(x, h / 2, z);
+    mesh.scale.set(w, h, d);
+    mesh.rotation.y = ry;
+    mesh.userData.pick = { id, base: { x, z }, radius: Math.max(w, d) / 2, height: h } satisfies Picked;
+    mesh.updateMatrixWorld();
+    this.world.add(mesh);
+    this.proxies.push(mesh);
   }
 
-  private buildAvatar() {
-    this.avatar.clear();
-    this.legs = [];
-    const p = this.palette;
-    const body = this.add(this.box, this.mat(p.brand), 0, 1.05, 0, 0.8, 0.9, 0.5, this.avatar);
-    body.castShadow = true;
-    this.add(this.box, this.mat(p.skin), 0, 1.85, 0, 0.7, 0.62, 0.62, this.avatar);
-    // The sunglasses.
-    const glasses = this.mat(0x111317);
-    this.add(this.box, glasses, -0.17, 1.92, 0.32, 0.28, 0.17, 0.06, this.avatar);
-    this.add(this.box, glasses, 0.17, 1.92, 0.32, 0.28, 0.17, 0.06, this.avatar);
-    this.add(this.box, glasses, 0, 1.96, 0.32, 0.62, 0.05, 0.05, this.avatar);
-    for (const x of [-0.2, 0.2]) {
-      const leg = this.add(this.box, this.mat(0x3b4252), x, 0.3, 0, 0.26, 0.6, 0.3, this.avatar);
-      this.legs.push(leg);
-    }
-    if (!this.avatar.parent) this.scene.add(this.avatar);
+  private label(text: string, x: number, y: number, z: number, kind: Label['kind'], id?: string) {
+    const el = document.createElement('div');
+    el.textContent = text;
+    el.dir = 'rtl';
+    el.className =
+      kind === 'district'
+        ? 'pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-full bg-white/90 px-3 py-1 text-[12.5px] font-semibold text-slate-800 shadow-md ring-1 ring-black/5 backdrop-blur will-change-transform dark:bg-slate-900/85 dark:text-slate-100'
+        : 'pointer-events-none absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/95 px-2.5 py-1 text-[11.5px] font-medium text-slate-800 shadow-md ring-1 ring-black/5 will-change-transform dark:bg-slate-900/90 dark:text-slate-100';
+    this.labelLayer.appendChild(el);
+    this.labels.push({ el, pos: new THREE.Vector3(x, y, z), kind, id });
   }
 
   private rebuild() {
     const plan = this.plan!;
     const data = this.data!;
-    const p = this.palette;
     this.clearWorld();
-    const kit = this.startKit();
-    const { solid, shapes } = kit;
+    const glassBatch = new Batch();
+    const batch = new Router(glassBatch);
+    const lamps = new Batch();
+    const atlas = new SignAtlas(this.small ? 96 : 128, this.renderer.capabilities.getMaxAnisotropy());
+    this.atlas = atlas;
+    const S = this.shapes;
+    const flat = new Model(batch, S);
 
-    // The island.
-    const hx = plan.halfX;
-    const hz = plan.halfZ;
-    const r = 6;
-    const shape = new THREE.Shape();
-    shape.moveTo(-hx + r, -hz);
-    shape.lineTo(hx - r, -hz);
-    shape.quadraticCurveTo(hx, -hz, hx, -hz + r);
-    shape.lineTo(hx, hz - r);
-    shape.quadraticCurveTo(hx, hz, hx - r, hz);
-    shape.lineTo(-hx + r, hz);
-    shape.quadraticCurveTo(-hx, hz, -hx, hz - r);
-    shape.lineTo(-hx, -hz + r);
-    shape.quadraticCurveTo(-hx, -hz, -hx + r, -hz);
-    const islandGeometry = new THREE.ExtrudeGeometry(shape, { depth: 2, bevelEnabled: true, bevelSize: 0.6, bevelThickness: 0.4, bevelSegments: 2, curveSegments: 10 });
-    this.owned.push(islandGeometry);
-    const island = new THREE.Mesh(islandGeometry, [this.mat(p.island), this.mat(p.islandSide)]);
-    island.rotation.x = Math.PI / 2;
-    island.position.y = -0.4;
-    island.receiveShadow = true;
-    this.world.add(island);
-    // The click target for walking: the island's top.
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(hx * 2, hz * 2), new THREE.MeshBasicMaterial({ visible: false }));
-    this.owned.push(floor.geometry, floor.material as THREE.Material);
-    floor.rotation.x = -Math.PI / 2;
-    floor.userData.floor = true;
-    this.world.add(floor);
-    this.pickables.push(floor);
-
-    // Roads from the plaza to each district.
-    for (const road of plan.roads) {
-      const length = Math.hypot(road.to.x, road.to.z);
-      solid.add(shapes.box, { x: road.to.x / 2, y: 0.03, z: road.to.z / 2, sx: 1.6, sy: 0.06, sz: length, ry: Math.atan2(road.to.x, road.to.z) }, p.road);
+    // ── The ground: two islands in the sea ───────────────────────────────
+    for (const rect of [plan.island, plan.china.island]) {
+      const slab = islandSlab(rect, 10);
+      this.owned.push(slab.geometry);
+      this.world.add(slab);
     }
-
-    // District tiles and their names.
+    // Lawns: the centre's plazas, the homes' quarter.
     for (const d of plan.districts) {
-      if (d.key === 'hq') continue;
-      solid.block(shapes, p.tiles[d.key], d.center.x, d.center.z, d.width, TILE, d.depth, 0);
-      this.proxy(`district:${d.key}`, { x: d.center.x, z: d.center.z, w: d.width, d: d.depth, h: TILE });
-      this.label(d.label, d.center.x, 1.2, d.center.z - d.depth / 2 + 0.6, 'district');
+      if (d.key === 'customers' || d.key === 'hq' || d.key === 'treasury' || d.key === 'office' || d.key === 'site') {
+        flat.box(d.key === 'customers' ? COLORS.lawn : 0xe6efe2, d.center.x, d.center.z, d.rect.w, 0.05, d.rect.d);
+      }
     }
+    // The warehouse block's concrete, the port's quay.
+    const wd = plan.districts.find((d) => d.key === 'warehouse');
+    if (wd) flat.box(0xe4e8ee, wd.center.x, wd.center.z, wd.rect.w, 0.06, wd.rect.d);
+    const pd = plan.districts.find((d) => d.key === 'port')!;
+    flat.box(0xdadfe6, pd.center.x, pd.center.z, pd.rect.w, 0.07, pd.rect.d);
 
-    this.buildHq(data, plan);
-    this.buildWarehouses(data, plan);
-    this.buildTreasury(data, plan);
-    this.buildMarket(data, plan);
-    this.buildSuppliers(data, plan);
-    this.buildCustomers(data, plan);
-    this.buildSite(data, plan);
-    this.buildOffice(data, plan);
-    this.finishKit();
-    this.placeRing(this.selectRing, this.selected);
-  }
+    // ── Roads: asphalt, sidewalks, markings, crossings ────────────────────
+    for (const r of plan.roads) this.paveRoad(flat, r, plan);
 
-  private buildHq(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const { solid, shapes } = this.kit!;
-    solid.add(shapes.cylinder, { x: 0, y: 0.06, z: 0, sx: 17, sy: 0.12, sz: 17 }, p.plaza);
-    this.proxy('district:hq', buildHq(this.kit!), { x: 0, z: -1.2 });
-    this.label('دفتر مرکزی', 0, 5.4, -1.2, 'district');
-
-    const values: Record<string, number> = {
-      today: data.sales?.today.total ?? 0,
-      profit: data.profit?.profit ?? 0,
-      balance: data.finance?.total ?? 0,
-      stock: data.stock?.totals.units ?? 0,
-    };
-    const colors: Record<string, number> = { today: p.site, profit: p.income, balance: p.gold, stock: 0x9b7ad8 };
-    for (const k of plan.kpis) {
-      const v = values[k.id];
-      const h = k.id === 'stock' ? 0.6 + Math.min(4, v / 250) : 0.6 + Math.min(4, Math.log10(1 + Math.abs(v) / 1e6) * 1.2);
-      solid.add(shapes.cylinder, { x: k.x, y: TILE + h / 2, z: k.z, sx: 1.1, sy: h, sz: 1.1 }, v < 0 ? p.expense : colors[k.id]);
-      this.proxy(`kpi:${k.id}`, { x: k.x, z: k.z, w: 1.1, d: 1.1, h });
-    }
-  }
-
-  private buildWarehouses(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const stock = data.stock;
-    if (!stock) return;
-    const kit = this.kit!;
-    const crate = new THREE.BoxGeometry(0.86, 0.3, 0.86);
-    this.owned.push(crate);
-    for (const yard of [...plan.warehouses, ...plan.stores]) {
-      const w = stock.warehouses.find((x) => x.id === yard.warehouseId);
+    // ── The warehouses ───────────────────────────────────────────────────
+    const boxes: Array<{ x: number; y: number; z: number; ry: number; family: string; top: boolean }> = [];
+    const pins: Array<{ x: number; z: number; y: number; color: number }> = [];
+    for (const y of plan.warehouses) {
+      const w = data.stock?.warehouses.find((x) => x.id === y.warehouseId);
       if (!w) continue;
-      const b = yard.building;
-      const footprint = w.virtual
-        ? buildStore(kit, w.id, w.partner ?? w.name, { x: b.x, z: b.z, w: b.width, d: b.depth })
-        : buildHall(kit, w.id, w.name, b);
-      this.proxy(`warehouse:${w.id}`, footprint, { x: b.x, z: b.z });
-      this.label(`${w.partner ?? w.name} · ${w.units.toLocaleString('fa-IR')} عدد`, b.x, w.virtual ? 3.6 : 5, b.z, 'thing', `warehouse:${w.id}`);
-
-      // The crates: one column per product, one crate per unit up to CRATE_MAX.
-      const count = yard.columns.reduce((n, c) => n + Math.min(CRATE_MAX, c.units), 0);
-      if (count > 0) {
-        const mesh = new THREE.InstancedMesh(crate, this.mat(0xffffff) as THREE.MeshLambertMaterial, count);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        const bases: Pick[] = [];
-        const m = new THREE.Matrix4();
-        const c = new THREE.Color();
-        const scale = w.virtual ? 0.7 : 1;
-        let i = 0;
-        for (const col of yard.columns) {
-          const pick: Pick = { id: `product:${w.id}:${col.product.id}`, base: col, radius: 0.6 * scale };
-          c.set(familyColor(col.product.family));
-          for (let k = 0; k < Math.min(CRATE_MAX, col.units); k++) {
-            m.makeScale(scale, scale, scale).setPosition(col.x, TILE + (0.15 + k * 0.32) * scale, col.z);
-            mesh.setMatrixAt(i, m);
-            mesh.setColorAt(i, c);
-            bases.push(pick);
-            i++;
-          }
+      const b = y.building;
+      const hall = new Model(batch, S, b.x + b.w / 2, b.z + b.d / 2, 0);
+      buildHall(atlas, hall, b.w, b.d, y.docks.length, w.name);
+      this.proxy(`warehouse:${w.id}`, b.x + b.w / 2, b.z + b.d / 2, b.w, 11, b.d);
+      // Truck bays: yellow lines; a truck backed up to some of them.
+      const busy = Math.min(y.truckBays.length - 1, 2 + (data.sales?.today.orders ?? 0));
+      y.truckBays.forEach((bay, k) => {
+        for (const dx of [0, bay.w]) flat.box(COLORS.yellow, bay.x + dx, bay.z + bay.d / 2, 0.18, 0.07, bay.d);
+        if (k < busy) buildTruck(new Model(batch, S, bay.x + bay.w / 2, y.docks[k].z + 7.4, 0), k % 2 ? COLORS.blue : 0x26303f);
+      });
+      // The pallet yard: an outline, then a pallet per product with a box per unit (up to 24).
+      if (y.pallets.length) {
+        const xs = y.pallets.map((p) => p.x);
+        const zs = y.pallets.map((p) => p.z);
+        const outline: Rect = { x: Math.min(...xs) - 1.8, z: Math.min(...zs) - 1.6, w: Math.max(...xs) - Math.min(...xs) + 3.6, d: Math.max(...zs) - Math.min(...zs) + 3.2 };
+        for (const [x, z, w2, d2] of [
+          [outline.x + outline.w / 2, outline.z, outline.w, 0.16],
+          [outline.x + outline.w / 2, outline.z + outline.d, outline.w, 0.16],
+          [outline.x, outline.z + outline.d / 2, 0.16, outline.d],
+          [outline.x + outline.w, outline.z + outline.d / 2, 0.16, outline.d],
+        ]) flat.box(COLORS.yellow, x, z, w2, 0.075, d2);
+      }
+      for (const p of y.pallets) {
+        buildPallet(new Model(batch, S, p.x, p.z, 0));
+        const shown = Math.min(24, p.units);
+        for (let i = 0; i < shown; i++) {
+          const layer = Math.floor(i / 6);
+          const cell = i % 6;
+          boxes.push({ x: p.x - 0.38 + (cell % 3) * 0.38, y: 0.15 + layer * 0.35, z: p.z - 0.22 + Math.floor(cell / 3) * 0.44, ry: 0, family: p.product.family, top: i >= shown - Math.min(6, shown - layer * 6) });
         }
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        mesh.userData.instancePicks = bases;
+        if (p.product.level !== 'OK') pins.push({ x: p.x, z: p.z, y: 0.3 + Math.ceil(shown / 6) * 0.35, color: p.product.level === 'OUT' ? 0xd9534f : 0xf0a14a });
+        this.proxy(`product:${w.id}:${p.product.id}`, p.x, p.z, 1.3, 0.4 + Math.ceil(shown / 6) * 0.35, 1.1);
+      }
+      // Containers by the hall, the brand's own among them.
+      const cx = b.x + b.w + 6;
+      buildContainer(new Model(batch, S, cx, b.z + 5, 0), COLORS.teal);
+      buildContainer(new Model(batch, S, cx, b.z + 12, 0), COLORS.blue);
+      buildContainer(new Model(batch, S, cx, b.z + 5, 0, 2.6), COLORS.orange);
+      signOn(atlas, new Model(batch, S, cx, b.z + 5, 0), { text: 'THEMOAK LINE', style: 'brand', ltr: true }, 1.25, 1.4, 0, 4.6, 1.0, Math.PI / 2);
+      // A fence round the block.
+      if (wd) this.fence(flat, wd.rect);
+      // Forklifts at work.
+      const docks = y.docks;
+      const forklifts = Math.min(3, Math.max(1, Math.ceil(y.pallets.length / 30)));
+      for (let k = 0; k < forklifts; k++) this.addForklift(y.pallets.map((p) => ({ x: p.x, z: p.z })), docks, k);
+    }
+    this.instanceBoxes(boxes);
+    this.instancePins(pins);
+
+    this.buildCentre(batch, atlas, lamps, plan, data);
+
+    // ── Finishing: the merged meshes ─────────────────────────────────────
+    for (const [b, material] of [[batch, this.matte], [glassBatch, this.glass]] as const) {
+      const mesh = b.mesh(material);
+      if (mesh) {
+        this.owned.push(mesh.geometry);
         this.world.add(mesh);
-        this.pickables.push(mesh);
-        this.owned.push({ dispose: () => mesh.dispose() });
       }
-      // Out of stock: a ghost pad. Low: a red beacon that pulses.
-      for (const col of yard.columns) {
-        const id = `product:${w.id}:${col.product.id}`;
-        if (col.units <= 0) {
-          const pad = this.block(p.ghost, col.x, col.z, 0.86, 0.04, 0.86, TILE, { transparent: 0.45 });
-          pad.castShadow = false;
-          this.pickable(pad, id, col, 0.6);
-        }
-        if (!w.virtual && col.product.level !== 'OK') {
-          const top = TILE + Math.min(CRATE_MAX, col.units) * 0.32 + 0.45;
-          const beacon = this.add(this.cone4, this.mat(col.product.level === 'OUT' ? 0xd2554a : 0xe9a23b, { emissive: col.product.level === 'OUT' ? 0xd2554a : 0xe9a23b }), col.x, top, col.z, 0.32, 0.4, 0.32);
-          beacon.rotation.x = Math.PI;
-          this.pickable(beacon, id, col, 0.6);
-          const phase = (col.x + col.z) % 3;
-          this.animated.push((t) => {
-            beacon.position.y = top + Math.sin(t * 3 + phase) * 0.12;
-          });
-        }
+    }
+    const lampMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: 0x000000 });
+    this.owned.push(lampMaterial);
+    const lampMesh = lamps.mesh(lampMaterial, false);
+    if (lampMesh) {
+      this.owned.push(lampMesh.geometry);
+      this.world.add(lampMesh);
+      this.lampHeads = lampMesh;
+    }
+    this.signMaterial = new THREE.MeshStandardMaterial({ map: atlas.texture, roughness: 0.6, emissive: 0xffffff, emissiveMap: atlas.texture, emissiveIntensity: 0.12 });
+    const signs = atlas.mesh(this.signMaterial);
+    if (signs) {
+      this.owned.push(signs.geometry);
+      this.world.add(signs);
+    }
+    for (const d of plan.districts) this.label(d.label, d.center.x, 16, d.center.z, 'district', `district:${d.key}`);
+    this.startTraffic();
+    this.applyLight(true);
+  }
+
+  /** A road: asphalt, sidewalks with curbs, a dashed centre line, zebra crossings near each junction. */
+  private paveRoad(m: Model, r: { a: Point; b: Point; width: number }, plan: CityPlan) {
+    const dx = r.b.x - r.a.x;
+    const dz = r.b.z - r.a.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.5) return;
+    const vertical = Math.abs(dx) < 1e-6;
+    const cx = (r.a.x + r.b.x) / 2;
+    const cz = (r.a.z + r.b.z) / 2;
+    const along = (w: number, h: number, d: number, ox: number, oz: number, rgb: number, y = 0) =>
+      vertical ? m.box(rgb, cx + ox, cz + oz, w, h, d, y) : m.box(rgb, cx + oz, cz + ox, d, h, w, y);
+    along(r.width, 0.08, length + r.width, 0, 0, COLORS.road);
+    for (const side of [-1, 1]) {
+      along(2.6, 0.2, length + r.width + 5, side * (r.width / 2 + 1.3), 0, COLORS.sidewalk);
+      along(0.25, 0.22, length + r.width + 5, side * (r.width / 2 + 0.12), 0, COLORS.curb);
+    }
+    // Junctions on this road: where another one meets it.
+    const junctions = plan.nodes.filter((n) => plan.links[plan.nodes.indexOf(n)].length > 2 && (vertical ? Math.abs(n.x - r.a.x) < 1e-6 : Math.abs(n.z - r.a.z) < 1e-6));
+    const start = vertical ? Math.min(r.a.z, r.b.z) : Math.min(r.a.x, r.b.x);
+    const near = (t: number) => junctions.some((j) => Math.abs((vertical ? j.z : j.x) - t) < r.width * 0.9);
+    for (let t = start + 4; t < start + length - 2; t += 7) {
+      if (near(t)) continue;
+      const o = t - (vertical ? cz : cx);
+      along(0.22, 0.09, 3.2, 0, o, COLORS.marking);
+    }
+    for (const j of junctions) {
+      for (const sign of [-1, 1]) {
+        const o = (vertical ? j.z - cz : j.x - cx) + sign * (r.width * 0.5 + 2.2);
+        if (Math.abs(o) > length / 2) continue;
+        for (let k = -r.width / 2 + 1; k < r.width / 2 - 0.5; k += 1.4) along(0.7, 0.09, 2.6, k, o, COLORS.marking);
       }
     }
   }
 
-  private buildTreasury(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const finance = data.finance;
-    if (!finance) return;
-    const { solid, shapes } = this.kit!;
-    const max = Math.max(1, ...finance.accounts.map((a) => Math.abs(a.toman ?? 0)));
-    finance.accounts.forEach((a, i) => {
-      const slot = plan.accounts[i];
-      if (!slot) return;
-      const value = a.toman ?? 0;
-      const h = a.toman === null ? 0.25 : value <= 0 ? 0.12 : 0.3 + 4.2 * (Math.log10(1 + value / 1e5) / Math.log10(1 + max / 1e5));
-      const color = value < 0 ? p.expense : a.toman === null ? p.ghost : a.currency === 'USD' ? p.usd : a.currency === 'EUR' ? p.eur : p.gold;
-      // A stack of coins: discs a little apart, so it reads as money.
-      const discs = Math.max(1, Math.round(h / 0.34));
-      for (let k = 0; k < discs; k++) {
-        const dh = Math.max(0.1, h / discs - 0.04);
-        solid.add(shapes.cylinder, { x: slot.x, y: TILE + 0.15 + k * (h / discs), z: slot.z, sx: 1.8, sy: dh, sz: 1.8 }, color);
+  /** A fence round a block: posts and two rails, open where the trucks come in. */
+  private fence(m: Model, rect: Rect) {
+    const gate = { z0: rect.z + rect.d * 0.3, z1: rect.z + rect.d * 0.62 };
+    const side = (ax: number, az: number, bx: number, bz: number) => {
+      const length = Math.hypot(bx - ax, bz - az);
+      const steps = Math.max(1, Math.floor(length / 3));
+      for (let i = 0; i <= steps; i++) {
+        const x = ax + ((bx - ax) * i) / steps;
+        const z = az + ((bz - az) * i) / steps;
+        if (ax === bx && ax > rect.x + 1 && z > gate.z0 && z < gate.z1) continue;
+        m.post(COLORS.steel, x, z, 0.06, 1.8);
       }
-      this.proxy(`account:${a.id}`, { x: slot.x, z: slot.z, w: 1.8, d: 1.8, h: h + 0.2 });
-      this.label(a.name, slot.x, TILE + h + 0.9, slot.z, 'thing', `account:${a.id}`);
-    });
-    const flowMax = Math.max(1, ...finance.flows.income.map((f) => f.amount), ...finance.flows.expense.map((f) => f.amount));
-    for (const [kind, rows, slots] of [
-      ['income', finance.flows.income, plan.flows.income],
-      ['expense', finance.flows.expense, plan.flows.expense],
-    ] as const) {
-      rows.forEach((row, i) => {
-        const slot = slots[i];
-        if (!slot) return;
-        const h = 0.2 + 4 * (row.amount / flowMax);
-        solid.block(shapes, kind === 'income' ? p.income : p.expense, slot.x, slot.z, 1.5, h, 0.9, TILE);
-        this.proxy(`flow:${kind}:${row.category}`, { x: slot.x, z: slot.z, w: 1.5, d: 0.9, h });
-      });
-    }
-    // The drain where money spent goes.
-    solid.add(shapes.cylinder, { x: plan.out.x, y: 0.08, z: plan.out.z, sx: 2.4, sy: 0.16, sz: 2.4 }, 0x2b2f36);
-    solid.add(shapes.cylinder, { x: plan.out.x, y: 0.12, z: plan.out.z, sx: 2.9, sy: 0.06, sz: 2.9 }, p.expense);
-    this.proxy('out', { x: plan.out.x, z: plan.out.z, w: 2.6, d: 2.6, h: 0.2 });
+      const vertical = ax === bx;
+      for (const y of [0.9, 1.75]) {
+        if (vertical && ax > rect.x + 1) {
+          m.box(COLORS.steel, ax, (az + gate.z0) / 2, 0.06, 0.06, gate.z0 - az, y);
+          m.box(COLORS.steel, ax, (gate.z1 + bz) / 2, 0.06, 0.06, bz - gate.z1, y);
+        } else if (vertical) m.box(COLORS.steel, ax, (az + bz) / 2, 0.06, 0.06, bz - az, y);
+        else m.box(COLORS.steel, (ax + bx) / 2, az, bx - ax, 0.06, 0.06, y);
+      }
+    };
+    const x1 = rect.x + rect.w;
+    const z1 = rect.z + rect.d;
+    side(rect.x, rect.z, x1, rect.z);
+    side(rect.x, z1, x1, z1);
+    side(rect.x, rect.z, rect.x, z1);
+    side(x1, rect.z, x1, z1);
   }
 
-  private buildMarket(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const sales = data.sales;
-    if (!sales) return;
-    const kit = this.kit!;
-    const { solid, shapes } = kit;
-    const channelMax = Math.max(1, ...sales.channels.map((c) => c.total));
-    const names = { site: 'فروش سایت', shop: 'فروش حضوری', consignment: 'فروش امانی' };
-    sales.channels.forEach((c, i) => {
-      const slot = plan.market.channels[i];
-      const h = 1 + 3 * (c.total / channelMax);
-      this.proxy(`channel:${c.channel}`, buildKiosk(kit, slot, h, { site: p.site, shop: p.shop, consignment: p.consignment }[c.channel], names[c.channel]), slot);
-      this.label(names[c.channel], slot.x, TILE + h + 1.6, slot.z, 'thing', `channel:${c.channel}`);
+  /** Every box on every pallet, in one instanced mesh; the top layer's tape in the model's colour. */
+  private instanceBoxes(boxes: Array<{ x: number; y: number; z: number; ry: number; family: string; top: boolean }>) {
+    if (!boxes.length) return;
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+    this.owned.push(material);
+    const mesh = new THREE.InstancedMesh(this.shapes.box, material, boxes.length);
+    const tape = new THREE.InstancedMesh(this.shapes.box, material, boxes.length);
+    const matrix = new THREE.Matrix4();
+    const color = new THREE.Color();
+    boxes.forEach((b, i) => {
+      matrix.compose(new THREE.Vector3(b.x, b.y + 0.17, b.z), new THREE.Quaternion(), new THREE.Vector3(0.36, 0.34, 0.42));
+      mesh.setMatrixAt(i, matrix);
+      mesh.setColorAt(i, color.set(COLORS.cardboard).offsetHSL(0, 0, (hash(`${b.x}${b.z}${i}`) - 0.5) * 0.06));
+      matrix.compose(new THREE.Vector3(b.x, b.y + 0.345, b.z), new THREE.Quaternion(), new THREE.Vector3(0.08, b.top ? 0.012 : 0.001, 0.43));
+      tape.setMatrixAt(i, matrix);
+      tape.setColorAt(i, color.set(FAMILY[Math.floor(hash(b.family) * FAMILY.length) % FAMILY.length]));
     });
-    const topMax = Math.max(1, ...sales.topProducts.map((t) => t.units));
-    sales.topProducts.forEach((t, i) => {
-      const slot = plan.market.podium[i];
-      const h = 0.3 + 2.4 * (t.units / topMax);
-      solid.block(shapes, p.wall, slot.x, slot.z, 1.3, h, 1.3, TILE);
-      solid.block(shapes, familyColor(t.family), slot.x, slot.z, 0.8, 0.5, 0.8, TILE + h);
-      this.proxy(`top:${t.id}`, { x: slot.x, z: slot.z, w: 1.3, d: 1.3, h: h + 0.5 });
-    });
-    const dayMax = Math.max(1, ...sales.days.map((d) => d.total));
-    sales.days.forEach((d, i) => {
-      const slot = plan.market.days[i];
-      const h = 0.06 + 3.4 * (d.total / dayMax);
-      const today = i === sales.days.length - 1;
-      (today ? kit.glow : solid).block(shapes, today ? p.shop : p.site, slot.x, slot.z, 0.55, h, 0.55, TILE);
-      this.proxy(`day:${d.day}`, { x: slot.x, z: slot.z, w: 0.6, d: 0.6, h });
-    });
-  }
-
-  private buildSuppliers(data: WorldData, plan: WorldPlan) {
-    const list = data.suppliers?.suppliers ?? [];
-    const kit = this.kit!;
-    list.forEach((s, i) => {
-      const slot = plan.suppliers[i];
-      if (!slot) return;
-      const factory = buildFactory(kit, s.id, s.name, slot, !!s.unpaid);
-      this.proxy(`supplier:${s.id}`, factory, slot);
-      this.label(s.name, slot.x, TILE + factory.h + 0.8, slot.z, 'thing', `supplier:${s.id}`);
-      // Smoke while a purchase order is open: from its chimney, else from its roof.
-      if (s.open > 0) {
-        const from = factory.chimney ?? { x: factory.x + 0.6, y: TILE + factory.h - 1.2, z: factory.z - 0.4 };
-        const puffs = Array.from({ length: 3 }, (_, k) => {
-          const puff = this.add(this.box, this.mat(0xd9d4cc, { transparent: 0.7 }), from.x, from.y, from.z, 0.4, 0.4, 0.4);
-          puff.castShadow = false;
-          return { puff, phase: k / 3 };
-        });
-        this.animated.push((t) => {
-          for (const { puff, phase } of puffs) {
-            const f = (t * 0.35 + phase) % 1;
-            puff.position.set(from.x + f * 0.6, from.y + 0.2 + f * 2.2, from.z);
-            const s2 = 0.3 + f * 0.6;
-            puff.scale.set(s2, s2, s2);
-          }
-        });
-      }
-    });
-  }
-
-  private buildCustomers(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const c = data.customers;
-    if (!c) return;
-    const kit = this.kit!;
-    const spendMax = Math.max(1, ...c.top.map((x) => x.spend));
-    c.top.forEach((x, i) => {
-      const slot = plan.customers.top[i];
-      if (!slot) return;
-      const h = 1 + 1.8 * (x.spend / spendMax);
-      this.proxy(`customer:${x.id}`, buildHouse(kit, x.id, x.name, slot, h, x.debt > 0), slot);
-      this.label(x.name, slot.x, TILE + h + 1.6, slot.z, 'thing', `customer:${x.id}`);
-    });
-    // Everyone else: a small house each, warm for those who bought in 90 days.
-    const crowd = plan.customers.crowd;
-    if (crowd.length) {
-      const walls = new THREE.InstancedMesh(this.box, this.mat(0xffffff) as THREE.MeshLambertMaterial, crowd.length);
-      const roofs = new THREE.InstancedMesh(this.cone4, this.mat(0xffffff) as THREE.MeshLambertMaterial, crowd.length);
-      const lit = Math.max(0, c.buyers90 - c.top.length);
-      const m = new THREE.Matrix4();
-      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
-      const none = new THREE.Quaternion();
-      const color = new THREE.Color();
-      const random = seeded('crowd');
-      crowd.forEach((pt, i) => {
-        const h = 0.6 + random() * 0.25;
-        m.compose(new THREE.Vector3(pt.x, TILE + h / 2, pt.z), none, new THREE.Vector3(0.8, h, 0.8));
-        walls.setMatrixAt(i, m);
-        walls.setColorAt(i, color.set(i < lit ? pickOne(random, CROWD_WALLS) : p.crowdOff));
-        m.compose(new THREE.Vector3(pt.x, TILE + h + 0.25, pt.z), q, new THREE.Vector3(0.82, 0.5, 0.82));
-        roofs.setMatrixAt(i, m);
-        roofs.setColorAt(i, color.set(i < lit ? pickOne(random, CROWD_ROOFS) : p.roof));
-      });
-      for (const mesh of [walls, roofs]) {
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        mesh.userData.instancePicks = crowd.map((pt) => ({ id: 'crowd', base: pt, radius: 0.6 }));
-        this.world.add(mesh);
-        this.pickables.push(mesh);
-        this.owned.push({ dispose: () => mesh.dispose() });
-      }
+    for (const m of [mesh, tape]) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      this.world.add(m);
+      this.owned.push({ dispose: () => m.dispose() });
     }
   }
 
-  private buildSite(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const s = data.site;
-    if (!s) return;
-    const failing = s.hook.paused || !!s.hook.failingSince;
-    const status = !s.host ? p.ghost : failing ? 0xd2554a : s.stockPush ? 0x4fbf7a : 0xe9a23b;
-    const { x, z } = plan.site;
-    this.proxy('site', buildTower(this.kit!, plan.site, s.host), plan.site);
-    const bulb = this.add(new THREE.SphereGeometry(0.5, 16, 12), this.mat(status, { emissive: status }), x, TILE + 5.6, z, 1, 1, 1);
-    this.owned.push(bulb.geometry);
-    this.label(s.host ?? 'وب‌سایت', x, TILE + 6.8, z, 'thing', 'site');
-    // The products on the site circle it.
-    const count = Math.min(120, s.productsOnSite);
-    if (count > 0) {
-      const ring = new THREE.InstancedMesh(this.box, this.mat(p.site) as THREE.MeshLambertMaterial, count);
-      const m = new THREE.Matrix4();
-      for (let i = 0; i < count; i++) {
-        const a = (i / count) * Math.PI * 2;
-        m.compose(new THREE.Vector3(Math.cos(a) * 3.4, 0, Math.sin(a) * 3.4), new THREE.Quaternion(), new THREE.Vector3(0.22, 0.22, 0.22));
-        ring.setMatrixAt(i, m);
-      }
-      ring.instanceMatrix.needsUpdate = true;
-      const holder = new THREE.Group();
-      holder.position.set(x, TILE + 3.6, z);
-      holder.add(ring);
-      this.world.add(holder);
-      this.owned.push({ dispose: () => ring.dispose() });
-      this.animated.push((_, dt) => {
-        holder.rotation.y += dt * 0.35;
-      });
-    }
+  /** Small pins over the pallets that are out (red) or running low (amber), bobbing. */
+  private instancePins(pins: Array<{ x: number; z: number; y: number; color: number }>) {
+    if (!pins.length) return;
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, emissive: 0x220000, emissiveIntensity: 0.3 });
+    this.owned.push(material);
+    const mesh = new THREE.InstancedMesh(this.pinGeometry, material, pins.length);
+    const color = new THREE.Color();
+    pins.forEach((p, i) => mesh.setColorAt(i, color.set(p.color)));
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = true;
+    this.world.add(mesh);
+    this.owned.push({ dispose: () => mesh.dispose() });
+    const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3(0.32, 0.32, 0.32);
+    const v = new THREE.Vector3();
     this.animated.push((t) => {
-      const k = 1 + Math.sin(t * (failing ? 7 : 2)) * 0.12;
-      bulb.scale.set(k, k, k);
+      pins.forEach((p, i) => {
+        q.setFromAxisAngle(UP, t * 1.2 + i);
+        matrix.compose(v.set(p.x, p.y + 0.3 + Math.sin(t * 2.4 + i) * 0.12, p.z), q, s);
+        mesh.setMatrixAt(i, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
     });
   }
 
-  private buildOffice(data: WorldData, plan: WorldPlan) {
-    this.proxy('office', buildOffice(this.kit!, plan.office, data.office.tasks.open, data.office.tasks.overdue), plan.office);
+  /** A forklift that takes a pallet from the yard to a dock door and comes back, over and over. */
+  private addForklift(spots: Point[], docks: Point[], k: number) {
+    if (!spots.length || !docks.length) return;
+    const body = new THREE.Mesh(this.vehicle('forklift'), this.matte);
+    const forks = new THREE.Mesh(this.vehicle('forks'), this.matte);
+    const load = new THREE.Mesh(this.vehicle('pallet'), this.matte);
+    for (const m of [body, forks, load]) m.castShadow = true;
+    forks.position.set(0, 0.1, 1.1);
+    load.position.set(0, 0.12, 0.6);
+    forks.add(load);
+    const group = new THREE.Group();
+    group.add(body, forks);
+    this.life.add(group);
+    const random = seeded(`forklift${k}`);
+    let from = spots[Math.floor(random() * spots.length)];
+    let to = docks[Math.floor(random() * docks.length)];
+    let phase = 0;
+    let t = random() * 3;
+    const yardSpeed = 3.2;
+    group.position.set(from.x, 0, from.z + 1.6);
+    this.animated.push((_, dt) => {
+      t += dt;
+      // 0: drive to the pallet · 1: lift · 2: drive to the dock · 3: lower · 4: back off
+      const goal = phase === 0 ? { x: from.x, z: from.z + 1.6 } : phase === 2 || phase === 3 ? { x: to.x, z: to.z + 2.2 } : null;
+      if (goal) {
+        const dx = goal.x - group.position.x;
+        const dz = goal.z - group.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.1 && phase !== 3) {
+          const step = Math.min(d, yardSpeed * dt);
+          group.position.x += (dx / d) * step;
+          group.position.z += (dz / d) * step;
+          const heading = phase === 0 ? Math.atan2(-dx, -dz) : Math.atan2(dx, dz);
+          let turn = heading - group.rotation.y;
+          turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+          group.rotation.y += turn * Math.min(1, dt * 6);
+          return;
+        }
+      }
+      if (phase === 0) {
+        phase = 1;
+        t = 0;
+        load.visible = true;
+      } else if (phase === 1) {
+        forks.position.y = 0.1 + Math.min(1, t / 1.2) * 0.5;
+        if (t > 1.4) phase = 2;
+      } else if (phase === 2) {
+        phase = 3;
+        t = 0;
+      } else if (phase === 3) {
+        forks.position.y = 0.6 - Math.min(1, t / 1.2) * 0.5;
+        if (t > 1.4) {
+          load.visible = false;
+          phase = 0;
+          from = spots[Math.floor(random() * spots.length)];
+          to = docks[Math.floor(random() * docks.length)];
+        }
+      }
+    });
+    load.visible = false;
   }
 
-  // ── Interaction ───────────────────────────────────────────────────────────
-
-  private findPick(id: string): Pick | null {
-    for (const object of this.pickables) {
-      const instances = object.userData.instancePicks as Pick[] | undefined;
-      if (instances) {
-        const hit = instances.find((x) => x.id === id);
-        if (hit) return hit;
-      } else if ((object.userData.pick as Pick | undefined)?.id === id) {
-        return object.userData.pick as Pick;
-      }
+  /** The rest of the city: stores, the bank and its coins, the headquarters, the tower, the office, homes, both ports, China, trees and lamps. */
+  private buildCentre(batch: Batch, atlas: SignAtlas, lamps: Batch, plan: CityPlan, data: WorldData) {
+    const S = this.shapes;
+    // Stores on the shopping street.
+    for (const st of plan.stores) {
+      const w = data.stock?.warehouses.find((x) => x.id === st.warehouseId);
+      if (!w) continue;
+      const p = st.plot;
+      const m = new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing);
+      buildStore(atlas, m, p.d, p.w, w.partner ?? w.name, w.id, w.units);
+      this.proxy(`warehouse:${w.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d);
     }
+    // The bank, its forecourt, a coin stack and a name plate per account.
+    if (data.finance) {
+      const b = plan.bank;
+      buildBank(atlas, new Model(batch, S, b.x + b.w / 2, b.z + b.d / 2, 0), b.w, b.d);
+      this.proxy('district:treasury', b.x + b.w / 2, b.z + b.d / 2, b.w, 11, b.d);
+      const max = Math.max(1, ...data.finance.accounts.map((a) => Math.abs(a.toman ?? 0)));
+      plan.accounts.forEach((spot) => {
+        const a = data.finance!.accounts.find((x) => x.id === spot.id);
+        if (!a) return;
+        const value = a.toman ?? 0;
+        const h = a.toman === null ? 0.3 : value <= 0 ? 0.15 : 0.4 + 6.5 * (Math.log10(1 + value / 1e5) / Math.log10(1 + max / 1e5));
+        const color = value < 0 ? COLORS.red : a.toman === null ? 0xb9b2a6 : a.currency === 'USD' ? 0x5fb59a : a.currency === 'EUR' ? 0x8f86d6 : COLORS.gold;
+        const m = new Model(batch, S, spot.x, spot.z, 0);
+        m.box(COLORS.stone, 0, 0, 3.2, 0.3, 3.2);
+        const discs = Math.max(1, Math.round(h / 0.3));
+        // A stack of coins, each a little off the one below; Toman coins alternate two golds.
+        for (let i = 0; i < discs; i++) m.post(i % 2 && color === COLORS.gold ? COLORS.goldDark : color, Math.sin(i * 1.7) * 0.06, Math.cos(i * 1.3) * 0.06, 1.0, (h / discs) * 0.92, 0.3 + (i * h) / discs);
+        signOn(atlas, m, { text: a.name, style: 'plate' }, 0, 0.45, 1.62, 2.8, 0.55);
+        this.proxy(`account:${a.id}`, spot.x, spot.z, 3.2, h + 0.6, 3.2);
+      });
+    }
+    // The headquarters and its plaza with a fountain.
+    const hq = plan.hq;
+    buildHq(atlas, new Model(batch, S, hq.x + hq.w / 2, hq.z + hq.d / 2, 0), hq.w, hq.d);
+    this.proxy('district:hq', hq.x + hq.w / 2, hq.z + hq.d / 2, hq.w, 22, hq.d);
+    const fountain = new Model(batch, S, hq.x + hq.w / 2, hq.z + hq.d + 22, 0);
+    fountain.post(COLORS.stone, 0, 0, 6, 0.8);
+    fountain.post(COLORS.water, 0, 0, 5.4, 0.85);
+    fountain.post(COLORS.stone, 0, 0, 0.8, 2.6);
+    // The website's tower and its status light.
+    if (data.site) {
+      const t = plan.tower;
+      buildTower(atlas, new Model(batch, S, t.x + t.w / 2, t.z + t.d / 2, 0), t.w, t.d, data.site.host ?? 'وب‌سایت');
+      this.proxy('site', t.x + t.w / 2, t.z + t.d / 2, t.w, 40, t.d);
+      const failing = data.site.hook.paused || !!data.site.hook.failingSince;
+      const status = !data.site.host ? 0x9aa3ad : failing ? 0xd9534f : data.site.stockPush ? 0x2ecc71 : 0xf0a14a;
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.1, 16, 12), new THREE.MeshStandardMaterial({ color: status, emissive: status, emissiveIntensity: 1.4 }));
+      beacon.position.set(t.x + t.w / 2, 51.5, t.z + t.d / 2);
+      this.world.add(beacon);
+      this.owned.push(beacon.geometry, beacon.material as THREE.Material);
+      this.animated.push((time) => {
+        const k = 1 + Math.sin(time * (failing ? 7 : 2.2)) * 0.18;
+        beacon.scale.set(k, k, k);
+      });
+    }
+    // The projects' office.
+    const o = plan.office;
+    buildOffice(atlas, new Model(batch, S, o.x + o.w / 2, o.z + o.d / 2, 0), o.w, o.d);
+    this.proxy('office', o.x + o.w / 2, o.z + o.d / 2, o.w, 11, o.d);
+    // Homes: the best customers with their names, everyone else around them.
+    plan.homes.top.forEach((p) => {
+      const c = data.customers?.top.find((x) => x.id === p.id);
+      if (!c) return;
+      buildHome(atlas, new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing), p.w, p.d, c.id, c.name, c.debt > 0);
+      this.proxy(`customer:${c.id}`, p.x + p.w / 2, p.z + p.d / 2, p.w, 8, p.d);
+    });
+    for (const p of plan.homes.crowd) {
+      buildHome(null, new Model(batch, S, p.x + p.w / 2, p.z + p.d / 2, p.facing), p.w, p.d, p.id, null, false);
+      this.proxy('crowd', p.x + p.w / 2, p.z + p.d / 2, p.w, 5, p.d);
+    }
+    // The port: the quay, its cranes, stacked containers, a ship at the berth.
+    const port = plan.port;
+    const quay = new Model(batch, S);
+    quay.box(0xcfd5de, port.quay.x + port.quay.w / 2, port.quay.z + port.quay.d / 2, port.quay.w, 1.0, port.quay.d, -0.9);
+    for (let z = port.quay.z + 3; z < port.quay.z + port.quay.d; z += 8) quay.post(COLORS.rubber, port.quay.x + 0.8, z, 0.3, 0.5, 0.1);
+    for (const c of port.cranes) buildCrane(new Model(batch, S, c.x, c.z, 0));
+    const random = seeded('port');
+    const hues = [COLORS.blue, COLORS.red, COLORS.orange, COLORS.teal, 0x8a8f99];
+    for (const c of port.containers) {
+      const layers = 1 + Math.floor(random() * 3);
+      for (let l = 0; l < layers; l++) buildContainer(new Model(batch, S, c.x, c.z, 0, l * 2.62), hues[Math.floor(random() * hues.length)]);
+    }
+    buildShip(new Model(batch, S, port.berth.x - 2, port.berth.z + 34, Math.PI), 'docked');
+    this.proxy('port', port.quay.x + port.quay.w / 2, port.quay.z + port.quay.d / 2, 30, 26, port.quay.d);
+    // China: the suppliers' factories, their quay and cranes.
+    const china = plan.china;
+    const cq = new Model(batch, S);
+    cq.box(0xcfd5de, china.quay.x + china.quay.w / 2, china.quay.z + china.quay.d / 2, china.quay.w, 1.0, china.quay.d, -0.9);
+    for (const c of china.cranes) buildCrane(new Model(batch, S, c.x, c.z, Math.PI));
+    for (const f of china.factories) {
+      const s = data.suppliers?.suppliers.find((x) => x.id === f.id);
+      if (!s) continue;
+      buildFactory(atlas, new Model(batch, S, f.x + f.w / 2, f.z + f.d / 2, f.facing), f.d, f.w, s.name, s.id);
+      this.proxy(`supplier:${s.id}`, f.x + f.w / 2, f.z + f.d / 2, f.w, 12, f.d);
+      if (s.open > 0) this.smoke(f.x + f.w / 2 - (f.w * 0.3), f.z + f.d / 2 - f.d * 0.32);
+    }
+    if (china.factories.length) {
+      const c = china.island;
+      this.label('چین', c.x + c.w / 2, 30, c.z + 10, 'district', 'district:suppliers');
+    }
+    // Trees and lamps along the streets.
+    for (const [i, t] of plan.trees.entries()) buildTree(new Model(batch, S, t.x, t.z, 0), `tree${i}`);
+    for (const l of plan.lamps) {
+      buildLamp(new Model(batch, S, l.x, l.z, 0));
+      lamps.add(S.box, { x: l.x, y: 5.85, z: l.z + 1.2, sx: 0.5, sy: 0.12, sz: 0.7 }, 0xfffbe8);
+    }
+  }
+
+  /** Smoke from a chimney while a purchase order is open. */
+  private smoke(x: number, z: number) {
+    const material = new THREE.MeshStandardMaterial({ color: 0xe6e9ef, transparent: true, opacity: 0.75, roughness: 1 });
+    this.owned.push(material);
+    const puffs = Array.from({ length: 4 }, (_, k) => {
+      const m = new THREE.Mesh(this.shapes.ball, material);
+      this.world.add(m);
+      return { m, phase: k / 4 };
+    });
+    this.animated.push((t) => {
+      for (const { m, phase } of puffs) {
+        const f = (t * 0.25 + phase) % 1;
+        const s = 1.2 + f * 3;
+        m.position.set(x + f * 3, 15 + f * 9, z - f);
+        m.scale.set(s, s, s);
+      }
+    });
+  }
+
+  // ── Life on the streets ───────────────────────────────────────────────────
+
+  private moverMesh(name: Parameters<WorldEngine['vehicle']>[0]) {
+    const mesh = new THREE.Mesh(this.vehicle(name), this.matte);
+    mesh.castShadow = true;
+    this.life.add(mesh);
+    return mesh;
+  }
+
+  /** Cars going about the city, and a ship plying between the ports. */
+  private startTraffic() {
+    const plan = this.plan!;
+    const cars = this.small ? 5 : 12;
+    const tints = [0xfbfcfe, 0xd9534f, 0x2f6fe0, 0x26303f, 0xf2b705, 0x9aa4b2];
+    for (let i = 0; i < cars; i++) {
+      const mesh = this.moverMesh('car');
+      const random = seeded(`car${i}`);
+      // White paint times a tint: cars in a few colours.
+      const paint = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2, color: tints[i % tints.length] });
+      this.owned.push(paint);
+      mesh.material = paint;
+      const go = () => {
+        const a = plan.nodes[Math.floor(random() * plan.nodes.length)];
+        const b = plan.nodes[Math.floor(random() * plan.nodes.length)];
+        const mover: Mover = { mesh, legs: [{ path: route(plan, a, b), speed: 8 + random() * 4, kind: 'road' }], leg: 0, s: 0, label: null, ambient: true, done: () => go() };
+        this.movers.push(mover);
+      };
+      go();
+    }
+    const ship = this.moverMesh('ship');
+    const sail = (forward: boolean) => {
+      const path = forward ? plan.lane : [...plan.lane].reverse();
+      const offset = path.map((p) => ({ x: p.x, z: p.z + 70 }));
+      this.movers.push({ mesh: ship, legs: [{ path: offset, speed: 7, kind: 'sea' }], leg: 0, s: 0, label: null, ambient: true, done: () => sail(!forward) });
+    };
+    sail(true);
+  }
+
+  /** One event's journey: by street, by sea or air, by street again. */
+  private sendEvent(event: WorldEvent, fresh: boolean) {
+    const plan = this.plan!;
+    const from = plan.places.get(event.from);
+    const to = plan.places.get(event.to);
+    if (!from || !to) return;
+    if (event.kind === 'adjust' || (from.x === to.x && from.z === to.z)) {
+      this.burst(to, 0x9aa4b2, 14);
+      return;
+    }
+    const kind = event.kind === 'transfer' || event.kind === 'purchase' ? 'truck' : event.kind === 'income' || event.kind === 'expense' ? 'cash' : 'van';
+    const legs: Mover['legs'] = [];
+    if (event.from.startsWith('sup:')) {
+      // From the factory to the quay in China, over the water, from the port to the warehouse.
+      const china = plan.china;
+      legs.push({ path: [from, { x: china.quay.x - 6, z: from.z }, { x: china.quay.x - 6, z: china.berth.z }], speed: 12, kind: 'road' });
+      const byAir = hash(event.id) < 0.34;
+      if (byAir) legs.push({ path: [{ x: china.island.x + china.island.w / 2, z: china.berth.z }, plan.port.berth], speed: 60, kind: 'air', y: (t) => 8 + Math.sin(t * Math.PI) * 70 });
+      else legs.push({ path: plan.lane, speed: 28, kind: 'sea' });
+      const portStreet = plan.places.get('port')!;
+      legs.push({ path: route(plan, portStreet, to), speed: 14, kind: 'road' });
+    } else {
+      legs.push({ path: route(plan, from, to), speed: kind === 'truck' ? 13 : 16, kind: 'road' });
+    }
+    const first = legs[0].kind === 'road' ? kind : legs[0].kind === 'air' ? 'plane' : 'ship';
+    const mesh = this.moverMesh(first as any);
+    let label: HTMLDivElement | null = null;
+    if (fresh || this.dist < 260) {
+      label = document.createElement('div');
+      label.dir = 'rtl';
+      label.className = `pointer-events-none absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium shadow-md ring-1 will-change-transform ${
+        fresh ? 'bg-amber-50 text-amber-900 ring-amber-300 dark:bg-amber-950 dark:text-amber-100' : 'bg-white/95 text-slate-700 ring-black/5 dark:bg-slate-900/90 dark:text-slate-200'
+      }`;
+      const dot = document.createElement('span');
+      dot.className = 'inline-block h-2 w-2 rounded-full';
+      dot.style.background = `#${EVENT_COLORS[event.kind].toString(16).padStart(6, '0')}`;
+      label.append(dot, document.createTextNode(event.label));
+      this.labelLayer.appendChild(label);
+    }
+    const mover: Mover = {
+      mesh,
+      legs,
+      leg: 0,
+      s: 0,
+      label,
+      ambient: false,
+      done: () => {
+        if (fresh) this.burst(to, EVENT_COLORS[event.kind], 60);
+      },
+    };
+    this.movers.push(mover);
+  }
+
+  /** Confetti (or a puff) at a place. */
+  private burst(at: Point, rgb: number, count: number) {
+    const geometry = this.shapes.box;
+    const colors = [rgb, 0xf2b705, 0x2f6fe0, 0xd9534f, 0x2ecc71, 0xffffff];
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    const bits = Array.from({ length: count }, (_, i) => ({
+      p: new THREE.Vector3(at.x, 3, at.z),
+      v: new THREE.Vector3((Math.random() - 0.5) * 10, 8 + Math.random() * 10, (Math.random() - 0.5) * 10),
+      r: Math.random() * TAU,
+      c: colors[i % colors.length],
+    }));
+    const color = new THREE.Color();
+    bits.forEach((b, i) => mesh.setColorAt(i, color.set(b.c)));
+    this.life.add(mesh);
+    let t = 0;
+    const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3(0.35, 0.06, 0.25);
+    const step = (_: number, dt: number) => {
+      t += dt;
+      bits.forEach((b, i) => {
+        b.v.y -= 18 * dt;
+        b.p.addScaledVector(b.v, dt);
+        if (b.p.y < 0.1) {
+          b.p.y = 0.1;
+          b.v.set(0, 0, 0);
+        }
+        q.setFromAxisAngle(UP, b.r + t * 6);
+        matrix.compose(b.p, q, s);
+        mesh.setMatrixAt(i, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (t > 3.2) {
+        this.life.remove(mesh);
+        mesh.dispose();
+        material.dispose();
+        this.animated.splice(this.animated.indexOf(step), 1);
+      }
+    };
+    this.animated.push(step);
+  }
+
+  private updateMovers(dt: number) {
+    const v = new THREE.Vector3();
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    for (let i = this.movers.length - 1; i >= 0; i--) {
+      const m = this.movers[i];
+      const leg = m.legs[m.leg];
+      m.s += leg.speed * dt;
+      const total = pathLength(leg.path);
+      const { p, heading } = along(leg.path, m.s);
+      let x = p.x;
+      let z = p.z;
+      if (leg.kind === 'road') {
+        // Keep to the right-hand lane.
+        x += -Math.cos(heading) * 2.4;
+        z += Math.sin(heading) * 2.4;
+      }
+      const y = leg.y ? leg.y(Math.min(1, m.s / Math.max(1, total))) : leg.kind === 'sea' ? -0.6 + Math.sin(this.elapsed * 0.8 + i) * 0.15 : 0;
+      m.mesh.position.set(x, y, z);
+      let turn = heading - m.mesh.rotation.y;
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      m.mesh.rotation.y += turn * Math.min(1, dt * 8);
+      if (m.label) {
+        v.set(x, y + (leg.kind === 'sea' ? 16 : 5), z).project(this.camera);
+        const show = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+        m.label.style.display = show ? '' : 'none';
+        if (show) m.label.style.transform = `translate(-50%, -100%) translate(${(((v.x + 1) / 2) * w).toFixed(1)}px, ${(((1 - v.y) / 2) * h).toFixed(1)}px)`;
+      }
+      if (m.s < total) continue;
+      // The next leg, perhaps by another means.
+      m.leg += 1;
+      m.s = 0;
+      if (m.leg < m.legs.length) {
+        const next = m.legs[m.leg];
+        if (next.kind !== leg.kind && !m.ambient) {
+          this.life.remove(m.mesh);
+          m.mesh = this.moverMesh(next.kind === 'sea' ? 'ship' : next.kind === 'air' ? 'plane' : 'truck');
+        }
+        continue;
+      }
+      this.movers.splice(i, 1);
+      if (!m.ambient) {
+        this.life.remove(m.mesh);
+        m.label?.remove();
+      }
+      m.done?.();
+    }
+  }
+
+  // ── Picking ───────────────────────────────────────────────────────────────
+
+  private findPick(id: string): Picked | null {
+    for (const o of this.proxies) if ((o.userData.pick as Picked).id === id) return o.userData.pick as Picked;
     if (id.startsWith('district:') && this.plan) {
       const d = this.plan.districts.find((x) => `district:${x.key}` === id);
-      if (d) return { id, base: d.center, radius: Math.max(d.width, d.depth) / 2 };
+      if (d) return { id, base: d.center, radius: Math.max(d.rect.w, d.rect.d) / 2, height: 10 };
     }
     return null;
   }
 
-  private placeRing(ring: THREE.Mesh, id: string | null) {
-    const pick = id ? this.findPick(id) : null;
-    if (!pick || id?.startsWith('district:')) {
-      ring.visible = false;
-      return;
+  private placeMarker(r: THREE.Mesh, id: string | null, pin: boolean) {
+    const p = id ? this.findPick(id) : null;
+    const show = !!p && !id!.startsWith('district:') && id !== 'crowd';
+    r.visible = show;
+    if (pin) this.selectPin.visible = show;
+    if (!p || !show) return;
+    r.position.set(p.base.x, 0.25, p.base.z);
+    const s = p.radius + 1.2;
+    r.scale.set(s, s, s);
+    if (pin) {
+      this.selectPin.position.set(p.base.x, p.height + 1.5, p.base.z);
+      const k = THREE.MathUtils.clamp(p.radius * 0.45, 0.8, 4);
+      this.selectPin.scale.set(k, k, k);
+      this.selectPin.userData.base = p.height + 1.5;
     }
-    ring.visible = true;
-    ring.position.set(pick.base.x, TILE + 0.03, pick.base.z);
-    const s = pick.radius + 0.35;
-    ring.scale.set(s, s, s);
   }
 
-  private raycast(clientX: number, clientY: number): { pick: Pick | null; floor: THREE.Vector3 | null } {
+  private raycast(clientX: number, clientY: number): { pick: Picked | null; ground: THREE.Vector3 | null } {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.pickables, true);
-    let floor: THREE.Vector3 | null = null;
-    for (const hit of hits) {
-      if (hit.object.userData.floor) {
-        floor ??= hit.point.clone();
-        continue;
-      }
-      const instances = hit.object.userData.instancePicks as Pick[] | undefined;
-      if (instances && hit.instanceId !== undefined) return { pick: instances[hit.instanceId] ?? null, floor: hit.point.clone() };
-      const pick = hit.object.userData.pick as Pick | undefined;
-      if (pick && !pick.id.startsWith('district:')) return { pick, floor: hit.point.clone() };
-      if (pick) return { pick, floor: hit.point.clone() };
-    }
-    return { pick: null, floor };
+    const hit = this.raycaster.intersectObjects(this.proxies, false)[0];
+    const ground = new THREE.Vector3();
+    const onGround = this.raycaster.ray.intersectPlane(new THREE.Plane(UP, 0), ground);
+    return { pick: hit ? (hit.object.userData.pick as Picked) : null, ground: onGround ? ground : null };
   }
+
+  // ── Input ─────────────────────────────────────────────────────────────────
 
   private onPointerDown = (e: PointerEvent) => {
     this.renderer.domElement.setPointerCapture(e.pointerId);
     this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.touches.size === 2) {
       const [a, b] = [...this.touches.values()];
-      this.drag = { x: e.clientX, y: e.clientY, moved: true, pinch: Math.hypot(a.x - b.x, a.y - b.y), targetStart: this.target.clone() };
+      this.drag = { x: e.clientX, y: e.clientY, button: 0, moved: true, pinch: Math.hypot(a.x - b.x, a.y - b.y), spread: Math.atan2(b.y - a.y, b.x - a.x) };
       return;
     }
-    this.drag = { x: e.clientX, y: e.clientY, moved: false, targetStart: this.target.clone() };
+    this.drag = { x: e.clientX, y: e.clientY, button: e.button === 2 || e.shiftKey ? 2 : 0, moved: false };
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    this.pointerInside = true;
+    this.pointerAt = { x: e.clientX, y: e.clientY };
     if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (this.drag?.pinch && this.touches.size === 2) {
+    const drag = this.drag;
+    if (!drag) return;
+    if (drag.pinch !== undefined && this.touches.size === 2) {
       const [a, b] = [...this.touches.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
-      this.zoomBy(d / this.drag.pinch);
-      this.drag.pinch = d;
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      this.zoomBy(d / drag.pinch);
+      this.yawGoal += angle - (drag.spread ?? angle);
+      drag.pinch = d;
+      drag.spread = angle;
       return;
     }
-    if (this.drag) {
-      const dx = e.clientX - this.drag.x;
-      const dy = e.clientY - this.drag.y;
-      if (!this.drag.moved && Math.hypot(dx, dy) > 6) this.drag.moved = true;
-      if (this.drag.moved) {
-        // Drag the map: move the view, not the figure, until it walks again.
-        this.follow = false;
-        const unitsPerPixel = this.viewHeight / this.zoom / this.renderer.domElement.clientHeight;
-        const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-        const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-        this.target
-          .copy(this.drag.targetStart)
-          .addScaledVector(right, -dx * unitsPerPixel)
-          .addScaledVector(forward, (dy * unitsPerPixel) / Math.sin(Math.atan(1 / Math.SQRT2)));
-      }
-      return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    if (drag.button === 2) {
+      this.yawGoal -= dx * 0.006;
+      this.pitchGoal = THREE.MathUtils.clamp(this.pitchGoal + dy * 0.004, 0.32, 1.35);
+    } else {
+      this.panBy(dx, dy);
     }
-    this.pointer.set(e.clientX, e.clientY);
-    this.pointerMoved = true;
   };
 
   private onPointerUp = (e: PointerEvent) => {
     this.touches.delete(e.pointerId);
     const drag = this.drag;
     if (this.touches.size === 0) this.drag = null;
-    if (!drag || drag.moved || drag.pinch) return;
-    const { pick, floor } = this.raycast(e.clientX, e.clientY);
-    if (pick && !pick.id.startsWith('district:')) {
-      this.goTo(pick.id);
-    } else if (floor) {
-      this.walkTo = { x: floor.x, z: floor.z };
-      this.follow = true;
-      this.select(pick?.id ?? null);
-    }
+    if (!drag || drag.moved || drag.pinch !== undefined) return;
+    const { pick } = this.raycast(e.clientX, e.clientY);
+    if (pick) this.goTo(pick.id);
+    else this.select(null);
   };
 
   private onPointerLeave = () => {
-    this.pointerInside = false;
+    this.pointerAt = null;
     if (this.hovered) {
       this.hovered = null;
       this.hoverRing.visible = false;
@@ -941,24 +1329,30 @@ export class WorldEngine {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    this.zoomBy(Math.pow(1.0015, -e.deltaY));
+    this.zoomBy(Math.pow(1.0018, -e.deltaY));
   };
+
+  private onDoubleClick = (e: MouseEvent) => {
+    const { ground } = this.raycast(e.clientX, e.clientY);
+    if (ground) this.flyTo({ x: ground.x, z: ground.z }, Math.max(40, this.distGoal * 0.55));
+  };
+
+  private onContextMenu = (e: Event) => e.preventDefault();
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const target = e.target;
-    if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+    const t = e.target;
+    if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
     const code = e.code;
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(code)) {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
       this.keys.add(code);
       if (code.startsWith('Arrow')) e.preventDefault();
-      this.walkTo = null;
-      this.follow = true;
     } else if (code === 'KeyQ') this.rotate(-1);
     else if (code === 'KeyE') this.rotate(1);
-    else if (code === 'Equal' || code === 'NumpadAdd') this.zoomBy(1.15);
-    else if (code === 'Minus' || code === 'NumpadSubtract') this.zoomBy(1 / 1.15);
+    else if (code === 'Equal' || code === 'NumpadAdd') this.zoomBy(1.2);
+    else if (code === 'Minus' || code === 'NumpadSubtract') this.zoomBy(1 / 1.2);
     else if (code === 'Escape') this.select(null);
+    else if (code === 'Home') this.overview();
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -967,7 +1361,7 @@ export class WorldEngine {
 
   private onBlur = () => this.keys.clear();
 
-  // ── Loop ──────────────────────────────────────────────────────────────────
+  // ── The loop ──────────────────────────────────────────────────────────────
 
   private resize() {
     const w = this.container.clientWidth || 1;
@@ -975,132 +1369,39 @@ export class WorldEngine {
     this.renderer.setSize(w, h, false);
     this.renderer.domElement.style.width = `${w}px`;
     this.renderer.domElement.style.height = `${h}px`;
-    const viewH = this.viewHeight / this.zoom;
-    const viewW = viewH * (w / h);
-    Object.assign(this.camera, { left: -viewW / 2, right: viewW / 2, top: viewH / 2, bottom: -viewH / 2 });
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-  }
-
-  private moveAvatar(dt: number) {
-    let dx = 0;
-    let dz = 0;
-    const k = this.keys;
-    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
-    const right = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
-    if (forward || right) {
-      // Up the screen is away from the camera.
-      const fx = -Math.sin(this.yaw);
-      const fz = -Math.cos(this.yaw);
-      dx = fx * forward + Math.cos(this.yaw) * right;
-      dz = fz * forward - Math.sin(this.yaw) * right;
-    } else if (this.walkTo) {
-      dx = this.walkTo.x - this.avatar.position.x;
-      dz = this.walkTo.z - this.avatar.position.z;
-      if (Math.hypot(dx, dz) < 0.15) {
-        this.walkTo = null;
-        dx = dz = 0;
-      }
-    }
-    const length = Math.hypot(dx, dz);
-    const walking = length > 0;
-    if (walking) {
-      const speed = SPEED * (k.has('ShiftLeft') || k.has('ShiftRight') ? 2 : this.walkTo && length > 25 ? 2.2 : 1);
-      const step = Math.min(length, speed * dt);
-      const pos = this.avatar.position;
-      const limitX = (this.plan?.halfX ?? 40) - 1;
-      const limitZ = (this.plan?.halfZ ?? 40) - 1;
-      pos.x = Math.max(-limitX, Math.min(limitX, pos.x + (dx / length) * step));
-      pos.z = Math.max(-limitZ, Math.min(limitZ, pos.z + (dz / length) * step));
-      const heading = Math.atan2(dx, dz);
-      let turn = heading - this.avatar.rotation.y;
-      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-      this.avatar.rotation.y += turn * Math.min(1, dt * 12);
-    }
-    const swing = walking ? Math.sin(this.elapsed * 14) * 0.5 : 0;
-    if (this.legs[0]) this.legs[0].rotation.x = swing;
-    if (this.legs[1]) this.legs[1].rotation.x = -swing;
-    this.avatar.position.y = TILE + (walking ? Math.abs(Math.sin(this.elapsed * 14)) * 0.08 : 0);
-    if (walking) this.follow = true;
-  }
-
-  private updateDistrict() {
-    if (!this.plan) return;
-    const { x, z } = this.avatar.position;
-    let found: DistrictKey | null = null;
-    for (const d of this.plan.districts) {
-      const margin = d.key === 'hq' ? 0 : 1.5;
-      if (Math.abs(x - d.center.x) <= d.width / 2 + margin && Math.abs(z - d.center.z) <= d.depth / 2 + margin) found = d.key;
-    }
-    if (found !== this.district) {
-      this.district = found;
-      this.callbacks.onDistrict(found);
-    }
+    this.composer?.setSize(w, h);
   }
 
   private updateLabels() {
     const w = this.renderer.domElement.clientWidth;
     const h = this.renderer.domElement.clientHeight;
     const v = new THREE.Vector3();
-    const ax = this.avatar.position.x;
-    const az = this.avatar.position.z;
-    // Which labels may show, then the most important first: what is picked or under the pointer, the districts,
-    // then things nearest the figure. A label that would cover one already placed waits.
-    const wanted: Array<{ label: Label; x: number; y: number; rank: number }> = [];
+    const placed: Array<[number, number, number, number]> = [];
+    const showDistricts = this.dist > 230;
     for (const label of this.labels) {
-      let show = label.kind === 'district';
-      const focus = label.id !== undefined && (label.id === this.hovered || label.id === this.selected);
-      const distance = Math.hypot(label.pos.x - ax, label.pos.z - az);
-      if (label.kind === 'thing') {
-        const near = distance < 11 / Math.max(0.6, Math.min(1.4, this.zoom));
-        show = focus || (this.zoom >= 1.35 && near) || this.zoom >= 2.2;
-      }
+      let show = label.kind === 'district' ? showDistricts || label.id === this.hovered : label.id === this.hovered || label.id === this.selected;
       if (show) {
         v.copy(label.pos).project(this.camera);
-        show = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+        show = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
       }
       if (!show) {
         if (label.el.style.display !== 'none') label.el.style.display = 'none';
         continue;
       }
-      wanted.push({ label, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h, rank: focus ? -1 : label.kind === 'district' ? 0 : 1 + distance });
-    }
-    wanted.sort((a, b) => a.rank - b.rank);
-    const placed: Array<[number, number, number, number]> = [];
-    for (const { label, x, y } of wanted) {
-      if (label.el.style.display === 'none') label.el.style.display = '';
+      const x = ((v.x + 1) / 2) * w;
+      const y = ((1 - v.y) / 2) * h;
+      label.el.style.display = '';
       const lw = label.el.offsetWidth || 60;
-      const lh = label.el.offsetHeight || 20;
+      const lh = label.el.offsetHeight || 22;
       const box: [number, number, number, number] = [x - lw / 2, y - lh, x + lw / 2, y];
-      const covers = placed.some((p) => box[0] < p[2] + 2 && box[2] > p[0] - 2 && box[1] < p[3] + 2 && box[3] > p[1] - 2);
-      if (covers) {
+      if (placed.some((p) => box[0] < p[2] + 4 && box[2] > p[0] - 4 && box[1] < p[3] + 4 && box[3] > p[1] - 4)) {
         label.el.style.display = 'none';
         continue;
       }
       placed.push(box);
       label.el.style.transform = `translate(-50%, -100%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-    }
-    for (const t of this.travelers) {
-      if (!t.label) continue;
-      v.copy(t.mesh.position).setY(t.mesh.position.y + 0.9).project(this.camera);
-      t.label.style.transform = `translate(-50%, -100%) translate(${(((v.x + 1) / 2) * w).toFixed(1)}px, ${(((1 - v.y) / 2) * h).toFixed(1)}px)`;
-    }
-  }
-
-  private updateTravelers(dt: number) {
-    for (let i = this.travelers.length - 1; i >= 0; i--) {
-      const t = this.travelers[i];
-      t.t += dt / t.duration;
-      if (t.t >= 1) {
-        this.scene.remove(t.mesh);
-        t.label?.remove();
-        this.travelers.splice(i, 1);
-        continue;
-      }
-      const same = t.from.x === t.to.x && t.from.z === t.to.z;
-      const p = same ? t.from : pathPoint(t.from, t.to, t.t);
-      const arc = same ? Math.abs(Math.sin(t.t * Math.PI * 3)) * 0.8 : Math.sin(t.t * Math.PI) * 1.6;
-      t.mesh.position.set(p.x, TILE + 0.6 + arc, p.z);
-      t.mesh.rotation.y += dt * 2;
     }
   }
 
@@ -1110,42 +1411,119 @@ export class WorldEngine {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.elapsed += dt;
 
-    this.moveAvatar(dt);
-    this.yaw += (this.yawGoal - this.yaw) * Math.min(1, dt * 8);
-    if (this.follow) this.target.lerp(this.avatar.position, Math.min(1, dt * 5));
-    const elevation = Math.atan(1 / Math.SQRT2);
-    const distance = 120;
-    this.camera.position.set(
-      this.target.x + Math.sin(this.yaw) * Math.cos(elevation) * distance,
-      this.target.y + Math.sin(elevation) * distance,
-      this.target.z + Math.cos(this.yaw) * Math.cos(elevation) * distance,
-    );
-    this.camera.lookAt(this.target);
-    this.sun.position.set(this.target.x + 22, 46, this.target.z + 14);
-    this.sun.target.position.copy(this.target);
+    // Keys pan the view.
+    const k = this.keys;
+    const fx = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+    const fz = (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0);
+    if (fx || fz) this.panBy(-fx * 900 * dt, -fz * 900 * dt);
 
-    for (const fn of this.animated) fn(this.elapsed, dt);
-    this.updateTravelers(dt);
+    this.updateCamera(dt);
+    for (const fn of [...this.animated]) fn(this.elapsed, dt);
+    this.updateMovers(dt);
+    for (const c of this.clouds.children) {
+      c.position.x += (c.userData.speed as number) * dt;
+      const i = this.plan?.island;
+      if (i && c.position.x > i.x + i.w + 300) c.position.x = i.x - 300;
+    }
+    if (this.rain) {
+      this.rain.position.set(this.target.x, (this.rain.position.y - dt * 90) % 40, this.target.z);
+    }
+    if (this.selectPin.visible) {
+      this.selectPin.position.y = (this.selectPin.userData.base as number) + Math.sin(this.elapsed * 3) * 0.4;
+      this.selectPin.rotation.y += dt * 1.5;
+      this.selectRing.rotation.z += dt * 0.8;
+    }
 
-    if (this.pointerMoved && this.pointerInside && !this.drag) {
-      this.pointerMoved = false;
-      const { pick } = this.raycast(this.pointer.x, this.pointer.y);
-      const id = pick && !pick.id.startsWith('district:') ? pick.id : null;
+    if (this.pointerAt && !this.drag) {
+      const { pick } = this.raycast(this.pointerAt.x, this.pointerAt.y);
+      const id = pick?.id ?? null;
       if (id !== this.hovered) {
         this.hovered = id;
-        this.placeRing(this.hoverRing, id);
-        this.renderer.domElement.style.cursor = id ? 'pointer' : 'default';
+        this.placeMarker(this.hoverRing, id, false);
+        this.renderer.domElement.style.cursor = id ? 'pointer' : 'grab';
         this.callbacks.onHover(id);
       }
     }
-    if (this.selectRing.visible) this.selectRing.rotation.z += dt;
 
-    this.updateDistrict();
-    this.updateLabels();
-    if (this.elapsed - this.lastAvatarReport > 0.1) {
-      this.lastAvatarReport = this.elapsed;
-      this.callbacks.onAvatar({ x: this.avatar.position.x, z: this.avatar.position.z }, this.yaw);
+    if (this.elapsed - this.lastReport > 0.2) {
+      this.lastReport = this.elapsed;
+      this.callbacks.onView({ x: this.target.x, z: this.target.z }, this.yaw);
+      let found: DistrictKey | null = null;
+      for (const d of this.plan?.districts ?? []) {
+        const r = d.rect;
+        if (this.target.x >= r.x && this.target.x <= r.x + r.w && this.target.z >= r.z && this.target.z <= r.z + r.d) found = d.key;
+      }
+      if (this.dist > 500) found = null;
+      if (found !== this.district) {
+        this.district = found;
+        this.callbacks.onDistrict(found);
+      }
+      // The time of day moves on.
+      if (Math.floor(this.elapsed) % 30 === 0) this.applyLight();
     }
-    this.renderer.render(this.scene, this.camera);
+    this.updateLabels();
+    if (this.composer) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
   };
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+const UP = new THREE.Vector3(0, 1, 0);
+const PROXY_MATERIAL = new THREE.MeshBasicMaterial({ visible: false });
+/** The colour of a model's tape on its boxes. */
+const FAMILY = [0x2f6fe0, 0xd9534f, 0x2aa6a0, 0xf2b705, 0x8e5bd6, 0x26303f, 0xf08a3c, 0x5fb36b];
+const EVENT_COLORS: Record<WorldEvent['kind'], number> = {
+  order: 0x2f6fe0,
+  sale: 0x2f6fe0,
+  transfer: 0xf08a3c,
+  purchase: 0x8a6a4f,
+  return: 0x8e5bd6,
+  adjust: 0x9aa4b2,
+  income: 0x2ecc71,
+  expense: 0xd9534f,
+};
+
+/** Sends glass pieces to their own batch, so windows can light up at night. */
+class Router extends Batch {
+  constructor(private glassBatch: Batch) {
+    super();
+  }
+  add(geometry: THREE.BufferGeometry, place: Parameters<Batch['add']>[1], rgb: number) {
+    if (rgb === COLORS.glass || rgb === COLORS.glassDark) this.glassBatch.add(geometry, place, rgb);
+    else super.add(geometry, place, rgb);
+  }
+}
+
+/** An island: a rounded slab, its top at y = 0. */
+function islandSlab(rect: Rect, radius: number): THREE.Mesh {
+  const { x, z, w, d } = rect;
+  const r = Math.min(radius, w / 2, d / 2);
+  const shape = new THREE.Shape();
+  shape.moveTo(x + r, z);
+  shape.lineTo(x + w - r, z);
+  shape.quadraticCurveTo(x + w, z, x + w, z + r);
+  shape.lineTo(x + w, z + d - r);
+  shape.quadraticCurveTo(x + w, z + d, x + w - r, z + d);
+  shape.lineTo(x + r, z + d);
+  shape.quadraticCurveTo(x, z + d, x, z + d - r);
+  shape.lineTo(x, z + r);
+  shape.quadraticCurveTo(x, z, x + r, z);
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 3, bevelEnabled: true, bevelSize: 1.2, bevelThickness: 0.6, bevelSegments: 2, curveSegments: 8 });
+  const mesh = new THREE.Mesh(geometry, [ISLAND_TOP, ISLAND_SIDE]);
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.y = -0.6;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+const ISLAND_TOP = new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 0.95 });
+const ISLAND_SIDE = new THREE.MeshStandardMaterial({ color: 0xc9cfd9, roughness: 0.95 });
+
+function ring(color: number, opacity: number) {
+  const mesh = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.visible = false;
+  mesh.renderOrder = 2;
+  return mesh;
 }
