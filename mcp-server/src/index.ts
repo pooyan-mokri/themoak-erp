@@ -4,9 +4,9 @@
  * Connects Claude Desktop (and any MCP-compatible client) to the ERP system.
  *
  * Config (env vars):
- *   ERP_API_URL    — e.g. https://themoak-erp.vercel.app
+ *   ERP_API_URL    — e.g. https://erp.themoak.com
  *   ERP_API_SECRET — Bearer token: the ERP's full key, the same value as
- *                    ERP_API_SECRET in Vercel. Not ERP_SITE_API_SECRET: that is
+ *                    ERP_API_SECRET on Liara. Not ERP_SITE_API_SECRET: that is
  *                    the website's key, and every tool here would get 403 with it.
  */
 
@@ -207,6 +207,83 @@ const TOOLS = [
       required: ['fromAccountId', 'toAccountId', 'amount', 'currency'],
     },
   },
+  {
+    name: 'erp_suppliers',
+    description: 'Suppliers: id, name, phone, email and how many purchase orders each has.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'erp_purchase_orders',
+    description:
+      "Recent purchase orders: number, supplier, status, tags (a PI: tag names the supplier's proforma invoice), currency, totalAmount in that currency, totalAmountInToman (null until paid), items (sku, name, quantity, unitCost, currency, receivedQuantity), additional costs, payments in Toman, and unpaidInToman (an order without a Toman total is counted at today's rate).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        supplier: { type: 'string', description: "A supplier's id or part of its name" },
+        status:   { type: 'string', enum: ['DRAFT', 'PENDING_PAYMENT', 'PARTIALLY_PAID', 'PAID', 'IN_PRODUCTION', 'ARRIVED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'] },
+        tag:      { type: 'string', description: 'Only orders with this tag, e.g. PI:2026-031' },
+        limit:    { type: 'number', description: 'Default 30, max 100' },
+      },
+    },
+  },
+  {
+    name: 'erp_create_supplier',
+    description:
+      'Add a supplier. A name already there (case aside) is refused and the existing one returned: check erp_suppliers first. Read the details back to the user and get their confirmation before creating.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }, address: { type: 'string' } },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'erp_create_product',
+    description:
+      'Add a product, as the product form does (an in-store barcode is made). It does not go on the website: only a product given its site id on the product page is sold there. An SKU already taken (case aside) is refused. Read the details back to the user and get their confirmation before creating.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sku:         { type: 'string' },
+        name:        { type: 'string' },
+        sellPrice:   { type: 'number', description: 'Toman' },
+        costPrice:   { type: 'number', description: 'Toman, optional (default 0)' },
+        productType: { type: 'string', enum: ['SALEABLE', 'FIXED_ASSET', 'CONSUMABLE', 'OTHER'], description: 'Default SALEABLE' },
+      },
+      required: ['sku', 'name', 'sellPrice'],
+    },
+  },
+  {
+    name: 'erp_create_purchase_order',
+    description:
+      "Record a purchase order exactly as the supplier's PI states it: one currency for the whole order (usually CNY), prices in that currency, no Toman figure (its Toman value is the rate paid, at payment). Products by SKU; unknown SKUs are listed and nothing is written — add them with erp_create_product first. The same SKU may come twice (e.g. 17 paid + 3 free at unitCost 0). Put the PI number in tags as PI:<number>: a PI already on an order is refused. Before creating, read the whole order back to the user (supplier, each line, costs, total, currency, PI) and get their confirmation.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        supplier: { type: 'string', description: "The supplier's name or id" },
+        currency: { ...CURRENCY, description: "The order's one currency (the PI's)" },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              sku:      { type: 'string' },
+              quantity: { type: 'number', description: 'A whole number, 1 or more' },
+              unitCost: { type: 'number', description: "In the order's currency; 0 for a free line" },
+            },
+            required: ['sku', 'quantity', 'unitCost'],
+          },
+        },
+        additionalCosts: {
+          type: 'array',
+          description: "Freight, commission and the like, in the order's currency",
+          items: { type: 'object', properties: { title: { type: 'string' }, amount: { type: 'number' } }, required: ['title', 'amount'] },
+        },
+        tags:   { type: 'array', items: { type: 'string' }, description: 'e.g. ["PI:2026-031"]' },
+        status: { type: 'string', enum: ['DRAFT', 'PENDING_PAYMENT'], description: 'Default DRAFT' },
+      },
+      required: ['supplier', 'currency', 'items'],
+    },
+  },
 ];
 
 // ── Server setup ──────────────────────────────────────────────────────────────
@@ -263,6 +340,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'erp_product_sales':
         result = await erpGet('productSales', args.days ? { days: String(args.days) } : {});
+        break;
+      case 'erp_suppliers':
+        result = await erpGet('suppliers');
+        break;
+      case 'erp_purchase_orders':
+        result = await erpGet('purchaseOrders', Object.fromEntries(
+          (['supplier', 'status', 'tag', 'limit'] as const).filter((k) => args[k] != null && args[k] !== '').map((k) => [k, String(args[k])]),
+        ));
+        break;
+      case 'erp_create_supplier':
+        result = await erpPost({ action: 'createSupplier', ...args });
+        break;
+      case 'erp_create_product':
+        result = await erpPost({ action: 'createProduct', ...args });
+        break;
+      case 'erp_create_purchase_order':
+        result = await erpPost({ action: 'createPurchaseOrder', ...args });
         break;
       case 'erp_deposit':
       case 'erp_expense':

@@ -456,8 +456,9 @@ export async function buildWorld(client: any, role: string | null | undefined, n
       const volumeBy = new Map<string, number>();
       const supplierCreditBy = new Map<string, number>();
       if (layers.finance) {
-        for (const po of await client.purchaseOrder.findMany({ where: { status: { not: 'CANCELLED' } }, select: { supplierId: true, totalAmountInToman: true } })) {
-          volumeBy.set(po.supplierId, (volumeBy.get(po.supplierId) ?? 0) + Number(po.totalAmountInToman ?? 0));
+        // An order recorded in the supplier's currency has no Toman total: priced at the latest rate.
+        for (const po of await client.purchaseOrder.findMany({ where: { status: { not: 'CANCELLED' } }, select: { supplierId: true, ...PURCHASE_ORDER_DEBT_FIELDS } })) {
+          volumeBy.set(po.supplierId, (volumeBy.get(po.supplierId) ?? 0) + unpaidOnPurchaseOrder({ ...po, payments: [] }, rates));
         }
         for (const r of await client.supplierCredit.groupBy({ by: ['supplierId'], _sum: { amount: true } })) supplierCreditBy.set(r.supplierId, Number(r._sum.amount ?? 0));
       }

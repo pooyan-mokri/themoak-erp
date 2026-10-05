@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
-import { PURCHASE_STATUSES, awaitsReceipt, isOpen, payableOf, purchaseStatus } from './purchase-figures';
+import { CURRENCY_LABELS, PAID_AT_RATE_NOTE, PURCHASE_STATUSES, awaitsReceipt, foreignTotalOf, isOpen, payableOf, purchaseStatus, tomanValueOf } from './purchase-figures';
 
 interface PurchaseOrder {
   id: string;
@@ -34,7 +34,8 @@ interface OrderListProps {
 }
 
 const fa = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 0 }).format(Math.round(n));
-const totalOf = (o: PurchaseOrder) => Number(o.totalAmountInToman ?? o.totalAmount ?? 0);
+// A supplier's price may have cents (¥12.50); Toman never does.
+const faForeign = (n: number) => new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 }).format(n);
 
 const VIEWS = [
   { id: 'all', label: 'همه', match: () => true },
@@ -73,7 +74,7 @@ export function OrderList({ orders, canSeeFinance }: OrderListProps) {
     const value = (o: PurchaseOrder): number | string =>
       sort.key === 'number' ? o.number
       : sort.key === 'supplier' ? o.supplier.name
-      : sort.key === 'total' ? totalOf(o)
+      : sort.key === 'total' ? tomanValueOf(o)
       : sort.key === 'remaining' ? payableOf(o) ?? 0
       : new Date(o.createdAt).getTime();
     const dir = sort.dir === 'asc' ? 1 : -1;
@@ -142,7 +143,7 @@ export function OrderList({ orders, canSeeFinance }: OrderListProps) {
                 <SortHead k="number">شماره</SortHead>
                 <SortHead k="supplier">تامین‌کننده</SortHead>
                 <th className="h-9 bg-secondary px-3 text-start text-xs font-normal text-muted-foreground">اقلام</th>
-                {canSeeFinance && <SortHead k="total" end>مبلغ کل (تومان)</SortHead>}
+                {canSeeFinance && <SortHead k="total" end>مبلغ کل</SortHead>}
                 {canSeeFinance && <SortHead k="remaining" end>مانده پرداخت</SortHead>}
                 <th className="h-9 bg-secondary px-3 text-start text-xs font-normal text-muted-foreground">وضعیت</th>
                 <SortHead k="createdAt">تاریخ ثبت</SortHead>
@@ -177,6 +178,8 @@ export function OrderList({ orders, canSeeFinance }: OrderListProps) {
                 const remaining = payableOf(order) ?? 0;
                 const units = order.items.reduce((sum: number, i: any) => sum + (i.quantity ?? 0), 0);
                 const currencies = Array.from(new Set(order.items.map((i: any) => i.currency).filter((c: string) => c && c !== 'TOMAN')));
+                // Recorded in the supplier's currency: no Toman total until it is paid.
+                const foreign = foreignTotalOf(order);
                 return (
                   <tr
                     key={order.id}
@@ -197,7 +200,18 @@ export function OrderList({ orders, canSeeFinance }: OrderListProps) {
                       {fa(order.items.length)} ردیف · {fa(units)} عدد
                       {currencies.length > 0 && <span className="ms-1 font-mono text-[11px]">{currencies.join(' ')}</span>}
                     </td>
-                    {canSeeFinance && <td className="px-3 text-end font-medium tabular-nums">{fa(totalOf(order))}</td>}
+                    {canSeeFinance && (
+                      <td className="px-3 text-end font-medium tabular-nums">
+                        {foreign ? (
+                          <>
+                            {faForeign(foreign.amount)} <small className="text-[11px] font-normal text-muted-foreground">{CURRENCY_LABELS[foreign.currency] ?? foreign.currency}</small>
+                            <span className="block text-[11px] font-normal text-muted-foreground">{PAID_AT_RATE_NOTE}</span>
+                          </>
+                        ) : (
+                          fa(tomanValueOf(order))
+                        )}
+                      </td>
+                    )}
                     {canSeeFinance && (
                       <td className="px-3 text-end tabular-nums text-muted-foreground">{remaining > 0 ? fa(remaining) : '—'}</td>
                     )}

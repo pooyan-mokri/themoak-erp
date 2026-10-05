@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://themoak-erp.vercel.app",
+      "url": "https://erp.themoak.com",
       "description": "Production server"
     }
   ],
@@ -19,16 +19,16 @@
       "get": {
         "operationId": "erpQuery",
         "summary": "Query ERP data",
-        "description": "Fetch financial summaries, accounts, transactions, orders, settlements, loans, search, stock across warehouses, or per-product sales.",
+        "description": "Fetch financial summaries, accounts, transactions, orders, settlements, loans, search, stock across warehouses, per-product sales, suppliers or purchase orders.",
         "parameters": [
           {
             "name": "action",
             "in": "query",
             "required": true,
-            "description": "The data to fetch: summary | accounts | transactions | orders | settlements | loans | search | inventory | productSales",
+            "description": "The data to fetch: summary | accounts | transactions | orders | settlements | loans | search | inventory | productSales | suppliers | purchaseOrders",
             "schema": {
               "type": "string",
-              "enum": ["summary", "accounts", "transactions", "orders", "settlements", "loans", "search", "inventory", "productSales"]
+              "enum": ["summary", "accounts", "transactions", "orders", "settlements", "loans", "search", "inventory", "productSales", "suppliers", "purchaseOrders"]
             }
           },
           {
@@ -86,6 +86,27 @@
             "required": false,
             "description": "Sales window in days when action=productSales (max 730)",
             "schema": { "type": "integer", "default": 90 }
+          },
+          {
+            "name": "supplier",
+            "in": "query",
+            "required": false,
+            "description": "action=purchaseOrders: a supplier's id, or part of its name",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "action=purchaseOrders: only orders in this status",
+            "schema": { "type": "string", "enum": ["DRAFT", "PENDING_PAYMENT", "PARTIALLY_PAID", "PAID", "IN_PRODUCTION", "ARRIVED", "PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED"] }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "description": "action=purchaseOrders: only orders carrying this tag, e.g. PI:2026-031",
+            "schema": { "type": "string" }
           }
         ],
         "responses": {
@@ -109,8 +130,8 @@
       },
       "post": {
         "operationId": "erpWrite",
-        "summary": "Write to ERP (record transactions)",
-        "description": "Record a deposit, expense/payment, or internal transfer between accounts. Send a fresh requestId with each entry and the same one when retrying it: an entry is booked once per requestId.",
+        "summary": "Write to ERP (record transactions, suppliers, products, purchase orders)",
+        "description": "Record a deposit, expense/payment, or internal transfer between accounts. Send a fresh requestId with each entry and the same one when retrying it: an entry is booked once per requestId. Also: a supplier, a product, or a purchase order recorded in the supplier's currency with no Toman figure (its Toman value is the rate paid, at payment). A tag starting with PI: books one order per PI.",
         "requestBody": {
           "required": true,
           "content": {
@@ -119,7 +140,10 @@
                 "oneOf": [
                   { "$ref": "#/components/schemas/DepositRequest" },
                   { "$ref": "#/components/schemas/ExpenseRequest" },
-                  { "$ref": "#/components/schemas/TransferRequest" }
+                  { "$ref": "#/components/schemas/TransferRequest" },
+                  { "$ref": "#/components/schemas/CreateSupplierRequest" },
+                  { "$ref": "#/components/schemas/CreateProductRequest" },
+                  { "$ref": "#/components/schemas/CreatePurchaseOrderRequest" }
                 ]
               }
             }
@@ -275,6 +299,66 @@
           "description": { "type": "string" },
           "date": { "type": "string", "format": "date", "description": "Gregorian YYYY-MM-DD, defaults to today. A Jalali date is refused." },
           "requestId": { "type": "string", "description": "8-64 letters, digits, - or _. The same id is booked once." }
+        }
+      },
+      "CreateSupplierRequest": {
+        "type": "object",
+        "required": ["action", "name"],
+        "properties": {
+          "action": { "type": "string", "enum": ["createSupplier"] },
+          "name": { "type": "string", "description": "Refused when a supplier already has it (case and outer spaces aside)" },
+          "phone": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "address": { "type": "string" }
+        }
+      },
+      "CreateProductRequest": {
+        "type": "object",
+        "required": ["action", "sku", "name", "sellPrice"],
+        "properties": {
+          "action": { "type": "string", "enum": ["createProduct"] },
+          "sku": { "type": "string", "description": "Unique, case aside" },
+          "name": { "type": "string" },
+          "sellPrice": { "type": "number", "minimum": 0, "description": "Toman" },
+          "costPrice": { "type": "number", "minimum": 0, "default": 0, "description": "Toman" },
+          "productType": { "type": "string", "enum": ["SALEABLE", "FIXED_ASSET", "CONSUMABLE", "OTHER"], "default": "SALEABLE" }
+        }
+      },
+      "CreatePurchaseOrderRequest": {
+        "type": "object",
+        "required": ["action", "supplier", "items"],
+        "properties": {
+          "action": { "type": "string", "enum": ["createPurchaseOrder"] },
+          "supplier": { "type": "string", "description": "The supplier's name or id" },
+          "currency": { "type": "string", "enum": ["TOMAN", "USD", "EUR", "CNY"], "description": "The order's one currency (the PI's); lines and costs without their own take it. Two currencies in one order are refused." },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["sku", "quantity", "unitCost"],
+              "properties": {
+                "sku": { "type": "string" },
+                "quantity": { "type": "integer", "minimum": 1 },
+                "unitCost": { "type": "number", "minimum": 0, "description": "In the order's currency; 0 for a free line. The same SKU may come twice." },
+                "currency": { "type": "string", "enum": ["TOMAN", "USD", "EUR", "CNY"] }
+              }
+            }
+          },
+          "additionalCosts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "amount"],
+              "properties": {
+                "title": { "type": "string" },
+                "amount": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "enum": ["TOMAN", "USD", "EUR", "CNY"] }
+              }
+            }
+          },
+          "tags": { "type": "array", "items": { "type": "string" }, "description": "A tag starting with PI: names the supplier's proforma invoice; an order not cancelled already carrying it refuses this one." },
+          "status": { "type": "string", "enum": ["DRAFT", "PENDING_PAYMENT"], "default": "DRAFT" }
         }
       }
     }

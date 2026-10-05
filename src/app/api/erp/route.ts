@@ -15,6 +15,7 @@ import { apiKeyUser, apiTag, looksLikeApiKey } from '@/lib/api-keys';
 import { currentApiActor, runAsApiUser, type ApiActor } from '@/lib/api-actor';
 import { logActivity } from '@/lib/activity-log';
 import { PERSONAL_POST_ACTIONS, personalMay, personalPost, redactForRole, whoami } from '@/lib/erp-api-personal';
+import { PURCHASING_GET_ACTIONS, PURCHASING_POST_ACTIONS, createProduct, createPurchaseOrder, createSupplier, listPurchaseOrders, listSuppliers } from '@/lib/erp-api-purchasing';
 
 // Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
 export const maxDuration = 30;
@@ -80,6 +81,7 @@ const GET_ACTIONS = [
   'stock',
   'inventory',
   'productSales',
+  ...PURCHASING_GET_ACTIONS,
 ];
 
 /** A list size from the query: a whole number from 1 to max; anything else is the default. */
@@ -552,6 +554,15 @@ async function getAction(req: NextRequest, key: ApiKey) {
         return NextResponse.json({ at: new Date().toISOString(), days, since: since.toISOString(), products: rows });
       }
 
+      // ── تأمین‌کننده‌ها و سفارش‌های خرید (src/lib/erp-api-purchasing.ts) ──────
+      case 'suppliers':
+        return NextResponse.json(await listSuppliers(prisma));
+
+      case 'purchaseOrders': {
+        const result = await listPurchaseOrders(prisma, searchParams);
+        return NextResponse.json(result.body, { status: result.status });
+      }
+
       default:
         return unknownGetAction();
     }
@@ -665,7 +676,7 @@ async function repeatedReply(requestId: string) {
 }
 
 // ── POST /api/erp  body: { action, ...fields } ───────────────────────────────
-const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus', ...PERSONAL_POST_ACTIONS];
+const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus', ...PERSONAL_POST_ACTIONS, ...PURCHASING_POST_ACTIONS];
 
 function unknownPostAction() {
   return NextResponse.json({ error: 'Unknown action', availableActions: POST_ACTIONS }, { status: 404 });
@@ -882,6 +893,15 @@ async function postAction(req: NextRequest, key: ApiKey) {
       case 'returnOrderItem':
       case 'transferStock': {
         const result = await personalPost(prisma, action, fields);
+        return NextResponse.json(result.body, { status: result.status });
+      }
+
+      // ── تأمین‌کننده، کالا و سفارش خرید: کلید کامل یا کلید شخصی (src/lib/erp-api-purchasing.ts) ──
+      case 'createSupplier':
+      case 'createProduct':
+      case 'createPurchaseOrder': {
+        const run = action === 'createSupplier' ? createSupplier : action === 'createProduct' ? createProduct : createPurchaseOrder;
+        const result = await run(prisma, fields);
         return NextResponse.json(result.body, { status: result.status });
       }
 

@@ -23,7 +23,7 @@ import { useRequestId } from '@/components/ui/request-id';
 import { Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { cn } from '@/lib/utils';
-import { CURRENCY_LABELS, purchaseStatus } from './purchase-figures';
+import { CURRENCY_LABELS, PAID_AT_RATE_NOTE, purchaseStatus } from './purchase-figures';
 
 type Currency = 'TOMAN' | 'USD' | 'EUR' | 'CNY';
 
@@ -302,7 +302,10 @@ export function OrderDetail({
 
   // Payment figures (partial payments). An order closed short owes only for the units that came.
   const totalInToman = owedTotalInToman(order, (currency: string) => getExchangeRate(currency as Currency)) || 0;
-  const totalLabel = isClosedShort(order) ? 'مبلغ کالای رسیده' : 'مبلغ کل';
+  // Recorded in the supplier's currency (an order made through the API): no Toman total until it is paid, so the
+  // figures below price it at today's rate.
+  const atTodaysRate = !order.totalAmountInToman && !isClosedShort(order);
+  const totalLabel = isClosedShort(order) ? 'مبلغ کالای رسیده' : atTodaysRate ? 'مبلغ کل (به نرخ امروز)' : 'مبلغ کل';
   const paidSoFar = order.paidAmountInToman ?? (order.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
   const remaining = Math.max(0, totalInToman - paidSoFar);
   const creditBalance = order.supplierCreditBalance ?? 0;
@@ -564,8 +567,13 @@ export function OrderDetail({
               </p>
             )}
             {order.items && order.items.length > 0 && (
-              <p className="mt-1 text-[12px] text-muted-foreground tabular-nums">
+              <p className={order.totalAmountInToman ? 'mt-1 text-[12px] text-muted-foreground tabular-nums' : 'mt-1.5 text-[19px] font-medium tabular-nums'}>
                 {Number(order.totalAmount).toLocaleString('fa-IR')} {getCurrencyLabel(order.items[0]?.currency || 'TOMAN')}
+              </p>
+            )}
+            {!order.totalAmountInToman && order.items?.[0]?.currency && order.items[0].currency !== 'TOMAN' && (
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                به {getCurrencyLabel(order.items[0].currency)} — {PAID_AT_RATE_NOTE}
               </p>
             )}
           </div>

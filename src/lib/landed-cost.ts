@@ -7,7 +7,8 @@
  * value of the goods, so a cheap high-count part must not absorb the same
  * amount as an expensive one.
  *
- *   poolInToman        = Σ order additionalCosts + Σ arrival additionalCosts   (already in Toman)
+ *   poolInToman        = Σ order additionalCosts + Σ arrival additionalCosts   (in Toman; a cost with no Toman
+ *                        snapshot, as the API records one in the supplier's currency, at the live rate)
  *   orderValueInToman  = Σ quantity_i × unitCostInToman_i
  *   perUnit_i          = poolInToman × unitCostInToman_i / orderValueInToman
  *   landedPerUnit_i    = unitCostInToman_i + perUnit_i
@@ -34,10 +35,20 @@ export interface LandedCostItem {
   unitCostInToman?: Numeric;
 }
 
+export interface LandedCostCost {
+  /** Toman value snapshotted when the cost was recorded; preferred over a live re-conversion. */
+  amountInToman?: Numeric;
+  /** In `currency`: used, at the live rate, when there is no Toman snapshot. */
+  amount?: Numeric;
+  currency?: string | null;
+}
+
 export interface LandedCostOrder {
   items: LandedCostItem[];
-  additionalCosts?: Array<{ amountInToman?: Numeric }> | null;
-  arrivalAdditionalCosts?: Array<{ amountInToman?: Numeric }> | null;
+  additionalCosts?: LandedCostCost[] | null;
+  arrivalAdditionalCosts?: LandedCostCost[] | null;
+  /** The order's Toman total, set when it was placed; none on an order recorded in the supplier's currency. */
+  totalAmountInToman?: Numeric;
 }
 
 /** Coerce Prisma.Decimal | string | number | null into a finite number. */
@@ -64,10 +75,20 @@ export function unitCostInToman(
   return num(item.unitCost) * getExchangeRate(item.currency || 'TOMAN');
 }
 
+/**
+ * One additional cost in Toman: its snapshot, or, recorded in the supplier's currency with none (an order made
+ * through the API), its amount at the live rate, as unitCostInToman prices such a line.
+ */
+export function costInToman(cost: LandedCostCost | null | undefined, getExchangeRate: (currency: string) => number): number {
+  if (!cost) return 0;
+  if (isPresent(cost.amountInToman)) return num(cost.amountInToman);
+  return num(cost.amount) * getExchangeRate(cost.currency || 'TOMAN');
+}
+
 /** Total additional-cost pool in Toman: order-level costs + arrival costs. */
-export function additionalCostPool(order: LandedCostOrder): number {
-  const orderCosts = (order.additionalCosts ?? []).reduce((s, c) => s + num(c?.amountInToman), 0);
-  const arrivalCosts = (order.arrivalAdditionalCosts ?? []).reduce((s, c) => s + num(c?.amountInToman), 0);
+export function additionalCostPool(order: LandedCostOrder, getExchangeRate: (currency: string) => number): number {
+  const orderCosts = (order.additionalCosts ?? []).reduce((s, c) => s + costInToman(c, getExchangeRate), 0);
+  const arrivalCosts = (order.arrivalAdditionalCosts ?? []).reduce((s, c) => s + costInToman(c, getExchangeRate), 0);
   return orderCosts + arrivalCosts;
 }
 
@@ -96,7 +117,7 @@ export function additionalCostPerUnit(
   getExchangeRate: (currency: string) => number,
   basis: CostBasis = 'ordered'
 ): number {
-  const pool = additionalCostPool(order);
+  const pool = additionalCostPool(order, getExchangeRate);
   if (pool === 0) return 0;
 
   const totalValue = orderValueInToman(order, getExchangeRate, basis);
@@ -131,7 +152,7 @@ export function receivedValueInToman(
     (sum, item) => sum + num(item.receivedQuantity) * unitCostInToman(item, getExchangeRate),
     0
   );
-  return goods + (order.additionalCosts ?? []).reduce((s, c) => s + num(c?.amountInToman), 0);
+  return goods + (order.additionalCosts ?? []).reduce((s, c) => s + costInToman(c, getExchangeRate), 0);
 }
 
 /**
@@ -148,13 +169,20 @@ export function isClosedShort(order: { status?: string | null; items: Array<{ qu
 
 /**
  * What the supplier is owed for an order in all, in Toman, before payments: its Toman total, or for an order
- * closed short the value of the units that came (receivedValueInToman; the rest was never delivered).
+ * closed short the value of the units that came (receivedValueInToman; the rest was never delivered). An order
+ * with no Toman total (recorded in the supplier's currency) is priced as the payment code prices it: its lines
+ * and order costs at the live rate.
  */
 export function owedTotalInToman(
-  order: LandedCostOrder & { status?: string | null; totalAmountInToman?: Numeric },
+  order: LandedCostOrder & { status?: string | null },
   getExchangeRate: (currency: string) => number
 ): number {
-  return isClosedShort(order) ? receivedValueInToman(order, getExchangeRate) : num(order.totalAmountInToman);
+  if (isClosedShort(order)) return receivedValueInToman(order, getExchangeRate);
+  if (num(order.totalAmountInToman) > 0) return num(order.totalAmountInToman);
+  return (
+    orderValueInToman(order, getExchangeRate) +
+    (order.additionalCosts ?? []).reduce((s, c) => s + costInToman(c, getExchangeRate), 0)
+  );
 }
 
 /**
