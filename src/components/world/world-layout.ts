@@ -175,7 +175,7 @@ export function planWorld(data: WorldData): WorldPlan {
   if (data.customers) {
     const crowd = Math.min(CROWD_MAX, Math.max(0, data.customers.total - data.customers.top.length));
     const crowdColumns = Math.max(6, Math.ceil(Math.sqrt(crowd * 2)));
-    sizes.set('customers', { width: Math.max(5 * 3.2, crowdColumns * 1.4) + 4, depth: 7 + Math.ceil(crowd / crowdColumns) * 1.4 + 3 });
+    sizes.set('customers', { width: Math.max(5 * 4.2, crowdColumns * 1.4) + 4, depth: 9.5 + Math.ceil(crowd / crowdColumns) * 1.4 + 3 });
   }
   const supplierList = data.suppliers?.suppliers ?? [];
   if (data.suppliers) {
@@ -261,7 +261,7 @@ export function planWorld(data: WorldData): WorldPlan {
   const customers = { top: [] as Slot[], crowd: [] as Point[] };
   if (customerDistrict && data.customers) {
     const top = data.customers.top;
-    customers.top = grid(top.length, 5, 3.2, { x: customerDistrict.center.x, z: customerDistrict.center.z - customerDistrict.depth / 2 + 3.5 + (Math.ceil(top.length / 5) - 1) * 1.6 }).map((p, i) => ({ ...p, id: top[i].id }));
+    customers.top = grid(top.length, 5, 4.2, { x: customerDistrict.center.x, z: customerDistrict.center.z - customerDistrict.depth / 2 + 3.5 + (Math.ceil(top.length / 5) - 1) * 2.1 }).map((p, i) => ({ ...p, id: top[i].id }));
     const crowd = Math.min(CROWD_MAX, Math.max(0, data.customers.total - top.length));
     const crowdColumns = Math.max(6, Math.ceil(Math.sqrt(crowd * 2)));
     const rows = Math.ceil(crowd / crowdColumns);

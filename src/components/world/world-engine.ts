@@ -12,6 +12,12 @@
  */
 import * as THREE from 'three';
 import { pathPoint, planWorld, type DistrictKey, type Point, type WorldPlan } from '@/components/world/world-layout';
+import { Batch, Shapes, pick as pickOne, seeded } from '@/components/world/world-kit';
+import { SignAtlas, signFontLoaded, signFontReady } from '@/components/world/world-signs';
+import {
+  CROWD_ROOFS, CROWD_WALLS, buildFactory, buildHall, buildHouse, buildHq, buildKiosk, buildOffice, buildStore, buildTower,
+  type Footprint, type Kit,
+} from '@/components/world/world-buildings';
 import type { WorldData, WorldEvent } from '@/lib/world-types';
 
 type Palette = {
@@ -75,7 +81,15 @@ export class WorldEngine {
   private box = new THREE.BoxGeometry(1, 1, 1);
   private cylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 24);
   private cone4 = new THREE.ConeGeometry(0.75, 1, 4);
+  private shapes = new Shapes();
   private materials = new Map<string, THREE.Material>();
+  /** The batches' materials: one colour per vertex; windows light up at night; status lights always shine. */
+  private solidMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  private litMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffd27a, emissiveIntensity: 0 });
+  private glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+  /** Invisible boxes that make a merged building pickable. */
+  private proxyMat = new THREE.MeshBasicMaterial({ visible: false });
+  private kit: Kit | null = null;
   private owned: Array<{ dispose: () => void }> = [];
   private pickables: THREE.Object3D[] = [];
   private labels: Label[] = [];
@@ -216,6 +230,11 @@ export class WorldEngine {
     this.avatar.position.set(p.x, TILE, p.z);
     this.walkTo = null;
     this.follow = true;
+    // Close enough to read the signs.
+    if (this.zoom < 1.3) {
+      this.zoom = 1.3;
+      this.resize();
+    }
     this.select(`district:${key}`);
   }
 
@@ -298,9 +317,11 @@ export class WorldEngine {
     this.clearWorld();
     for (const t of this.travelers) t.label?.remove();
     for (const m of this.materials.values()) m.dispose();
+    for (const m of [this.solidMat, this.litMat, this.glowMat, this.proxyMat]) m.dispose();
     this.box.dispose();
     this.cylinder.dispose();
     this.cone4.dispose();
+    this.shapes.dispose();
     this.renderer.dispose();
     el.remove();
   }
@@ -335,6 +356,50 @@ export class WorldEngine {
   /** A box standing on y with its footprint centred at x, z. */
   private block(color: number, x: number, z: number, w: number, h: number, d: number, y = TILE, opts?: { emissive?: number; transparent?: number }) {
     return this.add(this.box, this.mat(color, opts), x, y + h / 2, z, w, h, d);
+  }
+
+  /** An invisible box over a merged building, so it can be picked. */
+  private proxy(id: string, f: Footprint, base: Point = f) {
+    const mesh = new THREE.Mesh(this.box, this.proxyMat);
+    mesh.position.set(f.x, TILE + f.h / 2, f.z);
+    mesh.scale.set(f.w, f.h, f.d);
+    this.world.add(mesh);
+    this.pickable(mesh, id, { x: base.x, z: base.z }, Math.max(f.w, f.d) / 2);
+    return mesh;
+  }
+
+  /** A fresh kit for one build of the map. */
+  private startKit(): Kit {
+    const small = Math.min(window.innerWidth, window.innerHeight) < 700;
+    this.kit = {
+      shapes: this.shapes,
+      solid: new Batch(),
+      lit: new Batch(),
+      glow: new Batch(),
+      signs: new SignAtlas(small ? 96 : 128, this.renderer.capabilities.getMaxAnisotropy()),
+    };
+    return this.kit;
+  }
+
+  /** Merges what the kit holds into the map: a few meshes, one texture of signs. */
+  private finishKit() {
+    const kit = this.kit;
+    if (!kit) return;
+    this.kit = null;
+    for (const [batch, material, shadows] of [[kit.solid, this.solidMat, true], [kit.lit, this.litMat, false], [kit.glow, this.glowMat, false]] as const) {
+      const mesh = batch.mesh(material, shadows);
+      if (!mesh) continue;
+      this.world.add(mesh);
+      this.owned.push(mesh.geometry);
+    }
+    const signMat = new THREE.MeshLambertMaterial({ map: kit.signs.texture, emissive: 0xffffff, emissiveMap: kit.signs.texture, emissiveIntensity: this.palette === NIGHT ? 0.75 : 0 });
+    const signs = kit.signs.mesh(signMat);
+    if (signs) {
+      this.world.add(signs);
+      this.owned.push(signs.geometry);
+    }
+    this.owned.push(signMat, kit.signs);
+    if (!signFontLoaded()) signFontReady().then(() => kit.signs.redraw());
   }
 
   private pickable(object: THREE.Object3D, id: string, base: Point, radius: number) {
@@ -394,6 +459,7 @@ export class WorldEngine {
     this.hemi.groundColor.set(p.hemiGround);
     this.sun.color.set(p.light);
     this.sun.intensity = p === NIGHT ? 0.9 : 2.2;
+    this.litMat.emissiveIntensity = p === NIGHT ? 0.85 : 0;
   }
 
   private buildAvatar() {
@@ -420,6 +486,8 @@ export class WorldEngine {
     const data = this.data!;
     const p = this.palette;
     this.clearWorld();
+    const kit = this.startKit();
+    const { solid, shapes } = kit;
 
     // The island.
     const hx = plan.halfX;
@@ -453,17 +521,14 @@ export class WorldEngine {
     // Roads from the plaza to each district.
     for (const road of plan.roads) {
       const length = Math.hypot(road.to.x, road.to.z);
-      const mesh = this.add(this.box, this.mat(p.road), road.to.x / 2, 0.03, road.to.z / 2, 1.6, 0.06, length);
-      mesh.rotation.y = Math.atan2(road.to.x, road.to.z);
-      mesh.castShadow = false;
+      solid.add(shapes.box, { x: road.to.x / 2, y: 0.03, z: road.to.z / 2, sx: 1.6, sy: 0.06, sz: length, ry: Math.atan2(road.to.x, road.to.z) }, p.road);
     }
 
     // District tiles and their names.
     for (const d of plan.districts) {
       if (d.key === 'hq') continue;
-      const tile = this.block(p.tiles[d.key], d.center.x, d.center.z, d.width, TILE, d.depth, 0);
-      tile.castShadow = false;
-      this.pickable(tile, `district:${d.key}`, d.center, Math.max(d.width, d.depth) / 2);
+      solid.block(shapes, p.tiles[d.key], d.center.x, d.center.z, d.width, TILE, d.depth, 0);
+      this.proxy(`district:${d.key}`, { x: d.center.x, z: d.center.z, w: d.width, d: d.depth, h: TILE });
       this.label(d.label, d.center.x, 1.2, d.center.z - d.depth / 2 + 0.6, 'district');
     }
 
@@ -475,26 +540,16 @@ export class WorldEngine {
     this.buildCustomers(data, plan);
     this.buildSite(data, plan);
     this.buildOffice(data, plan);
+    this.finishKit();
     this.placeRing(this.selectRing, this.selected);
   }
 
   private buildHq(data: WorldData, plan: WorldPlan) {
     const p = this.palette;
-    const plaza = this.add(this.cylinder, this.mat(p.plaza), 0, 0.06, 0, 17, 0.12, 17);
-    plaza.castShadow = false;
-    const hq = new THREE.Group();
-    this.add(this.box, this.mat(p.wall), 0, TILE + 1.6, -1.2, 5.6, 3.2, 3.6, hq);
-    // Its windows are a pair of sunglasses.
-    const lens = this.mat(p.glass, p === NIGHT ? { emissive: 0x2a3450 } : {});
-    for (const x of [-1.25, 1.25]) {
-      const l = this.add(this.cylinder, lens, x, TILE + 2, 0.62, 1.9, 0.12, 1.25, hq);
-      l.rotation.x = Math.PI / 2;
-    }
-    this.add(this.box, lens, 0, TILE + 2.25, 0.62, 0.9, 0.16, 0.12, hq);
-    this.add(this.box, this.mat(p.door), 0, TILE + 0.55, 0.62, 1.1, 1.1, 0.1, hq);
-    this.world.add(hq);
-    this.pickable(hq, 'district:hq', { x: 0, z: -1.2 }, 3.4);
-    this.label('دفتر مرکزی', 0, 4.3, -1.2, 'district');
+    const { solid, shapes } = this.kit!;
+    solid.add(shapes.cylinder, { x: 0, y: 0.06, z: 0, sx: 17, sy: 0.12, sz: 17 }, p.plaza);
+    this.proxy('district:hq', buildHq(this.kit!), { x: 0, z: -1.2 });
+    this.label('دفتر مرکزی', 0, 5.4, -1.2, 'district');
 
     const values: Record<string, number> = {
       today: data.sales?.today.total ?? 0,
@@ -506,8 +561,8 @@ export class WorldEngine {
     for (const k of plan.kpis) {
       const v = values[k.id];
       const h = k.id === 'stock' ? 0.6 + Math.min(4, v / 250) : 0.6 + Math.min(4, Math.log10(1 + Math.abs(v) / 1e6) * 1.2);
-      const pillar = this.add(this.cylinder, this.mat(v < 0 ? p.expense : colors[k.id]), k.x, TILE + h / 2, k.z, 1.1, h, 1.1);
-      this.pickable(pillar, `kpi:${k.id}`, k, 0.8);
+      solid.add(shapes.cylinder, { x: k.x, y: TILE + h / 2, z: k.z, sx: 1.1, sy: h, sz: 1.1 }, v < 0 ? p.expense : colors[k.id]);
+      this.proxy(`kpi:${k.id}`, { x: k.x, z: k.z, w: 1.1, d: 1.1, h });
     }
   }
 
@@ -515,32 +570,18 @@ export class WorldEngine {
     const p = this.palette;
     const stock = data.stock;
     if (!stock) return;
+    const kit = this.kit!;
     const crate = new THREE.BoxGeometry(0.86, 0.3, 0.86);
     this.owned.push(crate);
     for (const yard of [...plan.warehouses, ...plan.stores]) {
       const w = stock.warehouses.find((x) => x.id === yard.warehouseId);
       if (!w) continue;
       const b = yard.building;
-      const group = new THREE.Group();
-      if (w.virtual) {
-        // A partner's store: walls, a striped awning, a door.
-        this.add(this.box, this.mat(p.wall), b.x, TILE + 1, b.z, b.width, 2, b.depth, group);
-        const awning = this.add(this.box, this.mat(p.consignment), b.x, TILE + 1.75, b.z + b.depth / 2 + 0.35, b.width + 0.2, 0.12, 0.9, group);
-        awning.rotation.x = 0.35;
-        this.add(this.box, this.mat(p.door), b.x, TILE + 0.6, b.z + b.depth / 2 + 0.02, 0.8, 1.2, 0.06, group);
-        this.add(this.box, this.mat(p.window, p === NIGHT ? { emissive: p.window } : {}), b.x - b.width * 0.28, TILE + 1.05, b.z + b.depth / 2 + 0.02, 0.6, 0.5, 0.05, group);
-      } else {
-        // A warehouse: a long hall with a pitched roof and a big door.
-        this.add(this.box, this.mat(p.wall), b.x, TILE + 1.5, b.z, b.width, 3, b.depth, group);
-        for (const side of [-1, 1]) {
-          const half = this.add(this.box, this.mat(p.roof), b.x + side * b.width * 0.25, TILE + 3.35, b.z, b.width * 0.56, 0.18, b.depth + 0.4, group);
-          half.rotation.z = side * -0.32;
-        }
-        this.add(this.box, this.mat(p.door), b.x, TILE + 1.1, b.z + b.depth / 2 + 0.02, b.width * 0.36, 2.2, 0.08, group);
-      }
-      this.world.add(group);
-      this.pickable(group, `warehouse:${w.id}`, { x: b.x, z: b.z }, Math.max(b.width, b.depth) / 2);
-      this.label(`${w.partner ?? w.name} · ${w.units.toLocaleString('fa-IR')} عدد`, b.x, w.virtual ? 3 : 4.4, b.z, 'thing', `warehouse:${w.id}`);
+      const footprint = w.virtual
+        ? buildStore(kit, w.id, w.partner ?? w.name, { x: b.x, z: b.z, w: b.width, d: b.depth })
+        : buildHall(kit, w.id, w.name, b);
+      this.proxy(`warehouse:${w.id}`, footprint, { x: b.x, z: b.z });
+      this.label(`${w.partner ?? w.name} · ${w.units.toLocaleString('fa-IR')} عدد`, b.x, w.virtual ? 3.6 : 5, b.z, 'thing', `warehouse:${w.id}`);
 
       // The crates: one column per product, one crate per unit up to CRATE_MAX.
       const count = yard.columns.reduce((n, c) => n + Math.min(CRATE_MAX, c.units), 0);
@@ -548,7 +589,6 @@ export class WorldEngine {
         const mesh = new THREE.InstancedMesh(crate, this.mat(0xffffff) as THREE.MeshLambertMaterial, count);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        const ids: string[] = [];
         const bases: Pick[] = [];
         const m = new THREE.Matrix4();
         const c = new THREE.Color();
@@ -561,7 +601,6 @@ export class WorldEngine {
             m.makeScale(scale, scale, scale).setPosition(col.x, TILE + (0.15 + k * 0.32) * scale, col.z);
             mesh.setMatrixAt(i, m);
             mesh.setColorAt(i, c);
-            ids.push(pick.id);
             bases.push(pick);
             i++;
           }
@@ -599,6 +638,7 @@ export class WorldEngine {
     const p = this.palette;
     const finance = data.finance;
     if (!finance) return;
+    const { solid, shapes } = this.kit!;
     const max = Math.max(1, ...finance.accounts.map((a) => Math.abs(a.toman ?? 0)));
     finance.accounts.forEach((a, i) => {
       const slot = plan.accounts[i];
@@ -606,12 +646,13 @@ export class WorldEngine {
       const value = a.toman ?? 0;
       const h = a.toman === null ? 0.25 : value <= 0 ? 0.12 : 0.3 + 4.2 * (Math.log10(1 + value / 1e5) / Math.log10(1 + max / 1e5));
       const color = value < 0 ? p.expense : a.toman === null ? p.ghost : a.currency === 'USD' ? p.usd : a.currency === 'EUR' ? p.eur : p.gold;
-      const stack = new THREE.Group();
       // A stack of coins: discs a little apart, so it reads as money.
       const discs = Math.max(1, Math.round(h / 0.34));
-      for (let k = 0; k < discs; k++) this.add(this.cylinder, this.mat(color), slot.x, TILE + 0.15 + k * (h / discs), slot.z, 1.8, Math.max(0.1, h / discs - 0.04), 1.8, stack);
-      this.world.add(stack);
-      this.pickable(stack, `account:${a.id}`, slot, 1);
+      for (let k = 0; k < discs; k++) {
+        const dh = Math.max(0.1, h / discs - 0.04);
+        solid.add(shapes.cylinder, { x: slot.x, y: TILE + 0.15 + k * (h / discs), z: slot.z, sx: 1.8, sy: dh, sz: 1.8 }, color);
+      }
+      this.proxy(`account:${a.id}`, { x: slot.x, z: slot.z, w: 1.8, d: 1.8, h: h + 0.2 });
       this.label(a.name, slot.x, TILE + h + 0.9, slot.z, 'thing', `account:${a.id}`);
     });
     const flowMax = Math.max(1, ...finance.flows.income.map((f) => f.amount), ...finance.flows.expense.map((f) => f.amount));
@@ -623,84 +664,69 @@ export class WorldEngine {
         const slot = slots[i];
         if (!slot) return;
         const h = 0.2 + 4 * (row.amount / flowMax);
-        const bar = this.block(kind === 'income' ? p.income : p.expense, slot.x, slot.z, 1.5, h, 0.9);
-        this.pickable(bar, `flow:${kind}:${row.category}`, slot, 0.9);
+        solid.block(shapes, kind === 'income' ? p.income : p.expense, slot.x, slot.z, 1.5, h, 0.9, TILE);
+        this.proxy(`flow:${kind}:${row.category}`, { x: slot.x, z: slot.z, w: 1.5, d: 0.9, h });
       });
     }
     // The drain where money spent goes.
-    const drain = this.add(this.cylinder, this.mat(0x2b2f36), plan.out.x, 0.08, plan.out.z, 2.4, 0.16, 2.4);
-    drain.castShadow = false;
-    this.add(this.cylinder, this.mat(p.expense), plan.out.x, 0.12, plan.out.z, 2.9, 0.06, 2.9).castShadow = false;
-    this.pickable(drain, 'out', plan.out, 1.3);
+    solid.add(shapes.cylinder, { x: plan.out.x, y: 0.08, z: plan.out.z, sx: 2.4, sy: 0.16, sz: 2.4 }, 0x2b2f36);
+    solid.add(shapes.cylinder, { x: plan.out.x, y: 0.12, z: plan.out.z, sx: 2.9, sy: 0.06, sz: 2.9 }, p.expense);
+    this.proxy('out', { x: plan.out.x, z: plan.out.z, w: 2.6, d: 2.6, h: 0.2 });
   }
 
   private buildMarket(data: WorldData, plan: WorldPlan) {
     const p = this.palette;
     const sales = data.sales;
     if (!sales) return;
+    const kit = this.kit!;
+    const { solid, shapes } = kit;
     const channelMax = Math.max(1, ...sales.channels.map((c) => c.total));
+    const names = { site: 'فروش سایت', shop: 'فروش حضوری', consignment: 'فروش امانی' };
     sales.channels.forEach((c, i) => {
       const slot = plan.market.channels[i];
-      const color = { site: p.site, shop: p.shop, consignment: p.consignment }[c.channel];
       const h = 1 + 3 * (c.total / channelMax);
-      const kiosk = new THREE.Group();
-      this.add(this.box, this.mat(p.wall), slot.x, TILE + h / 2, slot.z, 3, h, 2.4, kiosk);
-      const roof = this.add(this.cone4, this.mat(color), slot.x, TILE + h + 0.55, slot.z, 2.6, 1.1, 2.2, kiosk);
-      roof.rotation.y = Math.PI / 4;
-      this.add(this.box, this.mat(color), slot.x, TILE + 0.5, slot.z + 1.25, 2.6, 0.9, 0.12, kiosk);
-      this.world.add(kiosk);
-      this.pickable(kiosk, `channel:${c.channel}`, slot, 1.6);
-      this.label({ site: 'فروش سایت', shop: 'فروش حضوری', consignment: 'فروش امانی' }[c.channel], slot.x, TILE + h + 1.6, slot.z, 'thing', `channel:${c.channel}`);
+      this.proxy(`channel:${c.channel}`, buildKiosk(kit, slot, h, { site: p.site, shop: p.shop, consignment: p.consignment }[c.channel], names[c.channel]), slot);
+      this.label(names[c.channel], slot.x, TILE + h + 1.6, slot.z, 'thing', `channel:${c.channel}`);
     });
     const topMax = Math.max(1, ...sales.topProducts.map((t) => t.units));
     sales.topProducts.forEach((t, i) => {
       const slot = plan.market.podium[i];
       const h = 0.3 + 2.4 * (t.units / topMax);
-      const group = new THREE.Group();
-      this.add(this.box, this.mat(p.wall), slot.x, TILE + h / 2, slot.z, 1.3, h, 1.3, group);
-      this.add(this.box, this.mat(familyColor(t.family)), slot.x, TILE + h + 0.25, slot.z, 0.8, 0.5, 0.8, group);
-      this.world.add(group);
-      this.pickable(group, `top:${t.id}`, slot, 0.8);
+      solid.block(shapes, p.wall, slot.x, slot.z, 1.3, h, 1.3, TILE);
+      solid.block(shapes, familyColor(t.family), slot.x, slot.z, 0.8, 0.5, 0.8, TILE + h);
+      this.proxy(`top:${t.id}`, { x: slot.x, z: slot.z, w: 1.3, d: 1.3, h: h + 0.5 });
     });
     const dayMax = Math.max(1, ...sales.days.map((d) => d.total));
     sales.days.forEach((d, i) => {
       const slot = plan.market.days[i];
       const h = 0.06 + 3.4 * (d.total / dayMax);
       const today = i === sales.days.length - 1;
-      const bar = this.block(today ? p.shop : p.site, slot.x, slot.z, 0.55, h, 0.55, TILE, today ? { emissive: p.shop } : {});
-      this.pickable(bar, `day:${d.day}`, slot, 0.4);
+      (today ? kit.glow : solid).block(shapes, today ? p.shop : p.site, slot.x, slot.z, 0.55, h, 0.55, TILE);
+      this.proxy(`day:${d.day}`, { x: slot.x, z: slot.z, w: 0.6, d: 0.6, h });
     });
   }
 
   private buildSuppliers(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
     const list = data.suppliers?.suppliers ?? [];
+    const kit = this.kit!;
     list.forEach((s, i) => {
       const slot = plan.suppliers[i];
-      const group = new THREE.Group();
-      this.add(this.box, this.mat(p.factory), slot.x, TILE + 1.1, slot.z, 3.6, 2.2, 3, group);
-      for (const dx of [-0.9, 0.9]) {
-        const tooth = this.add(this.box, this.mat(p.roof), slot.x + dx, TILE + 2.45, slot.z, 1.5, 0.12, 3.1, group);
-        tooth.rotation.z = 0.5;
-      }
-      this.add(this.cylinder, this.mat(0x8a7f72), slot.x + 1.3, TILE + 2.6, slot.z - 0.9, 0.5, 2.2, 0.5, group);
-      this.add(this.box, this.mat(p.door), slot.x, TILE + 0.7, slot.z + 1.52, 1.2, 1.4, 0.06, group);
-      if (s.unpaid) this.add(this.box, this.mat(0xe9a23b, { emissive: 0xe9a23b }), slot.x - 1.5, TILE + 2.9, slot.z + 1.2, 0.5, 0.35, 0.05, group);
-      this.world.add(group);
-      this.pickable(group, `supplier:${s.id}`, slot, 2);
-      this.label(s.name, slot.x, TILE + 4.4, slot.z, 'thing', `supplier:${s.id}`);
-      // Smoke while a purchase order is open.
+      if (!slot) return;
+      const factory = buildFactory(kit, s.id, s.name, slot, !!s.unpaid);
+      this.proxy(`supplier:${s.id}`, factory, slot);
+      this.label(s.name, slot.x, TILE + factory.h + 0.8, slot.z, 'thing', `supplier:${s.id}`);
+      // Smoke while a purchase order is open: from its chimney, else from its roof.
       if (s.open > 0) {
+        const from = factory.chimney ?? { x: factory.x + 0.6, y: TILE + factory.h - 1.2, z: factory.z - 0.4 };
         const puffs = Array.from({ length: 3 }, (_, k) => {
-          const puff = this.add(this.box, this.mat(0xd9d4cc, { transparent: 0.7 }), slot.x + 1.3, TILE + 3.8, slot.z - 0.9, 0.4, 0.4, 0.4);
+          const puff = this.add(this.box, this.mat(0xd9d4cc, { transparent: 0.7 }), from.x, from.y, from.z, 0.4, 0.4, 0.4);
           puff.castShadow = false;
           return { puff, phase: k / 3 };
         });
         this.animated.push((t) => {
           for (const { puff, phase } of puffs) {
             const f = (t * 0.35 + phase) % 1;
-            puff.position.y = TILE + 3.8 + f * 2.2;
-            puff.position.x = slot.x + 1.3 + f * 0.6;
+            puff.position.set(from.x + f * 0.6, from.y + 0.2 + f * 2.2, from.z);
             const s2 = 0.3 + f * 0.6;
             puff.scale.set(s2, s2, s2);
           }
@@ -713,45 +739,45 @@ export class WorldEngine {
     const p = this.palette;
     const c = data.customers;
     if (!c) return;
+    const kit = this.kit!;
     const spendMax = Math.max(1, ...c.top.map((x) => x.spend));
     c.top.forEach((x, i) => {
       const slot = plan.customers.top[i];
+      if (!slot) return;
       const h = 1 + 1.8 * (x.spend / spendMax);
-      const group = new THREE.Group();
-      this.add(this.box, this.mat(p.house), slot.x, TILE + h / 2, slot.z, 2, h, 2, group);
-      const roof = this.add(this.cone4, this.mat(x.debt ? p.roofDebt : p.roofWarm), slot.x, TILE + h + 0.5, slot.z, 2, 1, 2, group);
-      roof.rotation.y = Math.PI / 4;
-      this.add(this.box, this.mat(p.window, p === NIGHT ? { emissive: p.window } : {}), slot.x, TILE + h * 0.55, slot.z + 1.01, 0.6, 0.5, 0.04, group);
-      this.world.add(group);
-      this.pickable(group, `customer:${x.id}`, slot, 1.3);
-      this.label(x.name, slot.x, TILE + h + 1.5, slot.z, 'thing', `customer:${x.id}`);
+      this.proxy(`customer:${x.id}`, buildHouse(kit, x.id, x.name, slot, h, x.debt > 0), slot);
+      this.label(x.name, slot.x, TILE + h + 1.6, slot.z, 'thing', `customer:${x.id}`);
     });
-    // Everyone else: a small house each, lit for those who bought in 90 days.
+    // Everyone else: a small house each, warm for those who bought in 90 days.
     const crowd = plan.customers.crowd;
     if (crowd.length) {
       const walls = new THREE.InstancedMesh(this.box, this.mat(0xffffff) as THREE.MeshLambertMaterial, crowd.length);
-      const roofs = new THREE.InstancedMesh(this.cone4, this.mat(p.roof) as THREE.MeshLambertMaterial, crowd.length);
+      const roofs = new THREE.InstancedMesh(this.cone4, this.mat(0xffffff) as THREE.MeshLambertMaterial, crowd.length);
       const lit = Math.max(0, c.buyers90 - c.top.length);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+      const none = new THREE.Quaternion();
       const color = new THREE.Color();
+      const random = seeded('crowd');
       crowd.forEach((pt, i) => {
-        m.compose(new THREE.Vector3(pt.x, TILE + 0.35, pt.z), new THREE.Quaternion(), new THREE.Vector3(0.8, 0.7, 0.8));
+        const h = 0.6 + random() * 0.25;
+        m.compose(new THREE.Vector3(pt.x, TILE + h / 2, pt.z), none, new THREE.Vector3(0.8, h, 0.8));
         walls.setMatrixAt(i, m);
-        walls.setColorAt(i, color.set(i < lit ? p.crowdOn : p.crowdOff));
-        m.compose(new THREE.Vector3(pt.x, TILE + 0.95, pt.z), q, new THREE.Vector3(0.82, 0.5, 0.82));
+        walls.setColorAt(i, color.set(i < lit ? pickOne(random, CROWD_WALLS) : p.crowdOff));
+        m.compose(new THREE.Vector3(pt.x, TILE + h + 0.25, pt.z), q, new THREE.Vector3(0.82, 0.5, 0.82));
         roofs.setMatrixAt(i, m);
+        roofs.setColorAt(i, color.set(i < lit ? pickOne(random, CROWD_ROOFS) : p.roof));
       });
       for (const mesh of [walls, roofs]) {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
         mesh.userData.instancePicks = crowd.map((pt) => ({ id: 'crowd', base: pt, radius: 0.6 }));
         this.world.add(mesh);
         this.pickables.push(mesh);
         this.owned.push({ dispose: () => mesh.dispose() });
       }
-      if (walls.instanceColor) walls.instanceColor.needsUpdate = true;
     }
   }
 
@@ -762,14 +788,9 @@ export class WorldEngine {
     const failing = s.hook.paused || !!s.hook.failingSince;
     const status = !s.host ? p.ghost : failing ? 0xd2554a : s.stockPush ? 0x4fbf7a : 0xe9a23b;
     const { x, z } = plan.site;
-    const group = new THREE.Group();
-    this.add(this.cylinder, this.mat(p.wall), x, TILE + 0.5, z, 4, 1, 4, group);
-    this.add(this.cylinder, this.mat(p.site), x, TILE + 3, z, 0.9, 4.2, 0.9, group);
-    this.add(this.box, this.mat(p.glass, p === NIGHT ? { emissive: 0x24304a } : {}), x, TILE + 2.2, z + 0.5, 2.4, 1.5, 0.12, group);
-    const bulb = this.add(new THREE.SphereGeometry(0.5, 16, 12), this.mat(status, { emissive: status }), x, TILE + 5.6, z, 1, 1, 1, group);
+    this.proxy('site', buildTower(this.kit!, plan.site, s.host), plan.site);
+    const bulb = this.add(new THREE.SphereGeometry(0.5, 16, 12), this.mat(status, { emissive: status }), x, TILE + 5.6, z, 1, 1, 1);
     this.owned.push(bulb.geometry);
-    this.world.add(group);
-    this.pickable(group, 'site', { x, z }, 2);
     this.label(s.host ?? 'وب‌سایت', x, TILE + 6.8, z, 'thing', 'site');
     // The products on the site circle it.
     const count = Math.min(120, s.productsOnSite);
@@ -791,30 +812,14 @@ export class WorldEngine {
         holder.rotation.y += dt * 0.35;
       });
     }
-    const pulse = bulb;
     this.animated.push((t) => {
       const k = 1 + Math.sin(t * (failing ? 7 : 2)) * 0.12;
-      pulse.scale.set(k, k, k);
+      bulb.scale.set(k, k, k);
     });
   }
 
   private buildOffice(data: WorldData, plan: WorldPlan) {
-    const p = this.palette;
-    const { x, z } = plan.office;
-    const group = new THREE.Group();
-    this.add(this.box, this.mat(p.wall), x, TILE + 1.4, z - 1, 4.4, 2.8, 3, group);
-    for (const dx of [-1.3, 0, 1.3]) this.add(this.box, this.mat(p.window, p === NIGHT ? { emissive: p.window } : {}), x + dx, TILE + 1.8, z + 0.52, 0.7, 0.8, 0.04, group);
-    this.add(this.box, this.mat(p.door), x, TILE + 0.6, z + 0.52, 0.8, 1.2, 0.05, group);
-    // The task board: a note per open task, red when overdue.
-    const board = this.add(this.box, this.mat(0x8a7f72), x, TILE + 1.1, z + 2.4, 3.6, 1.8, 0.12, group);
-    board.castShadow = true;
-    const open = Math.min(24, data.office.tasks.open);
-    for (let i = 0; i < open; i++) {
-      const overdue = i < data.office.tasks.overdue;
-      this.add(this.box, this.mat(overdue ? 0xd2554a : 0xf6d36b), x - 1.45 + (i % 8) * 0.41, TILE + 1.7 - Math.floor(i / 8) * 0.5, z + 2.48, 0.32, 0.32, 0.04, group);
-    }
-    this.world.add(group);
-    this.pickable(group, 'office', { x, z }, 2.4);
+    this.proxy('office', buildOffice(this.kit!, plan.office, data.office.tasks.open, data.office.tasks.overdue), plan.office);
   }
 
   // ── Interaction ───────────────────────────────────────────────────────────
