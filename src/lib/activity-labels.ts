@@ -31,6 +31,9 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   API_ORDER_PAYMENT: 'ثبت پرداخت سفارش با کلاد',
   API_RETURN: 'مرجوعی با کلاد',
   API_TRANSFER_STOCK: 'انتقال کالا با کلاد',
+  API_CREATE_SUPPLIER: 'ثبت تأمین‌کننده با کلاد',
+  API_CREATE_PRODUCT: 'ثبت کالا با کلاد',
+  API_CREATE_PURCHASE_ORDER: 'ثبت سفارش خرید با کلاد',
 };
 
 export function activityLabel(action: string | null | undefined): string {

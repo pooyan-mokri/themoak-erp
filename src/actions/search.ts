@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { hasPermission } from '@/lib/access';
+import { CURRENCY_LABELS } from '@/components/suppliers/purchase-figures';
 
 export interface SearchResult {
   type: 'order' | 'customer' | 'product' | 'transaction' | 'purchase';
@@ -102,7 +103,7 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
           { tags: { has: q } },
         ],
       },
-      include: { supplier: true },
+      include: { supplier: true, items: { select: { currency: true }, take: 1 } },
       take: 5,
       orderBy: { createdAt: 'desc' },
     }),
@@ -162,9 +163,12 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
       type: 'purchase',
       id: p.id,
       title: `سفارش خرید - ${p.supplier?.name || ''}`,
-      subtitle: p.notes || '',
-      // Purchase order totals are finance data; totalAmount is in the order's own currency.
-      amount: canSeeFinance ? Number(p.totalAmountInToman ?? p.totalAmount ?? 0) : undefined,
+      // Purchase order totals are finance data; totalAmount is in the order's own currency. An order recorded in the
+      // supplier's currency has no Toman total until it is paid: its own amount is named instead.
+      subtitle: canSeeFinance && p.totalAmountInToman == null && p.items[0] && p.items[0].currency !== 'TOMAN'
+        ? `${Number(p.totalAmount).toLocaleString('fa-IR')} ${CURRENCY_LABELS[p.items[0].currency] ?? p.items[0].currency}`
+        : p.notes || '',
+      amount: canSeeFinance && (p.totalAmountInToman != null || p.items[0]?.currency === 'TOMAN') ? Number(p.totalAmountInToman ?? p.totalAmount ?? 0) : undefined,
       href: `/dashboard/suppliers/orders/${p.id}`,
       date: p.createdAt,
     });

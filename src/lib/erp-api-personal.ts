@@ -39,6 +39,12 @@ export const PERSONAL_ACTION_PERMISSIONS: Record<string, readonly Permission[]> 
   recordOrderPayment: ['sales.manage'],
   returnOrderItem: ['sales.manage'],
   transferStock: ['stock.manage'],
+  // Purchasing (src/lib/erp-api-purchasing.ts), as the supplier pages allow it.
+  suppliers: ['stock.view', 'finance.view'],
+  purchaseOrders: ['stock.view', 'finance.view'],
+  createSupplier: ['stock.manage', 'finance.manage'],
+  createProduct: ['stock.manage'],
+  createPurchaseOrder: ['cost.edit'],
 };
 
 export const PERSONAL_POST_ACTIONS = ['createCustomer', 'createOrder', 'recordOrderPayment', 'returnOrderItem', 'transferStock'];
@@ -77,6 +83,15 @@ export function redactForRole(action: string, body: any, role: string): any {
       return body;
     case 'productSales':
       if (!has('cost.view')) body.products?.forEach((p: any) => strip(p, ['costPrice']));
+      return body;
+    case 'purchaseOrders':
+      // As the purchase-order pages show it: prices with cost.view, totals and payments with finance.view, and
+      // the order's additional costs (part of both the landed cost and the payable) with either.
+      body.purchaseOrders?.forEach((o: any) => {
+        if (!has('cost.view')) o.items?.forEach((i: any) => strip(i, ['unitCost']));
+        if (!has('cost.view') && !has('finance.view')) delete o.additionalCosts;
+        if (!has('finance.view')) strip(o, ['totalAmount', 'totalAmountInToman', 'payments', 'paidInToman', 'unpaidInToman']);
+      });
       return body;
     case 'search':
       if (!has('sales.view')) {

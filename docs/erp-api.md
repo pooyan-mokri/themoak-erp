@@ -450,3 +450,100 @@ GET {base}/api/erp?action=settlements
 | `commissionAmount` | سهم همکار از همان مبلغ |
 | `netAmount` | سهم ما = ناخالص − کمیسیون |
 | `paidAmount` / `remainingAmount` | چقدر تسویه شده و چقدر مانده |
+
+---
+
+## خرید — تأمین‌کننده، کالا و سفارش خرید
+
+با `ERP_API_SECRET`، یا با کلید شخصی کاربری که نقشش اجازه دارد (همان اجازه‌های
+صفحه‌های تأمین‌کنندگان)؛ کلید سایت هیچ‌کدام را ندارد (`403`). هر ثبت یک خط در
+گزارش فعالیت می‌گذارد؛ با کلید شخصی به نام همان کاربر و سفارش خرید برچسب
+«Claude · نام» هم می‌گیرد. هر رد شدنی `422` است با `error` فارسی.
+
+| اکشن | روش | اجازهٔ کلید شخصی |
+|---|---|---|
+| `suppliers` | GET | `stock.view` یا `finance.view` |
+| `purchaseOrders` | GET | `stock.view` یا `finance.view` (قیمت‌ها با `cost.view`، جمع‌ها و پرداخت‌ها با `finance.view`) |
+| `createSupplier` | POST | `stock.manage` یا `finance.manage` |
+| `createProduct` | POST | `stock.manage` (بدون `cost.edit` قیمت خرید و بدون `sales.view` قیمت فروش صفر ثبت می‌شود، مثل فرم کالا) |
+| `createPurchaseOrder` | POST | `cost.edit` (فقط مدیر سیستم) |
+
+### به ارز PI، بدون تومان
+
+سفارش خرید همان‌طور ثبت می‌شود که PI تأمین‌کننده نوشته: **یک ارز برای کل سفارش**
+(معمولاً `CNY`) و **بدون معادل تومانی**. ارزش تومانی را نرخی تعیین می‌کند که موقع
+پرداخت واقعاً پرداخت می‌شود. پس روی سفارش و ردیف‌ها و هزینه‌های اضافی‌اش
+`totalAmountInToman`، `unitCostInToman`، `amountInToman` و نرخ ثبت‌شده خالی (`null`)
+می‌ماند و جدول نرخ ارز اصلاً خوانده نمی‌شود. تا پرداخت، صفحه‌ها و «مانده پرداخت به
+تأمین‌کنندگان» این سفارش را به نرخ امروز حساب می‌کنند، همان‌طور که پرداخت حسابش
+می‌کند. سفارش تومانی نرخ لازم ندارد و ارقام تومانی‌اش (نرخ ۱) را نگه می‌دارد.
+
+### `createPurchaseOrder`
+
+```json
+{
+  "action": "createPurchaseOrder",
+  "supplier": "Mazzucchelli",
+  "currency": "CNY",
+  "items": [
+    { "sku": "PANJ/BLUE", "quantity": 17, "unitCost": 12.5 },
+    { "sku": "PANJ/BLUE", "quantity": 3, "unitCost": 0 },
+    { "sku": "YEK/BLK", "quantity": 10, "unitCost": 20.1, "currency": "CNY" }
+  ],
+  "additionalCosts": [{ "title": "حمل", "amount": 300 }],
+  "tags": ["PI:2026-031"],
+  "status": "DRAFT"
+}
+```
+
+| فیلد | قاعده |
+|---|---|
+| `supplier` | نام یا شناسه؛ نامی که به چند تأمین‌کننده بخورد یا پیدا نشود رد می‌شود (`options` گزینه‌ها را می‌گوید) |
+| `currency` | ارز کل سفارش: `TOMAN`، `USD`، `EUR` یا `CNY`. ردیف یا هزینه‌ای که ارز خودش را نگوید همین را می‌گیرد. دو ارز در یک سفارش (ردیف‌ها یا هزینه‌ها) رد می‌شود |
+| `items` | دست‌کم یک ردیف. کالا با `sku` (بزرگی و کوچکی حرف مهم نیست)؛ همهٔ SKUهای ناشناخته با هم در `unknownSkus` برمی‌گردند و هیچ چیزی ثبت نمی‌شود. یک SKU می‌تواند دو ردیف باشد (مثلاً ۱۷ پولی و ۳ رایگان) |
+| `quantity` | عدد صحیح ۱ یا بیشتر |
+| `unitCost` | قیمت واحد به ارز سفارش، صفر یا بیشتر (ردیف رایگان ۰) |
+| `additionalCosts` | اختیاری: `[{ title, amount, currency? }]`، مبلغ صفر یا بیشتر |
+| `tags` | اختیاری، فهرست متن. برچسبی که با `PI:` شروع شود شمارهٔ PI است: اگر سفارش لغونشدهٔ دیگری همان را داشته باشد رد می‌شود (`existing` آن سفارش را می‌گوید). سفارش لغوشده PI را آزاد می‌کند |
+| `status` | `DRAFT` (پیش‌فرض) یا `PENDING_PAYMENT` |
+
+پاسخ:
+
+```json
+{
+  "success": true,
+  "message": "سفارش خرید PO-41 (پیش‌نویس) به مبلغ ۷۱۳٫۵ یوان ثبت شد. …",
+  "purchaseOrder": {
+    "id": "cm…", "number": 41, "supplier": "Mazzucchelli", "status": "DRAFT",
+    "tags": ["PI:2026-031"], "currency": "CNY", "totalAmount": 713.5,
+    "totals": { "CNY": 713.5 }, "totalAmountInToman": null,
+    "items": [{ "sku": "PANJ/BLUE", "name": "PANJ - Blue", "quantity": 17, "unitCost": 12.5, "currency": "CNY", "lineTotal": 212.5 }],
+    "additionalCosts": [{ "title": "حمل", "amount": 300, "currency": "CNY" }]
+  }
+}
+```
+
+### `purchaseOrders`
+
+```http
+GET {base}/api/erp?action=purchaseOrders&supplier=Mazzu&status=PENDING_PAYMENT&tag=PI:2026-031&limit=30
+```
+
+همه اختیاری؛ `supplier` نام (بخشی از آن) یا شناسه، `status` یکی از وضعیت‌های سفارش
+خرید، `limit` پیش‌فرض ۳۰ و حداکثر ۱۰۰. هر سفارش: `number`، `supplier`، `status`،
+`tags`، `currency`، `totalAmount` (به ارز سفارش)، `totalAmountInToman` (`null` تا
+معلوم شود)، `items` (`sku`، `name`، `quantity`، `unitCost`، `currency`،
+`receivedQuantity`)، `additionalCosts`، `payments` (به تومان)، `paidInToman` و
+`unpaidInToman` — مانده همان‌طور که داشبورد می‌شمارد: پیش‌نویس و لغوشده صفر، و سفارش
+بی‌تومان به نرخ امروز.
+
+### `suppliers`، `createSupplier`، `createProduct`
+
+- `suppliers`: `id`، `name`، `phone`، `email`، `purchaseOrders` (تعداد سفارش‌های خرید).
+- `createSupplier`: `name` (لازم)، `phone`، `email`، `address`. نامی که هست — بدون
+  توجه به بزرگی و کوچکی حرف و فاصله‌های دو سر — رد می‌شود و `supplier` همان قبلی را می‌دهد.
+- `createProduct`: `sku` (یکتا، بدون توجه به بزرگی حرف)، `name`، `sellPrice` به تومان
+  (لازم)، `costPrice` (اختیاری، پیش‌فرض ۰)، `productType` (پیش‌فرض `SALEABLE`).
+  مثل فرم کالا: بارکد داخلی تازه می‌گیرد و وب‌هوک سایت تلنگر می‌خورد. **روی سایت
+  نمی‌رود**: سایت فقط کالایی را می‌فروشد که شناسهٔ سایت (`webId`) دارد، و آن را
+  فقط در صفحهٔ کالا می‌شود گذاشت.

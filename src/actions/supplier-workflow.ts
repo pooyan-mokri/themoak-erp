@@ -10,6 +10,7 @@ import { inAccountCurrency } from '@/lib/balance-reconciliation';
 import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/lib/request-id';
 import { PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_SET_BY, canMovePurchaseOrder } from '@/lib/purchase-order-status';
 import { readEntryDate } from '@/lib/entry-date';
+import { owedTotalInToman } from '@/lib/landed-cost';
 
 /** A figure in the account's own unit, for balance messages. */
 const inUnit = (amount: number, currency: string) =>
@@ -437,7 +438,7 @@ export async function payPurchaseOrderFromCredit(input: {
       if (clientRequestId && (await tx.supplierCredit.findUnique({ where: { clientRequestId }, select: { id: true } }))) {
         return null;
       }
-      const order = await tx.purchaseOrder.findUnique({ where: { id: orderId }, include: { payments: true } });
+      const order = await tx.purchaseOrder.findUnique({ where: { id: orderId }, include: { payments: true, items: true, additionalCosts: true } });
       if (!order) throw new CreditRefusal('سفارش یافت نشد');
       if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PARTIALLY_PAID') {
         throw new CreditRefusal('این سفارش در وضعیت قابل پرداخت نیست');
@@ -447,7 +448,17 @@ export async function payPurchaseOrderFromCredit(input: {
       const balance = Number(
         (await tx.supplierCredit.aggregate({ where: { supplierId: order.supplierId }, _sum: { amount: true } }))._sum.amount ?? 0,
       );
-      const total = Number(order.totalAmountInToman) || 0;
+      let total = Number(order.totalAmountInToman) || 0;
+      if (!total) {
+        // Recorded in the supplier's currency, with no Toman total: priced at the latest rate, as the other payments price it.
+        const rates = await tx.exchangeRate.findMany({ orderBy: { date: 'desc' }, distinct: ['currency'] });
+        total = owedTotalInToman(order, (currency) => {
+          if (currency === 'TOMAN') return 1;
+          const rate = rates.find((r: any) => r.currency === currency);
+          if (!rate) throw new CreditRefusal(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
+          return Number(rate.rateToToman);
+        });
+      }
       const paidSoFar = paidOn(order);
       const remaining = total - paidSoFar;
       if (balance <= 0) throw new CreditRefusal('از این تأمین‌کننده طلبی ثبت نشده است.');

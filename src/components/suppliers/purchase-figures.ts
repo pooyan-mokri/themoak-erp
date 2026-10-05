@@ -31,8 +31,24 @@ type Order = {
   paidAmountInToman?: number;
   /** What is still owed on the order (src/lib/money-totals.ts unpaidOnPurchaseOrder); finance.view only. */
   unpaidInToman?: number;
-  items: Array<{ receivedDate?: Date | string | null }>;
+  items: Array<{ receivedDate?: Date | string | null; currency?: string }>;
 };
+
+/**
+ * An order's value in Toman: its Toman total, or, for an order recorded in the supplier's currency (it has no Toman
+ * total; the rate is the one paid), what was paid on it plus what is still owed at the latest rate (unpaidInToman).
+ */
+export const tomanValueOf = (o: Order): number => o.totalAmountInToman ?? (o.paidAmountInToman ?? 0) + (o.unpaidInToman ?? 0);
+
+/** An order recorded in the supplier's currency, with no Toman total: its total in that currency. Needs finance.view. */
+export function foreignTotalOf(o: Order): { amount: number; currency: string } | undefined {
+  const currency = o.items[0]?.currency;
+  if (o.totalAmountInToman !== undefined || o.totalAmount === undefined || !currency || currency === 'TOMAN') return undefined;
+  return { amount: Number(o.totalAmount), currency };
+}
+
+/** The line under such a total. */
+export const PAID_AT_RATE_NOTE = 'تبدیل به تومان هنگام پرداخت';
 
 /** Not yet received in full and not cancelled. */
 export const isOpen = (o: Pick<Order, 'status'>) => o.status !== 'RECEIVED' && o.status !== 'CANCELLED';
@@ -73,7 +89,7 @@ export function purchaseFigures(orders: Order[]) {
   return {
     open: open.length,
     // In Toman: totalAmount is in the order's first currency and is never added up (src/lib/money-totals.ts).
-    openValue: open.reduce((sum, o) => sum + Number(o.totalAmountInToman ?? 0), 0),
+    openValue: open.reduce((sum, o) => sum + tomanValueOf(o), 0),
     inTransit: orders.filter(isInTransit).length,
     awaitingReceipt: orders.filter(awaitsReceipt).length,
     payable: seesMoney ? payables.reduce<number>((sum, p) => sum + (p ?? 0), 0) : undefined,
