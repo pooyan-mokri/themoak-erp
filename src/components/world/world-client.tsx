@@ -555,7 +555,7 @@ export function WorldClient({ role }: { role: string | null }) {
       )}
 
       {/* ── Controls ────────────────────────────────────────────────────── */}
-      <div className={cn('absolute right-3 top-[9.2rem] z-10 flex flex-col gap-0.5 p-1 md:left-[21.5rem] md:right-auto md:top-[4.4rem]', glass)}>
+      <div className={cn('absolute right-3 top-[9.2rem] z-10 flex flex-col gap-0.5 p-1 md:left-[21.5rem] md:right-auto md:top-[4.4rem]', glass, selected && 'hidden md:flex')}>
         <Ctl label="نزدیک‌تر (+)" onClick={() => engineRef.current?.zoomBy(1.4)}><Plus className="h-4 w-4" /></Ctl>
         <Ctl label="دورتر (−)" onClick={() => engineRef.current?.zoomBy(1 / 1.4)}><Minus className="h-4 w-4" /></Ctl>
         <Ctl label="چرخش (Q)" onClick={() => engineRef.current?.rotate(-1)}><RotateCcw className="h-4 w-4" /></Ctl>
