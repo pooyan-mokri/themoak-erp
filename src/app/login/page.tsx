@@ -2,6 +2,10 @@ import { Check } from 'lucide-react';
 import pkg from '../../../package.json';
 import { LoginForm } from './login-form';
 
+// Rendered for each request, never cached: on Next 14.2.3 a request carrying `x-now-route-matches` (a Vercel-only
+// header anyone can send elsewhere) cached this page's failed static render, and every visitor got that 500 page.
+export const dynamic = 'force-dynamic';
+
 /** What the ERP holds, in the panel beside the form: the sections this app really has. */
 const SECTIONS = [
   'سفارش‌های فروشگاه و سایت در یک فهرست',
