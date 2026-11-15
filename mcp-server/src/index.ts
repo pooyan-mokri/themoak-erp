@@ -215,7 +215,7 @@ const TOOLS = [
   {
     name: 'erp_purchase_orders',
     description:
-      "Recent purchase orders: number, supplier, status, tags (a PI: tag names the supplier's proforma invoice), currency, totalAmount in that currency, totalAmountInToman (null until paid), items (sku, name, quantity, unitCost, currency, receivedQuantity), additional costs, payments in Toman, and unpaidInToman (an order without a Toman total is counted at today's rate).",
+      "Recent purchase orders: number, supplier, status, tags (a PI: tag names the supplier's proforma invoice), currency, totalAmount in that currency, totalAmountInToman (null until paid), items (sku, name, quantity, unitCost, currency, receivedQuantity), additional costs, payments (each with its Toman value and, when it was recorded in the currency actually paid, paidAmount, paidCurrency, the account and its currency, accountAmount, accountRate and tomanRate), paidInOrderCurrency and remainingInOrderCurrency (the order's balance in its own currency), and unpaidInToman (an order without a Toman total is counted at today's rate).",
     inputSchema: {
       type: 'object',
       properties: {
@@ -284,6 +284,46 @@ const TOOLS = [
       required: ['supplier', 'currency', 'items'],
     },
   },
+  {
+    name: 'erp_pay_purchase_order',
+    description:
+      'ثبت پرداخت یک «سفارش خرید» (پرداخت به تأمین‌کننده)، به همان ارزی که واقعاً پرداخت شده. فقط برای سفارش خرید است؛ پرداختِ سفارش فروشِ مشتری با erp_record_payment ثبت می‌شود. ' +
+      'مبلغ و ارزِ پرداخت‌شده را بدهید (مثلاً ۲۰۰۰ یوان با وی‌چت یا علی‌پی) و حسابی که پول از آن رفته. اگر ارز پرداخت با ارز حساب فرق دارد، نرخ بانک (accountRate) لازم است: چند واحد از ارز پرداخت برای هر ۱ واحد ارز حساب (مثلاً ۶٫۶۷۰۳ یوان برای هر دلار)؛ اگر حساب تومانی است، چند تومان برای هر واحد ارز پرداخت. ' +
+      'tomanRate نرخ تومانِ هر واحد ارز حساب است؛ اگر ندهید آخرین نرخ ثبت‌شده در ERP می‌آید. ' +
+      'ERP از حساب به ارز خودش کم می‌کند، ارزش تومانی را حساب می‌کند و ماندهٔ سفارش را به ارز سفارش نگه می‌دارد؛ با صفر شدن مانده، سفارش «پرداخت شده» می‌شود و قیمت تومانی اقلامش با نرخ واقعیِ پرداخت ثبت می‌شود. ' +
+      'پیش از ثبت، اول با erp_purchase_orders و erp_accounts سفارش و حساب را ببینید، بعد خلاصه را برای کاربر بخوانید (شمارهٔ سفارش، مبلغ، ارز، حساب، نرخ بانک، نرخ تومان، مبلغی که از حساب کم می‌شود و ارزش تومانی) و تأییدش را بگیرید. بدون تأیید ثبت نکنید.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        order:       { type: 'number', description: 'شمارهٔ سفارش خرید، مثلاً 8 برای PO-8' },
+        account:     { type: 'string', description: 'نام یا شناسهٔ حسابی که پول از آن رفته (از erp_accounts)' },
+        amount:      { type: 'number', description: 'مبلغ پرداخت‌شده، به ارزِ currency' },
+        currency:    { ...CURRENCY, description: 'ارزی که واقعاً پرداخت شده، مثلاً CNY' },
+        accountRate: { type: 'number', description: 'نرخ بانک، فقط وقتی ارز پرداخت با ارز حساب فرق دارد: واحدِ ارز پرداخت برای هر ۱ واحد ارز حساب (از حساب تومانی: تومان برای هر واحد ارز پرداخت)' },
+        tomanRate:   { type: 'number', description: 'تومان برای هر ۱ واحد ارز حساب؛ خالی = آخرین نرخ ثبت‌شده در ERP' },
+        date:        DATE,
+        note:        { type: 'string', description: 'توضیح کوتاه، مثلاً «بیعانه» یا «وی‌چت»' },
+        requestId:   REQUEST_ID,
+      },
+      required: ['order', 'account', 'amount', 'currency'],
+    },
+  },
+  {
+    name: 'erp_add_purchase_order_cost',
+    description:
+      'افزودن یک هزینهٔ تازه به «سفارش خرید»، به ارز خودِ سفارش (مثلاً ۳۲۲ یوان بابت حک لوگو که تأمین‌کننده بعد از PI اضافه کرده). جمع سفارش به همان اندازه بالا می‌رود؛ سفارشی که «پرداخت شده» بود دوباره بدهکار می‌شود و به «پرداخت جزئی» برمی‌گردد. ' +
+      'برای سفارشِ دریافت‌شده، نیمه‌دریافت‌شده یا لغوشده رد می‌شود، و همان عنوان و مبلغ دو بار ثبت نمی‌شود. ' +
+      'پیش از ثبت، خلاصه را برای کاربر بخوانید (شمارهٔ سفارش، عنوان هزینه، مبلغ و ارز) و تأییدش را بگیرید. بدون تأیید ثبت نکنید.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        order:  { type: 'number', description: 'شمارهٔ سفارش خرید، مثلاً 8 برای PO-8' },
+        title:  { type: 'string', description: 'عنوان هزینه، مثلاً Gold-filled laser logo' },
+        amount: { type: 'number', description: 'مبلغ، به ارز سفارش' },
+      },
+      required: ['order', 'title', 'amount'],
+    },
+  },
 ];
 
 // ── Server setup ──────────────────────────────────────────────────────────────
@@ -300,7 +340,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
   // One id per call that moves money, so a call that reaches the ERP twice books once;
   // a retry passes the id back to be booked once too.
-  const requestId = name in MONEY_ACTIONS ? (typeof args.requestId === 'string' && args.requestId) || randomUUID() : null;
+  const requestId = name in MONEY_ACTIONS || name === 'erp_pay_purchase_order' ? (typeof args.requestId === 'string' && args.requestId) || randomUUID() : null;
 
   try {
     let result: unknown;
@@ -358,6 +398,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'erp_create_purchase_order':
         result = await erpPost({ action: 'createPurchaseOrder', ...args });
         break;
+      case 'erp_pay_purchase_order':
+        result = await erpPost({ action: 'payPurchaseOrder', ...args, requestId });
+        break;
+      case 'erp_add_purchase_order_cost':
+        result = await erpPost({ action: 'addPurchaseOrderCost', ...args });
+        break;
       case 'erp_deposit':
       case 'erp_expense':
       case 'erp_transfer':
@@ -379,7 +425,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   } catch (err: any) {
     // Whether the entry was booked is unknown after a network error: say how to retry safely.
     const retry = requestId
-      ? `\nrequestId: ${requestId} — check erp_transactions, or call again with this requestId; it is booked only once.`
+      ? `\nrequestId: ${requestId} — check erp_transactions (erp_purchase_orders for a purchase-order payment), or call again with this requestId; it is booked only once.`
       : '';
     return {
       content: [{ type: 'text', text: `Error: ${err.message}${retry}` }],

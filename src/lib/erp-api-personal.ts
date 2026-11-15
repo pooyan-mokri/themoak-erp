@@ -90,7 +90,7 @@ export function redactForRole(action: string, body: any, role: string): any {
       body.purchaseOrders?.forEach((o: any) => {
         if (!has('cost.view')) o.items?.forEach((i: any) => strip(i, ['unitCost']));
         if (!has('cost.view') && !has('finance.view')) delete o.additionalCosts;
-        if (!has('finance.view')) strip(o, ['totalAmount', 'totalAmountInToman', 'payments', 'paidInToman', 'unpaidInToman']);
+        if (!has('finance.view')) strip(o, ['totalAmount', 'totalAmountInToman', 'payments', 'paidInToman', 'unpaidInToman', 'paidInOrderCurrency', 'remainingInOrderCurrency']);
       });
       return body;
     case 'search':

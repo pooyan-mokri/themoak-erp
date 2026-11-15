@@ -11,6 +11,7 @@ import { DUPLICATE_REQUEST_MESSAGE, isDuplicateRequest, readRequestId } from '@/
 import { PURCHASE_ORDER_STATUS_LABELS, PURCHASE_ORDER_STATUS_SET_BY, canMovePurchaseOrder } from '@/lib/purchase-order-status';
 import { readEntryDate } from '@/lib/entry-date';
 import { owedTotalInToman } from '@/lib/landed-cost';
+import { owedInTomanAfterCurrencyPayments } from '@/lib/purchase-order-balance';
 
 /** A figure in the account's own unit, for balance messages. */
 const inUnit = (amount: number, currency: string) =>
@@ -316,6 +317,11 @@ export async function recordPurchasePartialPayment(input: {
         });
       }
 
+      // An order with a payment in the currency actually paid (payPurchaseOrder on the ERP API) owes what
+      // remains of its own currency, at the latest rate (src/lib/purchase-order-balance.ts).
+      const owed = owedInTomanAfterCurrencyPayments(order, getExchangeRate);
+      if (owed !== null) totalInToman = owed;
+
       const paidSoFar = order.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
       const remaining = totalInToman - paidSoFar;
 
@@ -452,12 +458,14 @@ export async function payPurchaseOrderFromCredit(input: {
       if (!total) {
         // Recorded in the supplier's currency, with no Toman total: priced at the latest rate, as the other payments price it.
         const rates = await tx.exchangeRate.findMany({ orderBy: { date: 'desc' }, distinct: ['currency'] });
-        total = owedTotalInToman(order, (currency) => {
+        const rateOf = (currency: string) => {
           if (currency === 'TOMAN') return 1;
           const rate = rates.find((r: any) => r.currency === currency);
           if (!rate) throw new CreditRefusal(`نرخ ارز برای ${currency} یافت نشد. لطفا ابتدا نرخ روز را در بخش حسابداری ثبت کنید.`);
           return Number(rate.rateToToman);
-        });
+        };
+        // With a payment in the currency actually paid on it: what remains of its own currency, at the latest rate.
+        total = owedInTomanAfterCurrencyPayments(order, rateOf) ?? owedTotalInToman(order, rateOf);
       }
       const paidSoFar = paidOn(order);
       const remaining = total - paidSoFar;

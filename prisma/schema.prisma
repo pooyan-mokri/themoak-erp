@@ -704,6 +704,23 @@ model PurchaseOrderPayment {
   description     String?
   date            DateTime      @default(now())
   createdAt       DateTime      @default(now())
+  // A payment in the currency actually paid (payPurchaseOrder on the ERP API, src/lib/erp-api-po-payments.ts).
+  // All null on a payment recorded in Toman on the order page; `amount` above stays the Toman value either way.
+  /// The amount in the currency actually paid, e.g. 2000.
+  paidAmount      Decimal?
+  /// The currency actually paid, e.g. CNY.
+  paidCurrency    Currency?
+  /// Units of paidCurrency per 1 unit of the account's currency, e.g. 6.6703 yuan per dollar. From a Toman
+  /// account: Toman per 1 unit of paidCurrency. Null when the account was paid in its own currency.
+  accountRate     Decimal?
+  /// Toman per 1 unit of the account's currency, e.g. 271000.
+  tomanRate       Decimal?
+  /// What left the account, in the account's currency, e.g. 299.84 dollars.
+  accountAmount   Decimal?
+  /// What this payment settled of the order, in the order's currency (src/lib/purchase-order-balance.ts).
+  orderAmount     Decimal?
+  /// One call of payPurchaseOrder: a call that arrives twice stores one payment (src/lib/request-id.ts).
+  clientRequestId String?       @unique
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   account         Account?      @relation(fields: [accountId], references: [id], onDelete: Restrict)
   transaction     Transaction?  @relation("PurchaseOrderPaymentTxn", fields: [transactionId], references: [id])

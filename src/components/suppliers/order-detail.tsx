@@ -80,6 +80,19 @@ interface PurchaseOrderPayment {
   fromCredit?: boolean;
   description?: string;
   date: Date | string;
+  // Set on a payment recorded in the currency actually paid (payPurchaseOrder on the ERP API).
+  accountCurrency?: Currency;
+  /** The amount in the currency actually paid, e.g. 2000 yuan. */
+  paidAmount?: number;
+  paidCurrency?: Currency;
+  /** What left the account, in the account's currency. */
+  accountAmount?: number;
+  /** The bank's rate between the two currencies (prisma/schema.prisma PurchaseOrderPayment.accountRate). */
+  accountRate?: number;
+  /** Toman per unit of the account's currency. */
+  tomanRate?: number;
+  /** What the payment settled, in the order's currency. */
+  orderAmount?: number;
 }
 
 interface PurchaseOrder {
@@ -97,6 +110,8 @@ interface PurchaseOrder {
   paidAmountInToman?: number;
   /** What the supplier owes us back («طلب از تأمین‌کننده»), for finance viewers. */
   supplierCreditBalance?: number;
+  /** Total, paid and remaining in the order's own currency (src/lib/purchase-order-balance.ts), for finance viewers. */
+  currencyBalance?: { currency: string; total: number; paid: number; remaining: number };
 }
 
 interface ExchangeRate {
@@ -301,12 +316,21 @@ export function OrderDetail({
   };
 
   // Payment figures (partial payments). An order closed short owes only for the units that came.
-  const totalInToman = owedTotalInToman(order, (currency: string) => getExchangeRate(currency as Currency)) || 0;
+  const paidInToman = order.paidAmountInToman ?? (order.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
+  // The order's balance in its own currency, shown for an order in a foreign currency.
+  const currencyBalance = order.currencyBalance && order.currencyBalance.currency !== 'TOMAN' ? order.currencyBalance : undefined;
+  const paidInCurrency = (order.payments ?? []).some((p) => p.orderAmount !== undefined);
+  // With a payment in the currency actually paid and no Toman total yet, the order owes what remains of its own
+  // currency at today's rate, on top of what its payments cost (src/lib/purchase-order-balance.ts), as the server counts it.
+  const totalInToman =
+    currencyBalance && paidInCurrency && !order.totalAmountInToman && !isClosedShort(order)
+      ? paidInToman + currencyBalance.remaining * getExchangeRate(currencyBalance.currency as Currency)
+      : owedTotalInToman(order, (currency: string) => getExchangeRate(currency as Currency)) || 0;
   // Recorded in the supplier's currency (an order made through the API): no Toman total until it is paid, so the
   // figures below price it at today's rate.
   const atTodaysRate = !order.totalAmountInToman && !isClosedShort(order);
-  const totalLabel = isClosedShort(order) ? 'مبلغ کالای رسیده' : atTodaysRate ? 'مبلغ کل (به نرخ امروز)' : 'مبلغ کل';
-  const paidSoFar = order.paidAmountInToman ?? (order.payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
+  const totalLabel = isClosedShort(order) ? 'مبلغ کالای رسیده' : atTodaysRate ? (paidInCurrency ? 'مبلغ کل (باقیمانده به نرخ امروز)' : 'مبلغ کل (به نرخ امروز)') : 'مبلغ کل';
+  const paidSoFar = paidInToman;
   const remaining = Math.max(0, totalInToman - paidSoFar);
   const creditBalance = order.supplierCreditBalance ?? 0;
   const creditUsable = Math.min(creditBalance, remaining);
@@ -456,6 +480,11 @@ export function OrderDetail({
 
   const getCurrencyLabel = (currency: string) => CURRENCY_LABELS[currency] || currency;
   const fa = (n: number) => Math.round(n).toLocaleString('fa-IR');
+  /** An amount of a currency: whole Toman, up to two decimals of anything else. */
+  const inCurrency = (n: number, currency: string) =>
+    `${n.toLocaleString('fa-IR', { maximumFractionDigits: currency === 'TOMAN' ? 0 : 2 })} ${getCurrencyLabel(currency)}`;
+  /** A rate as it was given: up to six decimals. */
+  const faRate = (n: number) => n.toLocaleString('fa-IR', { maximumFractionDigits: 6 });
   const canReceiveNow = (order.status === 'ARRIVED' || order.status === 'PARTIALLY_RECEIVED') && canReceive;
   // Only the moves the server accepts (src/lib/purchase-order-status.ts): no cancel once goods came in.
   const canCancelNow = canMovePurchaseOrder(order.status, 'CANCELLED') && canChangeStatus;
@@ -633,6 +662,22 @@ export function OrderDetail({
             ))}
           </div>
 
+          {/* An order in a foreign currency is settled in that currency: its balance there, whatever each payment cost in Toman. */}
+          {currencyBalance && (
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              {[
+                { label: `مبلغ کل به ${getCurrencyLabel(currencyBalance.currency)}`, value: currencyBalance.total },
+                { label: `پرداخت‌شده به ${getCurrencyLabel(currencyBalance.currency)}`, value: currencyBalance.paid },
+                { label: `باقیمانده به ${getCurrencyLabel(currencyBalance.currency)}`, value: currencyBalance.remaining },
+              ].map((figure) => (
+                <div key={figure.label} className="rounded-md border px-3 py-2">
+                  <div className="text-xs text-muted-foreground">{figure.label}</div>
+                  <div className="mt-0.5 font-medium tabular-nums">{inCurrency(figure.value, currencyBalance.currency)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* What the supplier owes us back («طلب از تأمین‌کننده») can pay this order without moving an account. */}
           {creditBalance > 0 && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2.5 text-[13px]">
@@ -654,7 +699,15 @@ export function OrderDetail({
                   <TableRow>
                     <TableHead>تاریخ</TableHead>
                     <TableHead>حساب</TableHead>
-                    <TableHead className="text-end">مبلغ (تومان)</TableHead>
+                    {paidInCurrency && (
+                      <>
+                        <TableHead className="text-end">مبلغ پرداختی</TableHead>
+                        <TableHead className="text-end">از حساب</TableHead>
+                        <TableHead className="text-end">نرخ بانک</TableHead>
+                        <TableHead className="text-end">نرخ تومان</TableHead>
+                      </>
+                    )}
+                    <TableHead className="text-end">{paidInCurrency ? 'ارزش تومانی' : 'مبلغ (تومان)'}</TableHead>
                     <TableHead>توضیحات</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -663,6 +716,19 @@ export function OrderDetail({
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-[12px]">{formatJalaliDate(p.date)}</TableCell>
                       <TableCell>{p.accountName}</TableCell>
+                      {paidInCurrency && (
+                        <>
+                          {/* A payment recorded in Toman on this page: its Toman amount, and no rates. */}
+                          <TableCell className="text-end tabular-nums">
+                            {p.paidAmount !== undefined && p.paidCurrency ? inCurrency(p.paidAmount, p.paidCurrency) : inCurrency(Number(p.amount), 'TOMAN')}
+                          </TableCell>
+                          <TableCell className="text-end tabular-nums">
+                            {p.accountAmount !== undefined && p.accountCurrency ? inCurrency(p.accountAmount, p.accountCurrency) : '—'}
+                          </TableCell>
+                          <TableCell className="text-end tabular-nums">{p.accountRate !== undefined ? faRate(p.accountRate) : '—'}</TableCell>
+                          <TableCell className="text-end tabular-nums">{p.tomanRate !== undefined ? faRate(p.tomanRate) : '—'}</TableCell>
+                        </>
+                      )}
                       <TableCell className="text-end font-medium">{fa(Number(p.amount))}</TableCell>
                       <TableCell className="text-muted-foreground">{p.description || '—'}</TableCell>
                     </TableRow>

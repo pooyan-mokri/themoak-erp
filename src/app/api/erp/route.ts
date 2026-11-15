@@ -16,6 +16,7 @@ import { currentApiActor, runAsApiUser, type ApiActor } from '@/lib/api-actor';
 import { logActivity } from '@/lib/activity-log';
 import { PERSONAL_POST_ACTIONS, personalMay, personalPost, redactForRole, whoami } from '@/lib/erp-api-personal';
 import { PURCHASING_GET_ACTIONS, PURCHASING_POST_ACTIONS, createProduct, createPurchaseOrder, createSupplier, listPurchaseOrders, listSuppliers } from '@/lib/erp-api-purchasing';
+import { PO_PAYMENT_POST_ACTIONS, addPurchaseOrderCost, payPurchaseOrder } from '@/lib/erp-api-po-payments';
 
 // Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
 export const maxDuration = 30;
@@ -676,7 +677,7 @@ async function repeatedReply(requestId: string) {
 }
 
 // ── POST /api/erp  body: { action, ...fields } ───────────────────────────────
-const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus', ...PERSONAL_POST_ACTIONS, ...PURCHASING_POST_ACTIONS];
+const POST_ACTIONS = ['deposit', 'expense', 'transfer', 'createSale', 'setSaleStatus', ...PERSONAL_POST_ACTIONS, ...PURCHASING_POST_ACTIONS, ...PO_PAYMENT_POST_ACTIONS];
 
 function unknownPostAction() {
   return NextResponse.json({ error: 'Unknown action', availableActions: POST_ACTIONS }, { status: 404 });
@@ -902,6 +903,15 @@ async function postAction(req: NextRequest, key: ApiKey) {
       case 'createPurchaseOrder': {
         const run = action === 'createSupplier' ? createSupplier : action === 'createProduct' ? createProduct : createPurchaseOrder;
         const result = await run(prisma, fields);
+        return NextResponse.json(result.body, { status: result.status });
+      }
+
+      // ── پرداخت سفارش خرید به ارزِ پرداخت‌شده، و هزینهٔ تازهٔ آن: فقط کلید کامل (src/lib/erp-api-po-payments.ts) ──
+      case 'payPurchaseOrder':
+      case 'addPurchaseOrderCost': {
+        // A personal key is stopped before this (no entry in PERSONAL_ACTION_PERMISSIONS), the site key above.
+        if (key !== 'full') return forbidden();
+        const result = action === 'payPurchaseOrder' ? await payPurchaseOrder(prisma, fields) : await addPurchaseOrderCost(prisma, fields);
         return NextResponse.json(result.body, { status: result.status });
       }
 

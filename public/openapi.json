@@ -131,7 +131,7 @@
       "post": {
         "operationId": "erpWrite",
         "summary": "Write to ERP (record transactions, suppliers, products, purchase orders)",
-        "description": "Record a deposit, expense/payment, or internal transfer between accounts. Send a fresh requestId with each entry and the same one when retrying it: an entry is booked once per requestId. Also: a supplier, a product, or a purchase order recorded in the supplier's currency with no Toman figure (its Toman value is the rate paid, at payment). A tag starting with PI: books one order per PI.",
+        "description": "Record a deposit, expense/payment, or internal transfer between accounts. Send a fresh requestId with each entry and the same one when retrying it: an entry is booked once per requestId. Also: a supplier, a product, or a purchase order recorded in the supplier's currency with no Toman figure (its Toman value is the rate paid, at payment). A tag starting with PI: books one order per PI. payPurchaseOrder records a payment on a purchase order in the currency actually paid, from an account in any currency (accountAmount = amount / accountRate; Toman value = accountAmount x tomanRate); the order's balance is kept in the order's currency, and when it reaches 0 the order is PAID and its Toman figures are set from what was paid. addPurchaseOrderCost adds a cost to a purchase order in the order's currency. Both need the full key.",
         "requestBody": {
           "required": true,
           "content": {
@@ -143,7 +143,9 @@
                   { "$ref": "#/components/schemas/TransferRequest" },
                   { "$ref": "#/components/schemas/CreateSupplierRequest" },
                   { "$ref": "#/components/schemas/CreateProductRequest" },
-                  { "$ref": "#/components/schemas/CreatePurchaseOrderRequest" }
+                  { "$ref": "#/components/schemas/CreatePurchaseOrderRequest" },
+                  { "$ref": "#/components/schemas/PayPurchaseOrderRequest" },
+                  { "$ref": "#/components/schemas/AddPurchaseOrderCostRequest" }
                 ]
               }
             }
@@ -359,6 +361,32 @@
           },
           "tags": { "type": "array", "items": { "type": "string" }, "description": "A tag starting with PI: names the supplier's proforma invoice; an order not cancelled already carrying it refuses this one." },
           "status": { "type": "string", "enum": ["DRAFT", "PENDING_PAYMENT"], "default": "DRAFT" }
+        }
+      },
+      "PayPurchaseOrderRequest": {
+        "type": "object",
+        "required": ["action", "order", "account", "amount", "currency"],
+        "properties": {
+          "action": { "type": "string", "enum": ["payPurchaseOrder"] },
+          "order": { "type": "integer", "description": "The purchase order's number, e.g. 8 for PO-8. It must be DRAFT (the payment places it), PENDING_PAYMENT or PARTIALLY_PAID; an order in production or arrived that owes an added cost is paid too and keeps its status." },
+          "account": { "type": "string", "description": "The paying account's name or id" },
+          "amount": { "type": "number", "exclusiveMinimum": 0, "description": "The amount actually paid, in `currency`, e.g. 2000" },
+          "currency": { "type": "string", "enum": ["TOMAN", "USD", "EUR", "CNY"], "description": "The currency actually paid, e.g. CNY" },
+          "accountRate": { "type": "number", "exclusiveMinimum": 0, "description": "Required when `currency` is not the account's currency: units of `currency` per 1 unit of the account's currency (6.6703 yuan per dollar), so accountAmount = amount / accountRate. From a Toman account: Toman per 1 unit of `currency`, so accountAmount = amount x accountRate." },
+          "tomanRate": { "type": "number", "exclusiveMinimum": 0, "description": "Toman per 1 unit of the account's currency, e.g. 271000. Default: that currency's latest rate in the ERP; 1 for a Toman account." },
+          "date": { "type": "string", "description": "Gregorian date YYYY-MM-DD (default today). A Jalali date is refused." },
+          "note": { "type": "string" },
+          "requestId": { "type": "string", "description": "8-64 letters, digits, - or _. The same id twice records one payment; the second answer has duplicate: true." }
+        }
+      },
+      "AddPurchaseOrderCostRequest": {
+        "type": "object",
+        "required": ["action", "order", "title", "amount"],
+        "properties": {
+          "action": { "type": "string", "enum": ["addPurchaseOrderCost"] },
+          "order": { "type": "integer", "description": "The purchase order's number. Refused when it is RECEIVED, PARTIALLY_RECEIVED or CANCELLED." },
+          "title": { "type": "string", "description": "e.g. Gold-filled laser logo. The same title and amount already on the order is refused." },
+          "amount": { "type": "number", "exclusiveMinimum": 0, "description": "In the order's currency. A PAID order goes back to PARTIALLY_PAID." }
         }
       }
     }

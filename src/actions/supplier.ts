@@ -12,6 +12,7 @@ import { addToConsumable } from '@/lib/fixed-asset-value';
 import { kickSiteHook } from '@/lib/site-hook';
 import { ACCESS_DENIED_MESSAGE, checkPermission, hasPermission } from '@/lib/access';
 import { latestRates, unpaidOnPurchaseOrder } from '@/lib/money-totals';
+import { orderBalance } from '@/lib/purchase-order-balance';
 import { PAID_OUTSIDE_DESCRIPTION } from '@/lib/purchase-order-status';
 import { CloseShortRefusal, closeShortInTransaction } from '@/lib/close-short';
 
@@ -61,6 +62,7 @@ function withoutHiddenMoney(order: any, see: { cost: boolean; finance: boolean }
     paidAmountInToman,
     unpaidInToman,
     supplierCreditBalance,
+    currencyBalance,
     ...rest
   } = order;
   const seeCosts = see.cost || see.finance;
@@ -70,6 +72,7 @@ function withoutHiddenMoney(order: any, see: { cost: boolean; finance: boolean }
     ...(see.finance && payments !== undefined && { payments, paidAmountInToman }),
     ...(see.finance && unpaidInToman !== undefined && { unpaidInToman }),
     ...(see.finance && supplierCreditBalance !== undefined && { supplierCreditBalance }),
+    ...(see.finance && currencyBalance !== undefined && { currencyBalance }),
     items: order.items.map((item: any) => {
       const { unitCost, unitCostInToman, totalCostInToman, additionalCost, additionalCostInToman, ...itemRest } = item;
       return see.cost ? item : itemRest;
@@ -176,7 +179,7 @@ export async function getPurchaseOrders() {
         arrivalAdditionalCosts: true,
         paymentTransaction: true,
         // What was paid, for the list's balance and payables (finance.view only, below).
-        payments: { select: { amount: true } }
+        payments: { select: { amount: true, orderAmount: true } }
       }
     });
     // What is still owed on each order, read as «مانده پرداخت به تأمین‌کنندگان» reads it (src/lib/money-totals.ts):
@@ -402,7 +405,7 @@ export async function getPurchaseOrder(orderId: string) {
         },
         paymentTransaction: true,
         payments: {
-          include: { account: { select: { name: true } } },
+          include: { account: { select: { name: true, currency: true } } },
           orderBy: { date: 'asc' }
         }
       }
@@ -411,6 +414,10 @@ export async function getPurchaseOrder(orderId: string) {
     if (!order) {
       return { success: false, error: 'سفارش یافت نشد' };
     }
+
+    const rates = see.finance ? await latestRates(prisma) : [];
+    const currencyRate = (currency: string) =>
+      currency === 'TOMAN' ? 1 : Number(rates.find((rate: any) => rate.currency === currency)?.rateToToman ?? 0);
 
     // Convert Decimal fields to numbers for client-side serialization
     type OrderItem = typeof order.items[0] & {
@@ -460,7 +467,17 @@ export async function getPurchaseOrder(orderId: string) {
         fromCredit: !p.accountId && p.description !== PAID_OUTSIDE_DESCRIPTION,
         description: p.description ?? undefined,
         date: p.date,
+        // Set on a payment recorded in the currency actually paid (payPurchaseOrder on the ERP API).
+        accountCurrency: p.account?.currency ?? undefined,
+        paidAmount: p.paidAmount == null ? undefined : Number(p.paidAmount),
+        paidCurrency: p.paidCurrency ?? undefined,
+        accountAmount: p.accountAmount == null ? undefined : Number(p.accountAmount),
+        accountRate: p.accountRate == null ? undefined : Number(p.accountRate),
+        tomanRate: p.tomanRate == null ? undefined : Number(p.tomanRate),
+        orderAmount: p.orderAmount == null ? undefined : Number(p.orderAmount),
       })),
+      // Paid and remaining in the order's own currency (src/lib/purchase-order-balance.ts); none in mixed currencies.
+      currencyBalance: orderBalance(order, currencyRate) ?? undefined,
       paidAmountInToman: (order.payments ?? []).reduce((sum: number, p: any) => sum + Number(p.amount), 0),
       supplierCreditBalance: (await creditBalances(prisma, [order.supplierId])).get(order.supplierId) ?? 0,
     };

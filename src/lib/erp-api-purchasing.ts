@@ -18,9 +18,11 @@ import { generateUniqueBarcode } from '@/lib/barcode-utils';
 import { kickSiteHook } from '@/lib/site-hook';
 import { PAYABLE_PURCHASE_ORDERS, latestRates, unpaidOnPurchaseOrder } from '@/lib/money-totals';
 import { PURCHASE_ORDER_STATUS_LABELS } from '@/lib/purchase-order-status';
+import { orderBalance } from '@/lib/purchase-order-balance';
 
 export const PURCHASING_GET_ACTIONS = ['suppliers', 'purchaseOrders'];
 export const PURCHASING_POST_ACTIONS = ['createSupplier', 'createProduct', 'createPurchaseOrder'];
+// Paying an order and adding a cost to it: src/lib/erp-api-po-payments.ts (the full key only).
 
 const CURRENCIES = ['TOMAN', 'USD', 'EUR', 'CNY'];
 const CURRENCY_NAMES: Record<string, string> = { TOMAN: 'تومان', USD: 'دلار', EUR: 'یورو', CNY: 'یوان' };
@@ -76,16 +78,27 @@ export async function listPurchaseOrders(client: any, params: URLSearchParams): 
       supplier: { select: { id: true, name: true } },
       items: { include: { product: { select: { sku: true, name: true } } }, orderBy: { id: 'asc' } },
       additionalCosts: true,
-      payments: { select: { amount: true, date: true, description: true }, orderBy: { date: 'asc' } },
+      payments: {
+        select: {
+          amount: true, date: true, description: true,
+          paidAmount: true, paidCurrency: true, accountAmount: true, accountRate: true, tomanRate: true, orderAmount: true,
+          account: { select: { name: true, currency: true } },
+        },
+        orderBy: { date: 'asc' },
+      },
     },
   });
   const rates = await latestRates(client);
   const payable = (s: string) => !PAYABLE_PURCHASE_ORDERS.status.notIn.includes(s);
+  const rateOf = (currency: string) => (currency === 'TOMAN' ? 1 : Number(rates.find((r: any) => r.currency === currency)?.rateToToman ?? 0));
+  const orNull = (v: unknown) => (v == null ? null : Number(v));
   return {
     status: 200,
     body: {
     purchaseOrders: orders.map((o: any) => {
       const paid = o.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+      // In the order's own currency (src/lib/purchase-order-balance.ts); none for an order in mixed currencies.
+      const balance = orderBalance(o, rateOf);
       return {
         id: o.id,
         number: o.number,
@@ -112,9 +125,24 @@ export async function listPurchaseOrders(client: any, params: URLSearchParams): 
           currency: c.currency,
           amountInToman: c.amountInToman == null ? null : Number(c.amountInToman),
         })),
-        // Payments are in Toman, whatever the paying account.
-        payments: o.payments.map((p: any) => ({ amountInToman: Number(p.amount), date: p.date, description: p.description ?? null })),
+        // amountInToman is every payment's Toman value. A payment recorded in the currency actually paid
+        // (payPurchaseOrder) also says what was paid, what left the account and at which rates; the others have null there.
+        payments: o.payments.map((p: any) => ({
+          amountInToman: Number(p.amount),
+          date: p.date,
+          description: p.description ?? null,
+          paidAmount: orNull(p.paidAmount),
+          paidCurrency: p.paidCurrency ?? null,
+          account: p.account?.name ?? null,
+          accountCurrency: p.account?.currency ?? null,
+          accountAmount: orNull(p.accountAmount),
+          accountRate: orNull(p.accountRate),
+          tomanRate: orNull(p.tomanRate),
+          inOrderCurrency: orNull(p.orderAmount),
+        })),
         paidInToman: paid,
+        paidInOrderCurrency: balance?.paid ?? null,
+        remainingInOrderCurrency: balance ? (payable(o.status) ? balance.remaining : 0) : null,
         // Still owed, as the dashboard counts it: nothing on a draft or a cancelled order; an order with no Toman total at the latest rate.
         unpaidInToman: payable(o.status) ? unpaidOnPurchaseOrder(o, rates) : 0,
       };

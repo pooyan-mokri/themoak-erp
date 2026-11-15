@@ -318,4 +318,21 @@ BEGIN
   ) THEN
     ALTER TABLE "PurchaseOrderPayment" ALTER COLUMN "accountId" DROP NOT NULL;
   END IF;
+
+  -- PurchaseOrderPayment.clientRequestId (payPurchaseOrder on the ERP API,
+  -- src/lib/erp-api-po-payments.ts): the same reason as Transaction.clientRequestId.
+  -- Every existing row is NULL. The payment's other new columns (paidAmount,
+  -- paidCurrency, accountRate, tomanRate, accountAmount, orderAmount) are plain
+  -- nullable columns, which db push adds itself.
+  IF to_regclass('"PurchaseOrderPayment"') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_attribute
+      WHERE attrelid = '"PurchaseOrderPayment"'::regclass AND attname = 'clientRequestId' AND NOT attisdropped
+    ) THEN
+      ALTER TABLE "PurchaseOrderPayment" ADD COLUMN "clientRequestId" TEXT;
+    END IF;
+    IF to_regclass('"PurchaseOrderPayment_clientRequestId_key"') IS NULL THEN
+      CREATE UNIQUE INDEX "PurchaseOrderPayment_clientRequestId_key" ON "PurchaseOrderPayment"("clientRequestId");
+    END IF;
+  END IF;
 END $$;

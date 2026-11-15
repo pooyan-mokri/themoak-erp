@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { isClosedShort, landedCostPerUnit, receivedValueInToman } from '@/lib/landed-cost';
+import { owedInTomanAfterCurrencyPayments } from '@/lib/purchase-order-balance';
 import { orderTotals } from '@/lib/order-balance';
 import {
   PARTNER_LOAN_CATEGORY,
@@ -166,7 +167,7 @@ export const PAYABLE_PURCHASE_ORDERS = { status: { notIn: ['DRAFT', 'CANCELLED']
 export const PURCHASE_ORDER_DEBT_FIELDS = {
   status: true,
   totalAmountInToman: true,
-  payments: { select: { amount: true } },
+  payments: { select: { amount: true, orderAmount: true } },
   items: { select: { quantity: true, unitCost: true, currency: true, exchangeRateSnapshot: true, unitCostInToman: true, receivedQuantity: true } },
   additionalCosts: { select: { amount: true, currency: true, exchangeRateSnapshot: true, amountInToman: true } },
 };
@@ -176,7 +177,7 @@ type Priced = { currency: string; exchangeRateSnapshot?: unknown };
 type PurchaseOrderDebt = {
   status?: string;
   totalAmountInToman: unknown;
-  payments: Array<{ amount: unknown }>;
+  payments: Array<{ amount: unknown; orderAmount?: unknown }>;
   items?: Array<Priced & { quantity: number; unitCost: unknown; unitCostInToman?: unknown; receivedQuantity?: number }>;
   additionalCosts?: Array<Priced & { amount: unknown; amountInToman?: unknown }>;
 };
@@ -188,6 +189,10 @@ type PurchaseOrderDebt = {
  * the first line's currency and is never used. An order with no Toman total
  * (an old one) is priced as the payment code prices it: its lines and order
  * costs at the latest rate (or, lacking one, the rate kept on the line).
+ * Once such an order has a payment in the currency actually paid (payPurchaseOrder
+ * on the ERP API), it owes what remains of its own currency, at the latest rate
+ * (src/lib/purchase-order-balance.ts): what its earlier payments cost in Toman
+ * no longer moves what is left.
  * Arrival costs are paid when recorded, so they are never owed. A remainder of
  * 1 Toman or less is rounding: the payment code marks an order paid at total − 1.
  * An order closed short owes only for the units that came (receivedValueInToman
@@ -210,7 +215,11 @@ export function unpaidOnPurchaseOrder(order: PurchaseOrderDebt, rates: RateRow[]
     (sum: Decimal, payment) => sum.plus(new Decimal(payment.amount as Decimal.Value)),
     new Decimal(0),
   );
-  const unpaid = total.minus(paid);
+  let unpaid = total.minus(paid);
+  if (order.items && !isClosedShort({ status: order.status, items: order.items })) {
+    const owed = owedInTomanAfterCurrencyPayments(order as any, (currency) => Number(rateOf({ currency })));
+    if (owed !== null) unpaid = new Decimal(owed).minus(paid);
+  }
   return unpaid.greaterThan(1) ? Number(unpaid) : 0;
 }
 

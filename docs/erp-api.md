@@ -467,6 +467,8 @@ GET {base}/api/erp?action=settlements
 | `createSupplier` | POST | `stock.manage` یا `finance.manage` |
 | `createProduct` | POST | `stock.manage` (بدون `cost.edit` قیمت خرید و بدون `sales.view` قیمت فروش صفر ثبت می‌شود، مثل فرم کالا) |
 | `createPurchaseOrder` | POST | `cost.edit` (فقط مدیر سیستم) |
+| `payPurchaseOrder` | POST | ندارد — فقط `ERP_API_SECRET` |
+| `addPurchaseOrderCost` | POST | ندارد — فقط `ERP_API_SECRET` |
 
 ### به ارز PI، بدون تومان
 
@@ -533,9 +535,113 @@ GET {base}/api/erp?action=purchaseOrders&supplier=Mazzu&status=PENDING_PAYMENT&t
 خرید، `limit` پیش‌فرض ۳۰ و حداکثر ۱۰۰. هر سفارش: `number`، `supplier`، `status`،
 `tags`، `currency`، `totalAmount` (به ارز سفارش)، `totalAmountInToman` (`null` تا
 معلوم شود)، `items` (`sku`، `name`، `quantity`، `unitCost`، `currency`،
-`receivedQuantity`)، `additionalCosts`، `payments` (به تومان)، `paidInToman` و
+`receivedQuantity`)، `additionalCosts`، `payments`، `paidInToman` و
 `unpaidInToman` — مانده همان‌طور که داشبورد می‌شمارد: پیش‌نویس و لغوشده صفر، و سفارش
-بی‌تومان به نرخ امروز.
+بی‌تومان به نرخ امروز (اگر پرداخت ارزی دارد: باقیماندهٔ ارزی‌اش به نرخ امروز).
+
+`paidInOrderCurrency` و `remainingInOrderCurrency` ماندهٔ سفارش به **ارز خودش** است
+(برای سفارشی که ردیف‌هایش چند ارز دارند `null`؛ پیش‌نویس و لغوشده باقیماندهٔ صفر).
+هر `payment`: `amountInToman` (ارزش تومانی)، `date`، `description`، و اگر با
+`payPurchaseOrder` ثبت شده: `paidAmount` و `paidCurrency` (آنچه واقعاً پرداخت شد)،
+`account` و `accountCurrency`، `accountAmount` (آنچه از حساب رفت)، `accountRate`،
+`tomanRate` و `inOrderCurrency` (آنچه از سفارش تسویه کرد). پرداختی که در صفحهٔ سفارش
+به تومان ثبت شده این فیلدها را `null` دارد.
+
+### `payPurchaseOrder` — پرداخت به ارزی که واقعاً پرداخت شده
+
+فقط با `ERP_API_SECRET`؛ کلید شخصی و کلید سایت `403` می‌گیرند. تأمین‌کنندهٔ چینی
+یوان می‌گیرد (وی‌چت، علی‌پی) و پولش از حسابی به ارز دیگر می‌رود:
+
+```json
+{
+  "action": "payPurchaseOrder",
+  "order": 8,
+  "account": "حساب ذخیره دلاری",
+  "amount": 2000,
+  "currency": "CNY",
+  "accountRate": 6.6703,
+  "tomanRate": 271000,
+  "date": "2026-11-15",
+  "note": "بیعانه — وی‌چت",
+  "requestId": "po8-pay-2026-11-15-a"
+}
+```
+
+| فیلد | قاعده |
+|---|---|
+| `order` | شمارهٔ سفارش خرید (`8`، `"PO-8"`). باید «منتظر پرداخت» یا «پرداخت جزئی» باشد. پیش‌نویس با همین پرداخت ثبت نهایی می‌شود. سفارشِ «در حال تولید» یا «رسیده» که هزینهٔ تازه‌ای بدهکار است هم پرداخت می‌گیرد و وضعیتش همان می‌ماند. بقیه رد می‌شوند |
+| `account` | نام یا شناسهٔ حساب؛ نامی که به چند حساب بخورد رد می‌شود (`options`) |
+| `amount`، `currency` | مبلغ و ارزی که **واقعاً پرداخت شد** (لازم) |
+| `accountRate` | وقتی `currency` با ارز حساب فرق دارد **لازم** است: چند واحد `currency` برای هر ۱ واحد ارز حساب (۶٫۶۷۰۳ یوان برای هر دلار) → از حساب `amount ÷ accountRate` می‌رود. از حساب **تومانی** برعکس گفته می‌شود: چند تومان برای هر واحد `currency` → `amount × accountRate` |
+| `tomanRate` | تومان برای هر ۱ واحد ارز حساب. اختیاری: آخرین نرخ ثبت‌شدهٔ آن ارز؛ حساب تومانی همیشه ۱ |
+| `date` | میلادی `YYYY-MM-DD` (پیش‌فرض امروز)؛ تاریخ شمسی رد می‌شود |
+| `note` | اختیاری؛ در شرح تراکنش و پرداخت می‌آید |
+| `requestId` | اختیاری، ۸ تا ۶۴ حرف/رقم/`-`/`_`. همان شناسه دو بار = یک پرداخت؛ پاسخ دوم `duplicate: true` دارد |
+
+حساب‌وکتاب نمونه: از حساب دلاری `2000 ÷ 6.6703 = 299.84` دلار کم می‌شود (حساب ارزی
+تا دو رقم اعشار، حساب تومانی تا تومان گرد می‌شود) و ارزش تومانی
+`299.84 × 271,000 = 81,256,640` تومان است. همه در یک تراکنش پایگاه‌داده:
+
+1. تراکنش هزینه (`EXPENSE`، دستهٔ `Purchase Payment`) به ارز حساب، با `rateSnapshot = tomanRate`
+   و شرح «پرداخت سفارش خرید #8 — ¥2,000 @ 6.6703 — بیعانه»؛
+2. کم شدن موجودی حساب (موجودی ناکافی رد می‌شود)؛
+3. ردیف پرداخت با مبلغ و ارز پرداخت‌شده، نرخ‌ها، مبلغ حساب و ارزش تومانی (`amount` همان تومان است)؛
+4. وضعیت سفارش: «پرداخت جزئی»، یا «پرداخت شده» وقتی باقیمانده صفر شد (±۰٫۰۱).
+
+**ماندهٔ سفارش به ارز خود سفارش** نگه داشته می‌شود. هر پرداخت این‌قدر از سفارش را
+تسویه می‌کند: اگر به ارز سفارش پرداخت شده، همان `amount`؛ اگر ارز حساب همان ارز سفارش
+است، مبلغ حساب؛ اگر سفارش تومانی است، ارزش تومانی؛ وگرنه ارزش تومانی تقسیم بر آخرین
+نرخ ارز سفارش در همان روز. پرداخت تومانیِ قدیمی (صفحهٔ سفارش، طلب از تأمین‌کننده) با نرخ
+خود سفارش برگردانده می‌شود: `totalAmountInToman ÷ جمع ارزی` اگر سفارش تومان دارد، وگرنه
+آخرین نرخ. پرداختی که بیش از ۰٫۰۱ از باقیمانده بیشتر باشد رد می‌شود و `remainingInOrderCurrency`
+باقیمانده را می‌گوید.
+
+**وقتی سفارش «پرداخت شده» شد**، ارقام تومانی‌اش از آنچه واقعاً پرداخت شد پر می‌شود:
+`totalAmountInToman = جمع ارزش تومانی پرداخت‌ها`، نرخ مؤثر `= totalAmountInToman ÷ جمع ارزی سفارش`،
+و روی هر ردیف `exchangeRateSnapshot` و `unitCostInToman` و روی هر هزینهٔ اضافی
+`exchangeRateSnapshot` و `amountInToman` با همین نرخ. پس قیمت تمام‌شده هنگام دریافت کالا
+با نرخ واقعی پرداخت حساب می‌شود، نه نرخ روز دریافت. (`totalCostInToman` ردیف دست
+نمی‌خورد: دریافت کالا قیمت تمام‌شدهٔ هر دریافت را به آن اضافه می‌کند.)
+
+پاسخ:
+
+```json
+{
+  "success": true,
+  "message": "پرداخت ثبت شد. باقیماندهٔ سفارش خرید PO-8: ¥4,322.",
+  "order": 8, "supplier": "…", "status": "PARTIALLY_PAID", "statusLabel": "پرداخت جزئی",
+  "currency": "CNY", "totalAmount": 6322,
+  "paidInOrderCurrency": 2000, "remainingInOrderCurrency": 4322, "totalAmountInToman": null,
+  "payment": {
+    "id": "cm…", "date": "2026-11-15T00:00:00.000Z",
+    "paidAmount": 2000, "currency": "CNY",
+    "accountAmount": 299.84, "accountCurrency": "USD",
+    "accountRate": 6.6703, "tomanRate": 271000,
+    "amountInToman": 81256640, "inOrderCurrency": 2000, "note": "بیعانه — وی‌چت"
+  },
+  "account": { "id": "cm…", "name": "حساب ذخیره دلاری", "currency": "USD", "balance": 4700.16 }
+}
+```
+
+### `addPurchaseOrderCost` — هزینهٔ تازه روی سفارش
+
+فقط با `ERP_API_SECRET`. هزینه‌ای که تأمین‌کننده بعد از PI اضافه کرده، **به ارز سفارش**:
+
+```json
+{ "action": "addPurchaseOrderCost", "order": 8, "title": "Gold-filled laser logo", "amount": 322 }
+```
+
+- سفارشِ «دریافت شده»، «نیمه دریافت شده» یا «لغو شده» رد می‌شود.
+- `totalAmount` سفارش به همان اندازه بالا می‌رود.
+- سفارشی که هنوز تومان ندارد هزینه را هم بی‌تومان می‌گیرد. سفارشی که تومان دارد (پرداخت
+  شده، یا تومانی) هزینه را با نرخ مؤثر خودش می‌گیرد و `totalAmountInToman` هم بالا می‌رود.
+- سفارشِ «پرداخت شده» به «پرداخت جزئی» برمی‌گردد؛ با `payPurchaseOrder` تسویه‌اش کنید
+  (آن‌وقت نرخ مؤثر دوباره از همهٔ پرداخت‌ها حساب می‌شود). سفارشِ «در حال تولید» یا
+  «رسیده» وضعیتش را نگه می‌دارد.
+- همان عنوان با همان مبلغ دو بار ثبت نمی‌شود (درخواستی که دو بار برسد یک هزینه می‌سازد).
+
+پاسخ همان خلاصهٔ سفارش است (`status`، `totalAmount`، `paidInOrderCurrency`،
+`remainingInOrderCurrency`) به‌اضافهٔ `cost: { title, amount, currency, amountInToman }`.
 
 ### `suppliers`، `createSupplier`، `createProduct`
 
