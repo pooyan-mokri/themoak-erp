@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Copy, KeyRound, Trash2 } from 'lucide-react';
+import { Copy, Download, KeyRound, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -130,6 +130,27 @@ export function ApiKeysDialog({ user, onOpenChange }: ApiKeysDialogProps) {
               </div>
             ))
           )}
+        </div>
+
+        {/* The connector itself (src/app/api/connector/route.ts): one file for macOS and Windows, with no key in it. */}
+        <div className="mt-2 space-y-2 rounded-lg border p-3">
+          <p className="text-[13px] font-medium">نصب کانکتور در Claude Desktop</p>
+          <ol className="list-decimal space-y-1 ps-5 text-[12.5px] text-muted-foreground">
+            <li>فایل کانکتور را دانلود کنید؛ همین یک فایل روی مک و ویندوز نصب می‌شود.</li>
+            <li>در Claude Desktop به Settings ← Extensions بروید و فایل را آن‌جا بکشید (یا روی فایل دو بار کلیک کنید) و Install را بزنید.</li>
+            <li>آدرس ERP از قبل پر شده است؛ کلیدی را که این‌جا ساخته‌اید در «کلید Claude» وارد کنید و کانکتور را روشن کنید.</li>
+          </ol>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button asChild variant="outline">
+              <a href="/api/connector" download>
+                <Download className="h-4 w-4" />
+                دانلود کانکتور (مک و ویندوز)
+              </a>
+            </Button>
+            <a href="/api/connector?file=server" download className="text-[12px] text-muted-foreground underline underline-offset-4">
+              فقط فایل سرور، برای نصب دستی
+            </a>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

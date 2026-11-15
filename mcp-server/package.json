@@ -1,22 +1,14 @@
 {
   "name": "themoak-erp-mcp",
-  "version": "1.0.0",
-  "description": "MCP server for TheMoak ERP — connects Claude Desktop to your ERP system",
+  "version": "2.0.0",
+  "description": "The connector (MCP server) for TheMoak ERP: connects Claude Desktop to the ERP. One file, no dependencies.",
   "type": "module",
-  "main": "dist/bundle.js",
+  "main": "server.mjs",
   "scripts": {
-    "build": "tsc",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/bundle.js --banner:js='#!/usr/bin/env node'",
-    "start": "node dist/bundle.js",
-    "dev": "tsx src/index.ts"
+    "start": "node server.mjs",
+    "embed": "node embed.mjs"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "esbuild": "^0.24.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+  "engines": {
+    "node": ">=18"
   }
 }
