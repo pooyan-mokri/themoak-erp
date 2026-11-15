@@ -5,8 +5,9 @@ import { invoiceOrderId, loadInvoiceData } from '@/lib/invoice-data';
 import { requireRouteAccess } from '@/lib/access';
 
 // The same invoice as the order's «چاپ فاکتور» (src/components/sales/invoice-document.tsx).
-export default async function PrintInvoicePage({ params }: { params: { id: string } }) {
+export default async function PrintInvoicePage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/sales');
+  const params = await paramsPromise;
   const orderId = await invoiceOrderId(params.id);
   const data = orderId ? await loadInvoiceData(orderId) : null;
   if (!data) {

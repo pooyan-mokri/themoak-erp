@@ -148,7 +148,7 @@ test('receivables and profit and loss serve their data', async () => {
     data: { type: 'INCOME', amount: 900_000, amountInToman: 900_000, currency: 'TOMAN', accountId: 'novin', category: 'Sales' },
   });
   setTestRole('AUDITOR');
-  const report = propsOf(await FinancialReportsPage({ searchParams: {} }), ProfitLossReport);
+  const report = propsOf(await FinancialReportsPage({ searchParams: Promise.resolve({}) }), ProfitLossReport);
   assert.equal(report.data.summary.income, 900_000, 'this month');
   assert.equal(report.previous.summary.income, 0, 'the month before');
   assert.equal(report.trend.length, 12);

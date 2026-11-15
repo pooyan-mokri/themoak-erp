@@ -10,8 +10,9 @@ import { invoiceStatusLabel } from '@/lib/invoice-lines';
 
 import { formatJalaliDate } from '@/lib/date-utils';
 import { requireRouteAccess } from '@/lib/access';
-export default async function InvoiceDetailsPage({ params }: { params: { id: string } }) {
+export default async function InvoiceDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/sales');
+  const params = await paramsPromise;
   const orderId = await invoiceOrderId(params.id);
   const data = orderId ? await loadInvoiceData(orderId) : null;
 

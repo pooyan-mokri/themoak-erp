@@ -4,8 +4,9 @@ import { OrderList } from '@/components/sales/order-list';
 import { notFound } from 'next/navigation';
 import { requireRouteAccess } from '@/lib/access';
 
-export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
+export default async function CustomerDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/sales');
+  const params = await paramsPromise;
   const customer = await getCustomer(params.id);
 
   if (!customer) {

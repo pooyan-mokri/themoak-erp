@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import Link from 'next/link';
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 const initialState = {
   message: '',
@@ -18,7 +18,9 @@ const initialState = {
   success: false,
 };
 
-export default function ResetPasswordPage({ params }: { params: { token: string } }) {
+export default function ResetPasswordPage() {
+  // A client page: the token from the address (Next 15 gives a page its params as a Promise).
+  const { token } = useParams<{ token: string }>();
   const router = useRouter();
   const [tokenStatus, setTokenStatus] = useState<{
     valid: boolean;
@@ -27,12 +29,12 @@ export default function ResetPasswordPage({ params }: { params: { token: string 
     loading: boolean;
   }>({ valid: false, loading: true });
 
-  const resetPasswordWithToken = resetPassword.bind(null, params.token);
+  const resetPasswordWithToken = resetPassword.bind(null, token);
   const [state, dispatch] = useFormState(resetPasswordWithToken, initialState);
 
   useEffect(() => {
     // Verify token on mount
-    verifyResetToken(params.token).then((result) => {
+    verifyResetToken(token).then((result) => {
       setTokenStatus({
         valid: result.valid,
         email: result.email,
@@ -40,7 +42,7 @@ export default function ResetPasswordPage({ params }: { params: { token: string 
         loading: false,
       });
     });
-  }, [params.token]);
+  }, [token]);
 
   // Redirect to login after successful password reset
   useEffect(() => {

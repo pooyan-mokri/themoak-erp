@@ -7,8 +7,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { hasPermission, requireRouteAccess } from '@/lib/access';
 
-export default async function WarehouseDetailsPage({ params }: { params: { id: string } }) {
+export default async function WarehouseDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/inventory');
+  const params = await paramsPromise;
   const [warehouse, inventory, canSeeCost] = await Promise.all([
     getWarehouseById(params.id),
     getInventoryByWarehouse(params.id),

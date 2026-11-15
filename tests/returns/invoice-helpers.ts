@@ -116,9 +116,9 @@ export async function assertInvoice(
   expected: { lines: string[]; rows: Record<string, number> },
 ) {
   const views = {
-    orderPrint: readInvoice(await render(PrintOrderPage({ params: { id: orderId } }))),
-    invoicePrint: readInvoice(await render(PrintInvoicePage({ params: { id: invoiceId } }))),
-    invoicePage: readInvoice(await render(InvoiceDetailsPage({ params: { id: invoiceId } }))),
+    orderPrint: readInvoice(await render(PrintOrderPage({ params: Promise.resolve({ id: orderId }) }))),
+    invoicePrint: readInvoice(await render(PrintInvoicePage({ params: Promise.resolve({ id: invoiceId }) }))),
+    invoicePage: readInvoice(await render(InvoiceDetailsPage({ params: Promise.resolve({ id: invoiceId }) }))),
   };
   for (const [name, view] of Object.entries(views)) {
     assert.deepEqual(view.lines.map((l) => l.text), expected.lines, `${name} lines`);

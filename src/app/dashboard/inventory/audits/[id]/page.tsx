@@ -9,11 +9,12 @@ import { hasPermission, requireRouteAccess } from '@/lib/access';
 export const maxDuration = 60;
 
 export default async function InventoryAuditDetailsPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   await requireRouteAccess('/dashboard/inventory');
+  const params = await paramsPromise;
   try {
     const audit = await getInventoryAudit(params.id);
 

@@ -6,8 +6,9 @@ import { OrderDetail } from '@/components/suppliers/order-detail';
 import { BackButton } from '@/components/ui/back-button';
 import { hasPermission, requireRouteAccess } from '@/lib/access';
 
-export default async function OrderDetailPage({ params }: { params: { id: string } }) {
+export default async function OrderDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/suppliers');
+  const params = await paramsPromise;
   const { data: order } = await getPurchaseOrder(params.id);
   const warehouses = await prisma.warehouse.findMany({
     where: { isVirtual: false, isArchived: false }

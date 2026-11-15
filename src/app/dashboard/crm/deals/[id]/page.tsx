@@ -17,8 +17,9 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export default async function DealDetailsPage({ params }: { params: { id: string } }) {
+export default async function DealDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/crm');
+  const params = await paramsPromise;
   const deal = await getDealById(params.id);
 
   if (!deal) {

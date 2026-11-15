@@ -12,11 +12,12 @@ import { getCurrentRole, hasPermission, requireRouteAccess } from '@/lib/access'
 export const dynamic = 'force-dynamic';
 
 export default async function WarehouseDetailPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   await requireRouteAccess('/dashboard/inventory');
+  const params = await paramsPromise;
   console.log('WarehouseDetailPage called with params:', params);
   
   try {

@@ -4,8 +4,9 @@ import { InvoiceDocument } from '@/components/sales/invoice-document';
 import { loadInvoiceData } from '@/lib/invoice-data';
 import { requireRouteAccess } from '@/lib/access';
 
-export default async function PrintOrderPage({ params }: { params: { id: string } }) {
+export default async function PrintOrderPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/sales');
+  const params = await paramsPromise;
   const data = await loadInvoiceData(params.id);
   if (!data) {
     notFound();

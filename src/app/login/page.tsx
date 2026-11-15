@@ -14,7 +14,8 @@ const SECTIONS = [
   'دستیار هوش مصنوعی برای پرسش از داده‌ها',
 ];
 
-export default function LoginPage({ searchParams }: { searchParams: { callbackUrl?: string } }) {
+export default async function LoginPage({ searchParams: searchParamsPromise }: { searchParams: Promise<{ callbackUrl?: string }> }) {
+  const searchParams = await searchParamsPromise;
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-2">
       <main className="flex min-h-screen flex-col px-6 py-8 sm:px-12 lg:px-16">

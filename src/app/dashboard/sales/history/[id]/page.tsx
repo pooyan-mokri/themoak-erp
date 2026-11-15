@@ -8,8 +8,9 @@ import { BackButton } from '@/components/ui/back-button';
 import { notFound } from 'next/navigation';
 import { getCurrentRole, requireRouteAccess } from '@/lib/access';
 
-export default async function OrderDetailsPage({ params }: { params: { id: string } }) {
+export default async function OrderDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/sales');
+  const params = await paramsPromise;
   const [order, allAccounts, allWarehouses, returns, exchanges, role] = await Promise.all([
     getOrder(params.id),
     getAccountOptions(),

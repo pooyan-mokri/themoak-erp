@@ -99,7 +99,7 @@ test('the profit and loss page\'s month (the Jalali month) runs from its first T
   await sale('2026-10-22T20:45:00Z', 4_000_000); // 1 Aban 00:15 Tehran
   at('2026-10-22T19:00:00Z'); // 30 Mehr 22:30 Tehran
 
-  const page = await FinancialReportsPage({ searchParams: {} });
+  const page = await FinancialReportsPage({ searchParams: Promise.resolve({}) });
   const report = propsOf(page, ProfitLossReport).data;
   assert.equal(report.summary.income, 320_000);
 });
@@ -111,7 +111,7 @@ test('an asked range of days runs from its first Tehran midnight through the who
   await sale('2026-09-30T20:45:00Z', 4_000_000); // 1 Oct 00:15 Tehran: the last day
   at('2026-09-30T19:00:00Z');
 
-  const asked = propsOf(await FinancialReportsPage({ searchParams: { from: '2026-09-01', to: '2026-10-01' } }), ProfitLossReport).data;
+  const asked = propsOf(await FinancialReportsPage({ searchParams: Promise.resolve({ from: '2026-09-01', to: '2026-10-01' }) }), ProfitLossReport).data;
   assert.equal(asked.summary.income, 4_320_000);
   assert.deepEqual(asked.monthlyTrend.map((m: any) => [m.month, m.income]), [['2026-09', 320_000], ['2026-10', 4_000_000]]);
 });

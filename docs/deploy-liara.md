@@ -236,6 +236,7 @@ liara deploy --app themoak-erp --message "$(git rev-parse --short HEAD)"
   2. قدم‌ها
   3. `[db:deploy] done in ...s`
   4. `Ready`
+- **اگر build با «Your project uses Next.js v… which has known critical vulnerabilities» شکست خورد:** لیارا Next.js آسیب‌پذیر را build نمی‌کند (۲۴ آبان ۱۴۰۵: کمتر از 15.5.28 یا 16.4.1). نسخهٔ `next` را در `package.json` دقیق بنویسید و بالا ببرید؛ `tests/platform/login-cache.test.ts` حداقلش را نگه می‌دارد.
 - **اگر لاگ build در `npm ci` ساکت ماند و به سقف زمان خورد:** یک بار `liara deploy --no-cache` بزنید.
 - **اگر mirror npm لیارا گیر کرد:** در `liara.json`، `"next": {"mirror": false}` بگذارید. این را بقیه‌ی کاربران لیارا هم گزارش کرده‌اند.
 - **health check فعلاً نیست.** زمان‌ها میلی‌ثانیه‌اند (`liara init` می‌پرسد «interval(ms)») و لیارا `timeout` بیشتر از ۱۰۰۰۰ و `startPeriod` بیشتر از ۳۰۰۰ را رد می‌کند. با `interval: 30000`، `timeout: 10000`، `retries: 3`، `startPeriod: 3000` و فرمان `["CMD","curl","--fail",…,"http://localhost:3000/api/health"]`، لیارا نسخه‌ی v3 را حدود ۹۰ ثانیه بعد از شروع بست. این در حالی بود که `db:deploy` در ۱۷ ثانیه تمام شده بود و یک cron با curl همان لحظه از localhost:3000 جواب گرفته بود. پس لیارا فرمان را جور دیگری اجرا می‌کند. قبل از برگرداندنش، داخل کانتینرِ در حال اجرا با `liara shell -a themoak-erp -c "…"` امتحانش کنید. `/api/health` سر جایش هست.

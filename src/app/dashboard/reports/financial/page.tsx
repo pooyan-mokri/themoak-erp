@@ -23,11 +23,12 @@ import { requireRouteAccess } from '@/lib/access';
  * کنار دوره قبل، با ترکیب درآمد و هزینه و روند دوازده ماه؛ و ترازنامه.
  */
 export default async function FinancialReportsPage({
-  searchParams,
+  searchParams: searchParamsPromise,
 }: {
-  searchParams: { from?: string; to?: string; period?: string; at?: string };
+  searchParams: Promise<{ from?: string; to?: string; period?: string; at?: string }>;
 }) {
   await requireRouteAccess('/dashboard/reports/financial');
+  const searchParams = await searchParamsPromise;
   // The current Jalali month unless the URL asks for another period.
   const current = resolvePeriod(searchParams);
   const previous = previousPeriod(current);

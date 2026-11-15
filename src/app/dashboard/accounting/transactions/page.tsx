@@ -7,11 +7,12 @@ import { getCurrentRole, requireRouteAccess } from '@/lib/access';
 const DEFAULT_MONTHS = 3;
 
 export default async function TransactionsPage({
-  searchParams,
+  searchParams: searchParamsPromise,
 }: {
-  searchParams: { from?: string; to?: string; all?: string; account?: string };
+  searchParams: Promise<{ from?: string; to?: string; all?: string; account?: string }>;
 }) {
   await requireRouteAccess('/dashboard/accounting');
+  const searchParams = await searchParamsPromise;
   const { from, to, all, account } = searchParams;
 
   const defaultFrom = new Date();

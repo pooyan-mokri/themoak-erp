@@ -13,8 +13,9 @@ import { hasPermission, requireRouteAccess } from '@/lib/access';
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 
-export default async function CustomerDetailsPage({ params }: { params: { id: string } }) {
+export default async function CustomerDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/crm');
+  const params = await paramsPromise;
   const [customer, canManage] = await Promise.all([getCustomerById(params.id), hasPermission('sales.manage')]);
 
   if (!customer) {

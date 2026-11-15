@@ -14,8 +14,9 @@ type ReportLink = { href: string; label: string; description: string; icon: Luci
  * The reports hub: the detailed reports this role may open, and — for a role that
  * sees sales — an overview of the chosen range against the period before it.
  */
-export default async function ReportsPage({ searchParams }: { searchParams: { range?: string } }) {
+export default async function ReportsPage({ searchParams: searchParamsPromise }: { searchParams: Promise<{ range?: string }> }) {
   await requireRouteAccess('/dashboard/reports');
+  const searchParams = await searchParamsPromise;
   const [canSeeSales, canSeeFinance, canSeeCost, canSeeProfit] = await Promise.all([
     hasPermission('sales.view'),
     hasPermission('finance.view'),

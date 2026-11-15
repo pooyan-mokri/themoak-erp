@@ -1,7 +1,7 @@
 // This file must stay next.config.js (CommonJS). Liara looks for next.config.js only: when it finds none, it
 // writes its own with nothing but `output: 'standalone'`, and Next.js reads next.config.js before .mjs, so every
 // setting below would be dropped (docs.liara.ir/paas/nextjs/fix-common-errors/modify-config-file; next.config.ts
-// is not read by Next.js 14 at all).
+// would need TypeScript installed where Liara builds).
 const { execSync } = require('node:child_process');
 
 // Vercel builds the app its own way; everything below marked "not on Vercel" is for Liara (and local runs of it).
@@ -29,32 +29,32 @@ const nextConfig = {
     // A receipt photo or PDF is sent to a server action (src/actions/upload.ts),
     // up to 4 MB; the default limit is 1 MB.
     serverActions: { bodySizeLimit: '5mb' },
-    // src/instrumentation.ts: on Liara, the database is brought up to this code before the server serves.
-    instrumentationHook: true,
-    // Not on Vercel: what src/instrumentation.ts runs at start (scripts/db-deploy.mjs: the Prisma CLI with its
-    // engines, the schema and the deploy SQL) is not imported by any page, so file tracing would leave it out of
-    // the standalone output. Tied to /api/health only because includes are listed per route; the standalone
-    // output gets every route's files. scripts/verify-standalone.mjs (postbuild) checks they are there.
-    ...(onVercel
-      ? {}
-      : {
-          outputFileTracingIncludes: {
-            '/api/health': [
-              './scripts/db-deploy.mjs',
-              './prisma/schema.prisma',
-              './prisma/migrations/**/*',
-              './prisma/sql/pre-push-unique-columns.sql',
-              './prisma/sql/backfill-*.sql',
-              './node_modules/prisma/**/*',
-              './node_modules/@prisma/engines/**/*',
-              './node_modules/@prisma/engines-version/**/*',
-              './node_modules/@prisma/debug/**/*',
-              './node_modules/@prisma/fetch-engine/**/*',
-              './node_modules/@prisma/get-platform/**/*',
-            ],
-          },
-        }),
+    // src/instrumentation.ts runs on its own since Next.js 15 (it brings the database up to this code on Liara
+    // before the server serves): no flag here.
   },
+  // Not on Vercel: what src/instrumentation.ts runs at start (scripts/db-deploy.mjs: the Prisma CLI with its
+  // engines, the schema and the deploy SQL) is not imported by any page, so file tracing would leave it out of
+  // the standalone output. Tied to /api/health only because includes are listed per route; the standalone
+  // output gets every route's files. scripts/verify-standalone.mjs (postbuild) checks they are there.
+  ...(onVercel
+    ? {}
+    : {
+        outputFileTracingIncludes: {
+          '/api/health': [
+            './scripts/db-deploy.mjs',
+            './prisma/schema.prisma',
+            './prisma/migrations/**/*',
+            './prisma/sql/pre-push-unique-columns.sql',
+            './prisma/sql/backfill-*.sql',
+            './node_modules/prisma/**/*',
+            './node_modules/@prisma/engines/**/*',
+            './node_modules/@prisma/engines-version/**/*',
+            './node_modules/@prisma/debug/**/*',
+            './node_modules/@prisma/fetch-engine/**/*',
+            './node_modules/@prisma/get-platform/**/*',
+          ],
+        },
+      }),
   images: {
     remotePatterns: [
       {

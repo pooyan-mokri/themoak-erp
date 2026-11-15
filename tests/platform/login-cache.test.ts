@@ -15,7 +15,10 @@ test('the login page and the home page (which reads the session) render for each
   assert.equal(homePage.dynamic, 'force-dynamic');
 });
 
-test('Next.js is at least 14.2.25: no cache poisoning by header, no middleware skip', () => {
+test('Next.js is at least 15.5.28: Liara refuses to build anything older (React2Shell, CVE-2025-55182 and CVE-2026-75604)', () => {
+  // 2026-11-15: Liara's build stopped every deploy on 14.2.35: «upgrade Next.js to 16.4.1 or later (or 15.5.28 or
+  // later if you stay on 15.x)». Those releases also carry the 14.2.x fixes above.
   const [major, minor, patch] = (require('next/package.json').version as string).split('.').map(Number);
-  assert.ok(major > 14 || (major === 14 && (minor > 2 || (minor === 2 && patch >= 25))), `next ${major}.${minor}.${patch}`);
+  assert.ok(major > 15 || (major === 15 && (minor > 5 || (minor === 5 && patch >= 28))), `next ${major}.${minor}.${patch}`);
+  assert.equal(require('../../package.json').dependencies.next, require('next/package.json').version, 'the exact version, as Liara checks it');
 });

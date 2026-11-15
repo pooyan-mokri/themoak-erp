@@ -376,7 +376,7 @@ test('the exchangeId backfill marks the line each old exchange issued, once, and
     });
   }
 
-  const before = readInvoice(await render(PrintOrderPage({ params: { id: order.id } })));
+  const before = readInvoice(await render(PrintOrderPage({ params: Promise.resolve({ id: order.id }) })));
   const marks = async () =>
     (await prisma.orderItem.findMany({ where: { orderId: order.id }, orderBy: { id: 'asc' } })).map((i: any) => [i.id, i.exchangeId]);
 
@@ -391,7 +391,7 @@ test('the exchangeId backfill marks the line each old exchange issued, once, and
   await prisma.$executeRawUnsafe(sql('backfill-order-exchange-items.sql'));
   assert.deepEqual(await marks(), first);
 
-  const after = readInvoice(await render(PrintOrderPage({ params: { id: order.id } })));
+  const after = readInvoice(await render(PrintOrderPage({ params: Promise.resolve({ id: order.id }) })));
   assert.deepEqual(after, before);
 });
 

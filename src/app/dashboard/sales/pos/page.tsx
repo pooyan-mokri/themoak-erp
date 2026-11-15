@@ -24,8 +24,9 @@ async function stockByWarehouse(warehouseIds: string[]): Promise<Record<string, 
   }
 }
 
-export default async function POSPage({ searchParams }: { searchParams?: { product?: string } }) {
+export default async function POSPage({ searchParams: searchParamsPromise }: { searchParams?: Promise<{ product?: string }> }) {
   await requireRouteAccess('/dashboard/sales');
+  const searchParams = (await searchParamsPromise) ?? {};
   const [products, customers, allAccounts, warehouses, canSell, canSeeStock] = await Promise.all([
     getProducts(),
     getCustomers(),

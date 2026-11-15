@@ -4,8 +4,9 @@ import { notFound } from 'next/navigation';
 import { requireRouteAccess } from '@/lib/access';
 import { PageHeader } from '@/components/layout/page-header';
 
-export default async function EditCustomerPage({ params }: { params: { id: string } }) {
+export default async function EditCustomerPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/crm');
+  const params = await paramsPromise;
   const customer = await getCustomerById(params.id);
 
   if (!customer) {

@@ -17,9 +17,9 @@ const MAIL_NOT_SET_UP = 'ارسال ایمیل بازیابی در این سام
 const MAIL_FAILED = 'ایمیل بازیابی ارسال نشد؛ کمی بعد دوباره تلاش کنید یا با مدیر سیستم تماس بگیرید.';
 
 /** The address the ERP was reached at, for the link in the email. */
-function appOrigin(): string {
+async function appOrigin(): Promise<string> {
   try {
-    const request = headers();
+    const request = await headers();
     const host = request.get('x-forwarded-host') ?? request.get('host');
     if (host) return `${request.get('x-forwarded-proto') ?? 'https'}://${host}`;
   } catch {
@@ -102,7 +102,7 @@ export async function requestPasswordReset(prevState: any, formData: FormData) {
     }
 
     // The link is never logged: whoever reads the logs could take the account.
-    const link = `${appOrigin()}/reset-password/${token}`;
+    const link = `${await appOrigin()}/reset-password/${token}`;
     try {
       await sendMail({
         to: user.email,

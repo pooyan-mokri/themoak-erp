@@ -5,11 +5,12 @@ import { barcodeFormatFor } from '@/lib/barcode-format';
 import { requireRouteAccess } from '@/lib/access';
 
 export default async function ProductBarcodePrintPage({
-  params,
+  params: paramsPromise,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   await requireRouteAccess('/dashboard/inventory');
+  const params = await paramsPromise;
   const product = await getProductDetail(params.id);
 
   if (!product || !product.barcode) {

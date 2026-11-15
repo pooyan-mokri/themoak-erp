@@ -47,8 +47,9 @@ async function getWarehouseMovements(productId: string, canSeeCost: boolean): Pr
   }));
 }
 
-export default async function ProductDetailPage({ params }: { params: { id: string } }) {
+export default async function ProductDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/inventory');
+  const params = await paramsPromise;
   const [canSeeCost, canSeeSellPrice, canManage, canEditCost, canSell] = await Promise.all([
     hasPermission('cost.view'),
     hasPermission('sales.view'),

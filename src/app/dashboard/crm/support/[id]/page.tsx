@@ -9,8 +9,9 @@ import { formatJalaliDate } from '@/lib/date-utils';
 import { hasPermission, requireRouteAccess } from '@/lib/access';
 import { cn } from '@/lib/utils';
 
-export default async function TicketDetailsPage({ params }: { params: { id: string } }) {
+export default async function TicketDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/crm');
+  const params = await paramsPromise;
   const [ticket, canManage] = await Promise.all([getTicketById(params.id), hasPermission('sales.manage')]);
 
   if (!ticket) {

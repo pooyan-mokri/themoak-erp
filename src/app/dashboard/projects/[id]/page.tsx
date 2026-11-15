@@ -16,7 +16,8 @@ import { fa } from '@/components/projects/project-labels';
 import { formatJalaliDate } from '@/lib/date-utils';
 import { hasPermission } from '@/lib/access';
 
-export default async function ProjectDetailsPage({ params }: { params: { id: string } }) {
+export default async function ProjectDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
   let project;
   let users;
   const [figures, canManage] = await Promise.all([getProjectFigures(), hasPermission('projects.manage')]);

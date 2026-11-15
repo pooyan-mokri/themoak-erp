@@ -167,7 +167,8 @@ test('next.config.js is the only config Next and Liara read, and keeps its setti
     const config = loadNextConfig(env);
     assert.equal(config.experimental.serverActions.bodySizeLimit, '5mb');
     assert.deepEqual(config.images.remotePatterns, [{ protocol: 'https', hostname: 'themoak.com' }]);
-    assert.equal(config.experimental.instrumentationHook, true);
+    // Next.js 15 runs src/instrumentation.ts with no flag; the old flag would only be warned about.
+    assert.equal(config.experimental.instrumentationHook, undefined);
   }
 });
 
@@ -175,13 +176,15 @@ test('outside Vercel the build is standalone and carries what the start hook run
   const liaraConfig = loadNextConfig({ VERCEL: undefined, APP_COMMIT_SHA: 'abc123' });
   assert.equal(liaraConfig.output, 'standalone');
   assert.deepEqual(liaraConfig.env, { APP_COMMIT_SHA: 'abc123' });
-  const includes: string[] = liaraConfig.experimental.outputFileTracingIncludes['/api/health'];
+  // Top level since Next.js 15 (it was experimental in 14).
+  const includes: string[] = liaraConfig.outputFileTracingIncludes['/api/health'];
+  assert.equal(liaraConfig.experimental.outputFileTracingIncludes, undefined);
   for (const needed of ['./scripts/db-deploy.mjs', './prisma/schema.prisma', './prisma/sql/pre-push-unique-columns.sql', './prisma/sql/backfill-*.sql', './prisma/migrations/**/*', './node_modules/prisma/**/*', './node_modules/@prisma/engines/**/*']) {
     assert.ok(includes.includes(needed), needed);
   }
   const vercelConfig = loadNextConfig({ VERCEL: '1', APP_COMMIT_SHA: undefined });
   assert.equal(vercelConfig.output, undefined);
-  assert.equal(vercelConfig.experimental.outputFileTracingIncludes, undefined);
+  assert.equal(vercelConfig.outputFileTracingIncludes, undefined);
   assert.equal(vercelConfig.env, undefined, 'Vercel gives VERCEL_GIT_COMMIT_SHA at runtime');
   // The postbuild check runs only where there is a standalone folder, and never needs scripts/ on Vercel.
   assert.match(pkg.scripts.postbuild, /^if \[ -d \.next\/standalone \] && \[ -f scripts\/verify-standalone\.mjs \]; then node scripts\/verify-standalone\.mjs; fi$/);

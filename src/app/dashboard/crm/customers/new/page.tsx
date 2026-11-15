@@ -4,11 +4,12 @@ import { redirect } from 'next/navigation';
 import { requireRouteAccess } from '@/lib/access';
 
 export default async function NewCustomerPage({
-  searchParams,
+  searchParams: searchParamsPromise,
 }: {
-  searchParams: { leadId?: string };
+  searchParams: Promise<{ leadId?: string }>;
 }) {
   await requireRouteAccess('/dashboard/crm');
+  const searchParams = await searchParamsPromise;
   let initialData = undefined;
 
   if (searchParams.leadId) {

@@ -21,8 +21,9 @@ function Row({ label, children, ltr }: { label: string; children: React.ReactNod
   );
 }
 
-export default async function LeadDetailsPage({ params }: { params: { id: string } }) {
+export default async function LeadDetailsPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   await requireRouteAccess('/dashboard/crm');
+  const params = await paramsPromise;
   const [lead, canManage] = await Promise.all([getLeadById(params.id), hasPermission('sales.manage')]);
 
   if (!lead) {

@@ -8,11 +8,12 @@ import { requireRouteAccess } from '@/lib/access';
 import { isDay, tehranDayEnd, tehranDayStart } from '@/lib/tehran-day';
 
 export default async function SalesReportsPage({
-  searchParams,
+  searchParams: searchParamsPromise,
 }: {
-  searchParams: { from?: string; to?: string; range?: string };
+  searchParams: Promise<{ from?: string; to?: string; range?: string }>;
 }) {
   await requireRouteAccess('/dashboard/reports/sales');
+  const searchParams = await searchParamsPromise;
   // A chosen range (4 weeks, 12 weeks, this year) wins; otherwise from/to, and by default the last 3 months.
   const range = parseRange(searchParams.range);
   const period = range ? reportWindow(range) : null;
