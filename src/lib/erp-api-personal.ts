@@ -45,6 +45,10 @@ export const PERSONAL_ACTION_PERMISSIONS: Record<string, readonly Permission[]> 
   createSupplier: ['stock.manage', 'finance.manage'],
   createProduct: ['stock.manage'],
   createPurchaseOrder: ['cost.edit'],
+  // Paying a purchase order, as the order page's payment form (finance.manage); a cost added to one changes its
+  // total, as making the order does (src/lib/erp-api-po-payments.ts).
+  payPurchaseOrder: ['finance.manage'],
+  addPurchaseOrderCost: ['cost.edit'],
 };
 
 export const PERSONAL_POST_ACTIONS = ['createCustomer', 'createOrder', 'recordOrderPayment', 'returnOrderItem', 'transferStock'];

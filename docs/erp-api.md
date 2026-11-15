@@ -467,8 +467,8 @@ GET {base}/api/erp?action=settlements
 | `createSupplier` | POST | `stock.manage` یا `finance.manage` |
 | `createProduct` | POST | `stock.manage` (بدون `cost.edit` قیمت خرید و بدون `sales.view` قیمت فروش صفر ثبت می‌شود، مثل فرم کالا) |
 | `createPurchaseOrder` | POST | `cost.edit` (فقط مدیر سیستم) |
-| `payPurchaseOrder` | POST | ندارد — فقط `ERP_API_SECRET` |
-| `addPurchaseOrderCost` | POST | ندارد — فقط `ERP_API_SECRET` |
+| `payPurchaseOrder` | POST | `finance.manage` (همان اجازهٔ فرم پرداخت در صفحهٔ سفارش) |
+| `addPurchaseOrderCost` | POST | `cost.edit` (فقط مدیر سیستم) |
 
 ### به ارز PI، بدون تومان
 
@@ -549,7 +549,8 @@ GET {base}/api/erp?action=purchaseOrders&supplier=Mazzu&status=PENDING_PAYMENT&t
 
 ### `payPurchaseOrder` — پرداخت به ارزی که واقعاً پرداخت شده
 
-فقط با `ERP_API_SECRET`؛ کلید شخصی و کلید سایت `403` می‌گیرند. تأمین‌کنندهٔ چینی
+با `ERP_API_SECRET`، یا با کلید شخصی کاربری که `finance.manage` دارد (آن‌وقت گزارش فعالیت به
+نام او ثبت می‌شود و تراکنش هزینه برچسب «Claude · نام» می‌گیرد)؛ کلید سایت `403` می‌گیرد. تأمین‌کنندهٔ چینی
 یوان می‌گیرد (وی‌چت، علی‌پی) و پولش از حسابی به ارز دیگر می‌رود:
 
 ```json
@@ -625,7 +626,7 @@ GET {base}/api/erp?action=purchaseOrders&supplier=Mazzu&status=PENDING_PAYMENT&t
 
 ### `addPurchaseOrderCost` — هزینهٔ تازه روی سفارش
 
-فقط با `ERP_API_SECRET`. هزینه‌ای که تأمین‌کننده بعد از PI اضافه کرده، **به ارز سفارش**:
+با `ERP_API_SECRET`، یا با کلید شخصی کاربری که `cost.edit` دارد. هزینه‌ای که تأمین‌کننده بعد از PI اضافه کرده، **به ارز سفارش**:
 
 ```json
 { "action": "addPurchaseOrderCost", "order": 8, "title": "Gold-filled laser logo", "amount": 322 }

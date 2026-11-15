@@ -294,13 +294,9 @@ test('an account that cannot cover the payment refuses it', async () => {
   assert.equal((await row(po.id)).status, 'PENDING_PAYMENT');
 });
 
-test('only the full key pays; a draft is placed by its payment; a paid, received or cancelled order takes none; bad input is refused', async () => {
+test('the website\'s key never pays; a draft is placed by its payment; a paid, received or cancelled order takes none; bad input is refused', async () => {
   const po = await yuanOrder({ status: 'DRAFT' });
   assert.equal((await pay(po, { amount: 2000 }, SITE)).status, 403);
-  const user = await prisma.user.create({ data: { name: 'مدیر دوم', email: 'admin2@x.test', password: 'x', role: 'ADMIN' } });
-  const made: any = await createApiKey(user.id, 'Claude');
-  assert.equal((await pay(po, { amount: 2000 }, made.key)).status, 403);
-  assert.equal((await addCost(po, { title: 'لوگو', amount: 10 }, made.key)).status, 403);
   assert.equal((await addCost(po, { title: 'لوگو', amount: 10 }, SITE)).status, 403);
   await assertUntouched(po);
 
@@ -331,6 +327,50 @@ test('only the full key pays; a draft is placed by its payment; a paid, received
     assert.equal(refused.body.status, status);
   }
   await assertUntouched(po, 700.16, 1);
+});
+
+test('a personal key pays and adds a cost when its user\'s role may, in that user\'s name', async () => {
+  const keyFor = async (name: string, role: string) => {
+    const user = await prisma.user.create({ data: { name, email: `${role.toLowerCase()}@x.test`, password: 'x', role: role as any } });
+    setTestRole('ADMIN');
+    const made: any = await createApiKey(user.id, 'Claude');
+    assert.equal(made.success, true);
+    return { user, key: made.key as string };
+  };
+  const po = await yuanOrder();
+
+  // A seller has neither finance.manage nor cost.edit: nothing is written.
+  const sales = await keyFor('سارا', 'SALES');
+  assert.equal((await pay(po, { amount: 2000 }, sales.key)).status, 403);
+  assert.equal((await addCost(po, { title: 'لوگو', amount: 10 }, sales.key)).status, 403);
+  await assertUntouched(po);
+
+  // An accountant pays (finance.manage) but does not change what the order costs (cost.edit).
+  const accountant = await keyFor('مینا', 'ACCOUNTANT');
+  assert.equal((await addCost(po, { title: 'لوگو', amount: 10 }, accountant.key)).status, 403);
+  const paid = await pay(po, { amount: 2000, note: 'بیعانه' }, accountant.key);
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.deepEqual([paid.body.status, paid.body.remainingInOrderCurrency, paid.body.payment.accountAmount, paid.body.payment.amountInToman], ['PARTIALLY_PAID', 4000, 299.84, 81_256_640]);
+  const [payment] = (await row(po.id)).payments;
+  assert.deepEqual(payment.transaction!.tags, ['Claude · مینا']);
+  const log = await prisma.activityLog.findFirstOrThrow({ where: { action: 'API_PAY_PURCHASE_ORDER' } });
+  assert.equal(log.userId, accountant.user.id);
+  assert.match(log.details, new RegExp(`^Claude · مینا: پرداخت سفارش خرید PO-${po.number} `));
+
+  // The admin does both.
+  const admin = await keyFor('مدیر دوم', 'ADMIN');
+  const added = await addCost(po, { title: 'Gold-filled laser logo', amount: 322 }, admin.key);
+  assert.equal(added.status, 200, JSON.stringify(added.body));
+  assert.equal(added.body.remainingInOrderCurrency, 4322);
+  const costLog = await prisma.activityLog.findFirstOrThrow({ where: { action: 'API_ADD_PURCHASE_ORDER_COST' } });
+  assert.equal(costLog.userId, admin.user.id);
+  assert.match(costLog.details, /^Claude · مدیر دوم: هزینهٔ/);
+  assert.equal((await pay(po, { amount: 1000 }, admin.key)).status, 200);
+
+  // whoami tells the connector which of the two a key may use.
+  const actions = async (key: string) => (await (await call('GET', key, 'action=whoami')).json()).actions as string[];
+  const has = (list: string[]) => ['payPurchaseOrder', 'addPurchaseOrderCost'].map((a) => list.includes(a));
+  assert.deepEqual([has(await actions(sales.key)), has(await actions(accountant.key)), has(await actions(admin.key))], [[false, false], [true, false], [true, true]]);
 });
 
 test('a cost is added in the order\'s currency: with no Toman figure on an open order, the same one never twice', async () => {

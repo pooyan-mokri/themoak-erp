@@ -906,11 +906,9 @@ async function postAction(req: NextRequest, key: ApiKey) {
         return NextResponse.json(result.body, { status: result.status });
       }
 
-      // ── پرداخت سفارش خرید به ارزِ پرداخت‌شده، و هزینهٔ تازهٔ آن: فقط کلید کامل (src/lib/erp-api-po-payments.ts) ──
+      // ── پرداخت سفارش خرید به ارزِ پرداخت‌شده، و هزینهٔ تازهٔ آن: کلید کامل یا کلید شخصی (src/lib/erp-api-po-payments.ts) ──
       case 'payPurchaseOrder':
       case 'addPurchaseOrderCost': {
-        // A personal key is stopped before this (no entry in PERSONAL_ACTION_PERMISSIONS), the site key above.
-        if (key !== 'full') return forbidden();
         const result = action === 'payPurchaseOrder' ? await payPurchaseOrder(prisma, fields) : await addPurchaseOrderCost(prisma, fields);
         return NextResponse.json(result.body, { status: result.status });
       }

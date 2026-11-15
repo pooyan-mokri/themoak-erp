@@ -1,6 +1,9 @@
 /**
  * Paying purchase orders on the ERP API (/api/erp), in the currency actually paid: payPurchaseOrder and
- * addPurchaseOrderCost. The owner's full key only; a personal key and the website's key get 403.
+ * addPurchaseOrderCost. The owner's full key may call these, and a personal key what its user's role may
+ * (PERSONAL_ACTION_PERMISSIONS in src/lib/erp-api-personal.ts: finance.manage to pay, as the order page's payment
+ * form; cost.edit to add a cost, as making the order); the website's key may not. What a personal key records
+ * carries its user's name: the activity log, and the tag «Claude · name» on the expense row.
  *
  * A purchase order made through the API is recorded as the supplier's PI states it (yuan, no Toman figure,
  * src/lib/erp-api-purchasing.ts). Its Toman value is decided here, payment by payment:
@@ -29,6 +32,8 @@
  */
 import { Decimal } from '@prisma/client/runtime/library';
 import { logActivity } from '@/lib/activity-log';
+import { currentApiActor, type ApiActor } from '@/lib/api-actor';
+import { apiTag } from '@/lib/api-keys';
 import { latestRates } from '@/lib/money-totals';
 import { PURCHASE_ORDER_STATUS_LABELS } from '@/lib/purchase-order-status';
 import { BALANCE_TOLERANCE, orderBalance, orderCurrencyOf, orderTotalOf } from '@/lib/purchase-order-balance';
@@ -58,6 +63,9 @@ class Refusal extends Error {
     super(message);
   }
 }
+
+/** Who is acting: a personal key's user, or the owner's full key (no user). */
+const who = (actor: ApiActor | undefined) => (actor ? apiTag(actor) : 'کلید کامل');
 
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
 const number = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN);
@@ -189,6 +197,7 @@ async function fixTomanSnapshots(tx: any, order: any, total: number, paidInToman
  * requestId is answered with the payment it already made.
  */
 export async function payPurchaseOrder(client: any, fields: any): Promise<Reply> {
+  const actor = currentApiActor();
   try {
     const amount = positive(fields.amount, 'amount', 'مبلغ پرداخت');
     const currency = text(fields.currency).toUpperCase();
@@ -304,6 +313,7 @@ export async function payPurchaseOrder(client: any, fields: any): Promise<Reply>
             accountId,
             category: 'Purchase Payment',
             description: `پرداخت سفارش خرید #${order.number} — ${paidText}${note ? ` — ${note}` : ''}`,
+            ...(actor && { tags: [apiTag(actor)] }),
             date,
           },
         });
@@ -360,7 +370,7 @@ export async function payPurchaseOrder(client: any, fields: any): Promise<Reply>
 
     if (result.duplicate) return ok(result);
     const { log, placed, settled, ...body } = result;
-    await logActivity(undefined, 'API_PAY_PURCHASE_ORDER', `کلید کامل: ${log}`);
+    await logActivity(actor?.id, 'API_PAY_PURCHASE_ORDER', `${who(actor)}: ${log}`);
     const left = body.remainingInOrderCurrency;
     return ok({
       message: settled
@@ -384,6 +394,7 @@ export async function payPurchaseOrder(client: any, fields: any): Promise<Reply>
  * refused, so a call that arrives twice adds one cost.
  */
 export async function addPurchaseOrderCost(client: any, fields: any): Promise<Reply> {
+  const actor = currentApiActor();
   try {
     const title = text(fields.title);
     if (!title) throw new Refusal('عنوان هزینه (title) لازم است.');
@@ -433,9 +444,9 @@ export async function addPurchaseOrderCost(client: any, fields: any): Promise<Re
     const { reopened, ...body } = result;
     const costText = `«${title}» ${money(amount, body.currency)}`;
     await logActivity(
-      undefined,
+      actor?.id,
       'API_ADD_PURCHASE_ORDER_COST',
-      `کلید کامل: هزینهٔ ${costText} به سفارش خرید PO-${body.order} («${body.supplier}») اضافه شد — جمع سفارش ${money(body.totalAmount, body.currency)}${reopened ? ' — از «پرداخت شده» به «پرداخت جزئی» برگشت' : ''}`,
+      `${who(actor)}: هزینهٔ ${costText} به سفارش خرید PO-${body.order} («${body.supplier}») اضافه شد — جمع سفارش ${money(body.totalAmount, body.currency)}${reopened ? ' — از «پرداخت شده» به «پرداخت جزئی» برگشت' : ''}`,
     );
     return ok({
       message: `هزینهٔ ${costText} به سفارش خرید PO-${body.order} اضافه شد. جمع سفارش: ${money(body.totalAmount, body.currency)}، باقیمانده: ${money(body.remainingInOrderCurrency, body.currency)}.${reopened ? ' سفارش از «پرداخت شده» به «پرداخت جزئی» برگشت.' : ''}`,
