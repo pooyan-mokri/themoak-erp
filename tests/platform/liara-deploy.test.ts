@@ -37,6 +37,9 @@ test('liara.json deploys the themoak-erp app on the next platform, port 3000, bu
   assert.equal(liara.platform, 'next');
   assert.equal(liara.port, 3000);
   assert.equal(liara.next.nodeVersion, '22');
+  // 2026-11-16: from the German builder, npm ci through Liara's npm mirror took 7 minutes, then ran past the
+  // 15-minute build limit with no output. The builder is outside Iran: it reaches npm itself.
+  assert.equal(liara.next.mirror, false);
   assert.equal(liara.build.location, 'germany');
   assert.equal(liara.app, 'themoak-erp');
   assert.equal(liara.envs, undefined, 'envs in liara.json would replace every env var set in the panel');
