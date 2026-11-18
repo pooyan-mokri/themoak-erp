@@ -179,19 +179,19 @@ test('a list size that is not a whole number falls back instead of failing, and 
   for (const limit of ['abc', '-5', '0', '2.5', '']) {
     const listed = await get(`action=transactions&limit=${limit}`);
     assert.equal(listed.status, 200, limit);
-    assert.equal(listed.body.length, 3, limit);
+    assert.equal(listed.body.transactions.length, 3, limit);
     assert.equal((await get(`action=orders&limit=${limit}`)).status, 200, limit);
   }
-  assert.equal((await get('action=transactions&limit=2')).body.length, 2);
-  assert.equal((await get('action=transactions&limit=100000')).body.length, 3);
-  assert.equal((await get('action=transactions&type=INCOME')).body.length, 3);
+  assert.equal((await get('action=transactions&limit=2')).body.transactions.length, 2);
+  assert.equal((await get('action=transactions&limit=100000')).body.transactions.length, 3);
+  assert.equal((await get('action=transactions&type=INCOME')).body.transactions.length, 3);
   assert.equal((await get('action=transactions&type=income')).status, 422);
 });
 
 test('the orders list carries the discount, so debt is totalAmount - discount - paid', async () => {
   const sold = await post(SITE, sale({ reference: 'M-DISC', subtotal: 20_000_000, discount: 2_000_000, total: 18_000_000, payment: { gateway: 'zibal', trackId: 'TD', paidAt: null, amount: 18_000_000 } }));
   assert.equal(sold.status, 200);
-  const [order] = (await get('action=orders')).body;
+  const [order] = (await get('action=orders')).body.orders;
   assert.deepEqual([order.totalAmount, order.discount, order.paidAmount, order.paymentStatus], [20_000_000, 2_000_000, 18_000_000, 'PAID']);
   assert.equal(order.totalAmount - order.discount - order.paidAmount, 0);
 });

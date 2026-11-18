@@ -19,16 +19,16 @@
       "get": {
         "operationId": "erpQuery",
         "summary": "Query ERP data",
-        "description": "Fetch financial summaries, accounts, transactions, orders, settlements, loans, search, stock across warehouses, per-product sales, suppliers or purchase orders.",
+        "description": "Fetch financial summaries, accounts, transactions, orders, a sales report, settlements, loans, search, stock across warehouses, per-product sales, suppliers or purchase orders. orders and transactions reach the whole history a page at a time (from, to, limit, offset; the answer has total and nextOffset). salesReport adds up every sale of a period, or of the whole history, on the server.",
         "parameters": [
           {
             "name": "action",
             "in": "query",
             "required": true,
-            "description": "The data to fetch: summary | accounts | transactions | orders | settlements | loans | search | inventory | productSales | suppliers | purchaseOrders",
+            "description": "The data to fetch: summary | accounts | transactions | orders | salesReport | settlements | loans | search | inventory | productSales | suppliers | purchaseOrders",
             "schema": {
               "type": "string",
-              "enum": ["summary", "accounts", "transactions", "orders", "settlements", "loans", "search", "inventory", "productSales", "suppliers", "purchaseOrders"]
+              "enum": ["summary", "accounts", "transactions", "orders", "salesReport", "settlements", "loans", "search", "inventory", "productSales", "suppliers", "purchaseOrders"]
             }
           },
           {
@@ -42,15 +42,43 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "description": "Max results (for transactions/orders, default 50)",
+            "description": "Rows per page: transactions default 50 (max 500), orders default 30 (max 200)",
             "schema": { "type": "integer", "default": 50 }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "transactions/orders: rows to skip; pass the previous answer's nextOffset for the next page (null there means no more)",
+            "schema": { "type": "integer", "minimum": 0, "default": 0 }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "transactions/orders/salesReport: first Gregorian day, YYYY-MM-DD, Tehran time, included. A Jalali date is refused.",
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "transactions/orders/salesReport: last Gregorian day, YYYY-MM-DD, Tehran time, included whole",
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "required": false,
+            "description": "salesReport: month (Jalali, default) or day",
+            "schema": { "type": "string", "enum": ["month", "day"], "default": "month" }
           },
           {
             "name": "type",
             "in": "query",
             "required": false,
-            "description": "Filter transactions by type: INCOME | EXPENSE | TRANSFER",
-            "schema": { "type": "string", "enum": ["INCOME", "EXPENSE", "TRANSFER"] }
+            "description": "Filter transactions by type: INCOME | EXPENSE | TRANSFER | ADJUSTMENT",
+            "schema": { "type": "string", "enum": ["INCOME", "EXPENSE", "TRANSFER", "ADJUSTMENT"] }
           },
           {
             "name": "filter",
@@ -208,6 +236,17 @@
         }
       },
       "TransactionsResponse": {
+        "type": "object",
+        "description": "One page of money rows. total counts every row of the query; nextOffset is the offset of the next page, null after the last; totalsByType adds up every row of the query by type.",
+        "properties": {
+          "from": { "type": "string", "nullable": true },
+          "to": { "type": "string", "nullable": true },
+          "total": { "type": "integer" },
+          "offset": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "nextOffset": { "type": "integer", "nullable": true },
+          "totalsByType": { "type": "object", "additionalProperties": { "type": "object", "properties": { "count": { "type": "integer" }, "amountInToman": { "type": "number" } } } },
+          "transactions": {
         "type": "array",
         "items": {
           "type": "object",
@@ -223,6 +262,8 @@
             "account": { "type": "string" },
             "payee": { "type": "string", "nullable": true },
             "tags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
           }
         }
       },

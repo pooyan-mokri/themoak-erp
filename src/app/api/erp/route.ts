@@ -17,6 +17,7 @@ import { logActivity } from '@/lib/activity-log';
 import { PERSONAL_POST_ACTIONS, personalMay, personalPost, redactForRole, whoami } from '@/lib/erp-api-personal';
 import { PURCHASING_GET_ACTIONS, PURCHASING_POST_ACTIONS, createProduct, createPurchaseOrder, createSupplier, listPurchaseOrders, listSuppliers } from '@/lib/erp-api-purchasing';
 import { PO_PAYMENT_POST_ACTIONS, addPurchaseOrderCost, payPurchaseOrder } from '@/lib/erp-api-po-payments';
+import { listOrders, listTransactions, salesReport } from '@/lib/erp-api-reports';
 
 // Website sales run one database transaction capped at 15 s (src/lib/site-sale.ts).
 export const maxDuration = 30;
@@ -75,6 +76,7 @@ const GET_ACTIONS = [
   'accounts',
   'transactions',
   'orders',
+  'salesReport',
   'settlements',
   'loans',
   'search',
@@ -84,12 +86,6 @@ const GET_ACTIONS = [
   'productSales',
   ...PURCHASING_GET_ACTIONS,
 ];
-
-/** A list size from the query: a whole number from 1 to max; anything else is the default. */
-function listLimit(raw: string | null, fallback: number, max: number): number {
-  const n = Number(raw ?? fallback);
-  return Number.isInteger(n) && n >= 1 ? Math.min(n, max) : fallback;
-}
 
 // The site reads 404 as "the ERP does not have this action yet".
 function unknownGetAction() {
@@ -187,66 +183,13 @@ async function getAction(req: NextRequest, key: ApiKey) {
         );
       }
 
-      // ── تراکنش‌های اخیر ──────────────────────────────────────────────────────
-      case 'transactions': {
-        const limit = listLimit(searchParams.get('limit'), 50, 200);
-        const type = searchParams.get('type'); // INCOME | EXPENSE | TRANSFER
-        if (type && !['INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT'].includes(type)) {
-          return NextResponse.json({ error: 'type باید INCOME، EXPENSE، TRANSFER یا ADJUSTMENT باشد.' }, { status: 422 });
-        }
-        const txs = await prisma.transaction.findMany({
-          where: type ? { type } : undefined,
-          include: { account: { select: { name: true } } },
-          orderBy: { date: 'desc' },
-          take: limit,
-        });
-        return NextResponse.json(
-          txs.map((t: any) => ({
-            id: t.id,
-            date: t.date,
-            type: t.type,
-            amount: Number(t.amount),
-            currency: t.currency,
-            amountInToman: Number(t.amountInToman),
-            description: t.description,
-            category: t.category,
-            account: t.account?.name ?? null,
-            payee: t.payee ?? null,
-            tags: t.tags ?? [],
-          })),
-        );
-      }
-
-      // ── سفارش‌های اخیر ──────────────────────────────────────────────────────
-      case 'orders': {
-        const limit = listLimit(searchParams.get('limit'), 30, 100);
-        const orders = await prisma.order.findMany({
-          include: {
-            customer: { select: { name: true } },
-            items: { include: { product: { select: { name: true } } } },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: limit,
-        });
-        return NextResponse.json(
-          orders.map((o: any) => ({
-            id: o.id,
-            number: o.number,
-            customer: o.customer?.name ?? null,
-            status: o.status,
-            paymentStatus: o.paymentStatus,
-            // Gross, before the discount: what the customer owes is totalAmount - discount.
-            totalAmount: Number(o.totalAmount),
-            discount: Number(o.discount),
-            paidAmount: Number(o.paidAmount),
-            createdAt: o.createdAt,
-            items: o.items.map((i: any) => ({
-              product: i.product?.name,
-              quantity: i.quantity,
-              price: Number(i.price),
-            })),
-          })),
-        );
+      // ── تراکنش‌ها و سفارش‌های فروش، هر بازه‌ای، صفحه به صفحه؛ و گزارش فروش (src/lib/erp-api-reports.ts) ──
+      case 'transactions':
+      case 'orders':
+      case 'salesReport': {
+        const run = action === 'transactions' ? listTransactions : action === 'orders' ? listOrders : salesReport;
+        const result = await run(prisma, searchParams);
+        return NextResponse.json(result.body, { status: result.status });
       }
 
       // ── تسویه‌های در انتظار (امانت) ──────────────────────────────────────────

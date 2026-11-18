@@ -20,7 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 
 const BASE = (process.env.ERP_API_URL ?? '').trim().replace(/\/+$/, '');
 const KEY = (process.env.ERP_API_KEY || process.env.ERP_API_SECRET || '').trim();
@@ -68,6 +68,9 @@ const REQUEST_ID = {
   description:
     'Leave empty for a new entry. When retrying an entry whose result you did not see, pass the requestId from the earlier error: the ERP then books it only once. Must be 8-64 letters, digits, - or _.',
 };
+const FROM = { type: 'string', description: 'Gregorian day YYYY-MM-DD, Tehran time, included. Convert a Jalali date first (1 Farvardin 1405 = 2026-03-21); a Jalali date is refused.' };
+const TO = { type: 'string', description: 'Gregorian day YYYY-MM-DD, Tehran time, included whole.' };
+const OFFSET = { type: 'number', description: 'Rows to skip, for the next page: pass the nextOffset of the previous answer. nextOffset null means there is no more.' };
 const CONFIRM = ' پیش از ثبت، خلاصه را برای کاربر بخوانید و تأییدش را بگیرید؛ بدون تأیید ثبت نکنید.';
 const none = { type: 'object', properties: {} };
 /** Only the arguments that were given, as strings, for a GET. */
@@ -104,23 +107,59 @@ const TOOLS = [
     name: 'erp_transactions',
     action: 'transactions',
     method: 'GET',
-    description: 'Fetch recent financial transactions. Can filter by type (INCOME/EXPENSE/TRANSFER).',
+    description:
+      'Money rows (income, expenses, transfers), newest first, over any period: the whole history is reachable, a page at a time. Narrow with from/to, type, account and category. The answer has total (rows the query has), nextOffset (call again with offset=nextOffset for the next page; null at the end) and totalsByType (count and Toman per type over the whole query, not only this page). For a total, read totalsByType instead of paging.',
     inputSchema: {
       type: 'object',
       properties: {
-        limit: { type: 'number', description: 'Max results (default 50, max 200)' },
-        type: { type: 'string', enum: ['INCOME', 'EXPENSE', 'TRANSFER'], description: 'Filter by transaction type' },
+        from: FROM,
+        to: TO,
+        type: { type: 'string', enum: ['INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT'], description: 'Filter by transaction type' },
+        account: { type: 'string', description: "An account's id or part of its name" },
+        category: { type: 'string', description: 'Part of the category' },
+        limit: { type: 'number', description: 'Rows per page (default 50, max 500)' },
+        offset: OFFSET,
       },
     },
-    args: (a) => picked(a, ['limit', 'type']),
+    args: (a) => picked(a, ['from', 'to', 'type', 'account', 'category', 'limit', 'offset']),
   },
   {
     name: 'erp_orders',
     action: 'orders',
     method: 'GET',
-    description: 'Fetch recent sales orders with customer, items, status, and payment info.',
-    inputSchema: { type: 'object', properties: { limit: { type: 'number', description: 'Max results (default 30, max 100)' } } },
-    args: (a) => picked(a, ['limit']),
+    description:
+      'Sales orders one by one (customer, items, status, payment, site or ERP), newest first, over any period: the whole history is reachable, a page at a time. The answer has total and nextOffset (call again with offset=nextOffset; null at the end). For sales figures — totals, by month, by product, by customer — use erp_sales_report instead: it adds up every order on the server.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from: FROM,
+        to: TO,
+        status: { type: 'string', description: 'e.g. COMPLETED, CANCELLED, RETURNED' },
+        limit: { type: 'number', description: 'Orders per page (default 30, max 200)' },
+        offset: OFFSET,
+      },
+    },
+    args: (a) => picked(a, ['from', 'to', 'status', 'limit', 'offset']),
+  },
+  {
+    name: 'erp_sales_report',
+    action: 'salesReport',
+    method: 'GET',
+    description:
+      'گزارش فروش: همهٔ فروش یک بازه (بدون from و to، کل تاریخچه) را خودِ ERP جمع می‌زند، با همان قاعده‌های صفحهٔ «گزارش فروش» ERP. ' +
+      'سفارش‌های لغوشده حساب نمی‌شوند (تعدادشان جدا می‌آید). revenue مبلغی است که مشتری می‌پردازد (مبلغ کل منهای تخفیف)؛ درآمد هر کالا از مرجوعی و تعویض و سهمش از تخفیف هم خالص است. همه به تومان. ' +
+      'برمی‌گرداند: totals (تعداد سفارش، gross، discount، revenue، paid، outstanding، units، averageOrder)، byPeriod (ماه شمسی، یا روز با groupBy=day)، bySource (site سایت، erp فروشگاه/ERP)، byProduct و byCustomer (مرتب بر درآمد). ' +
+      'برای هر پرسش «چقدر فروختیم / پرفروش‌ترین / روند فروش» از این استفاده کنید، نه از erp_orders. تاریخ شمسی را اول میلادی کنید.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from: FROM,
+        to: TO,
+        groupBy: { type: 'string', enum: ['month', 'day'], description: 'month (Jalali, default) or day (Tehran)' },
+        top: { type: 'number', description: 'Only the first N products and customers (default: all)' },
+      },
+    },
+    args: (a) => picked(a, ['from', 'to', 'groupBy', 'top']),
   },
   {
     name: 'erp_settlements',

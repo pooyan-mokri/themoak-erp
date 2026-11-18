@@ -119,7 +119,8 @@ test('loans, search, accounts and transactions read what is stored, for the full
   const accounts = await get('action=accounts');
   assert.deepEqual(accounts.body.map((a: any) => [a.name, a.currency, a.balance]), [['بانک', 'TOMAN', 0]]);
   const rows = await get('action=transactions');
-  assert.deepEqual(rows.body.map((t: any) => [t.type, t.amount, t.amountInToman, t.account]), [['INCOME', 3_000, 3_000, 'بانک']]);
+  assert.deepEqual(rows.body.transactions.map((t: any) => [t.type, t.amount, t.amountInToman, t.account]), [['INCOME', 3_000, 3_000, 'بانک']]);
+  assert.deepEqual([rows.body.total, rows.body.nextOffset], [1, null]);
 
   for (const action of ['loans', 'search&q=abc', 'accounts', 'transactions', 'orders', 'settlements', 'summary']) {
     assert.equal((await get(`action=${action}`, SITE)).status, 403, action);

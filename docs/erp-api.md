@@ -432,6 +432,41 @@ GET {base}/api/erp?action=productSales&days=90
 
 لیست سفارش همین است: بر اساس `monthsLeft` صعودی.
 
+### `salesReport` — گزارش فروش، کل تاریخچه یا هر بازه
+
+```http
+GET {base}/api/erp?action=salesReport&from=2026-03-21&to=2026-11-21&groupBy=month&top=20
+```
+
+همهٔ فروش بازه را خودِ ERP جمع می‌زند، با قاعده‌های صفحهٔ «گزارش فروش» (`src/actions/reports.ts`)، تا
+کانکتور لازم نباشد هزاران سفارش را بخواند. با کلید کامل، یا کلید شخصی با `sales.view`.
+
+| پارامتر | قاعده |
+|---|---|
+| `from`، `to` | اختیاری، روز میلادی `YYYY-MM-DD` به وقت تهران، هر دو سر شامل. بدون هیچ‌کدام: کل تاریخچه. تاریخ شمسی (`1405-…`) رد می‌شود |
+| `groupBy` | `month` (ماه شمسی، پیش‌فرض) یا `day` (روز تهران) |
+| `top` | اختیاری: فقط N کالا و مشتریِ اول؛ پیش‌فرض همه |
+
+- سفارش به روزی که ساخته شده شمرده می‌شود؛ لغوشده‌ها حساب نمی‌شوند و تعدادشان در `totals.cancelledOrders` است.
+- `revenue` همان مبلغی است که مشتری می‌پردازد (`gross - discount`)؛ `paid` و `outstanding` پرداخت‌شده و ماندهٔ سفارش‌ها.
+- درآمد هر کالا (`byProduct`) از مرجوعی و تعویض هم خالص است و سهمش از تخفیف سفارش کم شده، مثل صفحهٔ کالا؛ پس جمع آن با `totals.revenue` فرق دارد وقتی مرجوعی هست.
+- پاسخ: `totals` (`orders`، `gross`، `discount`، `revenue`، `paid`، `outstanding`، `units`، `cancelledOrders`، `averageOrder`)،
+  `byPeriod` (`period` مثل `1405-08` با `label` «آبان 1405»)، `bySource` (`site` سایت، `erp` فروشگاه و ERP)،
+  `byProduct` (`sku`، `name`، `units`، `revenue`، `orders`) و `byCustomer`، هر دو مرتب بر درآمد، با `productCount` و `customerCount`. همه به تومان.
+
+### `orders` و `transactions` — هر بازه، صفحه به صفحه
+
+```http
+GET {base}/api/erp?action=orders&from=2026-10-23&to=2026-11-21&limit=200&offset=0
+GET {base}/api/erp?action=transactions&from=2026-10-23&type=EXPENSE&account=ملت&category=اجاره&limit=500
+```
+
+- `from`، `to` مثل `salesReport` (سفارش به روز ساخت، تراکنش به تاریخ خودش). `limit` پیش‌فرض ۳۰ سفارش (حداکثر ۲۰۰) و ۵۰ تراکنش (حداکثر ۵۰۰)؛ `offset` برای صفحهٔ بعد.
+- پاسخ یک شیء است: `total` (تعداد کل ردیف‌های این جست‌وجو)، `offset`، `limit`، `nextOffset` (برای صفحهٔ بعد؛ `null` یعنی تمام شد) و `orders` یا `transactions`.
+- `orders`: `status` اختیاری؛ هر سفارش `source` (`site` یا `erp`) و `sku` هر قلم را هم دارد.
+- `transactions`: `type`، `account` (نام یا شناسه) و `category` (بخشی از آن) اختیاری‌اند؛ `totalsByType` تعداد و جمع تومانی هر نوع را روی **همهٔ** ردیف‌های جست‌وجو می‌دهد، نه فقط این صفحه.
+- تا ۲۷ آبان ۱۴۰۵ پاسخ این دو فقط یک آرایه بود: حداکثر ۱۰۰ سفارش یا ۲۰۰ تراکنش آخر، بدون بازهٔ تاریخ.
+
 ### `settlements` — تسویه‌های باز همکاران امانی
 
 ```http

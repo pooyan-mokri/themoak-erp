@@ -24,6 +24,7 @@ export const PERSONAL_ACTION_PERMISSIONS: Record<string, readonly Permission[]> 
   accounts: ['finance.view', 'accounts.pick'],
   transactions: ['finance.view'],
   orders: ['sales.view'],
+  salesReport: ['sales.view'],
   settlements: ['sales.view'],
   loans: ['payroll.view'],
   search: ['stock.view', 'sales.view', 'finance.view'],
